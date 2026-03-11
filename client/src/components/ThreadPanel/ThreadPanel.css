@@ -1,0 +1,279 @@
+.thread-panel {
+  width: 400px;
+  min-width: 400px;
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--bg-tertiary);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.thread-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--bg-tertiary);
+  flex-shrink: 0;
+}
+
+.thread-panel-header-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.thread-panel-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-panel-subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.thread-panel-close {
+  background: none;
+  border: none;
+  color: var(--interactive-normal);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
+.thread-panel-close:hover {
+  color: var(--interactive-hover);
+  background: var(--bg-modifier-hover);
+}
+
+/* Parent message pinned at top */
+.thread-parent-message {
+  padding: 12px 16px;
+  background: var(--input-bg);
+  border-bottom: 1px solid var(--bg-tertiary);
+  flex-shrink: 0;
+}
+
+.thread-parent-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.thread-parent-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.thread-parent-username {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.thread-parent-time {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.thread-parent-content {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.thread-parent-content p {
+  margin: 0;
+}
+
+/* Thread messages area */
+.thread-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+  display: flex;
+  flex-direction: column;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thin-thumb) var(--scrollbar-thin-track);
+}
+
+.thread-messages-loading {
+  text-align: center;
+  padding: 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.thread-no-replies {
+  text-align: center;
+  padding: 32px 16px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+/* Thread message count divider */
+.thread-reply-count {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.thread-reply-count::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-subtle);
+}
+
+/* Reuse message styling but slightly adapted */
+.thread-message-group {
+  display: flex;
+  padding: 4px 16px;
+  margin-top: 8px;
+}
+
+.thread-message-group:hover {
+  background: var(--bg-modifier-hover);
+}
+
+.thread-message-avatar-col {
+  flex-shrink: 0;
+  width: 32px;
+  margin-right: 12px;
+  padding-top: 2px;
+}
+
+.thread-message-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  user-select: none;
+}
+
+.thread-message-content-col {
+  flex: 1;
+  min-width: 0;
+}
+
+.thread-message-header {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.thread-message-username {
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.thread-message-username:hover {
+  text-decoration: underline;
+}
+
+.thread-message-time {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.thread-message-body {
+  position: relative;
+  font-size: 14px;
+  color: var(--text-primary);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  line-height: 1.375;
+}
+
+.thread-message-body p {
+  margin: 0;
+}
+
+.thread-message-body .message-edited {
+  font-size: 10px;
+}
+
+.thread-message-deleted {
+  font-size: 14px;
+  color: var(--text-muted);
+  font-style: italic;
+  opacity: 0.5;
+}
+
+/* Thread message actions */
+.thread-message-actions {
+  display: none;
+  position: absolute;
+  top: -10px;
+  right: 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 2px;
+  gap: 2px;
+  z-index: 1;
+}
+
+.thread-message-body:hover .thread-message-actions {
+  display: flex;
+}
+
+.thread-message-action-btn {
+  background: none;
+  border: none;
+  color: var(--interactive-normal);
+  cursor: pointer;
+  padding: 3px 5px;
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.thread-message-action-btn:hover {
+  background: var(--bg-modifier-hover);
+  color: var(--interactive-hover);
+}
+
+.thread-message-action-btn.danger:hover {
+  color: var(--text-danger);
+}
+
+/* Thread input area */
+.thread-input-area {
+  padding: 0 12px 16px;
+  flex-shrink: 0;
+}

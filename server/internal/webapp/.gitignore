@@ -1,0 +1,4 @@
+# Built by `make webapp` — contains the React client build
+# Keep index.html as placeholder for go:embed to work
+dist/*
+!dist/index.html

@@ -1,0 +1,14 @@
+.resize-handle {
+  width: 3px;
+  cursor: col-resize;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+  background: transparent;
+  transition: background-color 0.15s ease;
+}
+
+.resize-handle:hover,
+.resize-handle.dragging {
+  background: var(--brand-500, #5865f2);
+}

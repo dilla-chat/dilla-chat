@@ -1,0 +1,327 @@
+{
+  "app": {
+    "name": "Slimcord",
+    "loading": "Loading..."
+  },
+  "common": {
+    "save": "Save Changes",
+    "saving": "Saving...",
+    "cancel": "Cancel",
+    "creating": "Creating...",
+    "delete": "Delete",
+    "edit": "Edit",
+    "close": "Close"
+  },
+  "welcome": {
+    "title": "Welcome to Slimcord",
+    "subtitle": "A federated, end-to-end encrypted team chat",
+    "createIdentity": "Create New Identity",
+    "restoreBackup": "Restore from Backup"
+  },
+  "identity": {
+    "username": "Username",
+    "displayName": "Display Name",
+    "passphrase": "Passphrase",
+    "confirm": "Confirm Passphrase",
+    "create": "Create Identity",
+    "publicKeyLabel": "Your public key fingerprint",
+    "creating": "Creating identity...",
+    "passphraseNoMatch": "Passphrases do not match",
+    "createWithPasskey": "Create with Passkey",
+    "passkeyPrompt": "Your passkey (Touch ID, Windows Hello, or security key) will secure your identity and encrypt all your messages.",
+    "recoveryKeyTitle": "Save Your Recovery Key",
+    "recoveryKeyDesc": "If you lose access to your passkey, this recovery key is the ONLY way to recover your encrypted data. Store it somewhere safe.",
+    "recoveryKeyCopied": "Copied!",
+    "recoveryKeyCopy": "Copy to Clipboard",
+    "recoveryKeyConfirm": "I have saved my recovery key",
+    "continue": "Continue",
+    "prfNotSupported": "Your system does not support passkey encryption (WebAuthn PRF). Please use a supported browser or authenticator.",
+    "passkeyFailed": "Passkey creation failed"
+  },
+  "login": {
+    "title": "Unlock Your Identity",
+    "passphrase": "Passphrase",
+    "unlock": "Unlock",
+    "wrongPassphrase": "Wrong passphrase. Please try again.",
+    "unlocking": "Unlocking...",
+    "unlockWithPasskey": "Unlock with Passkey",
+    "useRecoveryKey": "Use Recovery Key",
+    "recoveryKeyPlaceholder": "Enter recovery key (XXXX-XXXX-...)",
+    "unlockWithRecovery": "Unlock with Recovery Key",
+    "invalidRecoveryKey": "Invalid recovery key. Please try again.",
+    "legacyDetected": "Legacy identity detected. Enter your passphrase to upgrade to passkey authentication.",
+    "upgradeToPasskey": "Upgrade to Passkey"
+  },
+  "join": {
+    "title": "Join a Team",
+    "inviteLink": "Invite Link",
+    "teamName": "Team Name",
+    "invitedBy": "Invited by",
+    "join": "Join Team",
+    "joining": "Joining...",
+    "serverAddress": "Server Address",
+    "inviteToken": "Invite Token"
+  },
+  "setup": {
+    "title": "Set Up Your Team",
+    "serverAddress": "Server Address",
+    "bootstrapToken": "Bootstrap Token",
+    "setup": "Set Up Team",
+    "settingUp": "Setting up..."
+  },
+  "sidebar": {
+    "addTeam": "Join or Create Team"
+  },
+  "auth": {
+    "login": "Log In",
+    "register": "Register",
+    "username": "Username",
+    "passphrase": "Passphrase",
+    "confirmPassphrase": "Confirm Passphrase",
+    "setupAccount": "Set Up Account",
+    "joinTeam": "Join Team"
+  },
+  "teams": {
+    "create": "Create Team",
+    "settings": "Team Settings",
+    "invite": "Invite Members",
+    "leave": "Leave Team"
+  },
+  "channels": {
+    "text": "Text Channel",
+    "voice": "Voice Channel",
+    "create": "Create Channel",
+    "edit": "Edit Channel",
+    "delete": "Delete Channel",
+    "uncategorized": "Channels",
+    "type": "Channel Type",
+    "name": "Channel Name",
+    "namePlaceholder": "new-channel",
+    "categoryLabel": "Category",
+    "noCategory": "No category",
+    "newCategory": "+ Create new",
+    "categoryPlaceholder": "Category name",
+    "topicLabel": "Topic",
+    "optional": "optional",
+    "topicPlaceholder": "What is this channel about?",
+    "welcomeTitle": "Welcome to #{{name}}",
+    "welcomeDesc": "This is the start of the #{{name}} channel.",
+    "selectChannel": "Select a channel to start chatting"
+  },
+  "messages": {
+    "placeholder": "Message #{{channel}}",
+    "edit": "Edit Message",
+    "delete": "Delete Message",
+    "reply": "Reply",
+    "thread": "Start Thread"
+  },
+  "members": {
+    "toggle": "Toggle Member List",
+    "search": "Search members...",
+    "kick": "Kick",
+    "ban": "Ban",
+    "unban": "Unban",
+    "banned": "Banned Users",
+    "noBanned": "No banned users"
+  },
+  "roles": {
+    "create": "Create Role",
+    "delete": "Delete Role",
+    "default": "Default",
+    "name": "Role Name",
+    "color": "Color",
+    "permissions": "Permissions"
+  },
+  "permissions": {
+    "admin": "Administrator",
+    "manageChannels": "Manage Channels",
+    "manageRoles": "Manage Roles",
+    "manageMembers": "Manage Members",
+    "createInvites": "Create Invites",
+    "sendMessages": "Send Messages",
+    "manageMessages": "Manage Messages",
+    "voiceConnect": "Voice Connect",
+    "voiceSpeak": "Voice Speak",
+    "uploadFiles": "Upload Files",
+    "createThreads": "Create Threads",
+    "mentionEveryone": "Mention Everyone"
+  },
+  "settings": {
+    "general": "General",
+    "roles": "Roles & Permissions",
+    "members": "Members",
+    "invites": "Invites",
+    "federation": "Federation",
+    "moderation": "Moderation",
+    "notifications": "Notifications",
+    "teamName": "Team Name",
+    "description": "Description",
+    "iconUrl": "Icon URL",
+    "maxFileSize": "Max File Size (bytes)",
+    "allowInvites": "Allow Member Invites",
+    "allowInvitesDesc": "Let non-admin members create invite links"
+  },
+  "status": {
+    "online": "Online",
+    "idle": "Idle",
+    "dnd": "Do Not Disturb",
+    "invisible": "Invisible",
+    "offline": "Offline"
+  },
+  "presence": {
+    "online": "Online",
+    "idle": "Idle",
+    "dnd": "Do Not Disturb",
+    "offline": "Offline",
+    "invisible": "Invisible",
+    "setStatus": "Set Status",
+    "customStatus": "Custom Status",
+    "customStatusPlaceholder": "What are you up to?",
+    "clearStatus": "Clear Status",
+    "saveStatus": "Save",
+    "onlineCount": "Online — {{count}}",
+    "offlineCount": "Offline — {{count}}"
+  },
+  "profile": {
+    "memberSince": "Member since {{date}}",
+    "sendMessage": "Send Message",
+    "roles": "Roles"
+  },
+  "invites": {
+    "maxUses": "Max Uses",
+    "unlimited": "Unlimited",
+    "expiry": "Expires After",
+    "30min": "30 minutes",
+    "1hour": "1 hour",
+    "6hours": "6 hours",
+    "12hours": "12 hours",
+    "1day": "1 day",
+    "7days": "7 days",
+    "never": "Never",
+    "create": "Create Invite",
+    "token": "Token",
+    "createdBy": "Created By",
+    "uses": "Uses",
+    "expiresAt": "Expires",
+    "clickCopy": "Click to copy",
+    "revoke": "Revoke"
+  },
+  "federation": {
+    "title": "Federation",
+    "nodeInfo": "Node Information",
+    "nodeName": "Node Name",
+    "lamportTimestamp": "Sync Clock",
+    "connectedPeers": "Connected Peers",
+    "peerName": "Name",
+    "peerAddress": "Address",
+    "peerStatus": "Status",
+    "peerLastSeen": "Last Seen",
+    "statusConnected": "Connected",
+    "statusDisconnected": "Disconnected",
+    "statusSyncing": "Syncing",
+    "noPeers": "No other nodes in the mesh. Generate a join token to add peers.",
+    "meshSummary": "{{total}} nodes in mesh ({{connected}} connected, {{disconnected}} disconnected)",
+    "generateJoinToken": "Generate Join Command",
+    "joinCommand": "Join Command",
+    "joinCommandHelp": "Share this command with someone who wants to add a new server node to the mesh:",
+    "curlOneLiner": "Or for a fresh install:",
+    "copied": "Copied!",
+    "copyToClipboard": "Copy to Clipboard",
+    "autoRefresh": "Auto-refreshing every 10 seconds"
+  },
+  "moderation": {
+    "auditLog": "Audit Log",
+    "noActions": "No recent actions"
+  },
+  "notifications": {
+    "defaultLevel": "Default Notification Level",
+    "all": "All Messages",
+    "mentions": "Mentions Only",
+    "nothing": "Nothing",
+    "default": "Default",
+    "channelOverrides": "Per-Channel Overrides",
+    "noChannels": "No text channels"
+  },
+  "thread": {
+    "title": "Thread",
+    "createThread": "Create Thread",
+    "replies": "{{count}} replies",
+    "reply": "1 reply",
+    "lastReply": "Last reply {{time}}",
+    "replyPlaceholder": "Reply in thread...",
+    "noReplies": "No replies yet. Start the conversation!",
+    "threadStartedBy": "Thread started by {{name}}",
+    "viewThread": "View Thread",
+    "closeThread": "Close"
+  },
+  "dm": {
+    "title": "Direct Messages",
+    "newDM": "New Message",
+    "searchMembers": "Search members...",
+    "startConversation": "Start Conversation",
+    "groupDM": "Group Message",
+    "noMessages": "No messages yet. Say hello!",
+    "noDMs": "No direct messages yet",
+    "members": "{{count}} members",
+    "addMembers": "Add Members",
+    "leaveGroup": "Leave Group",
+    "typing": "{{name}} is typing...",
+    "typingMultiple": "{{count}} people are typing..."
+  },
+  "reactions": {
+    "addReaction": "Add Reaction",
+    "removeReaction": "Remove Reaction",
+    "reactedBy": "Reacted by {{users}}",
+    "andMore": "and {{count}} more",
+    "search": "Search emoji..."
+  },
+  "voice": {
+    "join": "Join Voice",
+    "leave": "Disconnect",
+    "connected": "Voice Connected",
+    "connecting": "Connecting...",
+    "mute": "Mute",
+    "unmute": "Unmute",
+    "deafen": "Deafen",
+    "undeafen": "Undeafen",
+    "speaking": "Speaking",
+    "noOneHere": "No one is in this voice channel",
+    "joinPrompt": "Join to start talking",
+    "voiceChannel": "Voice Channel",
+    "participants": "{{count}} participants",
+    "micPermission": "Microphone access is required for voice channels",
+    "connectionFailed": "Voice connection failed"
+  },
+  "upload": {
+    "attachFile": "Attach File",
+    "dragDrop": "Drop files here to upload",
+    "uploading": "Uploading...",
+    "uploadFailed": "Upload failed",
+    "maxSize": "Max file size: {{size}}",
+    "download": "Download",
+    "preview": "Preview"
+  },
+  "search": {
+    "placeholder": "Search messages...",
+    "noResults": "No results found",
+    "results": "{{count}} results"
+  },
+  "shortcuts": {
+    "title": "Keyboard Shortcuts",
+    "search": "Search",
+    "toggleMute": "Toggle Mute",
+    "toggleDeafen": "Toggle Deafen",
+    "navigateChannels": "Navigate Channels",
+    "closePanel": "Close Panel",
+    "showShortcuts": "Show Shortcuts"
+  },
+  "theme": {
+    "dark": "Dark",
+    "light": "Light",
+    "toggle": "Toggle Theme"
+  },
+  "notificationService": {
+    "enable": "Enable Notifications",
+    "disable": "Disable Notifications"
+  }
+}

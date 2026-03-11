@@ -1,0 +1,132 @@
+.user-profile-popover {
+  position: fixed;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  width: 300px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  z-index: 1000;
+  overflow: hidden;
+  color: var(--text-primary);
+}
+
+.user-profile-banner {
+  height: 60px;
+  background: var(--bg-accent);
+}
+
+.user-profile-body {
+  padding: 0 16px 16px;
+  position: relative;
+}
+
+.user-profile-avatar-wrapper {
+  position: relative;
+  display: inline-block;
+  margin-top: -30px;
+  margin-bottom: 8px;
+}
+
+.user-profile-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--bg-accent);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 600;
+  border: 4px solid var(--bg-tertiary);
+}
+
+.user-profile-display-name {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.user-profile-username {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+
+.user-profile-status-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 12px;
+  padding: 8px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.user-profile-status-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.user-profile-custom-status {
+  font-size: 13px;
+  color: var(--text-primary);
+  font-style: italic;
+}
+
+.user-profile-section {
+  margin-bottom: 12px;
+}
+
+.user-profile-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.user-profile-roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.user-profile-role-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  background: var(--bg-primary);
+}
+
+.user-profile-role-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.user-profile-member-since {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.user-profile-send-btn {
+  width: 100%;
+  padding: 8px;
+  border: none;
+  border-radius: 4px;
+  background: var(--bg-accent);
+  color: white;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  margin-top: 4px;
+}
+
+.user-profile-send-btn:hover {
+  opacity: 0.9;
+}

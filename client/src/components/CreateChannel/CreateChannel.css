@@ -1,0 +1,120 @@
+.create-channel-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.create-channel-modal {
+  background: var(--modal-bg);
+  border-radius: 8px;
+  padding: 24px;
+  width: 440px;
+  max-width: 90vw;
+  color: var(--text-primary);
+}
+
+.create-channel-modal h2 {
+  margin: 0 0 20px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.create-channel-field {
+  margin-bottom: 16px;
+}
+
+.create-channel-field label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+}
+
+.create-channel-field input,
+.create-channel-field select,
+.create-channel-field textarea {
+  width: 100%;
+  padding: 10px 32px 10px 10px;
+  border-radius: 4px;
+  background-color: var(--input-bg);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.create-channel-field textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.channel-type-toggle {
+  display: flex;
+  gap: 8px;
+}
+
+.channel-type-btn {
+  flex: 1;
+  padding: 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  background: var(--input-bg);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.channel-type-btn.active {
+  border-color: var(--bg-accent);
+  color: var(--text-primary);
+  background: rgba(88, 101, 242, 0.15);
+}
+
+.create-channel-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.create-channel-actions button {
+  padding: 8px 24px;
+  border-radius: 4px;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.btn-cancel {
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.btn-cancel:hover {
+  text-decoration: underline;
+}
+
+.btn-create {
+  background: var(--bg-accent);
+  color: white;
+}
+
+.btn-create:hover {
+  background: var(--bg-accent-hover);
+}
+
+.btn-create:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

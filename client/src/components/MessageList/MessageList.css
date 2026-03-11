@@ -1,0 +1,301 @@
+.message-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0 140px;
+  display: flex;
+  flex-direction: column;
+}
+
+.message-list-loading {
+  text-align: center;
+  padding: 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.message-list-beginning {
+  text-align: center;
+  padding: 16px;
+  color: var(--text-muted);
+  font-size: 13px;
+  border-bottom: 1px solid var(--divider);
+  margin-bottom: 8px;
+}
+
+/* System messages */
+.message-system {
+  display: flex;
+  justify-content: center;
+  padding: 4px 16px;
+}
+
+.message-system-text {
+  font-size: 14px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Message groups */
+.message-group {
+  display: flex;
+  padding: 2px 48px 2px 16px;
+  margin-top: 1.0625rem;
+  position: relative;
+}
+
+.message-group:first-child {
+  margin-top: 1rem;
+}
+
+.message-group:hover {
+  background: var(--bg-modifier-hover);
+}
+
+.message-group-avatar {
+  flex-shrink: 0;
+  width: 40px;
+  margin-right: 16px;
+  margin-top: 0.125rem;
+}
+
+.message-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  user-select: none;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.message-avatar:hover {
+  opacity: 0.85;
+}
+
+.message-group-content {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
+.message-group-header {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 0.125rem;
+  line-height: 1.375rem;
+}
+
+.message-username {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--header-primary);
+  cursor: pointer;
+  transition: text-decoration 0.05s ease;
+}
+
+.message-username:hover {
+  text-decoration: underline;
+}
+
+.message-timestamp {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* Individual messages */
+.message-item {
+  position: relative;
+  padding: 0.125rem 0;
+  line-height: 1.375rem;
+  min-height: 1.375rem;
+}
+
+.message-item.deleted {
+  opacity: 0.5;
+}
+
+.message-deleted-text {
+  font-size: 1rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.message-content {
+  font-size: 1rem;
+  color: var(--text-normal);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  line-height: 1.375rem;
+}
+
+/* Markdown content styling */
+.message-content p {
+  margin: 0;
+  line-height: 1.375rem;
+}
+
+.message-content p + p {
+  margin-top: 0.5em;
+}
+
+.message-content code {
+  background: var(--bg-tertiary);
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+  font-size: 0.875em;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+.message-content pre {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--divider);
+  border-radius: 4px;
+  padding: 0.5em;
+  margin: 6px 0 6px 0;
+  overflow-x: auto;
+  max-width: 90%;
+}
+
+.message-content pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.875rem;
+  line-height: 1.125rem;
+}
+
+.message-content a {
+  color: var(--text-link);
+  text-decoration: none;
+  transition: text-decoration 0.05s ease;
+}
+
+.message-content a:hover {
+  text-decoration: underline;
+}
+
+.message-content blockquote {
+  border-left: 4px solid var(--interactive-muted);
+  padding-left: 12px;
+  margin: 4px 0;
+  color: var(--text-normal);
+}
+
+.message-content ul,
+.message-content ol {
+  margin: 0;
+  padding-left: 24px;
+}
+
+.message-content strong {
+  font-weight: 600;
+  color: var(--header-primary);
+}
+
+.message-content em {
+  font-style: italic;
+}
+
+.message-edited {
+  font-size: 0.625rem;
+  color: var(--text-muted);
+  margin-left: 4px;
+  font-weight: 400;
+}
+
+/* Hover action bar */
+.message-actions {
+  display: none;
+  position: absolute;
+  top: -16px;
+  right: 4px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--bg-modifier-hover);
+  border-radius: 4px;
+  padding: 2px;
+  gap: 0;
+  z-index: 1;
+  box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.24);
+}
+
+.message-item:hover .message-actions {
+  display: flex;
+}
+
+.message-action-btn {
+  background: none;
+  border: none;
+  color: var(--interactive-normal);
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 3px;
+  font-size: 15px;
+  line-height: 1;
+  transition: background-color 0.1s ease, color 0.1s ease;
+}
+
+.message-action-btn:hover {
+  background: var(--bg-modifier-hover);
+  color: var(--interactive-hover);
+}
+
+.message-action-btn.danger:hover {
+  color: var(--text-danger);
+}
+
+/* Thread indicator */
+.message-thread-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 2px 8px 2px 3px;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-link);
+  font-weight: 500;
+  transition: background-color 0.15s ease;
+}
+
+.message-thread-indicator:hover {
+  background: var(--bg-modifier-hover);
+}
+
+.thread-indicator-icon {
+  font-size: 16px;
+}
+
+.thread-indicator-count {
+  font-weight: 600;
+}
+
+.thread-indicator-time {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+/* Emoji picker anchor positioned relative to message */
+.message-emoji-picker-anchor {
+  position: relative;
+  z-index: 100;
+}
+
+/* Jump-to-message highlight animation */
+.message-highlight {
+  animation: messageFlash 2s ease;
+}
+
+@keyframes messageFlash {
+  0%, 100% { background: transparent; }
+  15%, 50% { background: rgba(232, 79, 171, 0.15); }
+}

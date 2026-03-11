@@ -1,0 +1,225 @@
+.federation-status {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.federation-status h2 {
+  color: var(--text-primary);
+  margin: 0 0 4px 0;
+}
+
+/* Node info card */
+.federation-node-info {
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.federation-node-info h3 {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  margin: 0 0 12px 0;
+}
+
+.node-info-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 16px;
+  align-items: center;
+}
+
+.node-info-label {
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.node-info-value {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: 'Consolas', 'Monaco', monospace;
+}
+
+/* Peers section */
+.federation-peers {
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.federation-peers h3 {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  margin: 0 0 12px 0;
+}
+
+.federation-mesh-summary {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+
+.federation-no-peers {
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 12px 0;
+}
+
+.federation-peer-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.federation-peer-table th {
+  text-align: left;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.federation-peer-table td {
+  padding: 10px 12px;
+  color: var(--text-primary);
+  font-size: 13px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.federation-peer-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* Status indicator */
+.peer-status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.peer-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.peer-status-dot.connected {
+  background-color: var(--status-online);
+}
+
+.peer-status-dot.syncing {
+  background-color: var(--status-idle);
+}
+
+.peer-status-dot.disconnected {
+  background-color: var(--danger);
+}
+
+/* Join token section */
+.federation-join {
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.federation-join h3 {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  margin: 0 0 12px 0;
+}
+
+.federation-generate-btn {
+  background: var(--bg-accent);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.federation-generate-btn:hover {
+  background: var(--bg-accent-hover);
+}
+
+.federation-generate-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.federation-join-result {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.federation-join-help {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin: 0;
+}
+
+.federation-command-block {
+  position: relative;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  padding: 12px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 13px;
+  color: var(--text-primary);
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+
+.federation-copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: var(--border-color);
+  color: var(--text-primary);
+  border: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.federation-copy-btn:hover {
+  background: var(--bg-modifier-hover);
+}
+
+.federation-copy-btn.copied {
+  background: var(--status-online);
+}
+
+.federation-curl-label {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin: 0;
+}
+
+/* Auto-refresh notice */
+.federation-auto-refresh {
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: right;
+  font-style: italic;
+}

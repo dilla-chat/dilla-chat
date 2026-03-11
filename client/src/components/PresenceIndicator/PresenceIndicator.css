@@ -1,0 +1,35 @@
+.presence-indicator {
+  display: inline-block;
+  border-radius: 50%;
+  position: absolute;
+  bottom: -1px;
+  right: -1px;
+  box-sizing: border-box;
+}
+
+.presence-small {
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--bg-secondary);
+}
+
+.presence-medium {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--bg-secondary);
+}
+
+.presence-large {
+  width: 14px;
+  height: 14px;
+  border: 3px solid var(--bg-secondary);
+}
+
+/* Allow parent to override border color for different backgrounds */
+.presence-indicator.border-tertiary {
+  border-color: var(--bg-tertiary);
+}
+
+.presence-indicator.border-floating {
+  border-color: var(--bg-floating);
+}

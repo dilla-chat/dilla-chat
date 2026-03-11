@@ -1,0 +1,102 @@
+.reactions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+  align-items: center;
+}
+
+.reaction-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-muted);
+  transition: background-color 0.1s ease, border-color 0.1s ease;
+  position: relative;
+  height: 24px;
+}
+
+.reaction-chip:hover {
+  background: var(--bg-modifier-active);
+  border-color: rgba(255,255,255,0.06);
+}
+
+.reaction-chip-active {
+  border-color: var(--brand-500);
+  background: rgba(88, 101, 242, 0.15);
+  color: var(--brand-500);
+}
+
+.reaction-chip-active:hover {
+  background: rgba(88, 101, 242, 0.2);
+  border-color: var(--brand-500);
+}
+
+.reaction-emoji {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.reaction-count {
+  font-size: 13px;
+  font-weight: 500;
+  min-width: 9px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.reaction-chip-active .reaction-count {
+  color: var(--brand-500);
+}
+
+.reaction-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-floating);
+  color: var(--header-primary);
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 50;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.24);
+}
+
+.reaction-add-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.reaction-add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 24px;
+  padding: 0;
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+  border: 1px solid transparent;
+  cursor: pointer;
+  color: var(--interactive-normal);
+  font-size: 14px;
+  font-weight: 400;
+  transition: background-color 0.1s ease, border-color 0.1s ease, color 0.1s ease;
+}
+
+.reaction-add-btn:hover {
+  background: var(--bg-modifier-active);
+  border-color: rgba(255,255,255,0.06);
+  color: var(--interactive-hover);
+}

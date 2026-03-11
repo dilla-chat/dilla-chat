@@ -1,0 +1,272 @@
+.app-layout-main {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+/* When TitleBar is present (Tauri), offset content below it.
+   margin-top pushes the element below the fixed titlebar;
+   calc() shrinks the height so it fills exactly to the bottom. */
+.titlebar ~ .app-layout-main {
+  margin-top: var(--titlebar-height);
+  height: calc(100% - var(--titlebar-height));
+}
+
+/* Left panels wrapper (team sidebar + channel sidebar + bottom controls) */
+.left-panels {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  flex-shrink: 0;
+}
+
+.left-panels-top {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.left-panels-bottom {
+  background: var(--bg-tertiary);
+  flex-shrink: 0;
+  border-top: 1px solid var(--divider);
+}
+
+/* Channel sidebar (second column) */
+.channel-sidebar {
+  width: var(--channel-sidebar-width);
+  background: var(--bg-secondary);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Content wrapper (header + body column) */
+.content-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Content body (messages + panels row) */
+.content-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Center content area */
+.content-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+/* Header bar */
+.content-header {
+  height: var(--header-height);
+  min-height: var(--header-height);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--divider);
+  flex-shrink: 0;
+  gap: 8px;
+  box-sizing: border-box;
+  box-shadow: 0 1px 0 rgba(4,4,5,0.2), 0 1.5px 0 rgba(6,6,7,0.05), 0 2px 0 rgba(4,4,5,0.05);
+}
+
+.content-header-icon {
+  color: var(--channel-icon);
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.content-header-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--header-primary);
+}
+
+.content-header-encrypted {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  color: var(--text-positive, #43b581);
+  opacity: 0.8;
+}
+
+.content-header-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--divider);
+  margin: 0 8px;
+}
+
+.content-header-topic {
+  font-size: 14px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.content-header-actions {
+  display: flex;
+  gap: 16px;
+  margin-left: auto;
+}
+
+.header-action-btn {
+  background: none;
+  border: none;
+  color: var(--interactive-normal);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  font-size: 20px;
+  transition: color 0.15s ease;
+}
+
+.header-action-btn:hover {
+  color: var(--interactive-hover);
+}
+
+.header-action-btn.active {
+  color: var(--interactive-active);
+}
+
+/* Message area placeholder */
+.message-area {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: 16px;
+}
+
+.message-area-empty {
+  text-align: center;
+}
+
+.message-area-empty h3 {
+  color: var(--header-primary);
+  margin-bottom: 8px;
+}
+
+/* Message input placeholder */
+.message-input-area {
+  padding: 0 16px 16px;
+  flex-shrink: 0;
+}
+
+.message-input-placeholder {
+  background: var(--input-bg);
+  border-radius: 8px;
+  padding: 11px 16px;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: text;
+}
+
+/* Settings nav */
+.settings-link {
+  padding: 6px 10px;
+  margin: 1px 0;
+  color: var(--interactive-normal);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-radius: 4px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.settings-link:hover {
+  color: var(--interactive-hover);
+  background: var(--bg-modifier-hover);
+}
+
+/* Sidebar header (team name + mode toggle) */
+.channel-sidebar-header {
+  height: var(--header-height);
+  min-height: var(--header-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--divider);
+  flex-shrink: 0;
+  box-sizing: border-box;
+  box-shadow: 0 1px 0 rgba(4,4,5,0.2), 0 1.5px 0 rgba(6,6,7,0.05), 0 2px 0 rgba(4,4,5,0.05);
+}
+
+.channel-sidebar-header-name {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--header-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.channel-sidebar-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.sidebar-mode-btn {
+  padding: 6px 8px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--interactive-normal);
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: center;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.sidebar-mode-btn:hover {
+  color: var(--interactive-hover);
+  background: var(--bg-modifier-hover);
+}
+
+.sidebar-mode-btn.active {
+  color: var(--interactive-active);
+  background: var(--bg-modifier-selected);
+}
+
+.channel-member-count {
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+.channel-member-count.active {
+  color: var(--interactive-active, #fff);
+}
+.channel-member-count:not(.active) {
+  color: var(--interactive-normal, #b5bac1);
+}
+.channel-member-count:hover {
+  color: var(--interactive-hover, #dcddde);
+}

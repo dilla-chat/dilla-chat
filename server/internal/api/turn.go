@@ -1,0 +1,36 @@
+package api
+
+import (
+	"encoding/json"
+	"net/http"
+
+	"github.com/slimcord/slimcord-server/internal/auth"
+	"github.com/slimcord/slimcord-server/internal/voice"
+)
+
+type TURNHandler struct {
+	auth *auth.AuthService
+	turn *voice.CFTurnClient
+}
+
+func NewTURNHandler(authSvc *auth.AuthService, turnClient *voice.CFTurnClient) *TURNHandler {
+	return &TURNHandler{auth: authSvc, turn: turnClient}
+}
+
+// HandleGetCredentials returns TURN ICE servers from Cloudflare for the authenticated user.
+func (h *TURNHandler) HandleGetCredentials(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(auth.UserIDKey).(string)
+	if !ok || userID == "" {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	iceServers, err := h.turn.GetICEServers()
+	if err != nil {
+		http.Error(w, "failed to get TURN credentials", http.StatusBadGateway)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(json.RawMessage(`{"iceServers":` + string(iceServers) + `}`))
+}

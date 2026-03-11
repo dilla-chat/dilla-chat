@@ -1,0 +1,123 @@
+.connection-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--divider);
+  cursor: default;
+  position: relative;
+  user-select: none;
+  font-size: 11px;
+}
+
+/* Signal bars */
+.connection-status__bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 1.5px;
+  height: 14px;
+}
+
+.connection-status__bar {
+  width: 3px;
+  border-radius: 1px;
+  background: var(--interactive-muted, rgba(255, 255, 255, 0.15));
+  transition: background 0.2s;
+}
+
+.connection-status__bar--1 { height: 4px; }
+.connection-status__bar--2 { height: 7px; }
+.connection-status__bar--3 { height: 10px; }
+.connection-status__bar--4 { height: 14px; }
+
+.connection-status__bar.active {
+  background: currentColor;
+}
+
+/* Quality colors */
+.connection-status--excellent {
+  color: var(--status-online, #3ba55d);
+}
+
+.connection-status--good {
+  color: var(--status-online, #3ba55d);
+}
+
+.connection-status--poor {
+  color: var(--status-idle, #faa81a);
+}
+
+.connection-status--disconnected {
+  color: var(--status-dnd, #ed4245);
+}
+
+.connection-status__label {
+  color: var(--text-muted, #72767d);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.connection-status--disconnected .connection-status__label {
+  color: var(--status-dnd, #ed4245);
+}
+
+/* Tooltip */
+.connection-status__tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 8px;
+  width: 220px;
+  background: var(--bg-floating, #18191c);
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.24);
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.connection-status__tooltip-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-normal, #dcddde);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.connection-status__tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 3px 0;
+  font-size: 12px;
+  color: var(--text-muted, #72767d);
+}
+
+.connection-status__tooltip-row span:last-child {
+  color: var(--text-normal, #dcddde);
+  font-weight: 500;
+}
+
+.connection-status__quality-badge {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.connection-status__quality-badge--excellent,
+.connection-status__quality-badge--good {
+  background: rgba(59, 165, 93, 0.15);
+  color: var(--status-online, #3ba55d);
+}
+
+.connection-status__quality-badge--poor {
+  background: rgba(250, 168, 26, 0.15);
+  color: var(--status-idle, #faa81a);
+}
+
+.connection-status__quality-badge--disconnected {
+  background: rgba(237, 66, 69, 0.15);
+  color: var(--status-dnd, #ed4245);
+}

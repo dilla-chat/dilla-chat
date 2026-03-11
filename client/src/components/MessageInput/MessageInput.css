@@ -1,0 +1,316 @@
+/* ===== Slack-style Floating Composer ===== */
+
+.message-input-wrapper {
+  flex-shrink: 0;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 0 16px 16px;
+  z-index: 10;
+}
+
+.message-input-composer {
+  background: var(--input-bg);
+  border: 1px solid var(--divider);
+  border-radius: 8px;
+  overflow: hidden;
+  transition: border-color 0.15s ease;
+}
+
+.message-input-composer:focus-within {
+  border-color: var(--interactive-normal);
+}
+
+/* Typing indicator above the composer */
+.typing-indicator {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 2px 4px;
+  min-height: 18px;
+  font-weight: 500;
+}
+
+/* Editing banner at the top of the composer */
+.message-input-editing-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-accent);
+  color: #fff;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.editing-cancel-btn {
+  background: none;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  opacity: 0.9;
+  padding: 0;
+  transition: opacity 0.15s ease;
+}
+
+.editing-cancel-btn:hover {
+  opacity: 1;
+}
+
+/* ===== Row 1: Formatting toolbar (TOP) ===== */
+.message-input-format-bar {
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  gap: 2px;
+}
+
+/* ===== Row 2: Textarea area (MIDDLE) ===== */
+.message-input-textarea-area {
+  padding: 8px 12px;
+  min-height: 22px;
+}
+
+.message-input-textarea {
+  width: 100%;
+  background: none;
+  border: none;
+  box-sizing: border-box;
+  color: var(--text-normal);
+  font-size: 0.9375rem;
+  font-family: inherit;
+  padding: 0;
+  margin: 0;
+  resize: none;
+  outline: none;
+  max-height: 300px;
+  line-height: 1.375rem;
+  display: block;
+}
+
+.message-input-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+/* ===== Row 3: Action bar (BOTTOM) ===== */
+.message-input-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  min-height: 36px;
+  box-sizing: border-box;
+}
+
+/* Shared group layout */
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--divider);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+/* Shared button style for both bars */
+.toolbar-btn {
+  background: none;
+  border: none;
+  color: var(--interactive-normal);
+  cursor: pointer;
+  padding: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  flex-shrink: 0;
+  transition: color 0.12s ease, background-color 0.12s ease;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+}
+
+.toolbar-btn:hover {
+  color: var(--interactive-hover);
+  background: var(--bg-modifier-hover);
+}
+
+.toolbar-btn:active {
+  background: var(--bg-modifier-active);
+}
+
+.toolbar-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Send button with divider */
+.send-area {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.send-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--divider);
+  margin: 0 6px 0 4px;
+}
+
+.toolbar-send-btn {
+  background: none;
+  border: none;
+  color: var(--interactive-muted);
+  cursor: default;
+  padding: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  flex-shrink: 0;
+  transition: color 0.15s ease;
+}
+
+.toolbar-send-btn.has-content {
+  color: var(--brand-500);
+  cursor: pointer;
+}
+
+.toolbar-send-btn.has-content:hover {
+  color: var(--brand-560);
+}
+
+.toolbar-send-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Hidden file input */
+.message-input-file-hidden {
+  display: none;
+}
+
+/* Drag & drop overlay */
+.message-input-dragging .message-input-composer {
+  outline: 2px dashed var(--brand-500);
+  outline-offset: -2px;
+}
+
+.message-input-drag-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(232, 79, 171, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  color: var(--brand-500);
+  font-size: 16px;
+  font-weight: 600;
+  pointer-events: none;
+  border-radius: 8px;
+}
+
+/* File preview area between textarea and action bar */
+.message-input-file-previews {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--divider);
+}
+
+.message-input-file-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--divider);
+  border-radius: 6px;
+  padding: 6px 10px;
+  max-width: 220px;
+}
+
+.file-preview-thumb {
+  width: 40px;
+  height: 40px;
+  border-radius: 4px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.file-preview-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+  display: flex;
+}
+
+.file-preview-details {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.file-preview-name {
+  font-size: 13px;
+  color: var(--text-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.file-preview-size {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.file-preview-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--interactive-normal);
+  font-size: 16px;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  flex-shrink: 0;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.file-preview-remove:hover {
+  background: var(--bg-modifier-hover);
+  color: var(--text-danger);
+}
+
+/* Upload progress / error */
+.message-input-uploading {
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 4px 12px;
+  font-weight: 500;
+}
+
+.message-input-upload-error {
+  font-size: 13px;
+  color: var(--text-danger);
+  padding: 4px 12px;
+  font-weight: 500;
+}

@@ -1,0 +1,306 @@
+/* User Settings specific styles */
+
+.voice-processing-heading {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin: 24px 0 8px;
+  letter-spacing: 0.02em;
+}
+
+.settings-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.settings-toggle-info {
+  flex: 1;
+}
+
+.settings-toggle-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.settings-toggle-desc,
+.settings-toggle-description {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.toggle-switch {
+  width: 40px;
+  height: 24px;
+  border-radius: 12px;
+  background: var(--interactive-muted);
+  cursor: pointer;
+  position: relative;
+  border: none;
+  padding: 0;
+  flex-shrink: 0;
+  margin-left: 16px;
+  transition: background 0.15s;
+}
+
+.toggle-switch.active {
+  background: var(--status-online);
+}
+
+.toggle-switch::after {
+  content: '';
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: white;
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  transition: left 0.15s;
+}
+
+.toggle-switch.active::after {
+  left: 19px;
+}
+
+.user-profile-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+}
+
+.user-profile-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--bg-accent);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.user-profile-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.user-profile-display-name {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.user-profile-name-input {
+  font-size: 20px;
+  font-weight: 600;
+  background: var(--input-bg);
+  color: var(--text-primary);
+  border: none;
+  border-radius: 4px;
+  padding: 2px 8px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.user-profile-username {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.user-public-key {
+  font-family: monospace;
+  font-size: 12px;
+  background: var(--input-bg);
+  padding: 8px 12px;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  word-break: break-all;
+  user-select: all;
+}
+
+/* Theme selector */
+.theme-options {
+  display: flex;
+  gap: 12px;
+}
+
+.theme-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+}
+
+.theme-option:hover {
+  background: var(--bg-modifier-hover);
+}
+
+.theme-option.active {
+  background: var(--bg-modifier-selected);
+}
+
+.theme-option input[type='radio'] {
+  accent-color: var(--bg-accent);
+}
+
+/* Sensitivity slider */
+.sensitivity-slider {
+  width: 100%;
+  accent-color: var(--bg-accent);
+}
+
+/* Mic test */
+.mic-test {
+  margin-bottom: 24px;
+}
+
+.mic-test-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.mic-test-header label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+}
+
+/* Threshold slider */
+.mic-threshold {
+  margin-top: 16px;
+}
+
+.mic-threshold label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+  display: block;
+  margin-bottom: 8px;
+}
+
+.mic-threshold-track {
+  position: relative;
+  height: 20px;
+  background: var(--input-bg);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.mic-threshold-level {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: rgba(122, 116, 144, 0.3);
+  border-radius: 3px;
+  transition: width 0.06s linear;
+  pointer-events: none;
+}
+
+.mic-threshold-level.above {
+  background: rgba(52, 211, 122, 0.35);
+}
+
+.mic-threshold-slider {
+  position: relative;
+  width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 100%;
+  background: transparent;
+  outline: none;
+  margin: 0;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.mic-threshold-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 4px;
+  height: 20px;
+  border-radius: 2px;
+  background: white;
+  cursor: pointer;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.4);
+}
+
+.mic-threshold-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.mic-threshold.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.mic-threshold.disabled .mic-threshold-slider {
+  cursor: not-allowed;
+}
+
+.mic-threshold-auto-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+/* Keybinds */
+.keybinds-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.keybind-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-radius: 4px;
+}
+
+.keybind-row:hover {
+  background: var(--bg-modifier-hover);
+}
+
+.keybind-action {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.keybind-key {
+  font-family: monospace;
+  font-size: 12px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+}

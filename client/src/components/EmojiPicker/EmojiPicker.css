@@ -1,0 +1,16 @@
+.emoji-picker-container {
+  z-index: 10000;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* Override emoji-mart theme to match Slimcord dark palette */
+.emoji-picker-container em-emoji-picker {
+  --rgb-background: 22, 20, 36;
+  --rgb-input: 18, 16, 30;
+  --rgb-color: 216, 213, 227;
+  --shadow: none;
+  border: 1px solid var(--divider);
+  border-radius: 8px;
+}

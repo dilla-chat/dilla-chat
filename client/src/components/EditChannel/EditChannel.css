@@ -1,0 +1,91 @@
+.edit-channel-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.edit-channel-modal {
+  background: var(--modal-bg);
+  border-radius: 8px;
+  padding: 24px;
+  width: 440px;
+  max-width: 90vw;
+  color: var(--text-primary);
+}
+
+.edit-channel-modal h2 {
+  margin: 0 0 20px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.edit-channel-field {
+  margin-bottom: 16px;
+}
+
+.edit-channel-field label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+}
+
+.edit-channel-field input,
+.edit-channel-field select,
+.edit-channel-field textarea {
+  width: 100%;
+  padding: 10px 32px 10px 10px;
+  border-radius: 4px;
+  background-color: var(--input-bg);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.edit-channel-field textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.edit-channel-error {
+  color: var(--text-danger, #f04747);
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.edit-channel-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.edit-channel-actions button {
+  padding: 8px 24px;
+  border-radius: 4px;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.btn-save {
+  background: var(--bg-accent);
+  color: white;
+}
+
+.btn-save:hover {
+  background: var(--bg-accent-hover);
+}
+
+.btn-save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

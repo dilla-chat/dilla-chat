@@ -1,0 +1,68 @@
+# === Go ===
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+bin/
+/slimcord-server
+server/slimcord-server
+
+# === Rust / Cargo ===
+target/
+**/*.rs.bk
+Cargo.lock
+# Keep Cargo.lock for the Tauri app (binary); uncomment if needed:
+# !client/src-tauri/Cargo.lock
+
+# === Node.js ===
+node_modules/
+dist/
+.npm
+*.tsbuildinfo
+
+# === Tauri ===
+client/src-tauri/target/
+client/src-tauri/WixTools/
+client/src-tauri/icons/icon.ico.bak
+
+# === SQLite ===
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# === Data directory ===
+data/
+
+# === Environment ===
+.env
+.env.local
+.env.*.local
+
+# === IDE / Editor ===
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# === OS ===
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+
+# === Misc ===
+*.log
+*.pid
+tmp/

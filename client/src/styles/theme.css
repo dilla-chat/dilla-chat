@@ -1,0 +1,78 @@
+/* Slimcord dark theme — derived from app icon (pink/cyan/gold/purple) */
+/* WCAG AA compliant: ≥4.5:1 normal text, ≥3:1 large text & UI elements */
+:root {
+  /* Backgrounds — deep indigo/purple tones */
+  --bg-primary: #22203a;      /* Main content background */
+  --bg-secondary: #1a1829;    /* Sidebar background */
+  --bg-tertiary: #12101e;     /* Team sidebar, deepest bg */
+  --bg-floating: #0e0c18;     /* Popups, modals */
+  --bg-modifier-hover: rgba(160, 140, 200, 0.12);
+  --bg-modifier-active: rgba(160, 140, 200, 0.20);
+  --bg-modifier-selected: rgba(160, 140, 200, 0.28);
+
+  /* Text colors — all AA compliant on --bg-primary */
+  --text-normal: #d8d5e3;     /* Body text (11.5:1) */
+  --text-primary: #f0eef5;    /* Headers, emphasized (14.8:1) */
+  --text-secondary: #a9a4b8;  /* Subheaders (6.3:1) */
+  --text-muted: #7a7490;      /* Muted (3.8:1, AA large text) */
+  --text-link: #00d4ff;       /* Cyan links (8.5:1) */
+  --text-positive: #34d37a;
+  --text-danger: #f2546a;
+  --text-warning: #e8b84f;
+
+  /* Header colors */
+  --header-primary: #f0eef5;
+  --header-secondary: #a9a4b8;
+
+  /* Brand colors — hot pink from icon */
+  --brand-500: #e84fab;       /* Primary brand (pink) */
+  --brand-560: #d13d96;       /* Brand hover */
+  --bg-accent: #e84fab;
+  --bg-accent-hover: #d13d96;
+
+  /* Status colors */
+  --green-360: #34d37a;
+  --yellow-300: #e8b84f;
+  --red-400: #f2546a;
+  --status-online: #34d37a;
+  --status-idle: #e8b84f;
+  --status-dnd: #f2546a;
+  --status-offline: #7a7490;
+
+  /* Interactive colors */
+  --channel-icon: #7a7490;
+  --interactive-normal: #a9a4b8;
+  --interactive-hover: #d8d5e3;
+  --interactive-active: #ffffff;
+  --interactive-muted: #4a4560;
+
+  /* Borders & dividers */
+  --divider: rgba(200, 180, 255, 0.08);
+  --border-color: rgba(200, 180, 255, 0.10);
+  --border-subtle: rgba(200, 180, 255, 0.08);
+
+  /* Scrollbar */
+  --scrollbar-thin-thumb: #161424;
+  --scrollbar-thin-track: transparent;
+
+  /* Other */
+  --modal-bg: #1a1829;
+  --input-bg: #161424;
+
+  /* Aliases */
+  --accent: #e84fab;
+  --accent-hover: #d13d96;
+  --danger: #f2546a;
+  --success: #34d37a;
+  --warning: #e8b84f;
+  --hover: rgba(160, 140, 200, 0.12);
+  --active: rgba(160, 140, 200, 0.20);
+
+  /* Layout dimensions */
+  --header-height: 48px;
+  --team-sidebar-width: 72px;
+  --channel-sidebar-width: 240px;
+  --member-sidebar-width: 240px;
+  --user-panel-height: 52px;
+  --titlebar-height: 32px;
+}
