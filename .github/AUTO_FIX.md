@@ -134,6 +134,27 @@ To customize the auto-fix behavior:
 2. Add additional fix strategies in the appropriate sections
 3. Consider the specific needs of your codebase (e.g., additional tools, custom scripts)
 
+## Tracking Issues Built/Fixed by Claude
+
+To identify and track which issues were built or fixed by Claude:
+
+1. **Use the provided script:**
+   ```bash
+   .github/scripts/list-claude-issues.sh --state all
+   ```
+
+2. **Use GitHub CLI directly:**
+   ```bash
+   gh issue list --label "auto-fix"        # Auto-fix issues
+   gh pr list --author "Claude"            # Claude PRs
+   ```
+
+3. **Use GitHub Web UI:**
+   - Issues: Search for `is:issue label:auto-fix`
+   - PRs: Search for `is:pr author:app/anthropic-code-agent`
+
+For complete documentation on tracking Claude's work, see [CLAUDE_TRACKING.md](CLAUDE_TRACKING.md).
+
 ## Security Considerations
 
 - The auto-fix workflow has write access to the repository

@@ -601,7 +601,19 @@ This repository includes automated GitHub Actions workflows that detect issues a
 
 When a CI check fails, an issue is automatically created with the `auto-fix` label. The auto-fix workflow then attempts to resolve the issue and creates a PR if successful.
 
-For more details, see [.github/AUTO_FIX.md](.github/AUTO_FIX.md).
+**Tracking Claude's work:**
+```bash
+# List all issues/PRs built or fixed by Claude
+.github/scripts/list-claude-issues.sh --state all
+
+# Or use GitHub CLI directly
+gh issue list --label "auto-fix"
+gh pr list --author "Claude"
+```
+
+For more details, see:
+- [.github/AUTO_FIX.md](.github/AUTO_FIX.md) — Auto-fix workflow documentation
+- [.github/CLAUDE_TRACKING.md](.github/CLAUDE_TRACKING.md) — Complete tracking guide
 
 ---
 
