@@ -11,8 +11,10 @@ permissions:
 
 jobs:
   auto-fix:
-    # Only run if the issue has the 'auto-fix' label
-    if: contains(github.event.issue.labels.*.name, 'auto-fix')
+    # Only run if the issue has the 'auto-fix' label but skip if Claude is handling it
+    if: |
+      contains(github.event.issue.labels.*.name, 'auto-fix') &&
+      !contains(github.event.issue.labels.*.name, 'claude-notified')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
