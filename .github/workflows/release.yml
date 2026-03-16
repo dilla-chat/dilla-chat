@@ -33,11 +33,6 @@ jobs:
         continue-on-error: true
         run: |
           cd client
-          OUTPUT=$(npm run build 2>&1 || true)
-          echo "$OUTPUT"
-          echo "output<<EOF" >> $GITHUB_OUTPUT
-          echo "$OUTPUT" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
           npm run build
 
       - uses: actions/upload-artifact@v4
@@ -64,7 +59,7 @@ jobs:
             archive: tar.gz
           - goos: darwin
             goarch: amd64
-            runner: macos-13
+            runner: macos-14
             cc: clang
             archive: tar.gz
           - goos: darwin
@@ -77,6 +72,7 @@ jobs:
             runner: ubuntu-latest
             cc: x86_64-w64-mingw32-gcc
             archive: zip
+      fail-fast: false
 
     runs-on: ${{ matrix.runner }}
 
@@ -94,6 +90,13 @@ jobs:
       - name: Install cross-compiler (windows)
         if: matrix.goos == 'windows'
         run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
+
+      - name: Validate client build
+        run: |
+          if [ "${{ needs.build-client.result }}" != "success" ]; then
+            echo "Client build failed, cannot proceed with server build"
+            exit 1
+          fi
 
       - uses: actions/download-artifact@v4
         with:
