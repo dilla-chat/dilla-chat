@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import SettingsLayout, { type NavSection } from '../components/SettingsLayout/SettingsLayout';
 import PasskeyManager from '../components/PasskeyManager/PasskeyManager';
 import { useAuthStore } from '../stores/authStore';
-import { useAudioSettingsStore } from '../stores/audioSettingsStore';
+import { useAudioSettingsStore, type InputProfile, type NoiseSuppressionMode } from '../stores/audioSettingsStore';
 import { useUserSettingsStore } from '../stores/userSettingsStore';
 import { useTelemetryStore } from '../stores/telemetryStore';
 import { notificationService } from '../services/notifications';
@@ -23,18 +23,29 @@ const shortcuts = [
   { key: `${mod}+/`, action: 'shortcuts.showShortcuts' },
 ];
 
+/** Maps KeyboardEvent.code to a readable label */
+function keyCodeToLabel(code: string): string {
+  if (code.startsWith('Key')) return code.slice(3);
+  if (code.startsWith('Digit')) return code.slice(5);
+  return code.replace(/([a-z])([A-Z])/g, '$1 $2');
+}
+
 export default function UserSettings() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { publicKey, logout, teams } = useAuthStore();
   const {
-    echoCancellation, noiseSuppression, autoGainControl, enhancedNoiseSuppression,
-    setEchoCancellation, setNoiseSuppression, setAutoGainControl, setEnhancedNoiseSuppression,
+    echoCancellation, autoGainControl,
+    inputProfile, noiseSuppressionMode, pushToTalk, pushToTalkKey,
+    setEchoCancellation, setAutoGainControl,
+    setInputProfile, setNoiseSuppressionMode, setPushToTalk, setPushToTalkKey,
   } = useAudioSettingsStore();
   const {
     selectedInputDevice, selectedOutputDevice, inputThreshold,
+    inputVolume, outputVolume,
     desktopNotifications, soundNotifications, theme,
     setSelectedInputDevice, setSelectedOutputDevice, setInputThreshold,
+    setInputVolume, setOutputVolume,
     setDesktopNotifications, setSoundNotifications, setTheme,
   } = useUserSettingsStore();
   const { enabled: telemetryEnabled, setEnabled: setTelemetryEnabled } = useTelemetryStore();
@@ -59,6 +70,9 @@ export default function UserSettings() {
   const [inputDevices, setInputDevices] = useState<MediaDeviceInfo[]>([]);
   const [outputDevices, setOutputDevices] = useState<MediaDeviceInfo[]>([]);
 
+  // PTT key capture
+  const [capturingKey, setCapturingKey] = useState(false);
+
   // Sync notification service with store
   useEffect(() => {
     notificationService.setEnabled(desktopNotifications);
@@ -79,6 +93,19 @@ export default function UserSettings() {
     }
     if (activeId === 'voice-video') enumerateDevices();
   }, [activeId]);
+
+  // PTT key capture handler
+  useEffect(() => {
+    if (!capturingKey) return;
+    const handler = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setPushToTalkKey(e.code);
+      setCapturingKey(false);
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, [capturingKey, setPushToTalkKey]);
 
   const saveDisplayName = async () => {
     if (!displayName || savingName) return;
@@ -144,6 +171,8 @@ export default function UserSettings() {
     .slice(0, 2)
     .toUpperCase();
 
+  const isCustomProfile = inputProfile === 'custom';
+
   return (
     <SettingsLayout
       sections={sections}
@@ -191,65 +220,207 @@ export default function UserSettings() {
         <div className="settings-section">
           <h2>{t('userSettings.voiceVideo', 'Voice & Video')}</h2>
 
-          <div className="settings-field">
-            <label>{t('userSettings.inputDevice', 'Input Device')}</label>
-            <select value={selectedInputDevice} onChange={(e) => setSelectedInputDevice(e.target.value)}>
-              <option value="default">{t('userSettings.defaultDevice', 'Default')}</option>
-              {inputDevices.filter((d) => d.deviceId !== 'default').map((d) => (
-                <option key={d.deviceId} value={d.deviceId}>
-                  {d.label || `Microphone (${d.deviceId.slice(0, 8)})`}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <MicTest deviceId={selectedInputDevice} threshold={inputThreshold} onThresholdChange={setInputThreshold} disabled={autoGainControl} />
-
-          <div className="settings-field">
-            <label>{t('userSettings.outputDevice', 'Output Device')}</label>
-            <select value={selectedOutputDevice} onChange={(e) => setSelectedOutputDevice(e.target.value)}>
-              <option value="default">{t('userSettings.defaultDevice', 'Default')}</option>
-              {outputDevices.filter((d) => d.deviceId !== 'default').map((d) => (
-                <option key={d.deviceId} value={d.deviceId}>
-                  {d.label || `Speaker (${d.deviceId.slice(0, 8)})`}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <h3 className="voice-processing-heading">{t('userSettings.voiceProcessing', 'Voice Processing')}</h3>
-
-          <div className="settings-toggle">
-            <div className="settings-toggle-info">
-              <div className="settings-toggle-label">{t('userSettings.echoCancellation', 'Echo Cancellation')}</div>
-              <div className="settings-toggle-description">{t('userSettings.echoCancellationDesc', 'Removes echo from speakers being picked up by your mic')}</div>
+          {/* Side-by-side device selectors */}
+          <div className="voice-device-row">
+            <div className="settings-field" style={{ flex: 1 }}>
+              <label>{t('userSettings.inputDevice', 'Input Device')}</label>
+              <select value={selectedInputDevice} onChange={(e) => setSelectedInputDevice(e.target.value)}>
+                <option value="default">{t('userSettings.defaultDevice', 'Default')}</option>
+                {inputDevices.filter((d) => d.deviceId !== 'default').map((d) => (
+                  <option key={d.deviceId} value={d.deviceId}>
+                    {d.label || `Microphone (${d.deviceId.slice(0, 8)})`}
+                  </option>
+                ))}
+              </select>
             </div>
-            <button className={`toggle-switch ${echoCancellation ? 'active' : ''}`} onClick={() => setEchoCancellation(!echoCancellation)} />
+            <div className="settings-field" style={{ flex: 1 }}>
+              <label>{t('userSettings.outputDevice', 'Output Device')}</label>
+              <select value={selectedOutputDevice} onChange={(e) => setSelectedOutputDevice(e.target.value)}>
+                <option value="default">{t('userSettings.defaultDevice', 'Default')}</option>
+                {outputDevices.filter((d) => d.deviceId !== 'default').map((d) => (
+                  <option key={d.deviceId} value={d.deviceId}>
+                    {d.label || `Speaker (${d.deviceId.slice(0, 8)})`}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          <div className="settings-toggle">
-            <div className="settings-toggle-info">
-              <div className="settings-toggle-label">{t('userSettings.noiseSuppression', 'Noise Suppression')}</div>
-              <div className="settings-toggle-description">{t('userSettings.noiseSuppressionDesc', 'Filters background noise like fans, keyboard clicks, and ambient sound')}</div>
+          {/* Side-by-side volume sliders */}
+          <div className="voice-device-row">
+            <div className="settings-field" style={{ flex: 1 }}>
+              <label>{t('userSettings.inputVolume', 'Input Volume')}</label>
+              <input
+                type="range"
+                min="0"
+                max="200"
+                value={Math.round(inputVolume * 100)}
+                onChange={(e) => setInputVolume(Number(e.target.value) / 100)}
+                className="voice-volume-slider"
+                aria-label={t('userSettings.inputVolume', 'Input Volume')}
+                aria-valuemin={0}
+                aria-valuemax={200}
+                aria-valuenow={Math.round(inputVolume * 100)}
+              />
+              <span className="voice-volume-label">{Math.round(inputVolume * 100)}%</span>
             </div>
-            <button className={`toggle-switch ${noiseSuppression ? 'active' : ''}`} onClick={() => setNoiseSuppression(!noiseSuppression)} />
+            <div className="settings-field" style={{ flex: 1 }}>
+              <label>{t('userSettings.outputVolume', 'Output Volume')}</label>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={Math.round(outputVolume * 100)}
+                onChange={(e) => setOutputVolume(Number(e.target.value) / 100)}
+                className="voice-volume-slider"
+                aria-label={t('userSettings.outputVolume', 'Output Volume')}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(outputVolume * 100)}
+              />
+              <span className="voice-volume-label">{Math.round(outputVolume * 100)}%</span>
+            </div>
           </div>
 
-          <div className="settings-toggle">
-            <div className="settings-toggle-info">
-              <div className="settings-toggle-label">{t('userSettings.enhancedNoiseSuppression', 'Enhanced Noise Suppression')}</div>
-              <div className="settings-toggle-description">{t('userSettings.enhancedNoiseSuppressionDesc', 'AI-powered noise removal using RNNoise. More effective than browser-native suppression — takes effect on next voice connection')}</div>
-            </div>
-            <button className={`toggle-switch ${enhancedNoiseSuppression ? 'active' : ''}`} onClick={() => setEnhancedNoiseSuppression(!enhancedNoiseSuppression)} />
+          {/* Mic test */}
+          <MicTest deviceId={selectedInputDevice} inputVolume={inputVolume} />
+
+          <div className="voice-separator" />
+
+          {/* Input Profile radio group */}
+          <h3 className="voice-processing-heading">{t('userSettings.inputProfile', 'Input Profile')}</h3>
+          <div className="voice-profile-group" role="radiogroup" aria-label={t('userSettings.inputProfile', 'Input Profile')}>
+            <ProfileOption
+              value="voice-isolation"
+              selected={inputProfile}
+              onChange={setInputProfile}
+              name={t('userSettings.profileVoiceIsolation', 'Voice Isolation')}
+              desc={t('userSettings.profileVoiceIsolationDesc', 'Just your beautiful voice: let Dilla cut through the noise')}
+            />
+            <ProfileOption
+              value="studio"
+              selected={inputProfile}
+              onChange={setInputProfile}
+              name={t('userSettings.profileStudio', 'Studio')}
+              desc={t('userSettings.profileStudioDesc', 'Pure audio: open mic with no processing')}
+            />
+            <ProfileOption
+              value="custom"
+              selected={inputProfile}
+              onChange={setInputProfile}
+              name={t('userSettings.profileCustom', 'Custom')}
+              desc={t('userSettings.profileCustomDesc', 'Advanced mode: give me all the buttons and dials!')}
+            />
           </div>
 
-          <div className="settings-toggle">
-            <div className="settings-toggle-info">
-              <div className="settings-toggle-label">{t('userSettings.autoGainControl', 'Automatic Gain Control')}</div>
-              <div className="settings-toggle-description">{t('userSettings.autoGainControlDesc', 'Automatically adjusts your mic volume to a consistent level')}</div>
+          {/* Custom settings — only shown when Custom profile is selected */}
+          {isCustomProfile && (
+            <div className="voice-custom-settings">
+              {/* Auto sensitivity toggle */}
+              <div className="settings-toggle">
+                <div className="settings-toggle-info">
+                  <div className="settings-toggle-label">{t('userSettings.autoSensitivityToggle', 'Automatically Adjust Input Sensitivity')}</div>
+                  <div className="settings-toggle-description">{t('userSettings.autoGainControlDesc', 'Automatically adjusts your mic volume to a consistent level')}</div>
+                </div>
+                <button
+                  className={`toggle-switch ${autoGainControl ? 'active' : ''}`}
+                  onClick={() => setAutoGainControl(!autoGainControl)}
+                  role="switch"
+                  aria-checked={autoGainControl}
+                  aria-label={t('userSettings.autoSensitivityToggle', 'Automatically Adjust Input Sensitivity')}
+                />
+              </div>
+
+              {/* Threshold slider — shown when auto sensitivity is OFF */}
+              {!autoGainControl && (
+                <div className="mic-threshold">
+                  <label>{t('userSettings.inputSensitivity', 'Input Sensitivity')}</label>
+                  <div className="mic-threshold-track">
+                    <div
+                      className="mic-threshold-level"
+                      style={{ width: `${inputThreshold * 100}%` }}
+                    />
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={Math.round(inputThreshold * 100)}
+                      onChange={(e) => setInputThreshold(Number(e.target.value) / 100)}
+                      className="mic-threshold-slider"
+                      aria-label={t('userSettings.inputSensitivity', 'Input Sensitivity')}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={Math.round(inputThreshold * 100)}
+                    />
+                  </div>
+                  <div className="mic-threshold-labels">
+                    <span>{t('userSettings.sensitive', 'Sensitive')}</span>
+                    <span>{t('userSettings.noisy', 'Noisy')}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Noise Suppression dropdown */}
+              <div className="settings-field">
+                <label>{t('userSettings.noiseSuppression', 'Noise Suppression')}</label>
+                <select
+                  value={noiseSuppressionMode}
+                  onChange={(e) => setNoiseSuppressionMode(e.target.value as NoiseSuppressionMode)}
+                >
+                  <option value="none">{t('userSettings.nsNone', 'None')}</option>
+                  <option value="browser">{t('userSettings.nsBrowser', 'Browser')}</option>
+                  <option value="rnnoise">{t('userSettings.nsRNNoise', 'RNNoise')}</option>
+                </select>
+              </div>
+
+              {/* Echo Cancellation toggle */}
+              <div className="settings-toggle">
+                <div className="settings-toggle-info">
+                  <div className="settings-toggle-label">{t('userSettings.echoCancellation', 'Echo Cancellation')}</div>
+                  <div className="settings-toggle-description">{t('userSettings.echoCancellationDesc', 'Removes echo from speakers being picked up by your mic')}</div>
+                </div>
+                <button
+                  className={`toggle-switch ${echoCancellation ? 'active' : ''}`}
+                  onClick={() => setEchoCancellation(!echoCancellation)}
+                  role="switch"
+                  aria-checked={echoCancellation}
+                  aria-label={t('userSettings.echoCancellation', 'Echo Cancellation')}
+                />
+              </div>
+
+              {/* Push to Talk toggle */}
+              <div className="settings-toggle">
+                <div className="settings-toggle-info">
+                  <div className="settings-toggle-label">{t('userSettings.pushToTalk', 'Push to Talk')}</div>
+                  <div className="settings-toggle-description">{t('userSettings.pushToTalkDesc', 'Hold a key to transmit your voice instead of always-on mic')}</div>
+                </div>
+                <button
+                  className={`toggle-switch ${pushToTalk ? 'active' : ''}`}
+                  onClick={() => setPushToTalk(!pushToTalk)}
+                  role="switch"
+                  aria-checked={pushToTalk}
+                  aria-label={t('userSettings.pushToTalk', 'Push to Talk')}
+                />
+              </div>
+
+              {/* PTT key capture — shown when PTT is ON */}
+              {pushToTalk && (
+                <div className="settings-field">
+                  <label>{t('userSettings.pushToTalkKey', 'Push to Talk Key')}</label>
+                  <button
+                    className="ptt-key-capture"
+                    onClick={() => setCapturingKey(true)}
+                    aria-label={t('userSettings.pushToTalkKeyCapture', 'Click to change push to talk key')}
+                  >
+                    {capturingKey
+                      ? t('userSettings.pressAKey', 'Press a key...')
+                      : keyCodeToLabel(pushToTalkKey)
+                    }
+                  </button>
+                </div>
+              )}
             </div>
-            <button className={`toggle-switch ${autoGainControl ? 'active' : ''}`} onClick={() => setAutoGainControl(!autoGainControl)} />
-          </div>
+          )}
         </div>
       )}
 
@@ -391,31 +562,69 @@ export default function UserSettings() {
   );
 }
 
+/* ─── Profile Option Component ─── */
+function ProfileOption({ value, selected, onChange, name, desc }: {
+  value: InputProfile;
+  selected: InputProfile;
+  onChange: (v: InputProfile) => void;
+  name: string;
+  desc: string;
+}) {
+  const isSelected = selected === value;
+  return (
+    <label className={`voice-profile-option ${isSelected ? 'selected' : ''}`}>
+      <input
+        type="radio"
+        name="input-profile"
+        value={value}
+        checked={isSelected}
+        onChange={() => onChange(value)}
+      />
+      <div>
+        <div className="voice-profile-name">{name}</div>
+        <div className="voice-profile-desc">{desc}</div>
+      </div>
+    </label>
+  );
+}
+
 /* ─── Mic Test Component ─── */
-function MicTest({ deviceId, threshold, onThresholdChange, disabled }: { deviceId: string; threshold: number; onThresholdChange: (v: number) => void; disabled?: boolean }) {
+function MicTest({ deviceId, inputVolume }: { deviceId: string; inputVolume: number }) {
   const { t } = useTranslation();
   const [testing, setTesting] = useState(false);
   const [level, setLevel] = useState(0);
   const streamRef = useRef<MediaStream | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
+  const gainRef = useRef<GainNode | null>(null);
   const animRef = useRef<number>(0);
 
-  const startTest = async () => {
+  // Update gain when inputVolume changes during test
+  useEffect(() => {
+    if (gainRef.current) {
+      gainRef.current.gain.value = inputVolume;
+    }
+  }, [inputVolume]);
+
+  const startTest = useCallback(async () => {
     try {
       const audioConstraints = useAudioSettingsStore.getState().getAudioConstraints(deviceId);
-      const constraints: MediaStreamConstraints = {
-        audio: audioConstraints,
-      };
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
       streamRef.current = stream;
 
       const audioCtx = new AudioContext();
       ctxRef.current = audioCtx;
       const source = audioCtx.createMediaStreamSource(stream);
+
+      // Apply inputVolume gain to the test pipeline
+      const gainNode = audioCtx.createGain();
+      gainNode.gain.value = inputVolume;
+      gainRef.current = gainNode;
+      source.connect(gainNode);
+
       const analyser = audioCtx.createAnalyser();
       analyser.fftSize = 1024;
       analyser.smoothingTimeConstant = 0.3;
-      source.connect(analyser);
+      gainNode.connect(analyser);
 
       const timeDomain = new Float32Array(analyser.fftSize);
       const update = () => {
@@ -434,9 +643,9 @@ function MicTest({ deviceId, threshold, onThresholdChange, disabled }: { deviceI
     } catch {
       // Permission denied
     }
-  };
+  }, [deviceId, inputVolume]);
 
-  const stopTest = () => {
+  const stopTest = useCallback(() => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
@@ -445,10 +654,11 @@ function MicTest({ deviceId, threshold, onThresholdChange, disabled }: { deviceI
       ctxRef.current.close();
       ctxRef.current = null;
     }
+    gainRef.current = null;
     cancelAnimationFrame(animRef.current);
     setLevel(0);
     setTesting(false);
-  };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -462,42 +672,16 @@ function MicTest({ deviceId, threshold, onThresholdChange, disabled }: { deviceI
     };
   }, []);
 
-
   return (
-    <div className="mic-test">
-      <div className="mic-test-header">
-        <label>{t('userSettings.micTest', 'Mic Test')}</label>
-        <button
-          className={testing ? 'btn-danger' : 'btn-secondary'}
-          onClick={testing ? stopTest : startTest}
-        >
-          {testing ? t('userSettings.stopTest', 'Stop') : t('userSettings.startTest', 'Test Mic')}
-        </button>
-      </div>
-      <div className={`mic-threshold ${disabled ? 'disabled' : ''}`}>
-        <label>{t('userSettings.inputSensitivity', 'Input Sensitivity')}</label>
-        <div className="mic-threshold-auto-label" style={{ visibility: disabled ? 'visible' : 'hidden', height: disabled ? undefined : 0 }}>
-          {t('userSettings.autoSensitivity', 'Automatically adjusted by Automatic Gain Control')}
-        </div>
-        <div className="mic-threshold-track">
-          <div
-            className={`mic-threshold-level ${!disabled && level > threshold ? 'above' : ''}`}
-            style={{ width: `${level * 100}%` }}
-          />
-          <input
-            type="range"
-            min="0"
-            max="100"
-            value={Math.round(threshold * 100)}
-            onChange={(e) => onThresholdChange(Number(e.target.value) / 100)}
-            className="mic-threshold-slider"
-            disabled={disabled}
-          />
-        </div>
-        <div className="mic-threshold-labels">
-          <span style={{ visibility: disabled ? 'hidden' : 'visible' }}>{t('userSettings.sensitive', 'Sensitive')}</span>
-          <span style={{ visibility: disabled ? 'hidden' : 'visible' }}>{t('userSettings.noisy', 'Noisy')}</span>
-        </div>
+    <div className="voice-mic-test-row">
+      <button
+        className={testing ? 'btn-danger' : 'btn-secondary'}
+        onClick={testing ? stopTest : startTest}
+      >
+        {testing ? t('userSettings.stopTest', 'Stop') : t('userSettings.startTest', 'Test Mic')}
+      </button>
+      <div className="voice-level-bar" role="meter" aria-label={t('userSettings.micLevel', 'Microphone level')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(level * 100)}>
+        <div className="voice-level-fill" style={{ width: `${level * 100}%` }} />
       </div>
     </div>
   );

@@ -4,6 +4,7 @@ import { noiseSuppression } from './noiseSuppression';
 import { useVoiceStore } from '../stores/voiceStore';
 import { useAuthStore } from '../stores/authStore';
 import { useUserSettingsStore } from '../stores/userSettingsStore';
+import { useAudioSettingsStore } from '../stores/audioSettingsStore';
 import { playJoinSound, playLeaveSound } from './sounds';
 
 const VAD_INTERVAL_MS = 100;
@@ -30,6 +31,9 @@ class WebRTCService {
   private screenSender: RTCRtpSender | null = null;
   private webcamStream: MediaStream | null = null;
   private webcamSender: RTCRtpSender | null = null;
+  private gainNode: GainNode | null = null;
+  private storeUnsubscribers: Array<() => void> = [];
+  private pttListeners: Array<() => void> = [];
 
   async connect(channelId: string, teamId: string): Promise<void> {
     this.channelId = channelId;
@@ -56,6 +60,18 @@ class WebRTCService {
         noiseSuppression.setEnabled(false);
         this.localStream = this.rawStream;
       }
+
+      // Insert GainNode for mic volume control
+      const ctx = this.getAudioContext();
+      const source = ctx.createMediaStreamSource(this.localStream);
+      const gainNode = ctx.createGain();
+      gainNode.gain.value = useUserSettingsStore.getState().inputVolume;
+      this.gainNode = gainNode;
+      const destination = ctx.createMediaStreamDestination();
+      source.connect(gainNode);
+      gainNode.connect(destination);
+      // Use the gain-controlled stream for the peer connection
+      this.localStream = destination.stream;
     } catch {
       throw new Error('Microphone access denied');
     }
@@ -134,6 +150,7 @@ class WebRTCService {
         audio.srcObject = stream;
         audio.autoplay = true;
         audio.dataset.streamId = streamId;
+        audio.volume = useUserSettingsStore.getState().outputVolume;
         audio.style.display = 'none';
         document.body.appendChild(audio);
         audio.play().catch(() => {});
@@ -146,12 +163,117 @@ class WebRTCService {
     // Subscribe to WS voice events
     this.setupWSListeners();
 
+    // Subscribe to store changes for volume and PTT
+    this.setupStoreSubscriptions();
+
+    // Setup push-to-talk if enabled
+    this.setupPTT();
+
     // Start VAD
     this.startVAD();
 
     // Send WS join (server will send voice:state + voice:offer back via WS)
     console.log('[Voice] Sending WS voice:join for channel', channelId);
     ws.voiceJoin(teamId, channelId);
+  }
+
+  private setupStoreSubscriptions(): void {
+    // Subscribe to inputVolume changes
+    const unsubInput = useUserSettingsStore.subscribe(
+      (state) => {
+        if (this.gainNode) {
+          this.gainNode.gain.value = state.inputVolume;
+        }
+      },
+    );
+    this.storeUnsubscribers.push(unsubInput);
+
+    // Subscribe to outputVolume changes
+    const unsubOutput = useUserSettingsStore.subscribe(
+      (state) => {
+        this.setSpeakerVolume(state.outputVolume);
+      },
+    );
+    this.storeUnsubscribers.push(unsubOutput);
+  }
+
+  private setSpeakerVolume(volume: number): void {
+    document.querySelectorAll<HTMLAudioElement>('audio[data-stream-id]').forEach((el) => {
+      el.volume = volume;
+    });
+  }
+
+  setInputVolume(v: number): void {
+    if (this.gainNode) {
+      this.gainNode.gain.value = v;
+    }
+  }
+
+  private setupPTT(): void {
+    this.cleanupPTT();
+    const audioSettings = useAudioSettingsStore.getState();
+    if (!audioSettings.pushToTalk) return;
+
+    // Start with mic muted when PTT is enabled
+    if (this.localStream) {
+      const audioTrack = this.localStream.getAudioTracks()[0];
+      if (audioTrack) audioTrack.enabled = false;
+    }
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      const currentKey = useAudioSettingsStore.getState().pushToTalkKey;
+      if (e.code === currentKey && this.localStream) {
+        const audioTrack = this.localStream.getAudioTracks()[0];
+        if (audioTrack && !audioTrack.enabled) {
+          audioTrack.enabled = true;
+          if (this.teamId && this.channelId) {
+            ws.voiceMute(this.teamId, this.channelId, false);
+          }
+        }
+      }
+    };
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      const currentKey = useAudioSettingsStore.getState().pushToTalkKey;
+      if (e.code === currentKey && this.localStream) {
+        const audioTrack = this.localStream.getAudioTracks()[0];
+        if (audioTrack && audioTrack.enabled) {
+          audioTrack.enabled = false;
+          if (this.teamId && this.channelId) {
+            ws.voiceMute(this.teamId, this.channelId, true);
+          }
+        }
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    this.pttListeners.push(
+      () => window.removeEventListener('keydown', onKeyDown),
+      () => window.removeEventListener('keyup', onKeyUp),
+    );
+
+    // Subscribe to PTT setting changes to re-setup when toggled
+    const unsubPTT = useAudioSettingsStore.subscribe(
+      (state) => {
+        if (!state.pushToTalk) {
+          this.cleanupPTT();
+          // Re-enable mic when PTT is turned off
+          if (this.localStream) {
+            const audioTrack = this.localStream.getAudioTracks()[0];
+            if (audioTrack) audioTrack.enabled = true;
+          }
+        }
+      },
+    );
+    this.pttListeners.push(unsubPTT);
+  }
+
+  private cleanupPTT(): void {
+    for (const cleanup of this.pttListeners) {
+      cleanup();
+    }
+    this.pttListeners = [];
   }
 
   private setupWSListeners(): void {
@@ -285,6 +407,15 @@ class WebRTCService {
     this.stopVAD();
     this.stopRemoteVAD();
 
+    // Clean up PTT listeners
+    this.cleanupPTT();
+
+    // Clean up store subscriptions
+    for (const unsub of this.storeUnsubscribers) {
+      unsub();
+    }
+    this.storeUnsubscribers = [];
+
     // Stop screen sharing if active.
     if (this.screenStream) {
       this.screenStream.getTracks().forEach((t) => t.stop());
@@ -319,6 +450,7 @@ class WebRTCService {
       this.rawStream = null;
     }
     this.localStream = null;
+    this.gainNode = null;
 
     // Close peer connection
     if (this.pc) {
@@ -347,6 +479,9 @@ class WebRTCService {
   }
 
   toggleMute(): boolean {
+    // PTT mode: toggleMute is a no-op
+    if (useAudioSettingsStore.getState().pushToTalk) return false;
+
     if (!this.localStream) return false;
     const audioTrack = this.localStream.getAudioTracks()[0];
     if (audioTrack) {
