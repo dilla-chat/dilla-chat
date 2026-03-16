@@ -37,7 +37,7 @@ jobs:
           go-version-file: server/go.mod
 
       - name: Install client dependencies
-        run: cd client && npm ci --legacy-peer-deps
+        run: cd client && npm ci
 
       - name: Create fix branch
         id: branch
@@ -64,7 +64,7 @@ jobs:
             cd client
             # Reinstall dependencies
             rm -rf node_modules package-lock.json
-            npm install --legacy-peer-deps
+            npm install
             npm run build
           fi
 

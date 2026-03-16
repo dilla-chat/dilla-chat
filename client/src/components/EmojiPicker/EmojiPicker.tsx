@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import data from '@emoji-mart/data';
-import Picker from '@emoji-mart/react';
+import Picker from 'emoji-picker-react';
+import { Theme } from 'emoji-picker-react';
 import './EmojiPicker.css';
 
 interface Props {
@@ -41,13 +41,10 @@ export default function EmojiPicker({ onSelect, onClose, anchorRef }: Props) {
   const picker = (
     <div className="emoji-picker-container" ref={pickerRef} style={style}>
       <Picker
-        data={data}
-        onEmojiSelect={(emoji: any) => onSelect(emoji.native)}
-        theme="dark"
-        set="native"
-        previewPosition="none"
-        skinTonePosition="search"
-        maxFrequentRows={2}
+        onEmojiClick={(emojiData) => onSelect(emojiData.emoji)}
+        theme={Theme.DARK}
+        skinTonesDisabled={false}
+        previewConfig={{ showPreview: false }}
       />
     </div>
   );

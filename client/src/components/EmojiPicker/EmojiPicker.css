@@ -5,12 +5,17 @@
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
-/* Override emoji-mart theme to match Dilla dark palette */
-.emoji-picker-container em-emoji-picker {
-  --rgb-background: 18, 28, 38;
-  --rgb-input: 10, 16, 22;
-  --rgb-color: 232, 237, 242;
-  --shadow: none;
+/* Override emoji-picker-react theme to match Dilla dark palette */
+.emoji-picker-container .EmojiPickerReact {
+  --epr-bg-color: rgb(18, 28, 38);
+  --epr-category-label-bg-color: rgb(18, 28, 38);
+  --epr-search-input-bg-color: rgb(10, 16, 22);
+  --epr-hover-bg-color: rgba(255, 255, 255, 0.08);
+  --epr-text-color: rgb(232, 237, 242);
+  --epr-search-input-text-color: rgb(232, 237, 242);
+  --epr-search-input-placeholder-color: rgba(232, 237, 242, 0.5);
+  --epr-category-icon-active-color: var(--accent);
+  --epr-highlight-color: var(--accent);
   border: 1px solid var(--divider);
   border-radius: 8px;
 }
