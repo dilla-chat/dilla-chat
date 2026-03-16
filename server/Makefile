@@ -11,6 +11,7 @@ build: webapp
 
 # Build only the web client and copy into the Go embed directory
 webapp:
+	cd $(CLIENT_DIR) && npm ci --legacy-peer-deps
 	cd $(CLIENT_DIR) && npm run build
 	rm -rf $(WEBAPP_DIST)
 	cp -r $(CLIENT_DIR)/dist $(WEBAPP_DIST)
