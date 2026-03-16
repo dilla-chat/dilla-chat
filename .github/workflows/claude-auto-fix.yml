@@ -30,13 +30,13 @@ jobs:
               owner: owner,
               repo: repo,
               issue_number: issue_number,
-              body: `@anthropic-code-agent please fix this issue automatically.
+              body: """@anthropic-code-agent please fix this issue automatically.
 
-            This issue was detected by CI and has been labeled for automatic fixing.
+                     This issue was detected by CI and has been labeled for automatic fixing.
 
-            **Issue type**: ${context.payload.issue.labels.map(l => l.name).join(', ')}
+                     **Issue type**: ${context.payload.issue.labels.map(l => l.name).join(', ')}
 
-            Please analyze the error and create a PR with the fix.`
+                     Please analyze the error and create a PR with the fix."""
             });
 
             // Add a label to track that Claude has been notified
