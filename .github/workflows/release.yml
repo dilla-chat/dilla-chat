@@ -7,11 +7,15 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 jobs:
   # Phase 1: Build the web client
   build-client:
     runs-on: ubuntu-latest
+    outputs:
+      build_failed: ${{ steps.build.outcome == 'failure' }}
+      build_output: ${{ steps.build.outputs.output }}
     steps:
       - uses: actions/checkout@v4
 
@@ -25,9 +29,19 @@ jobs:
         run: cd client && npm ci --legacy-peer-deps
 
       - name: Build client
-        run: cd client && npm run build
+        id: build
+        continue-on-error: true
+        run: |
+          cd client
+          OUTPUT=$(npm run build 2>&1 || true)
+          echo "$OUTPUT"
+          echo "output<<EOF" >> $GITHUB_OUTPUT
+          echo "$OUTPUT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          npm run build
 
       - uses: actions/upload-artifact@v4
+        if: steps.build.outcome == 'success'
         with:
           name: client-dist
           path: client/dist/
@@ -141,3 +155,152 @@ jobs:
         with:
           files: artifacts/*
           generate_release_notes: true
+
+  # Phase 4: Create issues for failures
+  create-issues:
+    needs: [build-client, build-server, release]
+    if: always() && (needs.build-client.outputs.build_failed == 'true' || needs.build-server.result == 'failure' || needs.release.result == 'failure')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create issue for client build failure
+        if: needs.build-client.outputs.build_failed == 'true'
+        uses: actions/github-script@v7
+        env:
+          BUILD_OUTPUT: ${{ needs.build-client.outputs.build_output }}
+        with:
+          script: |
+            const output = process.env.BUILD_OUTPUT;
+            const title = '[Auto-fix] Release: Client build failure';
+            const body = `## Release Client Build Failure
+
+            The client build failed during release workflow:
+
+            \`\`\`
+            ${output}
+            \`\`\`
+
+            **Tag**: ${{ github.ref_name }}
+            **Commit**: ${{ github.sha }}
+            **Workflow**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            This issue will be automatically fixed by the auto-fix workflow.
+            `;
+
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'auto-fix,build,release'
+            });
+
+            const existingIssue = issues.data.find(issue => issue.title === title);
+
+            if (existingIssue) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existingIssue.number,
+                body: `New release build failure detected:\n\n${body}`
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                labels: ['auto-fix', 'build', 'release', 'client']
+              });
+            }
+
+      - name: Create issue for server build failure
+        if: needs.build-server.result == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = '[Auto-fix] Release: Server build failure';
+            const body = `## Release Server Build Failure
+
+            One or more server builds failed during the release workflow.
+
+            **Tag**: ${{ github.ref_name }}
+            **Commit**: ${{ github.sha }}
+            **Workflow**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            Please check the workflow logs for specific build matrix failures.
+
+            This issue will be automatically fixed by the auto-fix workflow.
+            `;
+
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'auto-fix,build,release'
+            });
+
+            const existingIssue = issues.data.find(issue => issue.title === title);
+
+            if (existingIssue) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existingIssue.number,
+                body: `New server build failure detected:\n\n${body}`
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                labels: ['auto-fix', 'build', 'release', 'server']
+              });
+            }
+
+      - name: Create issue for release failure
+        if: needs.release.result == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = '[Auto-fix] Release: GitHub release creation failure';
+            const body = `## Release Creation Failure
+
+            Failed to create the GitHub release.
+
+            **Tag**: ${{ github.ref_name }}
+            **Commit**: ${{ github.sha }}
+            **Workflow**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            Please check the workflow logs for details.
+
+            This may require manual intervention.
+            `;
+
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'release'
+            });
+
+            const existingIssue = issues.data.find(issue => issue.title === title);
+
+            if (existingIssue) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existingIssue.number,
+                body: `New release failure detected:\n\n${body}`
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                labels: ['release', 'manual-intervention']
+              });
+            }
+

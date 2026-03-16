@@ -23,6 +23,27 @@ The CI workflow (`.github/workflows/ci.yml`) runs on every push to `main` and on
     - Link to the failing workflow run
     - Labels: `auto-fix`, plus specific labels like `lint`, `build`, `test`, `client`, or `server`
 
+### 1.5. Release Workflow
+
+The Release workflow (`.github/workflows/release.yml`) runs when a version tag (e.g., `v1.0.0`) is pushed. It:
+
+- **Client Build**:
+  - Builds the web client for embedding in the server
+
+- **Server Builds**:
+  - Cross-compiles server binaries for multiple platforms (Linux, macOS, Windows)
+  - Supports multiple architectures (amd64, arm64)
+
+- **GitHub Release**:
+  - Creates a GitHub release with all binaries
+  - Generates SHA256 checksums
+
+- **Issue Creation**:
+  - If any build or release step fails, automatically creates a GitHub issue with:
+    - Descriptive title (e.g., "[Auto-fix] Release: Client build failure")
+    - Error details and workflow link
+    - Labels: `auto-fix`, `build`, `release`, and specific component labels
+
 ### 2. Auto-Fix Workflow
 
 The auto-fix workflow (`.github/workflows/auto-fix.yml`) triggers when an issue is created or labeled with `auto-fix`. It:
@@ -80,6 +101,8 @@ Make sure the following labels exist in your repository:
 - `test` - Indicates test failures
 - `client` - Indicates client-side issues
 - `server` - Indicates server-side issues
+- `release` - Indicates issues from the release workflow
+- `manual-intervention` - Indicates issues that likely require manual fixes
 
 ### Permissions
 
