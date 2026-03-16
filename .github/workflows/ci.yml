@@ -1,0 +1,299 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  # Test and build the client
+  client-checks:
+    runs-on: ubuntu-latest
+    outputs:
+      lint_failed: ${{ steps.lint.outcome == 'failure' }}
+      build_failed: ${{ steps.build.outcome == 'failure' }}
+      lint_output: ${{ steps.lint.outputs.output }}
+      build_output: ${{ steps.build.outputs.output }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install dependencies
+        run: cd client && npm ci --legacy-peer-deps
+
+      - name: Lint client
+        id: lint
+        continue-on-error: true
+        run: |
+          cd client
+          OUTPUT=$(npm run lint 2>&1 || true)
+          echo "$OUTPUT"
+          echo "output<<EOF" >> $GITHUB_OUTPUT
+          echo "$OUTPUT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          npm run lint
+
+      - name: Build client
+        id: build
+        continue-on-error: true
+        run: |
+          cd client
+          OUTPUT=$(npm run build 2>&1 || true)
+          echo "$OUTPUT"
+          echo "output<<EOF" >> $GITHUB_OUTPUT
+          echo "$OUTPUT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          npm run build
+
+  # Test and build the server
+  server-checks:
+    runs-on: ubuntu-latest
+    outputs:
+      test_failed: ${{ steps.test.outcome == 'failure' }}
+      build_failed: ${{ steps.build.outcome == 'failure' }}
+      test_output: ${{ steps.test.outputs.output }}
+      build_output: ${{ steps.build.outputs.output }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+
+      - name: Test server
+        id: test
+        continue-on-error: true
+        working-directory: server
+        run: |
+          OUTPUT=$(make test 2>&1 || true)
+          echo "$OUTPUT"
+          echo "output<<EOF" >> $GITHUB_OUTPUT
+          echo "$OUTPUT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          make test
+
+      - name: Build server
+        id: build
+        continue-on-error: true
+        working-directory: server
+        run: |
+          OUTPUT=$(make build 2>&1 || true)
+          echo "$OUTPUT"
+          echo "output<<EOF" >> $GITHUB_OUTPUT
+          echo "$OUTPUT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          make build
+
+  # Create issues for failures
+  create-issues:
+    needs: [client-checks, server-checks]
+    if: always() && (needs.client-checks.outputs.lint_failed == 'true' || needs.client-checks.outputs.build_failed == 'true' || needs.server-checks.outputs.test_failed == 'true' || needs.server-checks.outputs.build_failed == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create issue for client lint failure
+        if: needs.client-checks.outputs.lint_failed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const output = `${{ needs.client-checks.outputs.lint_output }}`;
+            const title = '[Auto-fix] Client lint errors detected';
+            const body = `## Client Lint Failures
+
+            The following lint errors were detected in the client code:
+
+            \`\`\`
+            ${output}
+            \`\`\`
+
+            **Triggered by**: ${{ github.event_name }} on ${{ github.ref }}
+            **Commit**: ${{ github.sha }}
+            **Workflow**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            This issue will be automatically fixed by the auto-fix workflow.
+            `;
+
+            // Check if similar issue already exists
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'auto-fix,lint'
+            });
+
+            const existingIssue = issues.data.find(issue => issue.title === title);
+
+            if (existingIssue) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existingIssue.number,
+                body: `New lint failure detected:\n\n${body}`
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                labels: ['auto-fix', 'lint', 'client']
+              });
+            }
+
+      - name: Create issue for client build failure
+        if: needs.client-checks.outputs.build_failed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const output = `${{ needs.client-checks.outputs.build_output }}`;
+            const title = '[Auto-fix] Client build failure';
+            const body = `## Client Build Failure
+
+            The client build failed with the following error:
+
+            \`\`\`
+            ${output}
+            \`\`\`
+
+            **Triggered by**: ${{ github.event_name }} on ${{ github.ref }}
+            **Commit**: ${{ github.sha }}
+            **Workflow**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            This issue will be automatically fixed by the auto-fix workflow.
+            `;
+
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'auto-fix,build'
+            });
+
+            const existingIssue = issues.data.find(issue => issue.title === title);
+
+            if (existingIssue) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existingIssue.number,
+                body: `New build failure detected:\n\n${body}`
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                labels: ['auto-fix', 'build', 'client']
+              });
+            }
+
+      - name: Create issue for server test failure
+        if: needs.server-checks.outputs.test_failed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const output = `${{ needs.server-checks.outputs.test_output }}`;
+            const title = '[Auto-fix] Server tests failing';
+            const body = `## Server Test Failures
+
+            Server tests failed with the following error:
+
+            \`\`\`
+            ${output}
+            \`\`\`
+
+            **Triggered by**: ${{ github.event_name }} on ${{ github.ref }}
+            **Commit**: ${{ github.sha }}
+            **Workflow**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            This issue will be automatically fixed by the auto-fix workflow.
+            `;
+
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'auto-fix,test'
+            });
+
+            const existingIssue = issues.data.find(issue => issue.title === title);
+
+            if (existingIssue) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existingIssue.number,
+                body: `New test failure detected:\n\n${body}`
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                labels: ['auto-fix', 'test', 'server']
+              });
+            }
+
+      - name: Create issue for server build failure
+        if: needs.server-checks.outputs.build_failed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const output = `${{ needs.server-checks.outputs.build_output }}`;
+            const title = '[Auto-fix] Server build failure';
+            const body = `## Server Build Failure
+
+            The server build failed with the following error:
+
+            \`\`\`
+            ${output}
+            \`\`\`
+
+            **Triggered by**: ${{ github.event_name }} on ${{ github.ref }}
+            **Commit**: ${{ github.sha }}
+            **Workflow**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            This issue will be automatically fixed by the auto-fix workflow.
+            `;
+
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'auto-fix,build'
+            });
+
+            const existingIssue = issues.data.find(issue => issue.title === title);
+
+            if (existingIssue) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existingIssue.number,
+                body: `New build failure detected:\n\n${body}`
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                labels: ['auto-fix', 'build', 'server']
+              });
+            }

@@ -1,0 +1,150 @@
+name: Auto-fix Issues
+
+on:
+  issues:
+    types: [opened, labeled]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  auto-fix:
+    # Only run if the issue has the 'auto-fix' label
+    if: contains(github.event.issue.labels.*.name, 'auto-fix')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup environment
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+
+      - name: Install client dependencies
+        run: cd client && npm ci --legacy-peer-deps
+
+      - name: Create fix branch
+        id: branch
+        run: |
+          BRANCH_NAME="auto-fix/issue-${{ github.event.issue.number }}"
+          echo "branch_name=${BRANCH_NAME}" >> $GITHUB_OUTPUT
+          git checkout -b "${BRANCH_NAME}"
+
+      - name: Attempt auto-fix for lint issues
+        if: contains(github.event.issue.labels.*.name, 'lint')
+        continue-on-error: true
+        run: |
+          cd client
+          # Try to auto-fix lint issues
+          npm run lint -- --fix || true
+          npm run format || true
+
+      - name: Attempt auto-fix for build issues
+        if: contains(github.event.issue.labels.*.name, 'build')
+        continue-on-error: true
+        run: |
+          # For build issues, we'll try common fixes
+          if [[ "${{ contains(github.event.issue.labels.*.name, 'client') }}" == "true" ]]; then
+            cd client
+            # Reinstall dependencies
+            rm -rf node_modules package-lock.json
+            npm install --legacy-peer-deps
+            npm run build
+          fi
+
+          if [[ "${{ contains(github.event.issue.labels.*.name, 'server') }}" == "true" ]]; then
+            cd server
+            # Clean and rebuild
+            rm -rf bin
+            go mod tidy
+            make build
+          fi
+
+      - name: Attempt auto-fix for test issues
+        if: contains(github.event.issue.labels.*.name, 'test')
+        continue-on-error: true
+        run: |
+          if [[ "${{ contains(github.event.issue.labels.*.name, 'server') }}" == "true" ]]; then
+            cd server
+            # Update test dependencies
+            go mod tidy
+            go test ./... -v
+          fi
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit and push changes
+        if: steps.changes.outputs.has_changes == 'true'
+        run: |
+          git add .
+          git commit -m "fix: auto-fix for issue #${{ github.event.issue.number }}"
+          git push origin ${{ steps.branch.outputs.branch_name }}
+
+      - name: Create pull request
+        if: steps.changes.outputs.has_changes == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Auto-fix: ${context.payload.issue.title}`,
+              head: '${{ steps.branch.outputs.branch_name }}',
+              base: 'main',
+              body: `This PR was automatically generated to fix issue #${{ github.event.issue.number }}.
+
+            ## Changes
+            Attempted automatic fixes for the reported issue.
+
+            ## Verification
+            Please review the changes and verify that:
+            - [ ] The issue is resolved
+            - [ ] No unintended side effects were introduced
+            - [ ] Tests pass
+            - [ ] Code follows project conventions
+
+            Closes #${{ github.event.issue.number }}`
+            });
+
+            // Comment on the issue
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `🤖 Automatic fix attempted! Created PR #${pr.data.number} to address this issue.`
+            });
+
+      - name: Comment on issue if no changes
+        if: steps.changes.outputs.has_changes == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `🤖 Attempted automatic fix, but no changes were needed or the issue requires manual intervention.
+
+              Please review the issue manually or provide more specific details about the problem.`
+            });
