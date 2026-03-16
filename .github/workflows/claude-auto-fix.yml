@@ -11,8 +11,10 @@ permissions:
 
 jobs:
   assign-to-claude:
-    # Only run if the issue has the 'auto-fix' label
-    if: contains(github.event.issue.labels.*.name, 'auto-fix')
+    # Only run if the issue has the 'auto-fix' label and not already notified
+    if: |
+      contains(github.event.issue.labels.*.name, 'auto-fix') &&
+      !contains(github.event.issue.labels.*.name, 'claude-notified')
     runs-on: ubuntu-latest
     steps:
       - name: Assign issue to Claude Code agent
@@ -28,26 +30,14 @@ jobs:
               owner: owner,
               repo: repo,
               issue_number: issue_number,
-              body: `@Claude please fix this issue automatically.
+              body: `@anthropic-code-agent please fix this issue automatically.
 
-This issue was detected by CI and has been labeled for automatic fixing.
+            This issue was detected by CI and has been labeled for automatic fixing.
 
-**Issue type**: ${context.payload.issue.labels.map(l => l.name).join(', ')}
+            **Issue type**: ${context.payload.issue.labels.map(l => l.name).join(', ')}
 
-Please analyze the error and create a PR with the fix.`
+            Please analyze the error and create a PR with the fix.`
             });
-
-            // Try to assign the issue to Claude (may need to be added as collaborator first)
-            try {
-              await github.rest.issues.addAssignees({
-                owner: owner,
-                repo: repo,
-                issue_number: issue_number,
-                assignees: ['Claude']
-              });
-            } catch (error) {
-              console.log('Could not assign to Claude:', error.message);
-            }
 
             // Add a label to track that Claude has been notified
             await github.rest.issues.addLabels({
