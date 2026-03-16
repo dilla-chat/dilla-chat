@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/slimcord/slimcord-server/internal/db"
+	"github.com/dilla/dilla-server/internal/db"
 )
 
 type contextKey string

@@ -194,6 +194,26 @@ class ApiService {
     });
   }
 
+  // User profile
+  async getMe(baseUrl: string, token: string): Promise<unknown> {
+    const data = await this.request(baseUrl, '/api/v1/users/me', { method: 'GET' }, token);
+    return this.unwrapObject(data, 'user');
+  }
+
+  async updateMe(
+    baseUrl: string,
+    token: string,
+    updates: { display_name?: string; avatar_url?: string; status_text?: string; status_type?: string },
+  ): Promise<unknown> {
+    const data = await this.request(
+      baseUrl,
+      '/api/v1/users/me',
+      { method: 'PATCH', body: JSON.stringify(updates) },
+      token,
+    );
+    return this.unwrapObject(data, 'user');
+  }
+
   // Invite endpoints
   async createInvite(
     teamId: string,

@@ -1,5 +1,5 @@
 [package]
-name = "slimcord-client"
+name = "dilla-client"
 version = "0.1.0"
 edition = "2021"
 
@@ -17,6 +17,7 @@ base64 = "0.22"
 x25519-dalek = { version = "2", features = ["static_secrets"] }
 hkdf = "0.12"
 sha2 = "0.10"
+pbkdf2 = { version = "0.12", features = ["simple"] }
 hmac = "0.12"
 tiny_http = "0.12.0"
 open = "5.3.3"

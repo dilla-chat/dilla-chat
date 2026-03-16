@@ -29,8 +29,8 @@ export const MOCK_USERS: MockUser[] = [
 
 export const MOCK_TEAM: Team = {
   id: DEMO_TEAM_ID,
-  name: 'Slimcord Demo',
-  description: 'A demo team to explore Slimcord',
+  name: 'Dilla Demo',
+  description: 'A demo team to explore Dilla',
   iconUrl: '',
   maxFileSize: 10_485_760,
   allowMemberInvites: true,
@@ -47,7 +47,7 @@ export const MOCK_ROLES: Role[] = [
 // ─── Channels ────────────────────────────────────────────────────────────────
 
 export const MOCK_CHANNELS: Channel[] = [
-  { id: 'ch-1', teamId: DEMO_TEAM_ID, name: 'welcome', topic: 'Welcome to Slimcord!', type: 'text', position: 0, category: 'General' },
+  { id: 'ch-1', teamId: DEMO_TEAM_ID, name: 'welcome', topic: 'Welcome to Dilla!', type: 'text', position: 0, category: 'General' },
   { id: 'ch-2', teamId: DEMO_TEAM_ID, name: 'general', topic: 'General discussion', type: 'text', position: 1, category: 'General' },
   { id: 'ch-3', teamId: DEMO_TEAM_ID, name: 'Voice Lounge', topic: '', type: 'voice', position: 2, category: 'General' },
   { id: 'ch-4', teamId: DEMO_TEAM_ID, name: 'backend', topic: 'Go server development', type: 'text', position: 3, category: 'Development' },
@@ -77,7 +77,7 @@ function ts(minutesAgo: number): string {
 export const MOCK_GENERAL_MESSAGES: Message[] = [
   {
     id: 'msg-1', channelId: 'ch-2', authorId: 'user-1', username: 'alice',
-    content: 'Hey everyone! Welcome to the **Slimcord Demo** 🎉',
+    content: 'Hey everyone! Welcome to the **Dilla Demo** 🎉',
     encryptedContent: '', type: 'text', threadId: null, editedAt: null,
     deleted: false, createdAt: ts(58), reactions: [
       { emoji: '🎉', users: ['user-2', 'user-3', 'user-4'], count: 3 },
@@ -191,7 +191,7 @@ export const MOCK_GENERAL_MESSAGES: Message[] = [
 export const MOCK_WELCOME_MESSAGES: Message[] = [
   {
     id: 'wmsg-1', channelId: 'ch-1', authorId: 'user-1', username: 'alice',
-    content: '# Welcome to Slimcord! 👋\n\nThis is a self-hosted, privacy-first chat platform. Explore the channels and have fun!',
+    content: '# Welcome to Dilla! 👋\n\nThis is a self-hosted, privacy-first chat platform. Explore the channels and have fun!',
     encryptedContent: '', type: 'text', threadId: null, editedAt: null,
     deleted: false, createdAt: ts(120), reactions: [
       { emoji: '👍', users: ['user-2', 'user-3', 'user-4', 'user-5'], count: 4 },

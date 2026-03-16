@@ -5,23 +5,28 @@ import { CloudCheck, CloudXmark, CloudSync } from 'iconoir-react';
 import { useAuthStore } from '../stores/authStore';
 import { api } from '../services/api';
 import { cryptoService } from '../services/crypto';
+import { getPublicKey as getStoredPublicKey } from '../services/keyStore';
+import PublicShell from './PublicShell';
 
 export default function SetupAdmin() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { publicKey, derivedKey, addTeam } = useAuthStore();
+  const { publicKey, derivedKey, addTeam, setPublicKey } = useAuthStore();
 
-  const [serverAddress, setServerAddress] = useState('');
+  const isBrowser = !(window as any).__TAURI_INTERNALS__;
+  const [serverAddress, setServerAddress] = useState(
+    isBrowser ? window.location.origin : '',
+  );
   const [bootstrapToken, setBootstrapToken] = useState(
     searchParams.get('token') ?? '',
   );
   const [username, setUsername] = useState('');
-  const [displayName, setDisplayName] = useState('');
+  const [displayName, setDisplayName] = useState(localStorage.getItem('dilla_username') ?? '');
   const [teamName, setTeamName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [serverStatus, setServerStatus] = useState<'unknown' | 'checking' | 'online' | 'offline'>('unknown');
+  const [serverStatus, setServerStatus] = useState<'unknown' | 'checking' | 'online' | 'offline'>(isBrowser ? 'online' : 'unknown');
 
   const checkServer = useCallback(async (address: string) => {
     if (!address.trim()) {
@@ -52,7 +57,19 @@ export default function SetupAdmin() {
 
   const handleSetup = async () => {
     setError('');
-    if (!serverAddress || !bootstrapToken || !username || !publicKey) return;
+    if (!serverAddress || !bootstrapToken || !username) return;
+
+    // Get public key from store or IndexedDB
+    let pubKey = publicKey;
+    if (!pubKey) {
+      const stored = await getStoredPublicKey();
+      if (!stored) {
+        setError('No identity found. Please create an identity first.');
+        return;
+      }
+      pubKey = btoa(String.fromCharCode(...stored));
+      setPublicKey(pubKey);
+    }
 
     setLoading(true);
     try {
@@ -67,7 +84,7 @@ export default function SetupAdmin() {
         tempId,
         username,
         displayName || username,
-        publicKey,
+        pubKey,
         bootstrapToken,
         teamName || undefined,
       );
@@ -116,29 +133,33 @@ export default function SetupAdmin() {
   };
 
   return (
-    <div className="page setup-admin-page" data-tauri-drag-region>
-      <img src="/logo.png" alt="Slimcord" style={{ width: 64, height: 64, marginBottom: 8 }} />
+    <PublicShell>
       <h1>{t('setup.title')}</h1>
+      <p style={{ opacity: 0.7, fontSize: '0.9rem', marginBottom: '0.5rem', textAlign: 'center' }}>
+        First-time setup: create your team and admin account on this server.
+      </p>
       {error && <p className="error">{error}</p>}
       <div className="form">
-        <div style={{ position: 'relative' }}>
-          <input
-            type="text"
-            placeholder={t('setup.serverAddress')}
-            value={serverAddress}
-            onChange={(e) => setServerAddress(e.target.value)}
-            style={{ paddingRight: '2.5rem' }}
-          />
-          {serverStatus === 'online' && (
-            <CloudCheck style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: '#4ade80', width: 18, height: 18 }} />
-          )}
-          {serverStatus === 'offline' && (
-            <CloudXmark style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: '#f87171', width: 18, height: 18 }} />
-          )}
-          {serverStatus === 'checking' && (
-            <CloudSync style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: '#facc15', width: 18, height: 18, animation: 'spin 1s linear infinite' }} />
-          )}
-        </div>
+        {!isBrowser && (
+          <div style={{ position: 'relative' }}>
+            <input
+              type="text"
+              placeholder={t('setup.serverAddress')}
+              value={serverAddress}
+              onChange={(e) => setServerAddress(e.target.value)}
+              style={{ paddingRight: '2.5rem' }}
+            />
+            {serverStatus === 'online' && (
+              <CloudCheck style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-positive)', width: 18, height: 18 }} />
+            )}
+            {serverStatus === 'offline' && (
+              <CloudXmark style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-danger)', width: 18, height: 18 }} />
+            )}
+            {serverStatus === 'checking' && (
+              <CloudSync style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-warning)', width: 18, height: 18, animation: 'spin 1s linear infinite' }} />
+            )}
+          </div>
+        )}
         <input
           type="text"
           placeholder={t('setup.bootstrapToken')}
@@ -170,6 +191,6 @@ export default function SetupAdmin() {
           ← Back
         </button>
       </div>
-    </div>
+    </PublicShell>
   );
 }

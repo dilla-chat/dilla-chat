@@ -109,7 +109,7 @@ export class MockApiService {
     return { node_name: 'demo-node', peers: [], lamport_ts: 1 };
   }
   async getFederationPeers() { return []; }
-  async generateJoinToken() { return { token: 'demo-join', join_command: 'slimcord join demo-join' }; }
+  async generateJoinToken() { return { token: 'demo-join', join_command: 'dilla-server join demo-join' }; }
 
   // DMs
   async createDM(_teamId: string, memberIds: string[]) {
@@ -268,7 +268,7 @@ export class MockApiService {
     return { channel_id: channelId, peers: [] };
   }
   async joinVoice(_teamId: string, channelId: string): Promise<VoiceState> {
-    return { channel_id: channelId, peers: [{ user_id: DEMO_CURRENT_USER_ID, username: 'alice', muted: false, deafened: false, speaking: false }] };
+    return { channel_id: channelId, peers: [{ user_id: DEMO_CURRENT_USER_ID, username: 'alice', muted: false, deafened: false, speaking: false, voiceLevel: 0 }] };
   }
   async leaveVoice() {}
 

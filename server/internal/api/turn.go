@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/slimcord/slimcord-server/internal/auth"
-	"github.com/slimcord/slimcord-server/internal/voice"
+	"github.com/dilla/dilla-server/internal/auth"
+	"github.com/dilla/dilla-server/internal/voice"
 )
 
 type TURNHandler struct {

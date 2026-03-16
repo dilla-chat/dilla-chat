@@ -6,8 +6,6 @@ import {
   type PrekeyBundle,
 } from './cryptoCore';
 import {
-  unlockWithPrf,
-  unlockWithRecovery,
   saveSessions,
   loadSessions,
   type IdentityKeys,
@@ -216,7 +214,7 @@ export const cryptoService = {
         await this.getSenderKeyDistribution(channelId, derivedKey);
         initializedSessions.add(key);
       } catch {
-        initializedSessions.add(key);
+        // Don't mark as initialized — allow retry on next attempt
       } finally {
         initializingPromises.delete(key);
       }

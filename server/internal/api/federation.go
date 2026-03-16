@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/slimcord/slimcord-server/internal/auth"
-	"github.com/slimcord/slimcord-server/internal/federation"
+	"github.com/dilla/dilla-server/internal/auth"
+	"github.com/dilla/dilla-server/internal/federation"
 )
 
 // FederationHandler handles federation-related API endpoints.
@@ -60,7 +60,7 @@ func (h *FederationHandler) HandleCreateJoinToken(w http.ResponseWriter, r *http
 
 	writeJSON(w, http.StatusOK, map[string]string{
 		"token":        token,
-		"join_command": "slimcord-server --join-token " + token,
+		"join_command": "dilla-server --join-token " + token,
 	})
 }
 

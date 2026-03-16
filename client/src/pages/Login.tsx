@@ -8,14 +8,27 @@ import { initCrypto, getIdentityKeys } from '../services/crypto';
 import {
   unlockWithPrf,
   unlockWithRecovery,
+  unlockWithPassphrase,
   getCredentialInfo,
-  hasIdentity,
+  getPublicKey,
   exportIdentityBlob,
   signChallenge,
+  deleteIdentity,
+  type KeySlot,
 } from '../services/keyStore';
-import { fromBase64, toBase64, ed25519Sign } from '../services/cryptoCore';
+import { fromBase64, toBase64 } from '../services/cryptoCore';
+import { usernameColor, getInitials } from '../utils/colors';
+import PublicShell from './PublicShell';
 
 type Mode = 'passkey' | 'recovery' | 'legacy';
+
+interface IdentityInfo {
+  username: string;
+  fingerprint: string;
+  servers: string[];
+  credentialCount: number;
+  createdAt: string | null;
+}
 
 export default function Login() {
   const { t } = useTranslation();
@@ -29,9 +42,13 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [countdown, setCountdown] = useState(0);
   const [keyVersion, setKeyVersion] = useState<number>(2);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [identityInfo, setIdentityInfo] = useState<IdentityInfo | null>(null);
+  const [needsLoginPassphrase, setNeedsLoginPassphrase] = useState(false);
+  const [loginPassphrase, setLoginPassphrase] = useState('');
 
   // Re-authenticate with all persisted servers to get fresh JWT tokens
-  async function refreshServerTokens(pubKey: string, derivedKeyB64: string) {
+  async function refreshServerTokens(pubKey: string, _derivedKeyB64: string) {
     const keys = getIdentityKeys();
     console.log(`[Login] refreshServerTokens: ${teams.size} teams to re-auth`);
     for (const [teamId, entry] of teams) {
@@ -87,7 +104,45 @@ export default function Login() {
     }
   }
 
-  // Detect key version on mount
+  async function tryReconnectToCurrentServer(pubKey: string): Promise<boolean> {
+    const baseUrl = window.location.origin;
+    const keys = getIdentityKeys();
+    const tempId = '__reconnect__';
+
+    console.log('[Login] Attempting auto-reconnect to', baseUrl);
+    try {
+      api.addTeam(tempId, baseUrl);
+
+      const { challenge_id, nonce } = await api.requestChallenge(tempId, pubKey);
+      const nonceBytes = fromBase64(nonce);
+      const sigBytes = await signChallenge(keys.signingKey, nonceBytes);
+      const signature = toBase64(sigBytes);
+      const result = await api.verifyChallenge(tempId, challenge_id, pubKey, signature);
+
+      // Use JWT to discover teams on this server
+      const serverTeams = await api.listTeams(baseUrl, result.token);
+      api.removeTeam(tempId);
+
+      if (!serverTeams || serverTeams.length === 0) return false;
+
+      const { addTeam: storeAddTeam } = useAuthStore.getState();
+      for (const team of serverTeams) {
+        const t = team as { id?: string };
+        if (!t.id) continue;
+        api.addTeam(t.id, baseUrl);
+        api.setToken(t.id, result.token);
+        storeAddTeam(t.id, result.token, result.user, team, baseUrl);
+      }
+
+      return useAuthStore.getState().teams.size > 0;
+    } catch (e) {
+      console.log('[Login] Auto-reconnect failed:', e);
+      api.removeTeam(tempId);
+      return false;
+    }
+  }
+
+  // Load identity info from IndexedDB on mount
   useEffect(() => {
     (async () => {
       try {
@@ -96,8 +151,27 @@ export default function Login() {
           setKeyVersion(0);
           return;
         }
-        // V3 MEK format = version 3
         setKeyVersion(3);
+
+        const pubKeyBytes = await getPublicKey();
+        const fingerprint = pubKeyBytes
+          ? Array.from(pubKeyBytes.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join('')
+          : '';
+
+        const servers = [...new Set(info.keySlots.map((s: KeySlot) => s.server_url).filter(Boolean))];
+        const allCreds = info.keySlots.flatMap((s: KeySlot) => s.credentials);
+        const earliest = allCreds
+          .map(c => c.created_at)
+          .filter(Boolean)
+          .sort()[0] || null;
+
+        setIdentityInfo({
+          username: localStorage.getItem('dilla_username') ?? '',
+          fingerprint,
+          servers,
+          credentialCount: info.credentials.length,
+          createdAt: earliest,
+        });
       } catch {
         // No key file
       }
@@ -133,7 +207,7 @@ export default function Login() {
       }
 
       // Determine server URL for rpId config
-      let serverUrl = localStorage.getItem('slimcord_auth_server') || '';
+      let serverUrl = localStorage.getItem('dilla_auth_server') || '';
       if (!serverUrl) {
         for (const [, entry] of teams) {
           const url = (entry as { baseUrl?: string }).baseUrl;
@@ -144,9 +218,18 @@ export default function Login() {
       // Authenticate with passkey + PRF
       const credentialIds = info.credentials.map(c => c.id);
       const result = await authenticatePasskey(credentialIds, info.prfSalt, serverUrl || undefined);
-      const derivedKeyB64 = prfOutputToBase64(result.prfOutput);
 
       if (cancelRef.cancelled) return;
+
+      if (result.prfOutput === null) {
+        // PRF not available — need passphrase to decrypt
+        setNeedsLoginPassphrase(true);
+        setLoading(false);
+        return;
+      }
+
+      const derivedKeyB64 = prfOutputToBase64(result.prfOutput);
+
       console.log('[Login] Passkey succeeded, unlocking identity...');
 
       // Unlock identity from IndexedDB
@@ -163,7 +246,11 @@ export default function Login() {
       setPublicKey(pubKeyB64);
       await refreshServerTokens(pubKeyB64, derivedKeyB64);
       if (cancelRef.cancelled) return;
-      const hasTeams = useAuthStore.getState().teams.size > 0;
+      let hasTeams = useAuthStore.getState().teams.size > 0;
+      if (!hasTeams) {
+        hasTeams = await tryReconnectToCurrentServer(pubKeyB64);
+        if (cancelRef.cancelled) return;
+      }
       navigate(hasTeams ? '/app' : '/join');
     } catch (e) {
       if (cancelRef.cancelled) return;
@@ -203,7 +290,10 @@ export default function Login() {
       setDerivedKey(recoveryKeyB64);
       setPublicKey(pubKeyB64);
       await refreshServerTokens(pubKeyB64, recoveryKeyB64);
-      const hasTeams = useAuthStore.getState().teams.size > 0;
+      let hasTeams = useAuthStore.getState().teams.size > 0;
+      if (!hasTeams) {
+        hasTeams = await tryReconnectToCurrentServer(pubKeyB64);
+      }
       navigate(hasTeams ? '/app' : '/join');
     } catch {
       setError(t('login.invalidRecoveryKey'));
@@ -220,13 +310,100 @@ export default function Login() {
     setMode('recovery');
   };
 
+  const handlePassphraseUnlock = async () => {
+    setError('');
+    if (!loginPassphrase) return;
+
+    setLoading(true);
+    try {
+      const identity = await unlockWithPassphrase(loginPassphrase);
+      // Use a stable derived key for session — hash the passphrase for this
+      const passphraseKeyB64 = btoa(String.fromCharCode(...new TextEncoder().encode(loginPassphrase.slice(0, 32))));
+
+      await initCrypto(identity, passphraseKeyB64);
+
+      const pubKeyB64 = btoa(String.fromCharCode(...identity.publicKeyBytes));
+      setDerivedKey(passphraseKeyB64);
+      setPublicKey(pubKeyB64);
+      await refreshServerTokens(pubKeyB64, passphraseKeyB64);
+      let hasTeams = useAuthStore.getState().teams.size > 0;
+      if (!hasTeams) {
+        hasTeams = await tryReconnectToCurrentServer(pubKeyB64);
+      }
+      navigate(hasTeams ? '/app' : '/join');
+    } catch {
+      setError(t('login.wrongPassphrase'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteIdentity = async () => {
+    await deleteIdentity();
+    useAuthStore.getState().logout();
+    localStorage.removeItem('dilla_auth_server');
+    localStorage.removeItem('dilla_username');
+    navigate('/create-identity');
+  };
+
   return (
-    <div className="page login-page" data-tauri-drag-region>
-      <img src="/logo.png" alt="Slimcord" style={{ width: 64, height: 64, marginBottom: 8 }} />
+    <PublicShell>
       <h1>{t('login.title')}</h1>
+
+      {identityInfo && (
+        <div className="login-identity-card">
+          <div
+            className="login-identity-avatar"
+            style={{ background: usernameColor(identityInfo.username || identityInfo.fingerprint) }}
+          >
+            {getInitials(identityInfo.username || '?')}
+          </div>
+          <div className="login-identity-info">
+            {identityInfo.username && (
+              <div className="login-identity-name">{identityInfo.username}</div>
+            )}
+            <div className="login-identity-fingerprint">{identityInfo.fingerprint}...</div>
+            {identityInfo.servers.length > 0 && (
+              <div className="login-identity-servers">
+                {identityInfo.servers.map(s => new URL(s).hostname).join(', ')}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {error && <p className="error">{error}</p>}
 
-      {mode === 'passkey' && keyVersion >= 2 && (
+      {needsLoginPassphrase && (
+        <div className="form">
+          <p style={{ opacity: 0.8, fontSize: '0.9rem' }}>
+            {t(
+              'login.passphraseNeeded',
+              'Your passkey was verified. Enter your passphrase to decrypt your identity.',
+            )}
+          </p>
+          <input
+            type="password"
+            placeholder={t('login.passphrase')}
+            value={loginPassphrase}
+            onChange={(e) => setLoginPassphrase(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handlePassphraseUnlock()}
+            autoFocus
+          />
+          <button
+            className="btn-primary"
+            onClick={handlePassphraseUnlock}
+            disabled={loading || !loginPassphrase}
+          >
+            {loading ? t('login.unlocking') : t('login.unlock')}
+          </button>
+          <button className="btn-link" onClick={() => { setNeedsLoginPassphrase(false); setMode('recovery'); }}>
+            {t('login.useRecoveryKey')}
+          </button>
+        </div>
+      )}
+
+      {!needsLoginPassphrase && mode === 'passkey' && keyVersion >= 2 && (
         <div className="form">
           <button className="btn-primary" onClick={handlePasskeyUnlock} disabled={loading}>
             {loading
@@ -281,11 +458,36 @@ export default function Login() {
         </div>
       )}
 
-      <div style={{ marginTop: '2rem', textAlign: 'center' }}>
+      <div style={{ marginTop: '1.5rem', textAlign: 'center' }}>
         <button className="btn-link" onClick={() => navigate('/recover')}>
           {t('login.recoverFromServer', 'Recover identity from server')}
         </button>
       </div>
-    </div>
+
+      <details style={{ marginTop: '1rem', textAlign: 'center' }}>
+        <summary className="btn-link" style={{ cursor: 'pointer', color: 'var(--text-danger)', listStyle: 'none', display: 'inline' }}>
+          {t('login.deleteIdentity', 'Delete identity')}
+        </summary>
+        <div style={{ marginTop: 8 }}>
+          <p style={{ fontSize: '0.9rem', marginBottom: 8 }}>
+            {t('login.confirmDelete', 'Are you sure? This will permanently delete your local identity.')}
+          </p>
+          {!confirmDelete ? (
+            <button className="btn-danger" onClick={() => setConfirmDelete(true)}>
+              {t('login.deleteIdentity', 'Delete identity')}
+            </button>
+          ) : (
+            <div>
+              <button className="btn-danger" onClick={handleDeleteIdentity} style={{ marginRight: 8 }}>
+                {t('login.yesDelete', 'Yes, delete')}
+              </button>
+              <button className="btn-secondary" onClick={() => setConfirmDelete(false)}>
+                {t('common.cancel', 'Cancel')}
+              </button>
+            </div>
+          )}
+        </div>
+      </details>
+    </PublicShell>
   );
 }

@@ -1,6 +1,6 @@
 {
   "app": {
-    "name": "Slimcord",
+    "name": "Dilla",
     "loading": "Loading..."
   },
   "common": {
@@ -13,8 +13,11 @@
     "close": "Close"
   },
   "welcome": {
-    "title": "Welcome to Slimcord",
+    "title": "Welcome to Dilla",
     "subtitle": "A federated, end-to-end encrypted team chat",
+    "tagline": "Va fan dillar du om?",
+    "pronunciation": "(vah fahn dill-ar doo ohm)",
+    "description": "That's Gothenburg for \"what are you even talking about?\" — and honestly, we don't know. We can't. Dilla is self-hosted, end-to-end encrypted chat — your server, your kanals, your messages. Nobody's reading them. Not even us.",
     "createIdentity": "Create New Identity",
     "restoreBackup": "Restore from Backup"
   },
@@ -36,7 +39,10 @@
     "recoveryKeyConfirm": "I have saved my recovery key",
     "continue": "Continue",
     "prfNotSupported": "Your system does not support passkey encryption (WebAuthn PRF). Please use a supported browser or authenticator.",
-    "passkeyFailed": "Passkey creation failed"
+    "passkeyFailed": "Passkey creation failed",
+    "passphraseTitle": "Set a Passphrase",
+    "passphraseExplain": "Your passkey provider doesn't support key derivation (PRF). Choose a passphrase to protect your encryption keys.",
+    "passphraseTooShort": "Minimum 12 characters"
   },
   "login": {
     "title": "Unlock Your Identity",
@@ -50,7 +56,8 @@
     "unlockWithRecovery": "Unlock with Recovery Key",
     "invalidRecoveryKey": "Invalid recovery key. Please try again.",
     "legacyDetected": "Legacy identity detected. Enter your passphrase to upgrade to passkey authentication.",
-    "upgradeToPasskey": "Upgrade to Passkey"
+    "upgradeToPasskey": "Upgrade to Passkey",
+    "passphraseNeeded": "Your passkey was verified. Enter your passphrase to decrypt your identity."
   },
   "join": {
     "title": "Join a Team",
@@ -88,28 +95,28 @@
     "leave": "Leave Team"
   },
   "channels": {
-    "text": "Text Channel",
-    "voice": "Voice Channel",
-    "create": "Create Channel",
-    "edit": "Edit Channel",
-    "delete": "Delete Channel",
-    "uncategorized": "Channels",
-    "type": "Channel Type",
-    "name": "Channel Name",
-    "namePlaceholder": "new-channel",
+    "text": "Text Kanal",
+    "voice": "Voice Kanal",
+    "create": "Create Kanal",
+    "edit": "Edit Kanal",
+    "delete": "Delete Kanal",
+    "uncategorized": "Kanals",
+    "type": "Kanal Type",
+    "name": "Kanal Name",
+    "namePlaceholder": "new-kanal",
     "categoryLabel": "Category",
     "noCategory": "No category",
     "newCategory": "+ Create new",
     "categoryPlaceholder": "Category name",
     "topicLabel": "Topic",
     "optional": "optional",
-    "topicPlaceholder": "What is this channel about?",
-    "welcomeTitle": "Welcome to #{{name}}",
-    "welcomeDesc": "This is the start of the #{{name}} channel.",
-    "selectChannel": "Select a channel to start chatting"
+    "topicPlaceholder": "What is this kanal about?",
+    "welcomeTitle": "Welcome to ~{{name}}",
+    "welcomeDesc": "This is the start of the ~{{name}} kanal.",
+    "selectChannel": "Select a kanal to start chatting"
   },
   "messages": {
-    "placeholder": "Message #{{channel}}",
+    "placeholder": "Message ~{{channel}}",
     "edit": "Edit Message",
     "delete": "Delete Message",
     "reply": "Reply",
@@ -134,7 +141,7 @@
   },
   "permissions": {
     "admin": "Administrator",
-    "manageChannels": "Manage Channels",
+    "manageChannels": "Manage Kanals",
     "manageRoles": "Manage Roles",
     "manageMembers": "Manage Members",
     "createInvites": "Create Invites",
@@ -239,8 +246,8 @@
     "mentions": "Mentions Only",
     "nothing": "Nothing",
     "default": "Default",
-    "channelOverrides": "Per-Channel Overrides",
-    "noChannels": "No text channels"
+    "channelOverrides": "Per-Kanal Overrides",
+    "noChannels": "No text kanals"
   },
   "thread": {
     "title": "Thread",
@@ -285,11 +292,11 @@
     "deafen": "Deafen",
     "undeafen": "Undeafen",
     "speaking": "Speaking",
-    "noOneHere": "No one is in this voice channel",
+    "noOneHere": "No one is in this voice kanal",
     "joinPrompt": "Join to start talking",
-    "voiceChannel": "Voice Channel",
+    "voiceChannel": "Voice Kanal",
     "participants": "{{count}} participants",
-    "micPermission": "Microphone access is required for voice channels",
+    "micPermission": "Microphone access is required for voice kanals",
     "connectionFailed": "Voice connection failed"
   },
   "upload": {
@@ -311,7 +318,7 @@
     "search": "Search",
     "toggleMute": "Toggle Mute",
     "toggleDeafen": "Toggle Deafen",
-    "navigateChannels": "Navigate Channels",
+    "navigateChannels": "Navigate Kanals",
     "closePanel": "Close Panel",
     "showShortcuts": "Show Shortcuts"
   },
@@ -323,5 +330,62 @@
   "notificationService": {
     "enable": "Enable Notifications",
     "disable": "Disable Notifications"
+  },
+  "landing": {
+    "hero": {
+      "headline": "Va fan dillar du om?",
+      "pronunciation": "(vah fahn dill-ar doo ohm)",
+      "explanation": "That's Gothenburg for \"what are you even talking about?\" — and honestly, we don't know. We can't. Dilla is self-hosted, end-to-end encrypted chat — your server, your kanals, your messages. Nobody's reading them. Not even us.",
+      "getStarted": "Get Started",
+      "viewGithub": "View on GitHub"
+    },
+    "features": {
+      "encryption": {
+        "title": "Zero-knowledge encryption",
+        "desc": "Messages are encrypted on your device with the Signal Protocol. The server never sees plaintext — not even file contents."
+      },
+      "selfHosted": {
+        "title": "Your server, your rules",
+        "desc": "A single Go binary with SQLite. Deploy in minutes, own your data forever. No external dependencies."
+      },
+      "federation": {
+        "title": "Federated by design",
+        "desc": "Connect multiple servers into one team. If one node goes down, the rest keep running. SWIM gossip protocol handles discovery."
+      }
+    },
+    "voice": {
+      "title": "Voice, video & screen sharing",
+      "desc": "WebRTC voice channels with screen sharing, webcam, and real-time speaking detection. Cloudflare TURN for reliable NAT traversal."
+    },
+    "auth": {
+      "title": "No passwords. Ever.",
+      "desc": "Sign in with Touch ID, Windows Hello, or a security key. Ed25519 keypairs replace passwords. Your identity is a cryptographic key."
+    },
+    "channels": {
+      "title": "Channels, threads & DMs",
+      "desc": "Organized team communication with kanals, threaded replies, emoji reactions, typing indicators, and full message search."
+    },
+    "tech": {
+      "signal": "X3DH + Double Ratchet with forward secrecy",
+      "binary": "~15MB Go executable, SQLite, zero dependencies",
+      "desktop": "Tauri v2, ~5MB installer, Rust crypto backend",
+      "permissions": "12-bit granular permissions system",
+      "otel": "Built-in OpenTelemetry with Honeycomb support",
+      "license": "Free and open source, forever"
+    },
+    "cta": {
+      "headline": "Ready to take back control?",
+      "subline": "Deploy your own Dilla server in under 5 minutes.",
+      "createIdentity": "Create Identity",
+      "readDocs": "Read the Docs"
+    },
+    "footer": {
+      "madeIn": "Made in Gothenburg"
+    }
+  },
+  "brand": {
+    "featureE2E": "End-to-End Encrypted",
+    "featureSelfHosted": "Self-Hosted",
+    "featureFederated": "Federated"
   }
 }

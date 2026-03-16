@@ -3,7 +3,6 @@ import { useAuthStore } from '../../stores/authStore';
 import {
   registerPasskey,
   prfOutputToBase64,
-  encodeRecoveryKey,
 } from '../../services/webauthn';
 import {
   getCredentialInfo,
@@ -47,7 +46,7 @@ export default function PasskeyManager() {
     setLoading(true);
 
     try {
-      const username = localStorage.getItem('slimcord_username') ?? 'user';
+      const username = localStorage.getItem('dilla_username') ?? 'user';
       const userId = new TextEncoder().encode(username.padEnd(32, '\0').slice(0, 32));
 
       const result = await registerPasskey(username, userId, credInfo.prfSalt);

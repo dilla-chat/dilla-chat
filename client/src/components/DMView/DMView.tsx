@@ -7,6 +7,7 @@ import { useMessageStore, type Message } from '../../stores/messageStore';
 import { ws } from '../../services/websocket';
 import { api } from '../../services/api';
 import { cryptoService } from '../../services/crypto';
+import { cacheMessage, getCachedMessage, deleteCachedMessage } from '../../services/messageCache';
 import MessageList from '../MessageList/MessageList';
 import MessageInput from '../MessageInput/MessageInput';
 import './DMView.css';
@@ -82,10 +83,16 @@ export default function DMView({ dm, currentUserId, showMembers = false }: Props
   );
 
   const tryDecryptDM = useCallback(
-    async (content: string, senderId: string): Promise<string> => {
+    async (messageId: string, content: string, senderId: string): Promise<string> => {
+      // Check local cache first
+      const cached = await getCachedMessage(messageId);
+      if (cached !== null) return cached;
+
       if (!derivedKey || !activeTeamId) return content;
       try {
-        return await cryptoService.decryptDM(activeTeamId, senderId, content, dm.id, derivedKey);
+        const plaintext = await cryptoService.decryptDM(activeTeamId, senderId, content, dm.id, derivedKey);
+        await cacheMessage(messageId, dm.id, plaintext);
+        return plaintext;
       } catch {
         return content;
       }
@@ -110,7 +117,7 @@ export default function DMView({ dm, currentUserId, showMembers = false }: Props
         }
         const converted = await Promise.all(
           msgs.map(async (msg) => {
-            const content = await tryDecryptDM(msg.content, msg.author_id);
+            const content = await tryDecryptDM(msg.id, msg.content, msg.author_id);
             return { ...serverToMessage(msg, dm.id), content, encryptedContent: msg.content };
           }),
         );
@@ -125,19 +132,20 @@ export default function DMView({ dm, currentUserId, showMembers = false }: Props
     };
 
     loadHistory();
-  }, [activeTeamId, dm.id, prependMessages, setLoadingHistory, setHasMore]);
+  }, [activeTeamId, dm.id, tryDecryptDM, prependMessages, setLoadingHistory, setHasMore]);
 
   // Subscribe to DM WebSocket events
   useEffect(() => {
     const unsubNew = ws.on('dm:message:new', async (payload: ServerMessage & { dm_id: string }) => {
       if (payload.dm_id !== dm.id) return;
-      const content = await tryDecryptDM(payload.content, payload.author_id);
+      const content = await tryDecryptDM(payload.id, payload.content, payload.author_id);
       addMessage(dm.id, { ...serverToMessage(payload, dm.id), content, encryptedContent: payload.content });
     });
 
     const unsubEdit = ws.on('dm:message:updated', async (payload: { dm_id: string; message_id: string; content: string; author_id: string; username: string }) => {
       if (payload.dm_id !== dm.id) return;
-      const content = await tryDecryptDM(payload.content, payload.author_id);
+      await deleteCachedMessage(payload.message_id);
+      const content = await tryDecryptDM(payload.message_id, payload.content, payload.author_id);
       updateMessage(dm.id, payload.message_id, content);
     });
 
@@ -161,7 +169,7 @@ export default function DMView({ dm, currentUserId, showMembers = false }: Props
       unsubDelete();
       unsubTyping();
     };
-  }, [dm.id, addMessage, updateMessage, deleteMessage, setTyping]);
+  }, [dm.id, tryDecryptDM, addMessage, updateMessage, deleteMessage, setTyping]);
 
   const handleLoadMore = useCallback(async () => {
     if (!activeTeamId) return;
@@ -182,7 +190,12 @@ export default function DMView({ dm, currentUserId, showMembers = false }: Props
       } else {
         msgs = await api.getDMMessages(activeTeamId, dm.id, oldestId, DM_PAGE_SIZE) as ServerMessage[];
       }
-      const converted = msgs.map((msg) => serverToMessage(msg, dm.id));
+      const converted = await Promise.all(
+        msgs.map(async (msg) => {
+          const content = await tryDecryptDM(msg.id, msg.content, msg.author_id);
+          return { ...serverToMessage(msg, dm.id), content, encryptedContent: msg.content };
+        }),
+      );
       prependMessages(dm.id, converted);
       setHasMore(dm.id, converted.length >= DM_PAGE_SIZE);
     } catch {
@@ -190,7 +203,7 @@ export default function DMView({ dm, currentUserId, showMembers = false }: Props
     } finally {
       setLoadingHistory(dm.id, false);
     }
-  }, [activeTeamId, dm.id, loadingHistory, hasMore, prependMessages, setLoadingHistory, setHasMore]);
+  }, [activeTeamId, dm.id, tryDecryptDM, loadingHistory, hasMore, prependMessages, setLoadingHistory, setHasMore]);
 
   const handleSend = useCallback(
     async (content: string) => {

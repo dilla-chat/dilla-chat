@@ -10,5 +10,5 @@
 
 .resize-handle:hover,
 .resize-handle.dragging {
-  background: var(--brand-500, #5865f2);
+  background: var(--brand-500);
 }

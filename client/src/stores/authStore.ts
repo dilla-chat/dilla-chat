@@ -35,25 +35,28 @@ interface AuthState {
   removeTeam: (teamId: string) => void;
   /** Get or create a server entry by baseUrl */
   getOrCreateServer: (baseUrl: string, username?: string) => string;
+  /** Update the user object within a team entry */
+  updateTeamUser: (teamId: string, userUpdates: Record<string, unknown>) => void;
   /** Update server token (propagates to all teams on that server) */
   setServerToken: (serverId: string, token: string) => void;
   logout: () => void;
 }
 
-const TEAMS_STORAGE_KEY = 'slimcord_teams';
-const SERVERS_STORAGE_KEY = 'slimcord_servers';
+const TEAMS_STORAGE_KEY = 'dilla_teams';
+const SERVERS_STORAGE_KEY = 'dilla_servers';
+const DERIVED_KEY_STORAGE_KEY = 'dilla_derived_key';
 
 function persistTeams(teams: Map<string, TeamEntry>) {
   try {
     const obj: Record<string, TeamEntry> = {};
     teams.forEach((v, k) => { obj[k] = v; });
-    localStorage.setItem(TEAMS_STORAGE_KEY, JSON.stringify(obj));
+    sessionStorage.setItem(TEAMS_STORAGE_KEY, JSON.stringify(obj));
   } catch { /* ignore */ }
 }
 
 function loadPersistedTeams(): Map<string, TeamEntry> {
   try {
-    const raw = localStorage.getItem(TEAMS_STORAGE_KEY);
+    const raw = sessionStorage.getItem(TEAMS_STORAGE_KEY);
     if (!raw) return new Map();
     const obj = JSON.parse(raw) as Record<string, TeamEntry>;
     return new Map(Object.entries(obj));
@@ -66,13 +69,13 @@ function persistServers(servers: Map<string, ServerEntry>) {
   try {
     const obj: Record<string, ServerEntry> = {};
     servers.forEach((v, k) => { obj[k] = v; });
-    localStorage.setItem(SERVERS_STORAGE_KEY, JSON.stringify(obj));
+    sessionStorage.setItem(SERVERS_STORAGE_KEY, JSON.stringify(obj));
   } catch { /* ignore */ }
 }
 
 function loadPersistedServers(): Map<string, ServerEntry> {
   try {
-    const raw = localStorage.getItem(SERVERS_STORAGE_KEY);
+    const raw = sessionStorage.getItem(SERVERS_STORAGE_KEY);
     if (!raw) return new Map();
     const obj = JSON.parse(raw) as Record<string, ServerEntry>;
     return new Map(Object.entries(obj));
@@ -86,20 +89,34 @@ function serverIdFromUrl(baseUrl: string): string {
   return baseUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
 }
 
+function loadPersistedDerivedKey(): string | null {
+  try {
+    return sessionStorage.getItem(DERIVED_KEY_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+const restoredDerivedKey = loadPersistedDerivedKey();
+
 export const useAuthStore = create<AuthState>((set, get) => ({
-  isAuthenticated: false,
-  passphrase: null,
-  derivedKey: null,
+  isAuthenticated: restoredDerivedKey !== null,
+  passphrase: restoredDerivedKey,
+  derivedKey: restoredDerivedKey,
   publicKey: null,
   credentialIds: [],
   teams: loadPersistedTeams(),
   servers: loadPersistedServers(),
 
-  setPassphrase: (passphrase: string) =>
-    set({ passphrase, derivedKey: passphrase, isAuthenticated: true }),
+  setPassphrase: (passphrase: string) => {
+    try { sessionStorage.setItem(DERIVED_KEY_STORAGE_KEY, passphrase); } catch { /* ignore */ }
+    set({ passphrase, derivedKey: passphrase, isAuthenticated: true });
+  },
 
-  setDerivedKey: (key: string) =>
-    set({ derivedKey: key, passphrase: key, isAuthenticated: true }),
+  setDerivedKey: (key: string) => {
+    try { sessionStorage.setItem(DERIVED_KEY_STORAGE_KEY, key); } catch { /* ignore */ }
+    set({ derivedKey: key, passphrase: key, isAuthenticated: true });
+  },
 
   setPublicKey: (key: string) => set({ publicKey: key }),
 
@@ -179,6 +196,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     return serverId;
   },
 
+  updateTeamUser: (teamId: string, userUpdates: Record<string, unknown>) =>
+    set((state) => {
+      const teams = new Map(state.teams);
+      const entry = teams.get(teamId);
+      if (!entry) return {};
+      teams.set(teamId, { ...entry, user: { ...(entry.user as Record<string, unknown>), ...userUpdates } });
+      persistTeams(teams);
+      return { teams };
+    }),
+
   setServerToken: (serverId: string, token: string) =>
     set((state) => {
       const servers = new Map(state.servers);
@@ -202,8 +229,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }),
 
   logout: () => {
-    localStorage.removeItem(TEAMS_STORAGE_KEY);
-    localStorage.removeItem(SERVERS_STORAGE_KEY);
+    sessionStorage.removeItem(TEAMS_STORAGE_KEY);
+    sessionStorage.removeItem(SERVERS_STORAGE_KEY);
+    sessionStorage.removeItem(DERIVED_KEY_STORAGE_KEY);
     set({
       isAuthenticated: false,
       passphrase: null,

@@ -56,9 +56,9 @@ fn kdf_root(root_key: &[u8], dh_output: &[u8]) -> (Vec<u8>, Vec<u8>) {
     let hk = Hkdf::<Sha256>::new(Some(root_key), dh_output);
     let mut new_root = [0u8; 32];
     let mut chain_key = [0u8; 32];
-    hk.expand(b"SlimcordRootKey", &mut new_root)
+    hk.expand(b"DillaRootKey", &mut new_root)
         .expect("HKDF root expand fail");
-    hk.expand(b"SlimcordChainKey", &mut chain_key)
+    hk.expand(b"DillaChainKey", &mut chain_key)
         .expect("HKDF chain expand fail");
     (new_root.to_vec(), chain_key.to_vec())
 }
@@ -234,7 +234,7 @@ pub fn x3dh_initiate(
         None
     };
 
-    let shared_secret = hkdf_derive(&ikm, b"SlimcordX3DH", 32);
+    let shared_secret = hkdf_derive(&ikm, b"DillaX3DH", 32);
     Ok((shared_secret, ephemeral_public.as_bytes().to_vec(), otpk_index))
 }
 
@@ -272,7 +272,7 @@ pub fn x3dh_respond(
         ikm.extend_from_slice(dh4.as_bytes());
     }
 
-    let shared_secret = hkdf_derive(&ikm, b"SlimcordX3DH", 32);
+    let shared_secret = hkdf_derive(&ikm, b"DillaX3DH", 32);
     Ok(shared_secret)
 }
 
@@ -665,7 +665,7 @@ pub fn generate_safety_number(
         use sha2::Digest;
         let mut result = Vec::new();
         let mut data = Vec::new();
-        data.extend_from_slice(b"SlimcordFingerprint");
+        data.extend_from_slice(b"DillaFingerprint");
         data.extend_from_slice(identity_key);
         data.extend_from_slice(stable_id.as_bytes());
         // Iterate hash 5200 times as Signal does
@@ -859,7 +859,7 @@ impl CryptoManager {
 
 /// Simple passphrase-to-key for session file encryption (uses HKDF, not Argon2, for speed)
 fn passphrase_to_key(passphrase: &str) -> Result<[u8; 32], String> {
-    let hk = Hkdf::<Sha256>::new(Some(b"SlimcordSessions"), passphrase.as_bytes());
+    let hk = Hkdf::<Sha256>::new(Some(b"DillaSessions"), passphrase.as_bytes());
     let mut key = [0u8; 32];
     hk.expand(b"session-encryption", &mut key)
         .map_err(|e| format!("HKDF error: {e}"))?;

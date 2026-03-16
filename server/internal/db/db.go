@@ -21,7 +21,7 @@ type DB struct {
 }
 
 func Open(dataDir, passphrase string) (*DB, error) {
-	dbPath := filepath.Join(dataDir, "slimcord.db")
+	dbPath := filepath.Join(dataDir, "dilla.db")
 
 	dsn := fmt.Sprintf("file:%s?_pragma_key=%s&_journal_mode=WAL", dbPath, passphrase)
 	if passphrase == "" {

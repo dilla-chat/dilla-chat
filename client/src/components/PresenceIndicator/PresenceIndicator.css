@@ -33,3 +33,16 @@
 .presence-indicator.border-floating {
   border-color: var(--bg-floating);
 }
+
+.presence-indicator[data-status="online"] {
+  background-color: var(--status-online);
+}
+.presence-indicator[data-status="idle"] {
+  background-color: var(--status-idle);
+}
+.presence-indicator[data-status="dnd"] {
+  background-color: var(--status-dnd);
+}
+.presence-indicator[data-status="offline"] {
+  background-color: var(--status-offline);
+}

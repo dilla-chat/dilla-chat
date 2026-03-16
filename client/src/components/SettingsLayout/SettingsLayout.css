@@ -11,7 +11,9 @@
   width: 232px;
   display: flex;
   justify-content: flex-end;
-  background: var(--bg-secondary);
+  background: var(--glass-bg-secondary);
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
   overflow-y: auto;
   flex-shrink: 0;
 }

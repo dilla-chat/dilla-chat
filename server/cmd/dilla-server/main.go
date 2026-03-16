@@ -11,14 +11,15 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/slimcord/slimcord-server/internal/api"
-	"github.com/slimcord/slimcord-server/internal/auth"
-	"github.com/slimcord/slimcord-server/internal/config"
-	"github.com/slimcord/slimcord-server/internal/db"
-	"github.com/slimcord/slimcord-server/internal/federation"
-	"github.com/slimcord/slimcord-server/internal/presence"
-	"github.com/slimcord/slimcord-server/internal/voice"
-	"github.com/slimcord/slimcord-server/internal/ws"
+	"github.com/dilla/dilla-server/internal/api"
+	"github.com/dilla/dilla-server/internal/auth"
+	"github.com/dilla/dilla-server/internal/config"
+	"github.com/dilla/dilla-server/internal/db"
+	"github.com/dilla/dilla-server/internal/federation"
+	"github.com/dilla/dilla-server/internal/observability"
+	"github.com/dilla/dilla-server/internal/presence"
+	"github.com/dilla/dilla-server/internal/voice"
+	"github.com/dilla/dilla-server/internal/ws"
 )
 
 // version is set at build time via -ldflags.
@@ -27,7 +28,7 @@ var version = "dev"
 func main() {
 	cfg := config.Load()
 
-	// Configure structured logging.
+	// Configure structured logging (initial stdout-only handler for startup).
 	var logLevel slog.Level
 	switch strings.ToLower(cfg.LogLevel) {
 	case "debug":
@@ -55,6 +56,35 @@ func main() {
 		slog.Error("invalid configuration", "error", err)
 		os.Exit(1)
 	}
+	cfg.WarnInsecureDefaults()
+
+	// Initialize observability (tracing, metrics, logs).
+	otelProviders, err := observability.Init(context.Background(), observability.Config{
+		Enabled:        cfg.OTelEnabled,
+		Protocol:       cfg.OTelProtocol,
+		Endpoint:       cfg.OTelEndpoint,
+		HTTPEndpoint:   cfg.OTelHTTPEndpoint,
+		Insecure:       cfg.OTelInsecure,
+		ServiceName:    cfg.OTelServiceName,
+		ServiceVersion: version,
+		APIKey:         cfg.OTelAPIKey,
+		APIHeader:      cfg.OTelAPIHeader,
+		LogFormat:      cfg.LogFormat,
+		LogLevel:       logLevel,
+	})
+	if err != nil {
+		slog.Error("failed to initialize observability", "error", err)
+		os.Exit(1)
+	}
+	defer otelProviders.Shutdown(context.Background())
+
+	// Replace slog default with dual handler (stdout + OTel) when enabled.
+	slog.SetDefault(slog.New(observability.NewSlogHandler(otelProviders, observability.Config{
+		LogFormat: cfg.LogFormat,
+		LogLevel:  logLevel,
+	})))
+
+	metrics := observability.NewMetrics()
 
 	// Create data directory if it does not exist.
 	if err := db.EnsureDataDir(cfg.DataDir); err != nil {
@@ -99,6 +129,9 @@ func main() {
 
 	// Set up WebSocket hub.
 	hub := ws.NewHub(database)
+	if cfg.OTelEnabled {
+		hub.Metrics = metrics
+	}
 	go hub.Run()
 
 	// Set up voice subsystem.
@@ -149,7 +182,7 @@ func main() {
 		voiceSFU.SetCFTurnClient(cfTurnClient)
 		slog.Info("Cloudflare TURN enabled for voice relay")
 	} else {
-		slog.Warn("Cloudflare TURN disabled: set SLIMCORD_CF_TURN_KEY_ID and SLIMCORD_CF_TURN_API_TOKEN to enable voice relay")
+		slog.Warn("Cloudflare TURN disabled: set DILLA_CF_TURN_KEY_ID and DILLA_CF_TURN_API_TOKEN to enable voice relay")
 	}
 
 	// Set up presence manager.
@@ -196,6 +229,7 @@ func main() {
 		Peers:         cfg.Peers,
 		TLSCert:       cfg.TLSCert,
 		TLSKey:        cfg.TLSKey,
+		JoinSecret:    cfg.JoinSecret,
 	}
 
 	meshNode, err = federation.NewMeshNode(meshCfg, database, hub)
@@ -270,7 +304,7 @@ func main() {
 	}
 
 	// Set up HTTP router.
-	router := api.NewRouterWithConfig(database, authSvc, hub, api.RouterConfig{
+	rcfg := api.RouterConfig{
 		MaxUploadSize:    cfg.MaxUploadSize,
 		UploadDir:        cfg.UploadDir,
 		PresenceManager:  presenceMgr,
@@ -279,7 +313,23 @@ func main() {
 		RateBurst:        cfg.RateBurst,
 		Domain:           cfg.Domain,
 		TURNClient:       cfTurnClient,
-	}, meshNode)
+		AllowedOrigins:   cfg.AllowedOrigins,
+		TrustedProxies:   cfg.TrustedProxies,
+		TLSEnabled:       cfg.TLSCert != "",
+	}
+	if cfg.OTelEnabled {
+		rcfg.OTelMetrics = metrics
+		rcfg.OTelInsecure = cfg.OTelInsecure
+		// Browser telemetry proxy always forwards via OTLP/HTTP.
+		// Use the dedicated HTTP endpoint if set, otherwise derive from gRPC endpoint.
+		rcfg.OTelEndpoint = cfg.OTelHTTPEndpoint
+		if rcfg.OTelEndpoint == "" {
+			rcfg.OTelEndpoint = cfg.OTelEndpoint
+		}
+		rcfg.OTelAPIKey = cfg.OTelAPIKey
+		rcfg.OTelAPIHeader = cfg.OTelAPIHeader
+	}
+	router := api.NewRouterWithConfig(database, authSvc, hub, rcfg, meshNode)
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	srv := &http.Server{
@@ -310,6 +360,9 @@ func main() {
 
 	<-ctx.Done()
 	slog.Info("shutting down server")
+
+	// Flush OTel before shutting down HTTP server.
+	otelProviders.Shutdown(context.Background())
 
 	// Stop federation mesh before HTTP server.
 	if meshNode != nil {

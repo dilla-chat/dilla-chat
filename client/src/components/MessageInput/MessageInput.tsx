@@ -451,7 +451,7 @@ export default function MessageInput({
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder={customPlaceholder ?? t('messages.placeholder', 'Message #{{channel}}', {
+            placeholder={customPlaceholder ?? t('messages.placeholder', 'Message ~{{channel}}', {
               channel: channelName,
             })}
             rows={1}

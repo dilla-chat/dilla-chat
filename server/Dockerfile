@@ -8,17 +8,17 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=1 go build -ldflags="-s -w" -o slimcord-server ./cmd/slimcord-server/
+RUN CGO_ENABLED=1 go build -ldflags="-s -w" -o dilla-server ./cmd/dilla-server/
 
 # Stage 2: Runtime
 FROM alpine:3.21
 
 RUN apk add --no-cache ca-certificates sqlite-libs
 
-COPY --from=builder /build/slimcord-server /usr/local/bin/slimcord-server
+COPY --from=builder /build/dilla-server /usr/local/bin/dilla-server
 
 EXPOSE 8080 8081
 VOLUME /data
 
-ENTRYPOINT ["slimcord-server"]
+ENTRYPOINT ["dilla-server"]
 CMD ["--data-dir", "/data"]

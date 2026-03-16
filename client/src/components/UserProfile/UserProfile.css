@@ -1,9 +1,12 @@
 .user-profile-popover {
   position: fixed;
-  background: var(--bg-tertiary);
+  background: var(--glass-bg-floating);
+  -webkit-backdrop-filter: blur(var(--glass-blur-heavy));
+  backdrop-filter: blur(var(--glass-blur-heavy));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow-elevated);
   border-radius: 8px;
   width: 300px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   z-index: 1000;
   overflow: hidden;
   color: var(--text-primary);
@@ -117,16 +120,19 @@
 .user-profile-send-btn {
   width: 100%;
   padding: 8px;
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 4px;
-  background: var(--bg-accent);
+  background: var(--gradient-accent);
   color: white;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
   margin-top: 4px;
+  transition: filter 0.15s, box-shadow 0.15s;
+  box-shadow: 0 2px 8px rgba(232, 184, 75, 0.2);
 }
 
 .user-profile-send-btn:hover {
-  opacity: 0.9;
+  filter: brightness(1.1);
+  box-shadow: 0 4px 16px rgba(232, 184, 75, 0.3);
 }

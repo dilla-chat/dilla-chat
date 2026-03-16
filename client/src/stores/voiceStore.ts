@@ -155,7 +155,6 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
     import('../services/sounds').then(({ playLeaveSound }) => playLeaveSound());
 
     // Set state immediately so UI updates, then disconnect in background.
-    const channelId = state.currentChannelId;
     set({
       currentChannelId: null,
       currentTeamId: null,

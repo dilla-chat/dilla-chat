@@ -17,10 +17,10 @@ const STATUS_OPTIONS: Array<{
   descKey: string;
   color: string;
 }> = [
-  { value: 'online', labelKey: 'presence.online', descKey: '', color: '#23a55a' },
-  { value: 'idle', labelKey: 'presence.idle', descKey: '', color: '#f0b232' },
-  { value: 'dnd', labelKey: 'presence.dnd', descKey: '', color: '#f23f43' },
-  { value: 'offline', labelKey: 'presence.invisible', descKey: '', color: '#80848e' },
+  { value: 'online', labelKey: 'presence.online', descKey: '', color: '#4caf82' },
+  { value: 'idle', labelKey: 'presence.idle', descKey: '', color: '#e8b84b' },
+  { value: 'dnd', labelKey: 'presence.dnd', descKey: '', color: '#d05a4a' },
+  { value: 'offline', labelKey: 'presence.invisible', descKey: '', color: '#4d6478' },
 ];
 
 export default function StatusPicker({

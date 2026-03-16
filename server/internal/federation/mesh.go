@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/hashicorp/memberlist"
-	"github.com/slimcord/slimcord-server/internal/db"
-	"github.com/slimcord/slimcord-server/internal/ws"
+	"github.com/dilla/dilla-server/internal/db"
+	"github.com/dilla/dilla-server/internal/ws"
 )
 
 var ErrPeerNotConnected = errors.New("peer not connected")
@@ -33,6 +33,7 @@ type MeshConfig struct {
 	Peers         []string
 	TLSCert       string
 	TLSKey        string
+	JoinSecret    string
 }
 
 // Peer represents a remote node in the mesh.

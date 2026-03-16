@@ -1,0 +1,143 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  # Phase 1: Build the web client
+  build-client:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install dependencies
+        run: cd client && npm ci
+
+      - name: Build client
+        run: cd client && npm run build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-dist
+          path: client/dist/
+
+  # Phase 2: Build server binaries (matrix)
+  build-server:
+    needs: build-client
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            runner: ubuntu-latest
+            cc: gcc
+            archive: tar.gz
+          - goos: linux
+            goarch: arm64
+            runner: ubuntu-latest
+            cc: aarch64-linux-gnu-gcc
+            archive: tar.gz
+          - goos: darwin
+            goarch: amd64
+            runner: macos-13
+            cc: clang
+            archive: tar.gz
+          - goos: darwin
+            goarch: arm64
+            runner: macos-latest
+            cc: clang
+            archive: tar.gz
+          - goos: windows
+            goarch: amd64
+            runner: ubuntu-latest
+            cc: x86_64-w64-mingw32-gcc
+            archive: zip
+
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+
+      - name: Install cross-compiler (linux/arm64)
+        if: matrix.goos == 'linux' && matrix.goarch == 'arm64'
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Install cross-compiler (windows)
+        if: matrix.goos == 'windows'
+        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: client-dist
+          path: server/internal/webapp/dist/
+
+      - name: Determine binary name
+        id: binary
+        run: |
+          NAME="dilla-server-${{ matrix.goos }}-${{ matrix.goarch }}"
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            NAME="${NAME}.exe"
+          fi
+          echo "name=${NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Build server binary
+        working-directory: server
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '1'
+          CC: ${{ matrix.cc }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG_NAME#v}"
+          go build -ldflags "-s -w -X main.version=${VERSION}" -o "${{ steps.binary.outputs.name }}" ./cmd/dilla-server/
+
+      - name: Package (tar.gz)
+        if: matrix.archive == 'tar.gz'
+        working-directory: server
+        run: tar czf "dilla-server-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz" "${{ steps.binary.outputs.name }}"
+
+      - name: Package (zip)
+        if: matrix.archive == 'zip'
+        working-directory: server
+        run: zip "dilla-server-${{ matrix.goos }}-${{ matrix.goarch }}.zip" "${{ steps.binary.outputs.name }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dilla-server-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: server/dilla-server-${{ matrix.goos }}-${{ matrix.goarch }}.${{ matrix.archive }}
+
+  # Phase 3: Create GitHub Release
+  release:
+    needs: build-server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+          pattern: dilla-server-*
+          merge-multiple: true
+
+      - name: Generate SHA256SUMS
+        working-directory: artifacts
+        run: sha256sum dilla-server-* > SHA256SUMS.txt
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true

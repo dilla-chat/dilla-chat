@@ -57,7 +57,7 @@ export default function UserProfile({ member, presence, x, y, onSendMessage }: P
             <div className="user-profile-roles">
               {member.roles.map((role: Role) => (
                 <span key={role.id} className="user-profile-role-badge">
-                  <span className="user-profile-role-dot" style={{ background: role.color || '#99aab5' }} />
+                  <span className="user-profile-role-dot" style={{ background: role.color || '#8fa3b8' }} />
                   {role.name}
                 </span>
               ))}

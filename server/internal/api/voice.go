@@ -3,7 +3,7 @@ package api
 import (
 	"net/http"
 
-	"github.com/slimcord/slimcord-server/internal/voice"
+	"github.com/dilla/dilla-server/internal/voice"
 )
 
 type VoiceHandler struct {

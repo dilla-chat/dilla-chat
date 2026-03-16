@@ -3,7 +3,7 @@ package federation
 import (
 	"fmt"
 
-	"github.com/slimcord/slimcord-server/internal/db"
+	"github.com/dilla/dilla-server/internal/db"
 )
 
 // FederatedIdentity manages user identity resolution across the mesh.

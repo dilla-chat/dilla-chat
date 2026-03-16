@@ -5,6 +5,10 @@ import SettingsLayout, { type NavSection } from '../components/SettingsLayout/Se
 import PasskeyManager from '../components/PasskeyManager/PasskeyManager';
 import { useAuthStore } from '../stores/authStore';
 import { useAudioSettingsStore } from '../stores/audioSettingsStore';
+import { useUserSettingsStore } from '../stores/userSettingsStore';
+import { useTelemetryStore } from '../stores/telemetryStore';
+import { notificationService } from '../services/notifications';
+import { api } from '../services/api';
 import './UserSettings.css';
 
 const isMac = typeof navigator !== 'undefined' && /Mac/.test(navigator.userAgent);
@@ -27,35 +31,42 @@ export default function UserSettings() {
     echoCancellation, noiseSuppression, autoGainControl,
     setEchoCancellation, setNoiseSuppression, setAutoGainControl,
   } = useAudioSettingsStore();
+  const {
+    selectedInputDevice, selectedOutputDevice, inputThreshold,
+    desktopNotifications, soundNotifications, theme,
+    setSelectedInputDevice, setSelectedOutputDevice, setInputThreshold,
+    setDesktopNotifications, setSoundNotifications, setTheme,
+  } = useUserSettingsStore();
+  const { enabled: telemetryEnabled, setEnabled: setTelemetryEnabled } = useTelemetryStore();
   const [activeId, setActiveId] = useState('my-account');
 
   // User info from first team entry
   const userInfo = useMemo(() => {
-    const first = teams.values().next().value as { user?: { username?: string; display_name?: string } } | undefined;
+    const first = teams.values().next().value as { user?: { username?: string; display_name?: string }; baseUrl?: string; token?: string | null } | undefined;
     return {
       username: (first?.user as { username?: string })?.username ?? 'user',
       displayName: (first?.user as { display_name?: string })?.display_name ?? '',
+      baseUrl: first?.baseUrl ?? '',
+      token: (first as { token?: string | null })?.token ?? null,
     };
   }, [teams]);
 
   const [editingName, setEditingName] = useState(false);
   const [displayName, setDisplayName] = useState(userInfo.displayName);
-
-  // Notification toggles (client-side only)
-  const [desktopNotifs, setDesktopNotifs] = useState(true);
-  const [soundNotifs, setSoundNotifs] = useState(true);
+  const [savingName, setSavingName] = useState(false);
 
   // Audio devices
   const [inputDevices, setInputDevices] = useState<MediaDeviceInfo[]>([]);
   const [outputDevices, setOutputDevices] = useState<MediaDeviceInfo[]>([]);
-  const [selectedInput, setSelectedInput] = useState('default');
-  const [selectedOutput, setSelectedOutput] = useState('default');
-  const [inputThreshold, setInputThreshold] = useState(0.15);
+
+  // Sync notification service with store
+  useEffect(() => {
+    notificationService.setEnabled(desktopNotifications);
+  }, [desktopNotifications]);
 
   useEffect(() => {
     async function enumerateDevices() {
       try {
-        // Request permission first so labels are populated
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         stream.getTracks().forEach((t) => t.stop());
 
@@ -69,6 +80,26 @@ export default function UserSettings() {
     if (activeId === 'voice-video') enumerateDevices();
   }, [activeId]);
 
+  const saveDisplayName = async () => {
+    if (!displayName || savingName) return;
+    setSavingName(true);
+    try {
+      if (userInfo.baseUrl && userInfo.token) {
+        const updatedUser = await api.updateMe(userInfo.baseUrl, userInfo.token, { display_name: displayName });
+        const firstTeamId = teams.keys().next().value;
+        if (firstTeamId && updatedUser) {
+          useAuthStore.getState().updateTeamUser(firstTeamId as string, updatedUser as Record<string, unknown>);
+        }
+      }
+    } catch {
+      // Revert on failure
+      setDisplayName(userInfo.displayName);
+    } finally {
+      setSavingName(false);
+      setEditingName(false);
+    }
+  };
+
   const sections: NavSection[] = useMemo(
     () => [
       {
@@ -79,8 +110,10 @@ export default function UserSettings() {
         items: [
           { id: 'voice-video', label: t('userSettings.voiceVideo', 'Voice & Video') },
           { id: 'notifications', label: t('userSettings.notifications', 'Notifications') },
+          { id: 'appearance', label: t('userSettings.appearance', 'Appearance') },
           { id: 'keybinds', label: t('userSettings.keybinds', 'Keybinds') },
           { id: 'language', label: t('userSettings.language', 'Language') },
+          { id: 'privacy', label: t('userSettings.privacy', 'Privacy') },
         ],
       },
       {
@@ -130,8 +163,8 @@ export default function UserSettings() {
                     className="user-profile-name-input"
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
-                    onBlur={() => setEditingName(false)}
-                    onKeyDown={(e) => e.key === 'Enter' && setEditingName(false)}
+                    onBlur={() => saveDisplayName()}
+                    onKeyDown={(e) => e.key === 'Enter' && saveDisplayName()}
                     autoFocus
                   />
                 ) : (
@@ -140,8 +173,8 @@ export default function UserSettings() {
               </div>
               <div className="user-profile-username">@{userInfo.username}</div>
             </div>
-            <button className="btn-secondary" onClick={() => setEditingName(!editingName)}>
-              {t('common.edit', 'Edit')}
+            <button className="btn-secondary" onClick={() => setEditingName(!editingName)} disabled={savingName}>
+              {savingName ? t('common.saving', 'Saving...') : t('common.edit', 'Edit')}
             </button>
           </div>
 
@@ -160,7 +193,7 @@ export default function UserSettings() {
 
           <div className="settings-field">
             <label>{t('userSettings.inputDevice', 'Input Device')}</label>
-            <select value={selectedInput} onChange={(e) => setSelectedInput(e.target.value)}>
+            <select value={selectedInputDevice} onChange={(e) => setSelectedInputDevice(e.target.value)}>
               <option value="default">{t('userSettings.defaultDevice', 'Default')}</option>
               {inputDevices.filter((d) => d.deviceId !== 'default').map((d) => (
                 <option key={d.deviceId} value={d.deviceId}>
@@ -170,11 +203,11 @@ export default function UserSettings() {
             </select>
           </div>
 
-          <MicTest deviceId={selectedInput} threshold={inputThreshold} onThresholdChange={setInputThreshold} disabled={autoGainControl} />
+          <MicTest deviceId={selectedInputDevice} threshold={inputThreshold} onThresholdChange={setInputThreshold} disabled={autoGainControl} />
 
           <div className="settings-field">
             <label>{t('userSettings.outputDevice', 'Output Device')}</label>
-            <select value={selectedOutput} onChange={(e) => setSelectedOutput(e.target.value)}>
+            <select value={selectedOutputDevice} onChange={(e) => setSelectedOutputDevice(e.target.value)}>
               <option value="default">{t('userSettings.defaultDevice', 'Default')}</option>
               {outputDevices.filter((d) => d.deviceId !== 'default').map((d) => (
                 <option key={d.deviceId} value={d.deviceId}>
@@ -226,8 +259,8 @@ export default function UserSettings() {
               </div>
             </div>
             <button
-              className={`toggle-switch ${desktopNotifs ? 'active' : ''}`}
-              onClick={() => setDesktopNotifs(!desktopNotifs)}
+              className={`toggle-switch ${desktopNotifications ? 'active' : ''}`}
+              onClick={() => setDesktopNotifications(!desktopNotifications)}
             />
           </div>
 
@@ -241,9 +274,40 @@ export default function UserSettings() {
               </div>
             </div>
             <button
-              className={`toggle-switch ${soundNotifs ? 'active' : ''}`}
-              onClick={() => setSoundNotifs(!soundNotifs)}
+              className={`toggle-switch ${soundNotifications ? 'active' : ''}`}
+              onClick={() => setSoundNotifications(!soundNotifications)}
             />
+          </div>
+        </div>
+      )}
+
+      {activeId === 'appearance' && (
+        <div className="settings-section">
+          <h2>{t('userSettings.appearance', 'Appearance')}</h2>
+
+          <div className="settings-toggle">
+            <div className="settings-toggle-info">
+              <div className="settings-toggle-label">
+                {t('userSettings.theme', 'Theme')}
+              </div>
+              <div className="settings-toggle-description">
+                {t('userSettings.themeDesc', 'Choose between dark and light mode')}
+              </div>
+            </div>
+            <div className="theme-toggle-buttons">
+              <button
+                className={`btn-secondary ${theme === 'dark' ? 'active' : ''}`}
+                onClick={() => setTheme('dark')}
+              >
+                {t('userSettings.dark', 'Dark')}
+              </button>
+              <button
+                className={`btn-secondary ${theme === 'light' ? 'active' : ''}`}
+                onClick={() => setTheme('light')}
+              >
+                {t('userSettings.light', 'Light')}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -280,6 +344,31 @@ export default function UserSettings() {
                 </option>
               ))}
             </select>
+          </div>
+        </div>
+      )}
+
+      {activeId === 'privacy' && (
+        <div className="settings-section">
+          <h2>{t('userSettings.privacy', 'Privacy')}</h2>
+
+          <div className="settings-toggle">
+            <div className="settings-toggle-info">
+              <div className="settings-toggle-label">
+                {t('userSettings.telemetry', 'Anonymous Telemetry')}
+              </div>
+              <div className="settings-toggle-description">
+                {t(
+                  'userSettings.telemetryDesc',
+                  'Help improve Dilla by sharing anonymous usage data (page load times, error counts). No message content, usernames, or IP addresses are ever collected.',
+                )}
+              </div>
+            </div>
+            <button
+              className={`toggle-switch ${telemetryEnabled ? 'active' : ''}`}
+              onClick={() => setTelemetryEnabled(!telemetryEnabled)}
+              aria-label={t('userSettings.telemetry', 'Anonymous Telemetry')}
+            />
           </div>
         </div>
       )}
@@ -365,7 +454,6 @@ function MicTest({ deviceId, threshold, onThresholdChange, disabled }: { deviceI
     };
   }, []);
 
-  const thresholdPos = threshold * 100;
 
   return (
     <div className="mic-test">

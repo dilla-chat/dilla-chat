@@ -40,7 +40,8 @@
   max-width: 360px;
 }
 
-.form input {
+.form input,
+.form textarea {
   padding: 0.6em 1em;
   border-radius: 8px;
   border: 1px solid var(--border-color);
@@ -49,6 +50,8 @@
   font-size: 1em;
   width: 100%;
   box-sizing: border-box;
+  font-family: inherit;
+  resize: vertical;
 }
 
 @keyframes spin {
@@ -57,19 +60,26 @@
 }
 
 .btn-primary {
-  background: var(--accent, #E84FAB);
+  background: var(--gradient-accent);
   color: #fff;
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   padding: 0.7em 1.5em;
   border-radius: 8px;
   font-size: 1em;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s, opacity 0.2s;
+  transition: filter 0.2s, opacity 0.2s, box-shadow 0.2s;
+  box-shadow: 0 2px 8px rgba(232, 184, 75, 0.2);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent, #E84FAB) 85%, white);
+  filter: brightness(1.1);
+  box-shadow: 0 4px 16px rgba(232, 184, 75, 0.3);
+}
+
+.btn-primary:active:not(:disabled) {
+  filter: brightness(0.95);
+  box-shadow: 0 1px 4px rgba(232, 184, 75, 0.15);
 }
 
 .btn-primary:disabled {
@@ -78,32 +88,36 @@
 }
 
 .btn-secondary {
-  background: transparent;
-  color: var(--text-secondary, #aaa);
-  border: 1px solid var(--divider, #333);
+  background: var(--glass-bg-primary);
+  color: var(--text-secondary);
+  border: 1px solid var(--glass-border);
   padding: 0.6em 1.5em;
   border-radius: 8px;
   font-size: 0.95em;
   cursor: pointer;
-  transition: background 0.2s, border-color 0.2s;
+  -webkit-backdrop-filter: blur(var(--glass-blur-light));
+  backdrop-filter: blur(var(--glass-blur-light));
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
 }
 
 .btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: var(--text-secondary, #aaa);
+  background: var(--glass-bg-floating);
+  border-color: var(--glass-border);
+  color: var(--text-primary);
 }
 
 .btn-link {
   background: transparent;
   border: none;
-  color: var(--text-muted, #666);
+  color: var(--text-muted);
   font-size: 0.9em;
   cursor: pointer;
   padding: 0.4em;
+  transition: color 0.15s;
 }
 
 .btn-link:hover {
-  color: var(--text-primary, #fff);
+  color: var(--text-primary);
 }
 
 .button-group {
@@ -131,10 +145,10 @@
   transition: filter 300ms;
 }
 .logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
+  filter: drop-shadow(0 0 2em rgba(46,139,154,0.6));
 }
 .logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+  filter: drop-shadow(0 0 2em rgba(232,184,75,0.6));
 }
 
 @keyframes logo-spin {
@@ -158,4 +172,69 @@
 
 .read-the-docs {
   color: var(--text-muted);
+}
+
+/* Login identity card */
+.login-identity-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--divider);
+  border-radius: 12px;
+  padding: 16px 20px;
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.login-identity-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.login-identity-info {
+  min-width: 0;
+}
+
+.login-identity-name {
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+
+.login-identity-fingerprint {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  letter-spacing: 0.03em;
+}
+
+.login-identity-servers {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.btn-danger {
+  background: var(--danger);
+  color: #fff;
+  border: none;
+  padding: 0.5em 1.2em;
+  border-radius: 8px;
+  font-size: 0.9em;
+  cursor: pointer;
+  transition: filter 0.15s;
+}
+
+.btn-danger:hover {
+  filter: brightness(1.1);
 }

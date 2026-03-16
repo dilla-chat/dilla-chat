@@ -1,6 +1,8 @@
-# Slimcord
+# Dilla
 
-A lightweight, federated, end-to-end encrypted Discord alternative. One binary per server, zero external dependencies.
+> Self-hosted, end-to-end encrypted chat — built in Gothenburg.
+
+Dilla is a privacy-first chat platform you run on your own infrastructure. Your messages. Your server. Your kanals.
 
 ![License](https://img.shields.io/badge/license-AGPLv3-blue)
 ![Go](https://img.shields.io/badge/Go-1.24-00ADD8)
@@ -10,7 +12,7 @@ A lightweight, federated, end-to-end encrypted Discord alternative. One binary p
 
 ## Table of Contents
 
-- [What is Slimcord?](#what-is-slimcord)
+- [What is Dilla?](#what-is-dilla)
 - [Features](#features)
 - [Architecture](#architecture)
 - [Quick Start](#quick-start)
@@ -32,9 +34,9 @@ A lightweight, federated, end-to-end encrypted Discord alternative. One binary p
 
 ---
 
-## What is Slimcord?
+## What is Dilla?
 
-Slimcord is an open-source chat platform that works like Discord but with two key differences:
+Dilla is an open-source chat platform that works like Discord but with two key differences:
 
 1. **You own the server.** A single Go binary runs your entire team — no cloud service needed.
 2. **True E2E encryption.** Messages are encrypted on your device before they leave. The server never sees plaintext.
@@ -47,10 +49,10 @@ Friends can each run a server and **federate** them together into a mesh for hig
 
 | Category | What you get |
 |----------|-------------|
-| 💬 **Messaging** | Text channels, markdown rendering, message editing/deletion |
+| 💬 **Messaging** | Text kanals, markdown rendering, message editing/deletion |
 | 🧵 **Threads** | Reply threads branching from any message |
 | 📱 **Direct Messages** | 1-on-1 and group DMs |
-| 🔊 **Voice Channels** | WebRTC voice chat with mute, deafen, speaking detection |
+| 🔊 **Voice kanals** | WebRTC voice chat with mute, deafen, speaking detection |
 | 😀 **Reactions** | Emoji reactions with a built-in picker |
 | 📁 **File Sharing** | Drag & drop uploads, inline image/video/audio previews |
 | 🔒 **E2E Encryption** | Signal Protocol (X3DH + Double Ratchet) — all messages |
@@ -110,12 +112,12 @@ cd server
 make build
 ```
 
-This produces `./bin/slimcord-server`.
+This produces `./bin/dilla-server`.
 
 ### 2. Start the Server
 
 ```bash
-./bin/slimcord-server --team "My Team"
+./bin/dilla-server --team "My Team"
 ```
 
 On first run, you'll see output like this:
@@ -129,7 +131,7 @@ INFO  Server started on :8080
 
 ### 3. Create Your Admin Account
 
-Open the **bootstrap link** from the terminal in your browser (or paste it into the Slimcord client). This one-time link lets you:
+Open the **bootstrap link** from the terminal in your browser (or paste it into the Dilla client). This one-time link lets you:
 
 1. Create your identity (Ed25519 keypair)
 2. Set your username and passphrase
@@ -176,7 +178,7 @@ Federation lets multiple server instances form a **mesh** that acts as one team.
 On another machine (or different port):
 
 ```bash
-./bin/slimcord-server \
+./bin/dilla-server \
   --team "My Team" \
   --port 8081 \
   --peers localhost:8080
@@ -191,7 +193,7 @@ The nodes will discover each other via [Hashicorp Memberlist](https://github.com
 3. Copy the command and run it on the new machine:
 
 ```bash
-slimcord-server --join-token <token>
+dilla-server --join-token <token>
 ```
 
 ### What Gets Synced
@@ -213,33 +215,33 @@ slimcord-server --join-token <token>
 ```bash
 cd server
 make docker
-# or: docker build -t slimcord-server .
+# or: docker build -t dilla-server .
 ```
 
 ### Run
 
 ```bash
 docker run -d \
-  --name slimcord \
+  --name dilla \
   -p 8080:8080 \
   -p 8081:8081 \
-  -v slimcord-data:/data \
-  -e SLIMCORD_TEAM="My Team" \
-  slimcord-server
+  -v dilla-data:/data \
+  -e DILLA_TEAM="My Team" \
+  dilla-server
 ```
 
 ### With TLS
 
 ```bash
 docker run -d \
-  --name slimcord \
+  --name dilla \
   -p 443:8080 \
-  -v slimcord-data:/data \
+  -v dilla-data:/data \
   -v /path/to/certs:/certs:ro \
-  -e SLIMCORD_TEAM="My Team" \
-  -e SLIMCORD_TLS_CERT=/certs/cert.pem \
-  -e SLIMCORD_TLS_KEY=/certs/key.pem \
-  slimcord-server
+  -e DILLA_TEAM="My Team" \
+  -e DILLA_TLS_CERT=/certs/cert.pem \
+  -e DILLA_TLS_KEY=/certs/key.pem \
+  dilla-server
 ```
 
 ### Docker Compose Example
@@ -247,44 +249,44 @@ docker run -d \
 ```yaml
 version: '3.8'
 services:
-  slimcord:
+  dilla:
     build: ./server
     ports:
       - "8080:8080"
       - "8081:8081"
     volumes:
-      - slimcord-data:/data
+      - dilla-data:/data
     environment:
-      SLIMCORD_TEAM: "My Team"
-      SLIMCORD_DB_PASSPHRASE: "change-me-to-something-strong"
-      SLIMCORD_LOG_LEVEL: "info"
+      DILLA_TEAM: "My Team"
+      DILLA_DB_PASSPHRASE: "change-me-to-something-strong"
+      DILLA_LOG_LEVEL: "info"
     restart: unless-stopped
 
 volumes:
-  slimcord-data:
+  dilla-data:
 ```
 
 ---
 
 ## Configuration Reference
 
-Every flag has an equivalent environment variable (prefix `SLIMCORD_`). Env vars are read first; flags override them.
+Every flag has an equivalent environment variable (prefix `DILLA_`). Env vars are read first; flags override them.
 
 ### Core
 
 | Flag | Env Var | Default | Description |
 |------|---------|---------|-------------|
-| `-port` | `SLIMCORD_PORT` | `8080` | HTTP listen port |
-| `-team` | `SLIMCORD_TEAM` | — | Team name (required on first run) |
-| `-data-dir` | `SLIMCORD_DATA_DIR` | `./data` | Where to store the database and uploads |
-| `-db-passphrase` | `SLIMCORD_DB_PASSPHRASE` | — | SQLCipher encryption passphrase for the database |
+| `-port` | `DILLA_PORT` | `8080` | HTTP listen port |
+| `-team` | `DILLA_TEAM` | — | Team name (required on first run) |
+| `-data-dir` | `DILLA_DATA_DIR` | `./data` | Where to store the database and uploads |
+| `-db-passphrase` | `DILLA_DB_PASSPHRASE` | — | SQLCipher encryption passphrase for the database |
 
 ### TLS
 
 | Flag | Env Var | Default | Description |
 |------|---------|---------|-------------|
-| `-tls-cert` | `SLIMCORD_TLS_CERT` | — | Path to TLS certificate file |
-| `-tls-key` | `SLIMCORD_TLS_KEY` | — | Path to TLS private key file |
+| `-tls-cert` | `DILLA_TLS_CERT` | — | Path to TLS certificate file |
+| `-tls-key` | `DILLA_TLS_KEY` | — | Path to TLS private key file |
 
 > If both are set, the server uses HTTPS. Otherwise it uses plain HTTP.
 
@@ -292,29 +294,29 @@ Every flag has an equivalent environment variable (prefix `SLIMCORD_`). Env vars
 
 | Flag | Env Var | Default | Description |
 |------|---------|---------|-------------|
-| `-federation-port` | `SLIMCORD_FEDERATION_PORT` | port + 1 | Memberlist gossip port |
-| `-peers` | `SLIMCORD_PEERS` | — | Comma-separated peer addresses (e.g. `node1:8081,node2:8081`) |
-| `-node-name` | `SLIMCORD_NODE_NAME` | auto | Unique name for this node in the mesh |
-| `-join-secret` | `SLIMCORD_JOIN_SECRET` | — | HMAC secret for signing join tokens |
-| `-fed-bind-addr` | `SLIMCORD_FED_BIND_ADDR` | `0.0.0.0` | Federation bind address |
-| `-fed-advertise-addr` | `SLIMCORD_FED_ADVERTISE_ADDR` | — | Address advertised to peers (for NAT) |
-| `-fed-advertise-port` | `SLIMCORD_FED_ADVERTISE_PORT` | `0` | Port advertised to peers |
+| `-federation-port` | `DILLA_FEDERATION_PORT` | port + 1 | Memberlist gossip port |
+| `-peers` | `DILLA_PEERS` | — | Comma-separated peer addresses (e.g. `node1:8081,node2:8081`) |
+| `-node-name` | `DILLA_NODE_NAME` | auto | Unique name for this node in the mesh |
+| `-join-secret` | `DILLA_JOIN_SECRET` | — | HMAC secret for signing join tokens |
+| `-fed-bind-addr` | `DILLA_FED_BIND_ADDR` | `0.0.0.0` | Federation bind address |
+| `-fed-advertise-addr` | `DILLA_FED_ADVERTISE_ADDR` | — | Address advertised to peers (for NAT) |
+| `-fed-advertise-port` | `DILLA_FED_ADVERTISE_PORT` | `0` | Port advertised to peers |
 
 ### Uploads
 
 | Flag | Env Var | Default | Description |
 |------|---------|---------|-------------|
-| `-max-upload-size` | `SLIMCORD_MAX_UPLOAD_SIZE` | `26214400` (25 MB) | Max file upload size in bytes |
-| `-upload-dir` | `SLIMCORD_UPLOAD_DIR` | `{data-dir}/uploads` | File storage directory |
+| `-max-upload-size` | `DILLA_MAX_UPLOAD_SIZE` | `26214400` (25 MB) | Max file upload size in bytes |
+| `-upload-dir` | `DILLA_UPLOAD_DIR` | `{data-dir}/uploads` | File storage directory |
 
 ### Logging & Rate Limiting
 
 | Flag | Env Var | Default | Description |
 |------|---------|---------|-------------|
-| `-log-level` | `SLIMCORD_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error` |
-| `-log-format` | `SLIMCORD_LOG_FORMAT` | `text` | `text` (human-readable) or `json` (structured) |
-| `-rate-limit` | `SLIMCORD_RATE_LIMIT` | `100` | Max requests/second per IP |
-| `-rate-burst` | `SLIMCORD_RATE_BURST` | `200` | Burst allowance per IP |
+| `-log-level` | `DILLA_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error` |
+| `-log-format` | `DILLA_LOG_FORMAT` | `text` | `text` (human-readable) or `json` (structured) |
+| `-rate-limit` | `DILLA_RATE_LIMIT` | `100` | Max requests/second per IP |
+| `-rate-burst` | `DILLA_RATE_BURST` | `200` | Burst allowance per IP |
 
 ---
 
@@ -335,7 +337,7 @@ Every flag has an equivalent environment variable (prefix `SLIMCORD_`). Env vars
 ```bash
 cd server
 
-make build            # Build for current platform → bin/slimcord-server
+make build            # Build for current platform → bin/dilla-server
 make dev              # Run in dev mode (debug logging)
 make test             # Run all tests
 make cross-compile    # Build for Linux/macOS/Windows (amd64 + arm64)
@@ -363,9 +365,9 @@ npm run tauri build   # Build desktop installer for your platform
 ## Project Structure
 
 ```
-slimcord/
+dilla/
 ├── server/                          # Go server binary
-│   ├── cmd/slimcord-server/         # Entrypoint (main.go)
+│   ├── cmd/dilla-server/         # Entrypoint (main.go)
 │   ├── internal/
 │   │   ├── api/                     # REST handlers + middleware
 │   │   │   ├── router.go           # Route registration
@@ -596,4 +598,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 
 AGPLv3 — See [LICENSE](LICENSE) for the full text.
 
-This means: you can use, modify, and distribute Slimcord freely, but if you run a modified version as a service, you must share your source code.
+This means: you can use, modify, and distribute Dilla freely, but if you run a modified version as a service, you must share your source code.

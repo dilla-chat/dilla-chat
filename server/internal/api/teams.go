@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/slimcord/slimcord-server/internal/auth"
-	"github.com/slimcord/slimcord-server/internal/db"
+	"github.com/dilla/dilla-server/internal/auth"
+	"github.com/dilla/dilla-server/internal/db"
 )
 
 type TeamHandler struct {
@@ -80,6 +80,10 @@ func (h *TeamHandler) HandleUpdateTeam(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Name != nil {
+		if len(*req.Name) > 100 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name too long (max 100 characters)"})
+			return
+		}
 		team.Name = *req.Name
 	}
 	if req.Description != nil {
@@ -428,6 +432,10 @@ func (h *TeamHandler) HandleCreateTeam(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Name == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
+		return
+	}
+	if len(body.Name) > 100 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name too long (max 100 characters)"})
 		return
 	}
 

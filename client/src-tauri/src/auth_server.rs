@@ -1,7 +1,7 @@
 //! Callback listener for WebAuthn passkey ceremonies.
 //!
 //! Spawns a minimal localhost HTTP server that listens for the POST /callback
-//! and /error from the auth page hosted on the Slimcord server.
+//! and /error from the auth page hosted on the Dilla server.
 
 use rand::Rng;
 use serde::{Deserialize, Serialize};

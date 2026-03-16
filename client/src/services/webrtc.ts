@@ -2,14 +2,11 @@ import { ws } from './websocket';
 import { api } from './api';
 import { useVoiceStore } from '../stores/voiceStore';
 import { useAuthStore } from '../stores/authStore';
+import { useUserSettingsStore } from '../stores/userSettingsStore';
 import { playJoinSound, playLeaveSound } from './sounds';
 
-const VAD_THRESHOLD = 15;
 const VAD_INTERVAL_MS = 100;
 
-interface TURNResponse {
-  iceServers: RTCIceServer[];
-}
 
 class WebRTCService {
   private pc: RTCPeerConnection | null = null;
@@ -43,7 +40,9 @@ class WebRTCService {
     // Get user media with audio processing settings
     try {
       const { useAudioSettingsStore } = await import('../stores/audioSettingsStore');
-      const audioConstraints = useAudioSettingsStore.getState().getAudioConstraints();
+      const { useUserSettingsStore } = await import('../stores/userSettingsStore');
+      const deviceId = useUserSettingsStore.getState().selectedInputDevice;
+      const audioConstraints = useAudioSettingsStore.getState().getAudioConstraints(deviceId);
       this.localStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false });
     } catch {
       throw new Error('Microphone access denied');
@@ -96,27 +95,33 @@ class WebRTCService {
 
     // Handle remote tracks (audio and video)
     this.pc.ontrack = (event) => {
-      const stream = event.streams[0];
-      if (!stream) return;
+      const track = event.track;
+      // Some Pion scenarios deliver tracks without streams — create one as fallback
+      const stream = event.streams[0] ?? new MediaStream([track]);
+      const streamId = event.streams[0]?.id ?? track.id;
 
-      if (event.track.kind === 'video') {
-        // Distinguish webcam vs screen by stream ID prefix
-        const streamId = stream.id;
-        if (streamId.startsWith('webcam-stream-')) {
-          const userId = streamId.replace('webcam-stream-', '');
+      console.log('[WebRTC] ontrack:', track.kind, 'stream:', streamId, 'track:', track.id);
+
+      if (track.kind === 'video') {
+        // Distinguish webcam vs screen by stream/track ID prefix
+        if (streamId.startsWith('webcam-stream-') || track.id.startsWith('webcam-')) {
+          const userId = streamId.startsWith('webcam-stream-')
+            ? streamId.replace('webcam-stream-', '')
+            : track.id.replace('webcam-', '');
           useVoiceStore.getState().setRemoteWebcamStream(userId, stream);
         } else {
           // Screen share video track
-          this.remoteVideoStreams.set(stream.id, stream);
+          console.log('[WebRTC] Screen share track received:', streamId);
+          this.remoteVideoStreams.set(streamId, stream);
           useVoiceStore.getState().setRemoteScreenStream(stream);
         }
       } else {
         // Audio track — must append to DOM for playback in some browsers
-        this.remoteStreams.set(stream.id, stream);
+        this.remoteStreams.set(streamId, stream);
         const audio = document.createElement('audio');
         audio.srcObject = stream;
         audio.autoplay = true;
-        audio.dataset.streamId = stream.id;
+        audio.dataset.streamId = streamId;
         audio.style.display = 'none';
         document.body.appendChild(audio);
         audio.play().catch(() => {});
@@ -210,9 +215,15 @@ class WebRTCService {
     );
 
     this.unsubscribers.push(
-      ws.on('voice:state', (payload: { peers: Array<{ user_id: string; username: string; muted: boolean; deafened: boolean; speaking: boolean }> }) => {
+      ws.on('voice:state', (payload: { peers: Array<{ user_id: string; username: string; muted: boolean; deafened: boolean; speaking: boolean; voiceLevel?: number; screen_sharing?: boolean; webcam_sharing?: boolean }> }) => {
         console.log('[Voice] WS voice:state received, peers:', payload.peers?.length ?? 0);
-        store().setPeers(payload.peers);
+        store().setPeers(payload.peers.map((p) => ({ ...p, voiceLevel: p.voiceLevel ?? 0 })));
+
+        // Detect existing screen sharer so late joiners see the share
+        const sharer = payload.peers.find((p) => p.screen_sharing);
+        if (sharer) {
+          store().setScreenSharingUserId(sharer.user_id);
+        }
       }),
     );
 
@@ -522,11 +533,13 @@ class WebRTCService {
     const wasSpeaking = new Map<string, boolean>();
     this.remoteVadTimer = setInterval(() => {
       const store = useVoiceStore.getState();
+      const userThreshold = useUserSettingsStore.getState().inputThreshold;
+      const vadThreshold = Math.round(userThreshold * 100);
       for (const [, entry] of this.remoteAnalysers) {
-        entry.analyser.getByteFrequencyData(entry.data);
+        entry.analyser.getByteFrequencyData(entry.data as unknown as Uint8Array<ArrayBuffer>);
         const avg = entry.data.reduce((a, b) => a + b, 0) / entry.data.length;
         const level = Math.min(avg / 80, 1);
-        const speaking = avg > VAD_THRESHOLD;
+        const speaking = avg > vadThreshold;
         const prev = wasSpeaking.get(entry.userId) ?? false;
         if (speaking !== prev || level > 0) {
           wasSpeaking.set(entry.userId, speaking);
@@ -571,7 +584,9 @@ class WebRTCService {
         this.analyser.getByteFrequencyData(dataArray);
         const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
         const level = Math.min(avg / 80, 1);
-        const isSpeaking = avg > VAD_THRESHOLD;
+        const userThreshold = useUserSettingsStore.getState().inputThreshold;
+        const vadThreshold = Math.round(userThreshold * 100);
+        const isSpeaking = avg > vadThreshold;
 
         if (isSpeaking !== wasSpeaking) {
           wasSpeaking = isSpeaking;
@@ -598,7 +613,7 @@ class WebRTCService {
 }
 
 // Preserve singleton across Vite HMR reloads to avoid dropping active connections.
-const globalKey = '__slimcord_webrtcService__';
+const globalKey = '__dilla_webrtcService__';
 export const webrtcService: WebRTCService =
   (globalThis as Record<string, unknown>)[globalKey] as WebRTCService ??
   ((globalThis as Record<string, unknown>)[globalKey] = new WebRTCService()) as WebRTCService;

@@ -7,8 +7,8 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/pion/webrtc/v4"
-	"github.com/slimcord/slimcord-server/internal/db"
-	"github.com/slimcord/slimcord-server/internal/voice"
+	"github.com/dilla/dilla-server/internal/db"
+	"github.com/dilla/dilla-server/internal/voice"
 )
 
 const (
@@ -20,13 +20,14 @@ const (
 )
 
 type Client struct {
-	hub      *Hub
-	conn     *websocket.Conn
-	send     chan []byte
-	userID   string
-	username string
-	teamID   string
-	channels map[string]bool
+	hub            *Hub
+	conn           *websocket.Conn
+	send           chan []byte
+	userID         string
+	username       string
+	teamID         string
+	channels       map[string]bool
+	voiceChannelID string // tracks active voice channel for cleanup on disconnect
 }
 
 func NewClient(hub *Hub, conn *websocket.Conn, userID, username, teamID string) *Client {
@@ -123,6 +124,11 @@ func (c *Client) handleEvent(event Event) {
 	// Track activity for presence idle detection.
 	if c.hub.OnClientActivity != nil {
 		c.hub.OnClientActivity(c.userID)
+	}
+
+	// Record WS message metric (event type only, never payload).
+	if c.hub.Metrics != nil {
+		c.hub.Metrics.WSMessageReceived(event.Type)
 	}
 
 	switch event.Type {
@@ -358,8 +364,14 @@ func (c *Client) handleVoiceJoin(p VoiceJoinPayload) {
 		return
 	}
 
+	// Leave any existing voice channel first
+	if c.voiceChannelID != "" && c.voiceChannelID != p.ChannelID {
+		c.handleVoiceLeave(VoiceLeavePayload{ChannelID: c.voiceChannelID})
+	}
+
 	room := c.hub.VoiceRoomManager.GetOrCreateRoom(p.ChannelID, c.teamID)
 	room.AddPeer(c.userID, c.username)
+	c.voiceChannelID = p.ChannelID
 
 	// Subscribe to the voice channel so we receive peer updates.
 	c.hub.Subscribe(c, p.ChannelID)
@@ -475,6 +487,7 @@ func (c *Client) handleVoiceLeave(p VoiceLeavePayload) {
 
 	// Unsubscribe from voice channel broadcasts.
 	c.hub.Unsubscribe(c, p.ChannelID)
+	c.voiceChannelID = ""
 
 	// Notify federation peers.
 	if c.hub.OnVoiceLeave != nil {
@@ -748,6 +761,10 @@ func (c *Client) handleVoiceWebcamStop(p VoiceWebcamStopPayload) {
 func (c *Client) handleMessageSend(p MessageSendPayload) {
 	if p.ChannelID == "" || p.Content == "" {
 		c.sendError("channel_id and content are required")
+		return
+	}
+	if len(p.Content) > 16*1024 {
+		c.sendError("content too long (max 16KB)")
 		return
 	}
 	if p.Type == "" {
@@ -1048,6 +1065,16 @@ func (c *Client) handleTypingStart(p TypingPayload) {
 func (c *Client) handleChannelJoin(channelID string) {
 	if channelID == "" {
 		c.sendError("channel_id is required")
+		return
+	}
+	// Verify the channel belongs to the user's team before subscribing.
+	ch, err := c.hub.DB.GetChannelByID(channelID)
+	if err != nil || ch == nil {
+		c.sendError("channel not found")
+		return
+	}
+	if ch.TeamID != c.teamID {
+		c.sendError("channel does not belong to your team")
 		return
 	}
 	c.hub.subscribe <- &Subscription{Client: c, ChannelID: channelID}

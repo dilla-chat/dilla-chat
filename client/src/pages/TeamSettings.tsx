@@ -206,7 +206,7 @@ function RolesTab({ teamId }: { teamId: string }) {
   const teamRoles = roles.get(teamId) ?? [];
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
-  const [editColor, setEditColor] = useState('#99aab5');
+  const [editColor, setEditColor] = useState('#8fa3b8');
   const [editPermissions, setEditPermissions] = useState(0);
 
   const selectedRole = teamRoles.find((r) => r.id === selectedRoleId);
@@ -214,7 +214,7 @@ function RolesTab({ teamId }: { teamId: string }) {
   const selectRole = (role: Role) => {
     setSelectedRoleId(role.id);
     setEditName(role.name);
-    setEditColor(role.color || '#99aab5');
+    setEditColor(role.color || '#8fa3b8');
     setEditPermissions(role.permissions);
   };
 
@@ -222,7 +222,7 @@ function RolesTab({ teamId }: { teamId: string }) {
     try {
       const result = (await api.createRole(teamId, {
         name: 'New Role',
-        color: '#99aab5',
+        color: '#8fa3b8',
         permissions: 0,
       })) as Role;
       setRoles(teamId, [...teamRoles, result]);
@@ -286,7 +286,7 @@ function RolesTab({ teamId }: { teamId: string }) {
             className={`role-item ${selectedRoleId === role.id ? 'active' : ''}`}
             onClick={() => selectRole(role)}
           >
-            <span className="role-color-circle" style={{ background: role.color || '#99aab5' }} />
+            <span className="role-color-circle" style={{ background: role.color || '#8fa3b8' }} />
             <span className="role-name">{role.name}</span>
             {role.isDefault && <span className="role-default-badge">{t('roles.default', 'Default')}</span>}
           </div>
@@ -626,7 +626,7 @@ function InvitesTab({ teamId }: { teamId: string }) {
 }
 
 /* ─── Moderation Tab ─── */
-function ModerationTab({ teamId }: { teamId: string }) {
+function ModerationTab({ teamId: _teamId }: { teamId: string }) {
   const { t } = useTranslation();
 
   return (

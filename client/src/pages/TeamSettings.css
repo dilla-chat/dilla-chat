@@ -105,46 +105,19 @@
   left: 19px;
 }
 
-.btn-primary {
-  background: var(--bg-accent);
-  color: white;
-  border: none;
-  padding: 8px 24px;
-  border-radius: 4px;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.btn-primary:hover {
-  background: var(--bg-accent-hover);
-}
-
 .btn-danger {
   background: var(--text-danger);
   color: white;
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.06);
   padding: 6px 16px;
   border-radius: 4px;
   font-size: 13px;
   cursor: pointer;
+  transition: filter 0.15s;
 }
 
 .btn-danger:hover {
-  opacity: 0.9;
-}
-
-.btn-secondary {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-  border: none;
-  padding: 6px 16px;
-  border-radius: 4px;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.btn-secondary:hover {
-  background: var(--border-color);
+  filter: brightness(1.1);
 }
 
 /* Roles */
@@ -435,8 +408,8 @@
 }
 
 .invite-copy-btn.copied {
-  color: #43b581;
-  border-color: #43b581;
+  color: var(--status-online);
+  border-color: var(--status-online);
 }
 
 /* Audit log */

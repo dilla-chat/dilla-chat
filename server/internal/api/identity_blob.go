@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/slimcord/slimcord-server/internal/auth"
-	"github.com/slimcord/slimcord-server/internal/db"
+	"github.com/dilla/dilla-server/internal/auth"
+	"github.com/dilla/dilla-server/internal/db"
 )
 
 type IdentityBlobHandler struct {
@@ -57,7 +57,7 @@ func (h *IdentityBlobHandler) HandleGet(w http.ResponseWriter, r *http.Request) 
 
 	blob, err := h.db.GetIdentityBlobByUsername(username)
 	if err != nil {
-		slog.Error("failed to get identity blob", "error", err, "username", username)
+		slog.Error("failed to get identity blob", "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 		return
 	}

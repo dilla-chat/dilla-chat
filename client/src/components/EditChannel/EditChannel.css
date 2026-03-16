@@ -1,7 +1,9 @@
 .edit-channel-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(0, 0, 0, 0.5);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -9,7 +11,11 @@
 }
 
 .edit-channel-modal {
-  background: var(--modal-bg);
+  background: var(--glass-bg-modal);
+  -webkit-backdrop-filter: blur(var(--glass-blur-heavy));
+  backdrop-filter: blur(var(--glass-blur-heavy));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow-elevated);
   border-radius: 8px;
   padding: 24px;
   width: 440px;
@@ -56,7 +62,7 @@
 }
 
 .edit-channel-error {
-  color: var(--text-danger, #f04747);
+  color: var(--text-danger);
   font-size: 13px;
   margin-bottom: 12px;
 }
@@ -77,15 +83,21 @@
 }
 
 .btn-save {
-  background: var(--bg-accent);
+  background: var(--gradient-accent);
   color: white;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 2px 8px rgba(232, 184, 75, 0.2);
+  transition: filter 0.15s, box-shadow 0.15s;
 }
 
 .btn-save:hover {
-  background: var(--bg-accent-hover);
+  filter: brightness(1.1);
+  box-shadow: 0 4px 16px rgba(232, 184, 75, 0.3);
 }
 
 .btn-save:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  filter: none;
+  box-shadow: none;
 }

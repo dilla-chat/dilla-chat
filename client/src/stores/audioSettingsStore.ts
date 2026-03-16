@@ -38,6 +38,6 @@ export const useAudioSettingsStore = create<AudioSettingsStore>()(
         return constraints;
       },
     }),
-    { name: 'slimcord-audio-settings' },
+    { name: 'dilla-audio-settings' },
   ),
 );

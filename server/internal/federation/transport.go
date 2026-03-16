@@ -100,9 +100,14 @@ func (t *Transport) ConnectToPeer(address string) error {
 		url = "wss://" + address + "/federation/ws"
 	}
 
-	conn, _, err := websocket.DefaultDialer.Dial(url, http.Header{
+	headers := http.Header{
 		"X-Node-Name": []string{t.node.config.NodeName},
-	})
+	}
+	if t.node.config.JoinSecret != "" {
+		headers.Set("Authorization", "Bearer "+t.node.config.JoinSecret)
+	}
+
+	conn, _, err := websocket.DefaultDialer.Dial(url, headers)
 	if err != nil {
 		return err
 	}
@@ -119,6 +124,17 @@ func (t *Transport) ConnectToPeer(address string) error {
 
 // HandleIncoming handles an incoming federation WebSocket connection.
 func (t *Transport) HandleIncoming(w http.ResponseWriter, r *http.Request) {
+	// Validate federation auth using the JoinSecret as a shared bearer token.
+	if t.node.config.JoinSecret != "" {
+		authHeader := r.Header.Get("Authorization")
+		expected := "Bearer " + t.node.config.JoinSecret
+		if authHeader != expected {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			slog.Warn("federation: rejected unauthenticated peer", "addr", r.RemoteAddr)
+			return
+		}
+	}
+
 	conn, err := fedUpgrader.Upgrade(w, r, nil)
 	if err != nil {
 		slog.Error("federation: ws upgrade failed", "error", err)

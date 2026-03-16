@@ -53,19 +53,12 @@ export default function VoiceChannel({ channel }: Props) {
 
   const peerList = Object.values(peers);
   const isInThisChannel = connected && currentChannelId === channel.id;
-  const teamId = channel.teamId || (channel as Record<string, unknown>).team_id as string || activeTeamId;
+  const teamId = channel.teamId || (channel as unknown as Record<string, unknown>).team_id as string || activeTeamId;
 
   const activeScreenStream = screenSharing ? localScreenStream : remoteScreenStream;
   const sharerUserId = screenSharingUserId;
   const sharerName = sharerUserId ? (peers[sharerUserId]?.username ?? 'Someone') : 'You';
   const hasScreenShare = !!(activeScreenStream && (screenSharing || sharerUserId));
-
-  // Collect peers with active webcams
-  const webcamPeers = peerList.filter((p) => {
-    if (p.webcam_sharing) return true;
-    if (webcamSharing && p.user_id === sharerUserId) return true;
-    return false;
-  });
 
   const getWebcamStream = (userId: string): MediaStream | null => {
     if (remoteWebcamStreams[userId]) return remoteWebcamStreams[userId];
@@ -105,15 +98,9 @@ export default function VoiceChannel({ channel }: Props) {
                 <span className="fullscreen-focused-hint">{t('voice.clickToGoBack', 'Click to go back')}</span>
               </div>
             </div>
-          ) : (
-            <video
-              ref={(el) => { if (el && activeScreenStream) el.srcObject = activeScreenStream; }}
-              className="screen-share-video"
-              autoPlay
-              playsInline
-              muted
-            />
-          )}
+          ) : activeScreenStream ? (
+            <VideoPreview stream={activeScreenStream} className="screen-share-video" />
+          ) : null}
 
           {/* Floating webcam thumbnail bar */}
           {peerList.length > 0 && (

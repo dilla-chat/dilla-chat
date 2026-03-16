@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Hashtag, SoundHigh, Plus, MicrophoneMute, HeadsetWarning, AppWindow } from 'iconoir-react';
+import { SoundHigh, Plus, MicrophoneMute, HeadsetWarning, AppWindow } from 'iconoir-react';
 import { useTeamStore, type Channel } from '../../stores/teamStore';
 import { useVoiceStore } from '../../stores/voiceStore';
 import { api } from '../../services/api';
@@ -115,7 +115,7 @@ export default function ChannelList({ onCreateChannel }: Props) {
                   }}
                   onContextMenu={(e) => handleContextMenu(e, ch)}
                 >
-                  <span className={`channel-icon ${isVoice && voicePeerList.length > 0 ? 'voice-active' : ''}`}>{isVoice ? <SoundHigh width={16} height={16} strokeWidth={2} /> : <Hashtag width={16} height={16} strokeWidth={2} />}</span>
+                  <span className={`channel-icon ${isVoice && voicePeerList.length > 0 ? 'voice-active' : ''}`}>{isVoice ? <SoundHigh width={16} height={16} strokeWidth={2} /> : <span className="channel-tilde">~</span>}</span>
                   <span className="channel-name">{ch.name}</span>
                 </div>
                 {voicePeerList.length > 0 && (

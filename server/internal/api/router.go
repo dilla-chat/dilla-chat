@@ -3,6 +3,7 @@ package api
 import (
 	_ "embed"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"runtime"
@@ -10,24 +11,40 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/slimcord/slimcord-server/internal/auth"
-	"github.com/slimcord/slimcord-server/internal/db"
-	"github.com/slimcord/slimcord-server/internal/federation"
-	"github.com/slimcord/slimcord-server/internal/presence"
-	"github.com/slimcord/slimcord-server/internal/voice"
-	"github.com/slimcord/slimcord-server/internal/webapp"
-	"github.com/slimcord/slimcord-server/internal/ws"
+	"github.com/dilla/dilla-server/internal/auth"
+	"github.com/dilla/dilla-server/internal/db"
+	"github.com/dilla/dilla-server/internal/federation"
+	"github.com/dilla/dilla-server/internal/observability"
+	"github.com/dilla/dilla-server/internal/presence"
+	"github.com/dilla/dilla-server/internal/voice"
+	"github.com/dilla/dilla-server/internal/webapp"
+	"github.com/dilla/dilla-server/internal/ws"
 )
 
 //go:embed auth_page.html
 var authPageHTML string
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all origins (CORS handled elsewhere)
-	},
+// newUpgrader creates a WebSocket upgrader with origin checking based on allowed origins.
+func newUpgrader(allowedOrigins []string) websocket.Upgrader {
+	return websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+		CheckOrigin: func(r *http.Request) bool {
+			if len(allowedOrigins) == 0 {
+				return true
+			}
+			origin := r.Header.Get("Origin")
+			if origin == "" {
+				return true
+			}
+			for _, allowed := range allowedOrigins {
+				if allowed == "*" || allowed == origin {
+					return true
+				}
+			}
+			return false
+		},
+	}
 }
 
 // RouterConfig holds optional configuration for the router.
@@ -41,6 +58,14 @@ type RouterConfig struct {
 	MaxBodySize      int64
 	Domain           string
 	TURNClient       *voice.CFTurnClient
+	AllowedOrigins   []string
+	TrustedProxies   []string
+	TLSEnabled       bool
+	OTelMetrics      *observability.Metrics
+	OTelEndpoint     string
+	OTelInsecure     bool
+	OTelAPIKey       string
+	OTelAPIHeader    string
 }
 
 // Version is set at build time via ldflags.
@@ -60,6 +85,12 @@ func NewRouterWithConfig(database *db.DB, authSvc *auth.AuthService, hub *ws.Hub
 	if rcfg.UploadDir == "" {
 		rcfg.UploadDir = "./data/uploads"
 	}
+
+	// Set OTLP proxy endpoint for browser telemetry forwarding.
+	otelProxyEndpoint = rcfg.OTelEndpoint
+	otelProxyInsecure = rcfg.OTelInsecure
+	otelProxyAPIKey = rcfg.OTelAPIKey
+	otelProxyAPIHeader = rcfg.OTelAPIHeader
 
 	mux := http.NewServeMux()
 
@@ -108,6 +139,13 @@ func NewRouterWithConfig(database *db.DB, authSvc *auth.AuthService, hub *ws.Hub
 	identityBlobMux := http.NewServeMux()
 	identityBlobMux.HandleFunc("PUT /api/v1/identity/blob", identityBlobHandler.HandleUpload)
 	mux.Handle("PUT /api/v1/identity/blob", authSvc.AuthMiddleware(identityBlobMux))
+
+	// User profile routes
+	userHandler := NewUserHandler(authSvc, database)
+	userMux := http.NewServeMux()
+	userMux.HandleFunc("GET /api/v1/users/me", userHandler.HandleGetMe)
+	userMux.HandleFunc("PATCH /api/v1/users/me", userHandler.HandleUpdateUser)
+	mux.Handle("/api/v1/users/", authSvc.AuthMiddleware(userMux))
 
 	// Protected prekey routes
 	prekeyMux := http.NewServeMux()
@@ -214,7 +252,8 @@ func NewRouterWithConfig(database *db.DB, authSvc *auth.AuthService, hub *ws.Hub
 	mux.HandleFunc("/api/v1/messages/", notImplemented)
 
 	// WebSocket upgrade endpoint — authenticates via query param token.
-	mux.HandleFunc("/ws", handleWebSocket(authSvc, database, hub))
+	wsUpgrader := newUpgrader(rcfg.AllowedOrigins)
+	mux.HandleFunc("/ws", handleWebSocket(authSvc, database, hub, wsUpgrader))
 
 	// Federation routes (if mesh node is configured).
 	if len(meshNode) > 0 && meshNode[0] != nil {
@@ -235,13 +274,16 @@ func NewRouterWithConfig(database *db.DB, authSvc *auth.AuthService, hub *ws.Hub
 		mux.Handle("/api/v1/federation/", authSvc.AuthMiddleware(fedMux))
 	}
 
+	// OTLP proxy — forwards browser telemetry to the OTel collector.
+	mux.HandleFunc("POST /api/v1/telemetry", handleTelemetryProxy)
+
 	// Also add a top-level /health for Docker/k8s health checks.
 	mux.HandleFunc("GET /health", handleHealth)
 
 	// Serve embedded web client for all non-API routes (SPA fallback)
 	mux.Handle("/", webapp.Handler())
 
-	handler := corsMiddleware(jsonMiddleware(mux))
+	handler := corsMiddleware(rcfg.AllowedOrigins)(securityHeadersMiddleware(rcfg.TLSEnabled)(jsonMiddleware(mux)))
 
 	// Apply content-type validation.
 	handler = ContentTypeValidationMiddleware(handler)
@@ -255,12 +297,16 @@ func NewRouterWithConfig(database *db.DB, authSvc *auth.AuthService, hub *ws.Hub
 
 	// Apply rate limiting if configured.
 	if rcfg.RateLimit > 0 {
-		rl := NewIPRateLimiter(rcfg.RateLimit, rcfg.RateBurst)
+		rl := NewIPRateLimiter(rcfg.RateLimit, rcfg.RateBurst, rcfg.TrustedProxies)
 		handler = RateLimitMiddleware(rl)(handler)
 	}
 
-	// Apply request logging.
-	handler = RequestLoggingMiddleware(handler)
+	// Apply request logging (or OTel middleware when metrics are available).
+	if rcfg.OTelMetrics != nil {
+		handler = observability.HTTPMiddleware(rcfg.OTelMetrics)(handler)
+	} else {
+		handler = RequestLoggingMiddleware(handler)
+	}
 
 	return handler
 }
@@ -311,11 +357,67 @@ func handleConfig(domain string) http.HandlerFunc {
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]string{
 			"rp_id":   rpID,
-			"rp_name": "Slimcord",
+			"rp_name": "Dilla",
 			"domain":  domain,
 		})
 	}
 }
+
+// handleTelemetryProxy forwards OTLP/HTTP payloads from browser clients to the
+// configured OTel collector. This keeps the collector endpoint private.
+func handleTelemetryProxy(w http.ResponseWriter, r *http.Request) {
+	// Read the OTel endpoint from context or config; for simplicity, use env var.
+	endpoint := otelProxyEndpoint
+	if endpoint == "" {
+		http.Error(w, `{"error":"telemetry not configured"}`, http.StatusServiceUnavailable)
+		return
+	}
+
+	// Limit body size to 1MB.
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1*1024*1024))
+	if err != nil {
+		http.Error(w, `{"error":"failed to read body"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Determine the target path based on content: traces or metrics.
+	targetPath := "/v1/traces"
+	if strings.Contains(r.URL.Query().Get("type"), "metrics") {
+		targetPath = "/v1/metrics"
+	}
+
+	scheme := "https"
+	if otelProxyInsecure {
+		scheme = "http"
+	}
+	proxyURL := scheme + "://" + endpoint + targetPath
+	proxyReq, err := http.NewRequestWithContext(r.Context(), http.MethodPost, proxyURL, strings.NewReader(string(body)))
+	if err != nil {
+		http.Error(w, `{"error":"proxy error"}`, http.StatusInternalServerError)
+		return
+	}
+	proxyReq.Header.Set("Content-Type", r.Header.Get("Content-Type"))
+	if otelProxyAPIHeader != "" && otelProxyAPIKey != "" {
+		proxyReq.Header.Set(otelProxyAPIHeader, otelProxyAPIKey)
+	}
+
+	resp, err := http.DefaultClient.Do(proxyReq)
+	if err != nil {
+		slog.Error("telemetry proxy failed", "error", err)
+		http.Error(w, `{"error":"proxy error"}`, http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body)
+}
+
+// otelProxyEndpoint is set by NewRouterWithConfig when OTel is enabled.
+var otelProxyEndpoint string
+var otelProxyInsecure bool
+var otelProxyAPIKey string
+var otelProxyAPIHeader string
 
 func notImplemented(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -336,22 +438,61 @@ func jsonMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := r.Header.Get("Origin")
+			allowOrigin := ""
 
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
+			if len(allowedOrigins) == 0 {
+				allowOrigin = "*"
+			} else {
+				for _, ao := range allowedOrigins {
+					if ao == "*" {
+						allowOrigin = "*"
+						break
+					}
+					if ao == origin {
+						allowOrigin = origin
+						break
+					}
+				}
+			}
 
-		next.ServeHTTP(w, r)
-	})
+			if allowOrigin != "" {
+				w.Header().Set("Access-Control-Allow-Origin", allowOrigin)
+				if allowOrigin != "*" {
+					w.Header().Set("Vary", "Origin")
+				}
+			}
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
-func handleWebSocket(authSvc *auth.AuthService, database *db.DB, hub *ws.Hub) http.HandlerFunc {
+func securityHeadersMiddleware(tlsEnabled bool) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			w.Header().Set("X-Frame-Options", "DENY")
+			w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+			if tlsEnabled {
+				w.Header().Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func handleWebSocket(authSvc *auth.AuthService, database *db.DB, hub *ws.Hub, wsUpgrader websocket.Upgrader) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token := r.URL.Query().Get("token")
 		if token == "" {
@@ -371,7 +512,7 @@ func handleWebSocket(authSvc *auth.AuthService, database *db.DB, hub *ws.Hub) ht
 			return
 		}
 
-		conn, err := upgrader.Upgrade(w, r, nil)
+		conn, err := wsUpgrader.Upgrade(w, r, nil)
 		if err != nil {
 			slog.Error("ws: upgrade failed", "error", err)
 			return

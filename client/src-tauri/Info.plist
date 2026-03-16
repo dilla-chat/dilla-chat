@@ -3,8 +3,8 @@
 <plist version="1.0">
 <dict>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Slimcord needs microphone access for voice channels.</string>
+	<string>Dilla needs microphone access for voice kanals.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Slimcord needs camera access for video calls.</string>
+	<string>Dilla needs camera access for video calls.</string>
 </dict>
 </plist>

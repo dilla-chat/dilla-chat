@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/slimcord/slimcord-server/internal/auth"
-	"github.com/slimcord/slimcord-server/internal/db"
+	"github.com/dilla/dilla-server/internal/auth"
+	"github.com/dilla/dilla-server/internal/db"
 )
 
 type AuthHandler struct {
@@ -246,6 +246,11 @@ func (h *AuthHandler) HandleBootstrap(w http.ResponseWriter, r *http.Request) {
 	}
 	if bt == nil || bt.Used {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid or already used bootstrap token"})
+		return
+	}
+	// Reject bootstrap tokens older than 24 hours.
+	if time.Since(bt.CreatedAt) > 24*time.Hour {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bootstrap token has expired"})
 		return
 	}
 

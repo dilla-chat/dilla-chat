@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/slimcord/slimcord-server/internal/db"
-	"github.com/slimcord/slimcord-server/internal/voice"
+	"github.com/dilla/dilla-server/internal/db"
+	"github.com/dilla/dilla-server/internal/voice"
 )
 
 type Subscription struct {
@@ -65,6 +65,13 @@ type Hub struct {
 	OnPresenceUpdate   func(userID, statusType, customStatus string)
 	GetAllPresences    func() interface{}
 
+	// Observability metrics (optional, nil-safe).
+	Metrics interface {
+		WSConnected()
+		WSDisconnected()
+		WSMessageReceived(string)
+	}
+
 	// Voice subsystem (set by main).
 	VoiceRoomManager *voice.RoomManager
 	VoiceSFU         *voice.SFU
@@ -98,6 +105,9 @@ func (h *Hub) Run() {
 			h.clients[client] = true
 			h.userIndex[client.userID] = append(h.userIndex[client.userID], client)
 			slog.Info("ws: client connected", "user_id", client.userID, "username", client.username)
+			if h.Metrics != nil {
+				h.Metrics.WSConnected()
+			}
 			if h.OnClientConnect != nil {
 				h.OnClientConnect(client.userID)
 			}
@@ -127,6 +137,13 @@ func (h *Hub) Run() {
 				}
 				close(client.send)
 				slog.Info("ws: client disconnected", "user_id", client.userID)
+				// Clean up voice channel if the client was in one.
+				if client.voiceChannelID != "" {
+					go client.handleVoiceLeave(VoiceLeavePayload{ChannelID: client.voiceChannelID})
+				}
+				if h.Metrics != nil {
+					h.Metrics.WSDisconnected()
+				}
 				if h.OnClientDisconnect != nil {
 					h.OnClientDisconnect(client.userID)
 				}

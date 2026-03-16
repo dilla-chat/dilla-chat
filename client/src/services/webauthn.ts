@@ -6,7 +6,7 @@
  */
 
 let cachedRpId: string | null = null;
-let cachedRpName: string = 'Slimcord';
+let cachedRpName: string = 'Dilla';
 
 /** Fetch RP config from the server, with fallback for Tauri */
 async function getRpConfig(): Promise<{ rpId: string; rpName: string }> {
@@ -19,7 +19,7 @@ async function getRpConfig(): Promise<{ rpId: string; rpName: string }> {
     if (resp.ok) {
       const config = await resp.json();
       cachedRpId = config.rp_id || 'localhost';
-      cachedRpName = config.rp_name || 'Slimcord';
+      cachedRpName = config.rp_name || 'Dilla';
       return { rpId: cachedRpId!, rpName: cachedRpName };
     }
   } catch {
@@ -28,7 +28,7 @@ async function getRpConfig(): Promise<{ rpId: string; rpName: string }> {
 
   // Fallback to localhost for development
   cachedRpId = 'localhost';
-  cachedRpName = 'Slimcord';
+  cachedRpName = 'Dilla';
   return { rpId: cachedRpId, rpName: cachedRpName };
 }
 
@@ -40,15 +40,15 @@ export async function getRpConfigFromServer(serverUrl: string): Promise<{ rpId: 
       const config = await resp.json();
       return {
         rpId: config.rp_id || 'localhost',
-        rpName: config.rp_name || 'Slimcord',
+        rpName: config.rp_name || 'Dilla',
       };
     }
   } catch { /* fall through */ }
-  return { rpId: 'localhost', rpName: 'Slimcord' };
+  return { rpId: 'localhost', rpName: 'Dilla' };
 }
 
 // PRF salt — fixed per-app constant used alongside the per-user salt
-const APP_PRF_SALT = new TextEncoder().encode('slimcord-prf-v1');
+const APP_PRF_SALT = new TextEncoder().encode('dilla-prf-v1');
 
 export interface PasskeyRegistrationResult {
   credentialId: string; // base64url-encoded
@@ -58,7 +58,7 @@ export interface PasskeyRegistrationResult {
 }
 
 export interface PasskeyAuthResult {
-  prfOutput: ArrayBuffer; // 32-byte PRF-derived secret
+  prfOutput: ArrayBuffer | null; // 32-byte PRF-derived secret, null if PRF unavailable
 }
 
 /**
@@ -151,12 +151,8 @@ export async function registerPasskey(
   if (prfResults?.results?.first) {
     prfOutput = prfResults.results.first;
   } else {
-    // PRF not supported by this authenticator — generate a fallback
-    // This shouldn't happen if isPRFSupported() was checked, but handle gracefully
-    throw new Error(
-      'PRF extension not supported by this authenticator. ' +
-        'A passkey with PRF support is required for Slimcord encryption.',
-    );
+    // PRF not supported — caller checks prfSupported and falls back to passphrase
+    prfOutput = new ArrayBuffer(0);
   }
 
   // Determine credential name from authenticator type
@@ -190,7 +186,6 @@ export async function authenticatePasskey(
     (id) => ({
       id: base64UrlToArrayBuffer(id),
       type: 'public-key',
-      transports: ['internal', 'hybrid'] as AuthenticatorTransport[],
     }),
   );
 
@@ -217,7 +212,7 @@ export async function authenticatePasskey(
     | undefined;
 
   if (!prfResults?.results?.first) {
-    throw new Error('PRF output not available — authenticator may not support PRF extension');
+    return { prfOutput: null };
   }
 
   return {

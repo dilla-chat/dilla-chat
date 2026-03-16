@@ -8,7 +8,8 @@
 *.out
 vendor/
 bin/
-/slimcord-server
+/dilla-server
+server/dilla-server
 server/slimcord-server
 
 # === Rust / Cargo ===

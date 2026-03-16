@@ -558,6 +558,16 @@ func (d *DB) SoftDeleteMessage(id string) error {
 	return err
 }
 
+func (d *DB) UpdateUser(user *User) error {
+	user.UpdatedAt = time.Now().UTC()
+	_, err := d.conn.Exec(
+		`UPDATE users SET display_name = ?, avatar_url = ?, status_text = ?, status_type = ?, updated_at = ? WHERE id = ?`,
+		user.DisplayName, user.AvatarURL, user.StatusText, user.StatusType,
+		formatTime(user.UpdatedAt), user.ID,
+	)
+	return err
+}
+
 func (d *DB) UpdateUserStatus(userID, statusType, statusText string) error {
 	_, err := d.conn.Exec(
 		`UPDATE users SET status_type = ?, status_text = ?, updated_at = ? WHERE id = ?`,
@@ -861,6 +871,11 @@ const (
 
 // DefaultEveryonePerms are the default permissions for the @everyone role.
 const DefaultEveryonePerms = PermSendMessages | PermVoiceConnect | PermVoiceSpeak | PermCreateInvites | PermUploadFiles | PermCreateThreads
+
+// ValidPermissionMask is the OR of all defined permission bits. Used to reject unknown bits.
+const ValidPermissionMask int64 = PermAdmin | PermManageChannels | PermManageRoles | PermManageMembers |
+	PermCreateInvites | PermSendMessages | PermManageMessages | PermVoiceConnect |
+	PermVoiceSpeak | PermUploadFiles | PermCreateThreads | PermMentionEveryone
 
 // UserHasPermission checks if a user has a specific permission within a team.
 // Admin users (is_admin flag) bypass all permission checks.

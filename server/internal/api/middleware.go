@@ -17,10 +17,11 @@ import (
 
 // IPRateLimiter implements per-IP token bucket rate limiting.
 type IPRateLimiter struct {
-	mu       sync.Mutex
-	limiters map[string]*rateLimiterEntry
-	rate     rate.Limit
-	burst    int
+	mu             sync.Mutex
+	limiters       map[string]*rateLimiterEntry
+	rate           rate.Limit
+	burst          int
+	trustedProxies map[string]bool
 }
 
 type rateLimiterEntry struct {
@@ -28,11 +29,16 @@ type rateLimiterEntry struct {
 	lastSeen time.Time
 }
 
-func NewIPRateLimiter(r float64, burst int) *IPRateLimiter {
+func NewIPRateLimiter(r float64, burst int, trustedProxies []string) *IPRateLimiter {
+	tp := make(map[string]bool, len(trustedProxies))
+	for _, p := range trustedProxies {
+		tp[p] = true
+	}
 	rl := &IPRateLimiter{
-		limiters: make(map[string]*rateLimiterEntry),
-		rate:     rate.Limit(r),
-		burst:    burst,
+		limiters:       make(map[string]*rateLimiterEntry),
+		rate:           rate.Limit(r),
+		burst:          burst,
+		trustedProxies: tp,
 	}
 	go rl.cleanup()
 	return rl
@@ -71,7 +77,7 @@ func (rl *IPRateLimiter) cleanup() {
 func RateLimitMiddleware(rl *IPRateLimiter) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ip := extractIP(r)
+			ip := extractIPTrusted(r, rl.trustedProxies)
 			limiter := rl.getLimiter(ip)
 			if !limiter.Allow() {
 				w.Header().Set("Retry-After", "1")
@@ -83,20 +89,30 @@ func RateLimitMiddleware(rl *IPRateLimiter) func(http.Handler) http.Handler {
 	}
 }
 
-func extractIP(r *http.Request) string {
-	// Check X-Forwarded-For first for proxied requests.
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		parts := strings.SplitN(xff, ",", 2)
-		return strings.TrimSpace(parts[0])
-	}
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return strings.TrimSpace(xri)
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
+// extractIPTrusted extracts the client IP, only trusting proxy headers when the
+// immediate connection comes from a trusted proxy address.
+func extractIPTrusted(r *http.Request, trustedProxies map[string]bool) string {
+	remoteHost, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		return r.RemoteAddr
+		remoteHost = r.RemoteAddr
 	}
-	return host
+
+	// Only trust X-Forwarded-For / X-Real-IP from known proxies.
+	if len(trustedProxies) > 0 && trustedProxies[remoteHost] {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			parts := strings.SplitN(xff, ",", 2)
+			return strings.TrimSpace(parts[0])
+		}
+		if xri := r.Header.Get("X-Real-IP"); xri != "" {
+			return strings.TrimSpace(xri)
+		}
+	}
+
+	return remoteHost
+}
+
+func extractIP(r *http.Request) string {
+	return extractIPTrusted(r, nil)
 }
 
 // ---- Request Logging ----
@@ -132,7 +148,6 @@ func RequestLoggingMiddleware(next http.Handler) http.Handler {
 			"path", r.URL.Path,
 			"status", rec.statusCode,
 			"duration_ms", duration.Milliseconds(),
-			"ip", extractIP(r),
 		)
 	})
 }

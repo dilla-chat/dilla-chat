@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Slimcord — Passkey Authentication</title>
+<title>Dilla — Passkey Authentication</title>
 <style>
   :root {
     --bg-primary: #13111C;
@@ -191,7 +191,7 @@
 </head>
 <body>
 <div class="container">
-  <div class="logo">Slimcord</div>
+  <div class="logo">Dilla</div>
   <div class="subtitle" id="subtitleText">Secure identity authentication</div>
 
   <!-- State: Initializing -->
@@ -216,7 +216,7 @@
       </svg>
     </div>
     <div class="state-title">Authentication Complete</div>
-    <div class="state-desc">You can close this tab and return to Slimcord.</div>
+    <div class="state-desc">You can close this tab and return to Dilla.</div>
   </div>
 
   <!-- State: Error -->
@@ -245,8 +245,8 @@
 
   const callbackUrl = `http://localhost:${port}/callback`;
   const RP_ID = 'localhost';
-  const RP_NAME = 'Slimcord';
-  const APP_PRF_SALT = new TextEncoder().encode('slimcord-prf-v1');
+  const RP_NAME = 'Dilla';
+  const APP_PRF_SALT = new TextEncoder().encode('dilla-prf-v1');
 
   function showState(id) {
     document.querySelectorAll('.state').forEach(s => s.classList.remove('active'));
@@ -364,7 +364,7 @@
     showState('stateWaiting');
     document.getElementById('waitingTitle').textContent = 'Unlock Identity';
     document.getElementById('waitingDesc').textContent =
-      'Authenticate with your passkey to unlock your Slimcord identity.';
+      'Authenticate with your passkey to unlock your Dilla identity.';
 
     const assertion = await navigator.credentials.get({ publicKey: opts });
     if (!assertion) throw new Error('Authentication was cancelled');

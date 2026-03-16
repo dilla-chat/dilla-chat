@@ -5,10 +5,10 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/slimcord/slimcord-server/internal/auth"
-	"github.com/slimcord/slimcord-server/internal/db"
-	"github.com/slimcord/slimcord-server/internal/federation"
-	"github.com/slimcord/slimcord-server/internal/ws"
+	"github.com/dilla/dilla-server/internal/auth"
+	"github.com/dilla/dilla-server/internal/db"
+	"github.com/dilla/dilla-server/internal/federation"
+	"github.com/dilla/dilla-server/internal/ws"
 )
 
 type ReactionHandler struct {

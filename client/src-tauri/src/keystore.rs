@@ -71,6 +71,19 @@ struct RecoverySlot {
     recovery_key_hash: Vec<u8>,
 }
 
+/// Password slot: wraps the MEK with a passphrase-derived key (PBKDF2)
+/// Used when the authenticator does not support the PRF extension.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct PasswordSlot {
+    pub server_url: String,
+    pub credentials: Vec<PasskeyCredential>,
+    pub pbkdf2_salt: Vec<u8>,
+    pub pbkdf2_iterations: u32,
+    pub wrapped_nonce: Vec<u8>,
+    pub wrapped_mek: Vec<u8>,
+    pub passphrase_hash: Vec<u8>,
+}
+
 /// V3 format: MEK (Master Encryption Key) with multiple key slots
 /// Each server's passkey wraps the MEK independently (like LUKS key slots).
 #[derive(Serialize, Deserialize)]
@@ -84,6 +97,9 @@ struct EncryptedKeyFileV3 {
     key_slots: Vec<KeySlot>,
     /// Recovery key slot
     recovery_slot: Option<RecoverySlot>,
+    /// Password-based key slots (non-PRF authenticators)
+    #[serde(default)]
+    password_slots: Option<Vec<PasswordSlot>>,
 }
 
 pub struct KeyPair {
@@ -264,6 +280,7 @@ impl KeyPair {
             public_key: self.export_public_key(),
             key_slots: vec![slot],
             recovery_slot,
+            password_slots: None,
         };
 
         write_json_file(path, &file)
@@ -277,6 +294,57 @@ impl KeyPair {
             serde_json::from_str(&json).map_err(|e| format!("Invalid v3 key file: {e}"))?;
 
         let mek = unwrap_mek_with_prf(&file.key_slots, derived_key)?;
+        let signing_key = decrypt_to_signing_key(&mek, &file.mek_nonce, &file.mek_ciphertext)?;
+        let verifying_key = signing_key.verifying_key();
+
+        Ok(Self { signing_key, verifying_key })
+    }
+
+    /// Save keypair with MEK architecture (V3) using a passphrase instead of PRF.
+    pub fn save_v3_with_passphrase(
+        &self,
+        path: &PathBuf,
+        server_url: &str,
+        passphrase: &str,
+        credentials: Vec<PasskeyCredential>,
+        recovery_key: Option<&[u8; 32]>,
+    ) -> Result<(), String> {
+        let mut mek = [0u8; 32];
+        OsRng.fill_bytes(&mut mek);
+
+        let (mek_nonce, mek_ciphertext) = encrypt_aes256gcm(&mek, &self.signing_key.to_bytes())?;
+        let slot = wrap_mek_with_passphrase(&mek, passphrase, server_url, credentials)?;
+
+        let recovery_slot = match recovery_key {
+            Some(rk) => Some(wrap_mek_with_recovery(&mek, rk)?),
+            None => None,
+        };
+
+        let file = EncryptedKeyFileV3 {
+            version: 3,
+            mek_nonce: mek_nonce.to_vec(),
+            mek_ciphertext,
+            public_key: self.export_public_key(),
+            key_slots: vec![],
+            recovery_slot,
+            password_slots: Some(vec![slot]),
+        };
+
+        write_json_file(path, &file)
+    }
+
+    /// Load keypair from V3 file using a passphrase.
+    pub fn load_v3_with_passphrase(path: &PathBuf, passphrase: &str) -> Result<Self, String> {
+        let json = fs::read_to_string(path).map_err(|e| format!("Cannot read key file: {e}"))?;
+        let file: EncryptedKeyFileV3 =
+            serde_json::from_str(&json).map_err(|e| format!("Invalid v3 key file: {e}"))?;
+
+        let slots = file.password_slots.unwrap_or_default();
+        if slots.is_empty() {
+            return Err("No password slots in key file".to_string());
+        }
+
+        let mek = unwrap_mek_with_passphrase(&slots, passphrase)?;
         let signing_key = decrypt_to_signing_key(&mek, &file.mek_nonce, &file.mek_ciphertext)?;
         let verifying_key = signing_key.verifying_key();
 
@@ -418,6 +486,7 @@ pub fn migrate_v2_to_v3(path: &PathBuf, derived_key: &[u8; 32], server_url: &str
         public_key: file.public_key,
         key_slots: vec![slot],
         recovery_slot,
+        password_slots: None,
     };
 
     write_json_file(path, &v3)
@@ -545,6 +614,58 @@ fn unwrap_mek_with_recovery(slot: &RecoverySlot, recovery_key: &[u8; 32]) -> Res
     Ok(mek)
 }
 
+// ─── V3 MEK passphrase wrapping helpers ───────────────────────────────────────
+
+const PBKDF2_ITERATIONS: u32 = 600_000;
+
+fn derive_aes_from_passphrase(passphrase: &str, salt: &[u8], iterations: u32) -> Result<[u8; 32], String> {
+    use pbkdf2::pbkdf2_hmac;
+    let mut key = [0u8; 32];
+    pbkdf2_hmac::<Sha256>(passphrase.as_bytes(), salt, iterations, &mut key);
+    Ok(key)
+}
+
+fn wrap_mek_with_passphrase(
+    mek: &[u8; 32],
+    passphrase: &str,
+    server_url: &str,
+    credentials: Vec<PasskeyCredential>,
+) -> Result<PasswordSlot, String> {
+    let mut salt = [0u8; 16];
+    OsRng.fill_bytes(&mut salt);
+    let derived_key = derive_aes_from_passphrase(passphrase, &salt, PBKDF2_ITERATIONS)?;
+    let (nonce, ciphertext) = encrypt_aes256gcm(&derived_key, mek)?;
+    let key_hash = sha256_hash(&derived_key);
+    Ok(PasswordSlot {
+        server_url: server_url.to_string(),
+        credentials,
+        pbkdf2_salt: salt.to_vec(),
+        pbkdf2_iterations: PBKDF2_ITERATIONS,
+        wrapped_nonce: nonce.to_vec(),
+        wrapped_mek: ciphertext,
+        passphrase_hash: key_hash,
+    })
+}
+
+fn unwrap_mek_with_passphrase(slots: &[PasswordSlot], passphrase: &str) -> Result<[u8; 32], String> {
+    for slot in slots {
+        let derived_key = derive_aes_from_passphrase(passphrase, &slot.pbkdf2_salt, slot.pbkdf2_iterations)?;
+        let key_hash = sha256_hash(&derived_key);
+        if key_hash != slot.passphrase_hash {
+            continue;
+        }
+        let cipher = Aes256Gcm::new_from_slice(&derived_key).map_err(|e| e.to_string())?;
+        let nonce = Nonce::from_slice(&slot.wrapped_nonce);
+        if let Ok(mek_bytes) = cipher.decrypt(nonce, slot.wrapped_mek.as_slice()) {
+            let mek: [u8; 32] = mek_bytes
+                .try_into()
+                .map_err(|_| "Invalid MEK length".to_string())?;
+            return Ok(mek);
+        }
+    }
+    Err("Wrong passphrase or no matching password slot found".to_string())
+}
+
 // ─── Internal crypto helpers ─────────────────────────────────────────────────
 
 fn encrypt_aes256gcm(key: &[u8; 32], plaintext: &[u8]) -> Result<([u8; NONCE_LEN], Vec<u8>), String> {
@@ -574,7 +695,7 @@ fn decrypt_to_signing_key(key: &[u8; 32], nonce: &[u8], ciphertext: &[u8]) -> Re
 fn derive_aes_from_prf(prf_output: &[u8; 32]) -> Result<[u8; 32], String> {
     let hk = Hkdf::<Sha256>::new(None, prf_output);
     let mut key = [0u8; 32];
-    hk.expand(b"slimcord-identity-key-v2", &mut key)
+    hk.expand(b"dilla-identity-key-v2", &mut key)
         .map_err(|e| format!("HKDF expand failed: {e}"))?;
     Ok(key)
 }
@@ -583,7 +704,7 @@ fn derive_aes_from_prf(prf_output: &[u8; 32]) -> Result<[u8; 32], String> {
 fn derive_aes_from_recovery(recovery_key: &[u8; 32]) -> Result<[u8; 32], String> {
     let hk = Hkdf::<Sha256>::new(None, recovery_key);
     let mut key = [0u8; 32];
-    hk.expand(b"slimcord-recovery-key-v2", &mut key)
+    hk.expand(b"dilla-recovery-key-v2", &mut key)
         .map_err(|e| format!("HKDF expand failed: {e}"))?;
     Ok(key)
 }

@@ -5,7 +5,9 @@ import { useMessageStore, type Message } from '../stores/messageStore';
 import { useThreadStore, type Thread } from '../stores/threadStore';
 import { ws } from '../services/websocket';
 import { api } from '../services/api';
-import { cryptoService } from '../services/crypto';
+import { cryptoService, getIdentityKeys } from '../services/crypto';
+import { toBase64 } from '../services/cryptoCore';
+import { cacheMessage, getCachedMessage, deleteCachedMessage } from '../services/messageCache';
 import MessageList from '../components/MessageList/MessageList';
 import MessageInput from '../components/MessageInput/MessageInput';
 
@@ -28,17 +30,37 @@ interface ServerMessage {
 const DEV_PREFIX = '[DEV: unencrypted] ';
 
 async function tryDecrypt(
+  messageId: string,
   content: string,
   senderId: string,
   channelId: string,
   derivedKey: string | null,
 ): Promise<string> {
+  // Check local cache first
+  const cached = await getCachedMessage(messageId);
+  if (cached !== null) return cached;
+
   // Strip legacy dev prefix from old messages
   const clean = content.startsWith(DEV_PREFIX) ? content.slice(DEV_PREFIX.length) : content;
   if (!derivedKey) return clean;
   try {
-    return await cryptoService.decryptMessage(senderId, content, false, channelId, derivedKey);
+    // Use decryptChannel which ensures the channel session is initialized
+    const userId = getIdentityKeys().publicKeyBytes;
+    const plaintext = await cryptoService.decryptChannel(
+      channelId,
+      toBase64(userId),
+      senderId,
+      content,
+      derivedKey,
+    );
+    // Cache on success
+    await cacheMessage(messageId, channelId, plaintext);
+    return plaintext;
   } catch {
+    // If content looks like base64 ciphertext, show a friendly indicator
+    if (clean.length > 80 && /^[A-Za-z0-9+/=\s]+$/.test(clean.trim())) {
+      return '🔒 *Unable to decrypt — encrypted with a previous session key*';
+    }
     return clean;
   }
 }
@@ -50,7 +72,13 @@ async function tryEncrypt(
 ): Promise<string> {
   if (!derivedKey) return plaintext;
   try {
-    return await cryptoService.encryptMessage(channelId, plaintext, false, channelId, derivedKey);
+    const userId = getIdentityKeys().publicKeyBytes;
+    return await cryptoService.encryptChannel(
+      channelId,
+      toBase64(userId),
+      plaintext,
+      derivedKey,
+    );
   } catch {
     return plaintext;
   }
@@ -126,7 +154,7 @@ export default function ChannelView({ channel }: Props) {
         }
         const decrypted = await Promise.all(
           msgs.map(async (msg) => {
-            const content = await tryDecrypt(msg.content, msg.author_id, channel.id, derivedKey);
+            const content = await tryDecrypt(msg.id, msg.content, msg.author_id, channel.id, derivedKey);
             return serverToMessage(msg, content, teamMembers);
           }),
         );
@@ -147,13 +175,15 @@ export default function ChannelView({ channel }: Props) {
   useEffect(() => {
     const unsubNew = ws.on('message:new', async (payload: ServerMessage) => {
       if (payload.channel_id !== channel.id) return;
-      const content = await tryDecrypt(payload.content, payload.author_id, channel.id, derivedKey);
+      const content = await tryDecrypt(payload.id, payload.content, payload.author_id, channel.id, derivedKey);
       addMessage(channel.id, serverToMessage(payload, content, teamMembers));
     });
 
     const unsubEdit = ws.on('message:edited', async (payload: { message_id: string; channel_id: string; content: string; author_id: string }) => {
       if (payload.channel_id !== channel.id) return;
-      const content = await tryDecrypt(payload.content, payload.author_id, channel.id, derivedKey);
+      // Invalidate cache so new ciphertext is decrypted fresh
+      await deleteCachedMessage(payload.message_id);
+      const content = await tryDecrypt(payload.message_id, payload.content, payload.author_id, channel.id, derivedKey);
       updateMessage(channel.id, payload.message_id, content);
     });
 
@@ -216,7 +246,7 @@ export default function ChannelView({ channel }: Props) {
 
     const unsubThreadMsgNew = ws.on('thread:message:new', async (payload: ServerMessage) => {
       if (!payload.thread_id) return;
-      const content = await tryDecrypt(payload.content, payload.author_id, channel.id, derivedKey);
+      const content = await tryDecrypt(payload.id, payload.content, payload.author_id, channel.id, derivedKey);
       addThreadMessage(payload.thread_id, serverToMessage(payload, content, teamMembers));
       // Update thread message count in local state
       const channelThreads = threads[channel.id] ?? [];
@@ -232,7 +262,8 @@ export default function ChannelView({ channel }: Props) {
 
     const unsubThreadMsgEdit = ws.on('thread:message:updated', async (payload: ServerMessage) => {
       if (!payload.thread_id) return;
-      const content = await tryDecrypt(payload.content, payload.author_id, channel.id, derivedKey);
+      await deleteCachedMessage(payload.id);
+      const content = await tryDecrypt(payload.id, payload.content, payload.author_id, channel.id, derivedKey);
       updateThreadMessage(payload.thread_id, serverToMessage(payload, content, teamMembers));
     });
 
@@ -287,7 +318,7 @@ export default function ChannelView({ channel }: Props) {
       }
       const decrypted = await Promise.all(
         (msgs as ServerMessage[]).map(async (msg) => {
-          const content = await tryDecrypt(msg.content, msg.author_id, channel.id, derivedKey);
+          const content = await tryDecrypt(msg.id, msg.content, msg.author_id, channel.id, derivedKey);
           return serverToMessage(msg, content, teamMembers);
         }),
       );

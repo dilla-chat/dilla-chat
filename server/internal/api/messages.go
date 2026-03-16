@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/slimcord/slimcord-server/internal/auth"
-	"github.com/slimcord/slimcord-server/internal/db"
+	"github.com/dilla/dilla-server/internal/auth"
+	"github.com/dilla/dilla-server/internal/db"
 )
 
 type MessageHandler struct {
@@ -44,6 +44,10 @@ func (h *MessageHandler) HandleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Content == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "content is required"})
+		return
+	}
+	if len(req.Content) > 16*1024 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "content too long (max 16KB)"})
 		return
 	}
 	if req.Type == "" {

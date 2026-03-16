@@ -18,7 +18,7 @@ export async function getDataDir(): Promise<string> {
       const { appDataDir } = await import('@tauri-apps/api/path');
       return await appDataDir();
     } catch {
-      return './slimcord-data';
+      return './dilla-data';
     }
   }
   return 'indexeddb'; // Sentinel — browser uses IndexedDB, not filesystem

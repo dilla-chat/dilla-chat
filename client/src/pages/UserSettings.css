@@ -161,6 +161,18 @@
   accent-color: var(--bg-accent);
 }
 
+.theme-toggle-buttons {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-left: 16px;
+}
+
+.theme-toggle-buttons .btn-secondary.active {
+  background: var(--bg-modifier-selected);
+  color: var(--text-primary);
+}
+
 /* Sensitivity slider */
 .sensitivity-slider {
   width: 100%;

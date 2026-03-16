@@ -59,7 +59,7 @@ fn get_public_key(passphrase: String, data_dir: String) -> Result<String, String
 
 #[tauri::command]
 fn greet(name: &str) -> String {
-    format!("Hello, {}! Welcome to Slimcord.", name)
+    format!("Hello, {}! Welcome to Dilla.", name)
 }
 
 // ─── V2: Passkey/PRF-based commands ──────────────────────────────────────────
@@ -476,7 +476,7 @@ async fn passkey_register_via_browser(
     username: Option<String>,
     data_dir: String,
 ) -> Result<BridgeRegisterResult, String> {
-    let passkey_username = username.unwrap_or_else(|| "slimcord-user".to_string());
+    let passkey_username = username.unwrap_or_else(|| "dilla-user".to_string());
     let prf_salt = keystore::generate_prf_salt();
     let recovery_key_bytes = keystore::generate_recovery_key();
     let prf_salt_b64 = B64.encode(&prf_salt);
@@ -629,7 +629,7 @@ async fn add_server_passkey(
         &server_url,
         session.callback_port,
         &session.nonce,
-        "slimcord-user",
+        "dilla-user",
         &prf_salt_b64,
     );
 

@@ -8,6 +8,7 @@ import Reactions from '../Reactions/Reactions';
 import FilePreview from '../FilePreview/FilePreview';
 import EmojiPicker from '../EmojiPicker/EmojiPicker';
 import type { Attachment } from '../../services/api';
+import { usernameColor } from '../../utils/colors';
 import './MessageList.css';
 
 interface Props {
@@ -44,20 +45,6 @@ function getInitials(username: string): string {
   return (username || '?').slice(0, 2).toUpperCase();
 }
 
-// Hash a string to a consistent color
-function usernameColor(username: string): string {
-  const name = username || 'Unknown';
-  const colors = [
-    '#f44336', '#e91e63', '#9c27b0', '#673ab7',
-    '#3f51b5', '#2196f3', '#03a9f4', '#00bcd4',
-    '#009688', '#4caf50', '#8bc34a', '#ff9800',
-  ];
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return colors[Math.abs(hash) % colors.length];
-}
 
 interface MessageGroup {
   authorId: string;
@@ -174,8 +161,8 @@ export default function MessageList({
         <div className="message-list-loading">{t('app.loading', 'Loading...')}</div>
       )}
       {!canLoadMore && channelMessages.length > 0 && (
-        <div className="message-list-beginning">
-          {t('channels.welcomeTitle', 'Welcome to #{{name}}', { name: channelName })}
+        <div className="message-list-beginning" style={{ fontFamily: 'var(--font-display)' }}>
+          {t('channels.welcomeTitle', 'Welcome to ~{{name}}', { name: channelName })}
         </div>
       )}
 
@@ -226,6 +213,7 @@ export default function MessageList({
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
                         components={markdownComponents}
+                        skipHtml
                       >
                         {msg.content.replace(/^\[DEV: unencrypted\] /, '')}
                       </ReactMarkdown>

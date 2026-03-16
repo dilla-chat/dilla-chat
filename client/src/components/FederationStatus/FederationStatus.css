@@ -12,6 +12,7 @@
 /* Node info card */
 .federation-node-info {
   background: var(--bg-secondary);
+  border: 1px solid var(--glass-border-light);
   border-radius: 8px;
   padding: 16px;
 }
@@ -47,6 +48,7 @@
 /* Peers section */
 .federation-peers {
   background: var(--bg-secondary);
+  border: 1px solid var(--glass-border-light);
   border-radius: 8px;
   padding: 16px;
 }
@@ -129,6 +131,7 @@
 /* Join token section */
 .federation-join {
   background: var(--bg-secondary);
+  border: 1px solid var(--glass-border-light);
   border-radius: 8px;
   padding: 16px;
 }
@@ -143,19 +146,21 @@
 }
 
 .federation-generate-btn {
-  background: var(--bg-accent);
+  background: var(--gradient-accent);
   color: #fff;
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 4px;
   padding: 8px 16px;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: filter 0.15s, box-shadow 0.15s;
+  box-shadow: 0 2px 8px rgba(232, 184, 75, 0.2);
 }
 
 .federation-generate-btn:hover {
-  background: var(--bg-accent-hover);
+  filter: brightness(1.1);
+  box-shadow: 0 4px 16px rgba(232, 184, 75, 0.3);
 }
 
 .federation-generate-btn:disabled {

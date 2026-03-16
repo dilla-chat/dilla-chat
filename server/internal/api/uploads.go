@@ -7,11 +7,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
-	"github.com/slimcord/slimcord-server/internal/auth"
-	"github.com/slimcord/slimcord-server/internal/db"
-	"github.com/slimcord/slimcord-server/internal/federation"
-	"github.com/slimcord/slimcord-server/internal/ws"
+	"github.com/dilla/dilla-server/internal/auth"
+	"github.com/dilla/dilla-server/internal/db"
+	"github.com/dilla/dilla-server/internal/federation"
+	"github.com/dilla/dilla-server/internal/ws"
 )
 
 type UploadHandler struct {
@@ -80,9 +81,9 @@ func (h *UploadHandler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Use the original filename from the multipart header for the stored file.
-	storedName := header.Filename
-	if storedName == "" {
+	// Sanitize filename: strip directory components to prevent path traversal.
+	storedName := filepath.Base(header.Filename)
+	if storedName == "" || storedName == "." || storedName == ".." || strings.HasPrefix(storedName, ".") {
 		storedName = "blob"
 	}
 	storagePath := filepath.Join(dir, storedName)
@@ -115,9 +116,23 @@ func (h *UploadHandler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 
 // HandleDownload handles GET /api/v1/teams/{teamId}/attachments/{attachmentId}
 func (h *UploadHandler) HandleDownload(w http.ResponseWriter, r *http.Request) {
+	userID, _ := r.Context().Value(auth.UserIDKey).(string)
+	if userID == "" {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+
+	teamID := r.PathValue("teamId")
 	attachmentID := r.PathValue("attachmentId")
 	if attachmentID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing attachment id"})
+		return
+	}
+
+	// Verify the user is a member of this team.
+	member, err := h.db.GetMemberByUserAndTeam(userID, teamID)
+	if err != nil || member == nil {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "not a member of this team"})
 		return
 	}
 

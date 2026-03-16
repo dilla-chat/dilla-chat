@@ -1,10 +1,11 @@
-import { Component, type ReactNode, useEffect, useRef, useState, lazy, Suspense } from 'react';
+import { Component, type ReactNode, useEffect, useState, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
+import { recordException } from './services/telemetry';
 import './i18n';
 import './App.css';
 
-import Welcome from './pages/Welcome';
+import Home from './pages/Home';
 import CreateIdentity from './pages/CreateIdentity';
 import Login from './pages/Login';
 import JoinTeam from './pages/JoinTeam';
@@ -24,13 +25,16 @@ const DemoWrapper = DEMO_ENABLED
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null };
   static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidCatch(error: Error) {
+    recordException(error, 'ErrorBoundary');
+  }
   render() {
     if (this.state.error) {
       return (
-        <div style={{ padding: '2rem', color: '#ff6b6b', background: '#1a1a2e', height: '100vh' }}>
+        <div style={{ padding: '2rem', color: 'var(--text-danger)', background: 'var(--bg-tertiary)', height: '100vh' }}>
           <h1>Something went wrong</h1>
           <pre style={{ whiteSpace: 'pre-wrap', fontSize: '14px' }}>{this.state.error.message}</pre>
-          <pre style={{ whiteSpace: 'pre-wrap', fontSize: '12px', color: '#888' }}>{this.state.error.stack}</pre>
+          <pre style={{ whiteSpace: 'pre-wrap', fontSize: '12px', color: 'var(--text-muted)' }}>{this.state.error.stack}</pre>
           <button onClick={() => { this.setState({ error: null }); window.location.href = '/'; }}
             style={{ marginTop: '1rem', padding: '0.5rem 1rem', cursor: 'pointer' }}>
             Restart App
@@ -45,6 +49,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
 function AuthRedirect() {
   const { isAuthenticated } = useAuthStore();
   const [target, setTarget] = useState<string | null>(null);
+  const [showHome, setShowHome] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -55,13 +60,18 @@ function AuthRedirect() {
       try {
         const { hasIdentity } = await import('./services/keyStore');
         const exists = await hasIdentity();
-        setTarget(exists ? '/login' : '/welcome');
+        if (exists) {
+          setTarget('/login');
+        } else {
+          setShowHome(true);
+        }
       } catch {
-        setTarget('/welcome');
+        setShowHome(true);
       }
     })();
   }, [isAuthenticated]);
 
+  if (showHome) return <Home />;
   if (!target) return null;
   return <Navigate to={target} replace />;
 }
@@ -72,7 +82,7 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<AuthRedirect />} />
-        <Route path="/welcome" element={<Welcome />} />
+        <Route path="/welcome" element={<Navigate to="/" replace />} />
         {DEMO_ENABLED && (
           <Route path="/demo" element={
             <Suspense fallback={null}><DemoWrapper /></Suspense>

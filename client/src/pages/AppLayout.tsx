@@ -26,6 +26,9 @@ import { usePresenceStore, type UserPresence } from '../stores/presenceStore';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { api } from '../services/api';
 import { ws } from '../services/websocket';
+import { initCrypto } from '../services/crypto';
+import { unlockWithPrf } from '../services/keyStore';
+import { fromBase64 } from '../services/cryptoCore';
 import { useVoiceStore } from '../stores/voiceStore';
 import './AppLayout.css';
 
@@ -38,6 +41,7 @@ export default function AppLayout() {
   const { activeThreadId, threadPanelOpen, threads, setActiveThread, setThreadPanelOpen } = useThreadStore();
   const [showMembers, setShowMembers] = useState(true);
   const [showDMMembers, setShowDMMembers] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
 
   // Redirect to join/setup if no teams
   useEffect(() => {
@@ -70,7 +74,35 @@ export default function AppLayout() {
         console.log(`[AppLayout] API restored: ${teamId} → ${baseUrl} (has token: ${!!entry.token})`);
       }
     });
+
+    // Validate token is still accepted by the server
+    const firstTeamId = teams.keys().next().value;
+    if (firstTeamId) {
+      api.getTeam(firstTeamId)
+        .then(() => setAuthChecked(true))
+        .catch(() => setAuthChecked(true)); // 401 → authErrorHandler fires redirect
+    } else {
+      setAuthChecked(true);
+    }
   }, [teams]);
+
+  // Re-initialize CryptoManager on mount when derivedKey was restored from sessionStorage
+  const cryptoRestored = useRef(false);
+  useEffect(() => {
+    if (cryptoRestored.current || !derivedKey) return;
+    cryptoRestored.current = true;
+
+    (async () => {
+      try {
+        const prfKey = fromBase64(derivedKey);
+        const identity = await unlockWithPrf(prfKey);
+        await initCrypto(identity, derivedKey);
+        console.log('[AppLayout] CryptoManager re-initialized from persisted derivedKey');
+      } catch (e) {
+        console.warn('[AppLayout] Failed to re-init crypto:', e);
+      }
+    })();
+  }, [derivedKey]);
 
   // Auto-select first team if none active
   useEffect(() => {
@@ -307,6 +339,7 @@ export default function AppLayout() {
           muted: payload.muted ?? false,
           deafened: payload.deafened ?? false,
           speaking: false,
+          voiceLevel: 0,
           screen_sharing: payload.screen_sharing ?? false,
           webcam_sharing: payload.webcam_sharing ?? false,
         });
@@ -461,6 +494,9 @@ export default function AppLayout() {
     onNavigateChannel: handleNavigateChannel,
   });
 
+  // Wait for auth validation before rendering
+  if (!authChecked) return null;
+
   // Show onboarding when no teams are joined
   if (teams.size === 0) {
     return (
@@ -468,8 +504,8 @@ export default function AppLayout() {
         <TitleBar />
         <div className="app-layout-main">
           <div className="page" style={{ margin: 'auto', maxWidth: 480, padding: '3rem 2rem' }}>
-            <img src="/logo.png" alt="Slimcord" style={{ width: 80, height: 80, marginBottom: 8 }} />
-            <h1>{t('app.welcomeBack', 'Welcome to Slimcord')}</h1>
+            <img src="/brand/icon.svg" alt="Dilla" style={{ width: 80, height: 80, marginBottom: 8 }} />
+            <h1>{t('app.welcomeBack', 'Welcome to Dilla')}</h1>
             <p style={{ opacity: 0.7 }}>{t('app.noServers', 'You haven\'t joined any servers yet. Join an existing server or set up your own.')}</p>
             <div className="form" style={{ marginTop: '1rem' }}>
               <button className="btn-primary" onClick={() => navigate('/join')}>
@@ -495,32 +531,33 @@ export default function AppLayout() {
 
           <div className="channel-sidebar" style={{ width: channelWidth }}>
             <div className="channel-sidebar-header">
-              <span className="channel-sidebar-header-name">
-                {isDMMode ? t('dm.title', 'Direct Messages') : (activeTeamId ? teamMap.get(activeTeamId)?.name : null) ?? t('app.name')}
-              </span>
-              <div className="channel-sidebar-header-actions">
-                {!isDMMode && (
-                  <button
-                    className="sidebar-mode-btn"
-                    onClick={() => navigate('/app/settings')}
-                    title={t('teams.settings', 'Team Settings')}
-                  >
-                    <Settings width={18} height={18} strokeWidth={2} />
-                  </button>
-                )}
+              <div className="channel-sidebar-header-top">
+                <span className="channel-sidebar-header-name">
+                  {isDMMode ? t('dm.title', 'Direct Messages') : (activeTeamId ? teamMap.get(activeTeamId)?.name : null) ?? t('app.name')}
+                </span>
                 <button
-                  className={`sidebar-mode-btn ${!isDMMode ? 'active' : ''}`}
+                  className="sidebar-settings-btn"
+                  onClick={() => navigate('/app/settings')}
+                  title={t('teams.settings', 'Team Settings')}
+                  style={isDMMode ? { visibility: 'hidden' } : undefined}
+                >
+                  <Settings width={18} height={18} strokeWidth={2} />
+                </button>
+              </div>
+              <div className="channel-sidebar-tabs">
+                <button
+                  className={`sidebar-tab ${!isDMMode ? 'active' : ''}`}
                   onClick={switchToChannels}
                   title={t('channels.uncategorized', 'Channels')}
                 >
-                  <Hashtag width={18} height={18} strokeWidth={2} />
+                  <Hashtag width={16} height={16} strokeWidth={2} /> {t('channels.title', 'Kanals')}
                 </button>
                 <button
-                  className={`sidebar-mode-btn ${isDMMode ? 'active' : ''}`}
+                  className={`sidebar-tab ${isDMMode ? 'active' : ''}`}
                   onClick={switchToDMs}
                   title={t('dm.title', 'Direct Messages')}
                 >
-                  <ChatBubble width={18} height={18} strokeWidth={2} />
+                  <ChatBubble width={16} height={16} strokeWidth={2} /> {t('dm.short', 'PMs')}
                 </button>
               </div>
             </div>
@@ -589,7 +626,7 @@ export default function AppLayout() {
           ) : !isDMMode && activeChannel ? (
             <>
               <span className="content-header-icon">
-                {activeChannel.type === 'voice' ? <SoundHigh width={20} height={20} strokeWidth={2} /> : <Hashtag width={20} height={20} strokeWidth={2} />}
+                {activeChannel.type === 'voice' ? <SoundHigh width={20} height={20} strokeWidth={2} /> : <span className="channel-tilde">~</span>}
               </span>
               <span className="content-header-name">{activeChannel.name}</span>
               {derivedKey && (

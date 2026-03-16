@@ -6,5 +6,6 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 8888,
+    allowedHosts: ['dilla.thim.dev'],
   },
 })

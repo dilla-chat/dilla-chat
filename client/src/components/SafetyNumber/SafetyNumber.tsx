@@ -19,7 +19,7 @@ export default function SafetyNumber({ peerId, peerPublicKey, derivedKey }: Safe
   }, [peerId, peerPublicKey, derivedKey]);
 
   if (error) {
-    return <div style={{ color: '#f44', padding: '1rem' }}>Failed to generate safety number</div>;
+    return <div style={{ color: 'var(--text-danger)', padding: '1rem' }}>Failed to generate safety number</div>;
   }
 
   if (!safetyNumber) {
@@ -43,18 +43,18 @@ export default function SafetyNumber({ peerId, peerPublicKey, derivedKey }: Safe
         padding: '1.5rem',
         fontFamily: 'monospace',
         textAlign: 'center',
-        background: '#1a1a2e',
+        background: 'var(--bg-tertiary)',
         borderRadius: '8px',
         maxWidth: '320px',
       }}
     >
-      <div style={{ marginBottom: '1rem', fontWeight: 600, color: '#e0e0e0' }}>Safety Number</div>
-      <div style={{ fontSize: '1.25rem', lineHeight: '2', color: '#fff', letterSpacing: '0.1em' }}>
+      <div style={{ marginBottom: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>Safety Number</div>
+      <div style={{ fontSize: '1.25rem', lineHeight: '2', color: 'var(--header-primary)', letterSpacing: '0.1em' }}>
         {rows.map((row, i) => (
           <div key={i}>{row.join(' ')}</div>
         ))}
       </div>
-      <p style={{ marginTop: '1rem', fontSize: '0.8rem', color: '#888', lineHeight: 1.4 }}>
+      <p style={{ marginTop: '1rem', fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
         Compare this number with your contact in person or via a trusted channel. If the numbers
         match, your conversation is end-to-end encrypted and secure.
       </p>

@@ -19,10 +19,8 @@ import {
   ed25519Sign,
   generateX25519KeyPair,
   exportX25519PrivateKey,
-  toBase64,
   fromBase64,
   encoder,
-  type Ed25519KeyPair,
   type X25519KeyPair,
 } from './cryptoCore';
 
@@ -48,6 +46,16 @@ interface RecoverySlot {
   recovery_key_hash: number[];
 }
 
+export interface PasswordSlot {
+  server_url: string;
+  credentials: PasskeyCredential[];
+  pbkdf2_salt: number[]; // 16 bytes random
+  pbkdf2_iterations: number; // 600_000
+  wrapped_nonce: number[];
+  wrapped_mek: number[];
+  passphrase_hash: number[]; // SHA-256 of derived key (for early rejection)
+}
+
 interface EncryptedKeyFileV3 {
   version: 3;
   mek_nonce: number[];
@@ -55,6 +63,7 @@ interface EncryptedKeyFileV3 {
   public_key: number[];
   key_slots: KeySlot[];
   recovery_slot: RecoverySlot | null;
+  password_slots?: PasswordSlot[];
 }
 
 // ─── Key derivation helpers ──────────────────────────────────────────────────
@@ -63,9 +72,9 @@ interface EncryptedKeyFileV3 {
 async function deriveAesFromPrf(prfOutput: Uint8Array): Promise<Uint8Array> {
   return hkdfDerive(
     prfOutput,
-    encoder.encode('SlimcordKeyEncryption'),
+    encoder.encode('DillaKeyEncryption'),
     32,
-    encoder.encode('slimcord-prf-aes-v1'),
+    encoder.encode('dilla-prf-aes-v1'),
   );
 }
 
@@ -73,15 +82,15 @@ async function deriveAesFromPrf(prfOutput: Uint8Array): Promise<Uint8Array> {
 async function deriveAesFromRecovery(recoveryKey: Uint8Array): Promise<Uint8Array> {
   return hkdfDerive(
     recoveryKey,
-    encoder.encode('SlimcordRecoveryKey'),
+    encoder.encode('DillaRecoveryKey'),
     32,
-    encoder.encode('slimcord-recovery-aes-v1'),
+    encoder.encode('dilla-recovery-aes-v1'),
   );
 }
 
 /** SHA-256 hash */
 async function sha256Hash(data: Uint8Array): Promise<Uint8Array> {
-  const hash = await crypto.subtle.digest('SHA-256', data);
+  const hash = await crypto.subtle.digest('SHA-256', data as unknown as BufferSource);
   return new Uint8Array(hash);
 }
 
@@ -153,9 +162,80 @@ async function unwrapMekWithRecovery(
   return aesGcmDecrypt(aesKey, data);
 }
 
+// ─── Passphrase (PBKDF2) helpers ──────────────────────────────────────────────
+
+const PBKDF2_ITERATIONS = 600_000;
+
+/** Derive AES-256 key from a passphrase using PBKDF2-SHA256 */
+async function deriveAesFromPassphrase(
+  passphrase: string,
+  salt: Uint8Array,
+  iterations: number,
+): Promise<Uint8Array> {
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(passphrase),
+    'PBKDF2',
+    false,
+    ['deriveBits'],
+  );
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', hash: 'SHA-256', salt: salt as unknown as BufferSource, iterations },
+    keyMaterial,
+    256,
+  );
+  return new Uint8Array(bits);
+}
+
+/** Wrap MEK with a passphrase-derived key */
+async function wrapMekWithPassphrase(
+  mek: Uint8Array,
+  passphrase: string,
+  serverUrl: string,
+  credentials: PasskeyCredential[],
+): Promise<PasswordSlot> {
+  const salt = randomBytes(16);
+  const derivedKey = await deriveAesFromPassphrase(passphrase, salt, PBKDF2_ITERATIONS);
+  const wrapped = await aesGcmEncrypt(derivedKey, mek);
+  const keyHash = await sha256Hash(derivedKey);
+  return {
+    server_url: serverUrl,
+    credentials,
+    pbkdf2_salt: Array.from(salt),
+    pbkdf2_iterations: PBKDF2_ITERATIONS,
+    wrapped_nonce: Array.from(wrapped.slice(0, 12)),
+    wrapped_mek: Array.from(wrapped.slice(12)),
+    passphrase_hash: Array.from(keyHash),
+  };
+}
+
+/** Unwrap MEK by trying each password slot */
+async function unwrapMekWithPassphrase(
+  slots: PasswordSlot[],
+  passphrase: string,
+): Promise<Uint8Array> {
+  for (const slot of slots) {
+    const salt = new Uint8Array(slot.pbkdf2_salt);
+    const derivedKey = await deriveAesFromPassphrase(passphrase, salt, slot.pbkdf2_iterations);
+    // Early rejection via hash comparison
+    const keyHash = await sha256Hash(derivedKey);
+    const expected = new Uint8Array(slot.passphrase_hash);
+    if (keyHash.length !== expected.length || !keyHash.every((v, i) => v === expected[i])) {
+      continue;
+    }
+    try {
+      const data = new Uint8Array([...slot.wrapped_nonce, ...slot.wrapped_mek]);
+      return await aesGcmDecrypt(derivedKey, data);
+    } catch {
+      continue;
+    }
+  }
+  throw new Error('Wrong passphrase or no matching password slot found');
+}
+
 // ─── IndexedDB Storage ────────────────────────────────────────────────────────
 
-const DB_NAME = 'slimcord-keystore';
+const DB_NAME = 'dilla-keystore';
 const DB_VERSION = 1;
 const STORE_NAME = 'keys';
 
@@ -314,6 +394,80 @@ export async function unlockWithRecovery(recoveryKey: Uint8Array): Promise<Ident
   return decryptIdentity(keyFile, mek);
 }
 
+/**
+ * Generate a new identity encrypted with a passphrase (for non-PRF authenticators).
+ * The passkey still authenticates; the passphrase provides key material.
+ */
+export async function createIdentityWithPassphrase(
+  serverUrl: string,
+  passphrase: string,
+  credentials: PasskeyCredential[],
+): Promise<{ publicKeyB64: string; publicKeyHex: string; recoveryKey: Uint8Array; identity: IdentityKeys }> {
+  const ed25519 = await generateEd25519KeyPair();
+  const dhKeyPair = await generateX25519KeyPair();
+  const recoveryKey = randomBytes(32);
+
+  const signingKeyPkcs8 = await exportEd25519PrivateKey(ed25519.privateKey);
+  const dhPrivatePkcs8 = await exportX25519PrivateKey(dhKeyPair.privateKey);
+
+  const payload = JSON.stringify({
+    signing_key_pkcs8: Array.from(signingKeyPkcs8),
+    dh_private_pkcs8: Array.from(dhPrivatePkcs8),
+    dh_public_key: Array.from(dhKeyPair.publicKeyBytes),
+    public_key: Array.from(ed25519.publicKeyBytes),
+  });
+
+  const mek = randomBytes(32);
+  const encrypted = await aesGcmEncrypt(mek, encoder.encode(payload));
+
+  // Wrap MEK with passphrase instead of PRF
+  const passwordSlot = await wrapMekWithPassphrase(mek, passphrase, serverUrl, credentials);
+  const recoverySlot = await wrapMekWithRecovery(mek, recoveryKey);
+
+  const keyFile: EncryptedKeyFileV3 = {
+    version: 3,
+    mek_nonce: Array.from(encrypted.slice(0, 12)),
+    mek_ciphertext: Array.from(encrypted.slice(12)),
+    public_key: Array.from(ed25519.publicKeyBytes),
+    key_slots: [],
+    recovery_slot: recoverySlot,
+    password_slots: [passwordSlot],
+  };
+
+  await idbPut('identity.key', keyFile);
+
+  const publicKeyHex = Array.from(ed25519.publicKeyBytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+  const publicKeyB64 = btoa(String.fromCharCode(...ed25519.publicKeyBytes));
+
+  return {
+    publicKeyB64,
+    publicKeyHex,
+    recoveryKey,
+    identity: {
+      signingKey: ed25519.privateKey,
+      signingPublicKey: ed25519.publicKey,
+      publicKeyBytes: ed25519.publicKeyBytes,
+      dhKeyPair,
+    },
+  };
+}
+
+/**
+ * Unlock identity using a passphrase (for non-PRF password slots).
+ */
+export async function unlockWithPassphrase(passphrase: string): Promise<IdentityKeys> {
+  const keyFile = await idbGet<EncryptedKeyFileV3>('identity.key');
+  if (!keyFile) throw new Error('No identity found — please create one first');
+
+  const slots = keyFile.password_slots ?? [];
+  if (slots.length === 0) throw new Error('No password slots in key file');
+
+  const mek = await unwrapMekWithPassphrase(slots, passphrase);
+  return decryptIdentity(keyFile, mek);
+}
+
 async function decryptIdentity(keyFile: EncryptedKeyFileV3, mek: Uint8Array): Promise<IdentityKeys> {
   const data = new Uint8Array([...keyFile.mek_nonce, ...keyFile.mek_ciphertext]);
   const decrypted = await aesGcmDecrypt(mek, data);
@@ -376,6 +530,8 @@ export async function getCredentialInfo(): Promise<{
   credentials: PasskeyCredential[];
   prfSalt: Uint8Array;
   keySlots: KeySlot[];
+  passwordSlots: PasswordSlot[];
+  hasPasswordSlots: boolean;
 } | null> {
   const keyFile = await idbGet<EncryptedKeyFileV3>('identity.key');
   if (!keyFile) return null;
@@ -388,7 +544,19 @@ export async function getCredentialInfo(): Promise<{
       prfSalt = new Uint8Array(slot.prf_salt);
     }
   }
-  return { credentials: allCreds, prfSalt, keySlots: keyFile.key_slots };
+
+  const passwordSlots = keyFile.password_slots ?? [];
+  for (const slot of passwordSlots) {
+    allCreds.push(...slot.credentials);
+  }
+
+  return {
+    credentials: allCreds,
+    prfSalt,
+    keySlots: keyFile.key_slots,
+    passwordSlots,
+    hasPasswordSlots: passwordSlots.length > 0,
+  };
 }
 
 /**
@@ -429,9 +597,12 @@ export async function importIdentityBlob(blob: string): Promise<void> {
 
 /**
  * Delete the stored identity (destructive!).
+ * Also clears the local message plaintext cache.
  */
 export async function deleteIdentity(): Promise<void> {
   await idbDelete('identity.key');
+  const { clearAllMessageCache } = await import('./messageCache');
+  await clearAllMessageCache();
 }
 
 // ─── Session Storage ──────────────────────────────────────────────────────────

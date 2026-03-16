@@ -1,5 +1,7 @@
 // Programmatic notification sounds using Web Audio API — no audio files needed.
 
+import { useUserSettingsStore } from '../stores/userSettingsStore';
+
 let audioCtx: AudioContext | null = null;
 
 function getAudioContext(): AudioContext {
@@ -32,8 +34,9 @@ function playTone(frequency: number, duration: number, type: OscillatorType = 's
 
 /** Short rising two-tone chime — someone joined the voice channel. */
 export function playJoinSound() {
+  if (!useUserSettingsStore.getState().soundNotifications) return;
   try {
-    const ctx = getAudioContext();
+    getAudioContext();
     playTone(440, 0.12, 'sine', 0.12);
     setTimeout(() => {
       playTone(554, 0.15, 'sine', 0.12);
@@ -45,8 +48,9 @@ export function playJoinSound() {
 
 /** Short falling tone — someone left the voice channel. */
 export function playLeaveSound() {
+  if (!useUserSettingsStore.getState().soundNotifications) return;
   try {
-    const ctx = getAudioContext();
+    getAudioContext();
     playTone(440, 0.12, 'sine', 0.1);
     setTimeout(() => {
       playTone(330, 0.18, 'sine', 0.1);

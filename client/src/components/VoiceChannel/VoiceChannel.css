@@ -296,7 +296,7 @@
 
 .fullscreen-thumbnail.speaking {
   border-color: var(--status-online);
-  box-shadow: 0 0 8px rgba(59, 165, 93, 0.4);
+  box-shadow: 0 0 8px rgba(76, 175, 130, 0.4);
 }
 
 .fullscreen-thumbnail.focused {

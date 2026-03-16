@@ -1,7 +1,7 @@
 @import './styles/theme.css';
 
 :root {
-  font-family: 'gg sans', 'Noto Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-family: var(--font-ui);
   line-height: 1.375;
   font-weight: 400;
 
@@ -74,7 +74,7 @@ select {
   cursor: pointer;
   outline: none;
   transition: border-color 0.15s ease, background-color 0.15s ease;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a9a4b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238fa3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 10px center;
   background-size: 12px;
@@ -106,14 +106,14 @@ select option {
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: rgba(18, 16, 30, 0.6);
+  background-color: rgba(26, 42, 56, 0.6);
   border-radius: 4px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(18, 16, 30, 0.9);
+  background-color: rgba(26, 42, 56, 0.9);
 }
 
 * {

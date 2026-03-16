@@ -13,10 +13,10 @@ import (
 	"os"
 	"testing"
 
-	"github.com/slimcord/slimcord-server/internal/api"
-	"github.com/slimcord/slimcord-server/internal/auth"
-	"github.com/slimcord/slimcord-server/internal/db"
-	"github.com/slimcord/slimcord-server/internal/ws"
+	"github.com/dilla/dilla-server/internal/api"
+	"github.com/dilla/dilla-server/internal/auth"
+	"github.com/dilla/dilla-server/internal/db"
+	"github.com/dilla/dilla-server/internal/ws"
 )
 
 // testEnv holds everything needed for a single test server instance.
@@ -28,7 +28,7 @@ type testEnv struct {
 
 func setupTestServer(t *testing.T) (*testEnv, func()) {
 	t.Helper()
-	tmpDir, err := os.MkdirTemp("", "slimcord-test-*")
+	tmpDir, err := os.MkdirTemp("", "dilla-test-*")
 	if err != nil {
 		t.Fatal("create temp dir:", err)
 	}
@@ -715,7 +715,7 @@ func TestAuthMiddleware(t *testing.T) {
 }
 
 func TestRateLimiting(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "slimcord-ratelimit-*")
+	tmpDir, err := os.MkdirTemp("", "dilla-ratelimit-*")
 	if err != nil {
 		t.Fatal("create temp dir:", err)
 	}

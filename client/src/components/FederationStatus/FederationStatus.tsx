@@ -114,7 +114,7 @@ export default function FederationStatus({ teamId }: { teamId: string }) {
   };
 
   const curlOneLiner = joinToken
-    ? `curl -sSL https://get.slimcord.dev | sh -s -- --join-token ${joinToken.token}`
+    ? `curl -sSL https://get.dilla.dev | sh -s -- --join-token ${joinToken.token}`
     : '';
 
   return (

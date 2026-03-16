@@ -5,13 +5,14 @@ import { CloudCheck, CloudXmark, CloudSync } from 'iconoir-react';
 import { useAuthStore } from '../stores/authStore';
 import { api } from '../services/api';
 import { decodeRecoveryKey } from '../services/webauthn';
-import { initCrypto, getIdentityKeys } from '../services/crypto';
+import { initCrypto } from '../services/crypto';
 import {
   importIdentityBlob,
   unlockWithRecovery,
   signChallenge,
 } from '../services/keyStore';
 import { toBase64, fromBase64 } from '../services/cryptoCore';
+import PublicShell from './PublicShell';
 
 export default function RecoverFromServer() {
   const { t } = useTranslation();
@@ -65,7 +66,7 @@ export default function RecoverFromServer() {
       // Fetch identity blob from server
       const blobResp = await fetch(`${normalizedUrl}/api/v1/identity/blob?username=${encodeURIComponent(username)}`);
       if (!blobResp.ok) throw new Error('Failed to fetch identity blob from server');
-      const { blob, servers } = await blobResp.json();
+      const { blob } = await blobResp.json();
 
       // Import the blob into IndexedDB
       await importIdentityBlob(blob);
@@ -78,7 +79,7 @@ export default function RecoverFromServer() {
 
       setPublicKey(pubKeyB64);
       setDerivedKey(recoveryKeyB64);
-      localStorage.setItem('slimcord_username', username);
+      localStorage.setItem('dilla_username', username);
 
       // Authenticate with the server to get a JWT
       const tempId = 'recovery-temp';
@@ -108,14 +109,13 @@ export default function RecoverFromServer() {
   };
 
   return (
-    <div className="page" data-tauri-drag-region style={{ maxWidth: 480, margin: 'auto', padding: '3rem 2rem' }}>
-      <img src="/logo.png" alt="Slimcord" style={{ width: 80, height: 80, marginBottom: 8 }} />
+    <PublicShell>
       <h1>{t('recover.title', 'Recover Identity')}</h1>
-      <p style={{ opacity: 0.7 }}>
+      <p style={{ opacity: 0.7, textAlign: 'center', marginBottom: '0.5rem' }}>
         {t('recover.subtitle', 'Restore your identity from a server using your recovery key.')}
       </p>
 
-      {error && <p className="error-text">{error}</p>}
+      {error && <p className="error">{error}</p>}
 
       <div className="form">
         <div style={{ position: 'relative' }}>
@@ -127,13 +127,13 @@ export default function RecoverFromServer() {
             style={{ paddingRight: '2.5rem' }}
           />
           {serverStatus === 'online' && (
-            <CloudCheck style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: '#4ade80', width: 18, height: 18 }} />
+            <CloudCheck style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-positive)', width: 18, height: 18 }} />
           )}
           {serverStatus === 'offline' && (
-            <CloudXmark style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: '#f87171', width: 18, height: 18 }} />
+            <CloudXmark style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-danger)', width: 18, height: 18 }} />
           )}
           {serverStatus === 'checking' && (
-            <CloudSync style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: '#facc15', width: 18, height: 18, animation: 'spin 1s linear infinite' }} />
+            <CloudSync style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-warning)', width: 18, height: 18, animation: 'spin 1s linear infinite' }} />
           )}
         </div>
 
@@ -164,6 +164,6 @@ export default function RecoverFromServer() {
           ← {t('common.back', 'Back')}
         </button>
       </div>
-    </div>
+    </PublicShell>
   );
 }

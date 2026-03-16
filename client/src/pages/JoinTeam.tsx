@@ -6,6 +6,7 @@ import { useAuthStore } from '../stores/authStore';
 import { api } from '../services/api';
 import { cryptoService } from '../services/crypto';
 import { exportIdentityBlob, hasIdentity } from '../services/keyStore';
+import PublicShell from './PublicShell';
 
 function normalizeUrl(address: string): string {
   return address.startsWith('http')
@@ -17,7 +18,14 @@ export default function JoinTeam() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { token: urlToken } = useParams<{ token?: string }>();
-  const { derivedKey, publicKey, addTeam } = useAuthStore();
+  const { derivedKey, publicKey, addTeam, isAuthenticated, teams } = useAuthStore();
+
+  // If already authenticated with teams and not arriving via invite link, redirect to app
+  useEffect(() => {
+    if (isAuthenticated && !urlToken && teams.size > 0) {
+      navigate('/app', { replace: true });
+    }
+  }, [isAuthenticated, urlToken, teams, navigate]);
 
   // If user has no identity yet, redirect to create one first, then come back
   useEffect(() => {
@@ -37,7 +45,7 @@ export default function JoinTeam() {
   const [serverAddress, setServerAddress] = useState(fromInviteLink ? window.location.origin : '');
   const [inviteToken, setInviteToken] = useState(urlToken ?? '');
   const [username, setUsername] = useState('');
-  const [displayName, setDisplayName] = useState('');
+  const [displayName, setDisplayName] = useState(localStorage.getItem('dilla_username') ?? '');
   const [teamInfo, setTeamInfo] = useState<{ team_name?: string; created_by?: string } | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -110,7 +118,7 @@ export default function JoinTeam() {
       const tempId = normalizedUrl;
       api.addTeam(tempId, normalizedUrl);
 
-      const result = await api.register(tempId, username, displayName || username, publicKey, inviteToken);
+      const result = await api.register(tempId, username, displayName || username, publicKey, inviteToken) as { user: unknown; token: string; team?: { id?: string } | null };
       const team = result.team as { id?: string } | null;
       const realTeamId = team?.id || tempId;
 
@@ -165,10 +173,21 @@ export default function JoinTeam() {
   };
 
   return (
-    <div className="page join-team-page" data-tauri-drag-region>
-      <img src="/logo.png" alt="Slimcord" style={{ width: 64, height: 64, marginBottom: 8 }} />
+    <PublicShell>
       <h1>{t('join.title')}</h1>
       {error && <p className="error">{error}</p>}
+
+      {teamInfo && (
+        <div className="login-identity-card" style={{ marginBottom: 16 }}>
+          <div style={{ minWidth: 0 }}>
+            <div className="login-identity-name">{teamInfo.team_name ?? 'Unknown'}</div>
+            {teamInfo.created_by && (
+              <div className="login-identity-servers">{t('join.invitedBy')}: {teamInfo.created_by}</div>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="form">
         {!fromInviteLink && (
           <div style={{ position: 'relative' }}>
@@ -180,13 +199,13 @@ export default function JoinTeam() {
               style={{ paddingRight: '2.5rem' }}
             />
             {serverStatus === 'online' && (
-              <CloudCheck style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: '#4ade80', width: 18, height: 18 }} />
+              <CloudCheck style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-positive)', width: 18, height: 18 }} />
             )}
             {serverStatus === 'offline' && (
-              <CloudXmark style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: '#f87171', width: 18, height: 18 }} />
+              <CloudXmark style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-danger)', width: 18, height: 18 }} />
             )}
             {serverStatus === 'checking' && (
-              <CloudSync style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: '#facc15', width: 18, height: 18, animation: 'spin 1s linear infinite' }} />
+              <CloudSync style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-warning)', width: 18, height: 18, animation: 'spin 1s linear infinite' }} />
             )}
           </div>
         )}
@@ -216,15 +235,9 @@ export default function JoinTeam() {
           </button>
         )}
         {teamInfo && (
-          <div className="team-info">
-            <p>{t('join.teamName')}: {teamInfo.team_name ?? 'Unknown'}</p>
-            {teamInfo.created_by && (
-              <p>{t('join.invitedBy')}: {teamInfo.created_by}</p>
-            )}
-            <button className="btn-primary" onClick={handleJoin} disabled={loading}>
-              {loading ? t('join.joining') : t('join.join')}
-            </button>
-          </div>
+          <button className="btn-primary" onClick={handleJoin} disabled={loading}>
+            {loading ? t('join.joining') : t('join.join')}
+          </button>
         )}
         <button className="btn-link" onClick={() => navigate(-1)}>
           ← Back
@@ -233,6 +246,6 @@ export default function JoinTeam() {
           Set up a new server instead
         </button>
       </div>
-    </div>
+    </PublicShell>
   );
 }

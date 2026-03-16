@@ -1,14 +1,14 @@
-# Contributing to Slimcord
+# Contributing to Dilla
 
-Thank you for your interest in contributing to Slimcord! This document provides guidelines for contributing to the project.
+Thank you for your interest in contributing to Dilla! This document provides guidelines for contributing to the project.
 
 ## Getting Started
 
 1. **Fork** the repository on GitHub
 2. **Clone** your fork locally:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/slimcord.git
-   cd slimcord
+   git clone https://github.com/YOUR_USERNAME/dilla.git
+   cd dilla
    ```
 3. **Create a branch** for your feature or fix:
    ```bash

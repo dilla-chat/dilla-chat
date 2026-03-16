@@ -7,7 +7,7 @@ WEBAPP_DIST := internal/webapp/dist
 
 # Build client web app, copy to embed dir, then build Go server
 build: webapp
-	go build $(LDFLAGS) -o bin/slimcord-server ./cmd/slimcord-server/
+	go build $(LDFLAGS) -o bin/dilla-server ./cmd/dilla-server/
 
 # Build only the web client and copy into the Go embed directory
 webapp:
@@ -16,7 +16,7 @@ webapp:
 	cp -r $(CLIENT_DIR)/dist $(WEBAPP_DIST)
 
 dev: webapp
-	go run ./cmd/slimcord-server/ --log-level debug --log-format text
+	go run ./cmd/dilla-server/ --log-level debug --log-format text
 
 test:
 	go test ./... -v
@@ -27,11 +27,11 @@ clean:
 # Note: CGO_ENABLED=1 is required for SQLCipher support.
 # Cross-compiling with CGO requires appropriate C cross-compilers.
 cross-compile:
-	GOOS=linux   GOARCH=amd64 CGO_ENABLED=1 go build $(LDFLAGS) -o bin/slimcord-server-linux-amd64 ./cmd/slimcord-server/
-	GOOS=linux   GOARCH=arm64 CGO_ENABLED=1 go build $(LDFLAGS) -o bin/slimcord-server-linux-arm64 ./cmd/slimcord-server/
-	GOOS=darwin  GOARCH=amd64 CGO_ENABLED=1 go build $(LDFLAGS) -o bin/slimcord-server-darwin-amd64 ./cmd/slimcord-server/
-	GOOS=darwin  GOARCH=arm64 CGO_ENABLED=1 go build $(LDFLAGS) -o bin/slimcord-server-darwin-arm64 ./cmd/slimcord-server/
-	GOOS=windows GOARCH=amd64 CGO_ENABLED=1 go build $(LDFLAGS) -o bin/slimcord-server-windows-amd64.exe ./cmd/slimcord-server/
+	GOOS=linux   GOARCH=amd64 CGO_ENABLED=1 go build $(LDFLAGS) -o bin/dilla-server-linux-amd64 ./cmd/dilla-server/
+	GOOS=linux   GOARCH=arm64 CGO_ENABLED=1 go build $(LDFLAGS) -o bin/dilla-server-linux-arm64 ./cmd/dilla-server/
+	GOOS=darwin  GOARCH=amd64 CGO_ENABLED=1 go build $(LDFLAGS) -o bin/dilla-server-darwin-amd64 ./cmd/dilla-server/
+	GOOS=darwin  GOARCH=arm64 CGO_ENABLED=1 go build $(LDFLAGS) -o bin/dilla-server-darwin-arm64 ./cmd/dilla-server/
+	GOOS=windows GOARCH=amd64 CGO_ENABLED=1 go build $(LDFLAGS) -o bin/dilla-server-windows-amd64.exe ./cmd/dilla-server/
 
 docker:
-	docker build -t slimcord-server .
+	docker build -t dilla-server .

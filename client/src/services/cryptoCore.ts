@@ -82,7 +82,7 @@ export async function generateEd25519KeyPair(): Promise<Ed25519KeyPair> {
 }
 
 export async function ed25519Sign(privateKey: CryptoKey, data: Uint8Array): Promise<Uint8Array> {
-  const sig = await crypto.subtle.sign('Ed25519', privateKey, data);
+  const sig = await crypto.subtle.sign('Ed25519', privateKey, data as unknown as BufferSource);
   return new Uint8Array(sig);
 }
 
@@ -91,11 +91,11 @@ export async function ed25519Verify(
   signature: Uint8Array,
   data: Uint8Array,
 ): Promise<boolean> {
-  return crypto.subtle.verify('Ed25519', publicKey, signature, data);
+  return crypto.subtle.verify('Ed25519', publicKey, signature as unknown as BufferSource, data as unknown as BufferSource);
 }
 
 export async function importEd25519PublicKey(raw: Uint8Array): Promise<CryptoKey> {
-  return crypto.subtle.importKey('raw', raw, 'Ed25519', true, ['verify']);
+  return crypto.subtle.importKey('raw', raw as unknown as BufferSource, 'Ed25519', true, ['verify']);
 }
 
 export async function exportEd25519PrivateKey(key: CryptoKey): Promise<Uint8Array> {
@@ -104,7 +104,7 @@ export async function exportEd25519PrivateKey(key: CryptoKey): Promise<Uint8Arra
 }
 
 export async function importEd25519PrivateKey(pkcs8: Uint8Array): Promise<CryptoKey> {
-  return crypto.subtle.importKey('pkcs8', pkcs8, 'Ed25519', true, ['sign']);
+  return crypto.subtle.importKey('pkcs8', pkcs8 as unknown as BufferSource, 'Ed25519', true, ['sign']);
 }
 
 // ─── X25519 (ECDH) ───────────────────────────────────────────────────────────
@@ -116,7 +116,7 @@ export interface X25519KeyPair {
 }
 
 export async function generateX25519KeyPair(): Promise<X25519KeyPair> {
-  const keyPair = await crypto.subtle.generateKey('X25519', true, ['deriveBits']);
+  const keyPair = await crypto.subtle.generateKey('X25519', true, ['deriveBits']) as CryptoKeyPair;
   const pubRaw = await crypto.subtle.exportKey('raw', keyPair.publicKey);
   return {
     privateKey: keyPair.privateKey,
@@ -129,7 +129,7 @@ export async function x25519DH(
   privateKey: CryptoKey,
   publicKeyBytes: Uint8Array,
 ): Promise<Uint8Array> {
-  const pubKey = await crypto.subtle.importKey('raw', publicKeyBytes, 'X25519', false, []);
+  const pubKey = await crypto.subtle.importKey('raw', publicKeyBytes as unknown as BufferSource, 'X25519', false, []);
   const bits = await crypto.subtle.deriveBits(
     { name: 'X25519', public: pubKey },
     privateKey,
@@ -139,7 +139,7 @@ export async function x25519DH(
 }
 
 export async function importX25519PublicKey(raw: Uint8Array): Promise<CryptoKey> {
-  return crypto.subtle.importKey('raw', raw, 'X25519', true, []);
+  return crypto.subtle.importKey('raw', raw as unknown as BufferSource, 'X25519', true, []);
 }
 
 export async function exportX25519PrivateKey(key: CryptoKey): Promise<Uint8Array> {
@@ -148,7 +148,7 @@ export async function exportX25519PrivateKey(key: CryptoKey): Promise<Uint8Array
 }
 
 export async function importX25519PrivateKey(pkcs8: Uint8Array): Promise<CryptoKey> {
-  return crypto.subtle.importKey('pkcs8', pkcs8, 'X25519', true, ['deriveBits']);
+  return crypto.subtle.importKey('pkcs8', pkcs8 as unknown as BufferSource, 'X25519', true, ['deriveBits']);
 }
 
 // ─── Ed25519 → X25519 conversion ─────────────────────────────────────────────
@@ -162,12 +162,12 @@ export async function importX25519PrivateKey(pkcs8: Uint8Array): Promise<CryptoK
 export async function aesGcmEncrypt(key: Uint8Array, plaintext: Uint8Array): Promise<Uint8Array> {
   const nonce = randomBytes(12);
   const cryptoKey = await crypto.subtle.importKey(
-    'raw', key, { name: 'AES-GCM' }, false, ['encrypt'],
+    'raw', key as unknown as BufferSource, { name: 'AES-GCM' }, false, ['encrypt'],
   );
   const ciphertext = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv: nonce },
+    { name: 'AES-GCM', iv: nonce as unknown as BufferSource },
     cryptoKey,
-    plaintext,
+    plaintext as unknown as BufferSource,
   );
   return concatBytes(nonce, new Uint8Array(ciphertext));
 }
@@ -177,12 +177,12 @@ export async function aesGcmDecrypt(key: Uint8Array, data: Uint8Array): Promise<
   const nonce = data.slice(0, 12);
   const ciphertext = data.slice(12);
   const cryptoKey = await crypto.subtle.importKey(
-    'raw', key, { name: 'AES-GCM' }, false, ['decrypt'],
+    'raw', key as unknown as BufferSource, { name: 'AES-GCM' }, false, ['decrypt'],
   );
   const plaintext = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: nonce },
+    { name: 'AES-GCM', iv: nonce as unknown as BufferSource },
     cryptoKey,
-    ciphertext,
+    ciphertext as unknown as BufferSource,
   );
   return new Uint8Array(plaintext);
 }
@@ -196,14 +196,14 @@ export async function hkdfDerive(
   salt?: Uint8Array,
 ): Promise<Uint8Array> {
   const baseKey = await crypto.subtle.importKey(
-    'raw', ikm, 'HKDF', false, ['deriveBits'],
+    'raw', ikm as unknown as BufferSource, 'HKDF', false, ['deriveBits'],
   );
   const bits = await crypto.subtle.deriveBits(
     {
       name: 'HKDF',
       hash: 'SHA-256',
-      salt: salt || new Uint8Array(0),
-      info,
+      salt: (salt || new Uint8Array(0)) as unknown as BufferSource,
+      info: info as unknown as BufferSource,
     },
     baseKey,
     length * 8,
@@ -213,13 +213,13 @@ export async function hkdfDerive(
 
 // KDF for root chain: DH output + old root key → new root key + chain key
 async function kdfRoot(rootKey: Uint8Array, dhOutput: Uint8Array): Promise<[Uint8Array, Uint8Array]> {
-  const baseKey = await crypto.subtle.importKey('raw', dhOutput, 'HKDF', false, ['deriveBits']);
+  const baseKey = await crypto.subtle.importKey('raw', dhOutput as unknown as BufferSource, 'HKDF', false, ['deriveBits']);
   const newRoot = new Uint8Array(await crypto.subtle.deriveBits(
-    { name: 'HKDF', hash: 'SHA-256', salt: rootKey, info: encoder.encode('SlimcordRootKey') },
+    { name: 'HKDF', hash: 'SHA-256', salt: rootKey as unknown as BufferSource, info: encoder.encode('DillaRootKey') as unknown as BufferSource },
     baseKey, 256,
   ));
   const chainKey = new Uint8Array(await crypto.subtle.deriveBits(
-    { name: 'HKDF', hash: 'SHA-256', salt: rootKey, info: encoder.encode('SlimcordChainKey') },
+    { name: 'HKDF', hash: 'SHA-256', salt: rootKey as unknown as BufferSource, info: encoder.encode('DillaChainKey') as unknown as BufferSource },
     baseKey, 256,
   ));
   return [newRoot, chainKey];
@@ -228,7 +228,7 @@ async function kdfRoot(rootKey: Uint8Array, dhOutput: Uint8Array): Promise<[Uint
 // KDF for sending/receiving chain: chain key → next chain key + message key
 async function kdfChain(chainKey: Uint8Array): Promise<[Uint8Array, Uint8Array]> {
   const key = await crypto.subtle.importKey(
-    'raw', chainKey, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+    'raw', chainKey as unknown as BufferSource, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
   );
   const messageKey = new Uint8Array(await crypto.subtle.sign('HMAC', key, new Uint8Array([0x01])));
   const nextChainKey = new Uint8Array(await crypto.subtle.sign('HMAC', key, new Uint8Array([0x02])));
@@ -266,16 +266,7 @@ export async function generatePrekeyBundle(
     otpkPairs.push(await generateX25519KeyPair());
   }
 
-  const identityPubRaw = await crypto.subtle.exportKey(
-    'raw',
-    (await crypto.subtle.generateKey('Ed25519', true, ['sign', 'verify'])).publicKey,
-  );
-  // Actually, we need the public key from the signing key
-  // We'll get it by re-importing as a keypair... but SubtleCrypto Ed25519
-  // doesn't give us the public from private easily. Let's export PKCS8 and derive.
-  // Actually, the caller should pass the public key bytes too.
-
-  // For now, get identity public key from the signing key's JWK
+  // Get identity public key from the signing key's JWK
   const jwk = await crypto.subtle.exportKey('jwk', identitySigningKey);
   const identityPubBytes = fromBase64url(jwk.x!);
 
@@ -349,7 +340,7 @@ export async function x3dhInitiate(
     otpkIndex = 0;
   }
 
-  const sharedSecret = await hkdfDerive(ikm, encoder.encode('SlimcordX3DH'), 32);
+  const sharedSecret = await hkdfDerive(ikm, encoder.encode('DillaX3DH'), 32);
   return { sharedSecret, ephemeralPublicKey: ephemeral.publicKeyBytes, oneTimePreKeyIndex: otpkIndex };
 }
 
@@ -377,7 +368,7 @@ export async function x3dhRespond(
     ikm = concatBytes(ikm, dh4);
   }
 
-  return hkdfDerive(ikm, encoder.encode('SlimcordX3DH'), 32);
+  return hkdfDerive(ikm, encoder.encode('DillaX3DH'), 32);
 }
 
 // ─── Double Ratchet ───────────────────────────────────────────────────────────
@@ -454,18 +445,8 @@ export class RatchetSession {
   /** Initialize as Bob (responder) after X3DH */
   static async initBob(sharedSecret: Uint8Array, bobSignedPrekeyPkcs8: Uint8Array): Promise<RatchetSession> {
     const privKey = await importX25519PrivateKey(bobSignedPrekeyPkcs8);
-    const pubRaw = await crypto.subtle.exportKey(
-      'raw',
-      (await crypto.subtle.importKey('pkcs8', bobSignedPrekeyPkcs8, 'X25519', true, ['deriveBits'])).publicKey ?? 
-      // X25519 PKCS8 import might not expose public. Derive it:
-      await (async () => {
-        const kp = await crypto.subtle.generateKey('X25519', true, ['deriveBits']);
-        return kp.publicKey; // placeholder, see below
-      })(),
-    );
-    // Actually for Bob init, we need the public key from the private.
     // WebCrypto doesn't directly give public from private for X25519.
-    // We export JWK which contains both x (public) and d (private).
+    // Export JWK which contains both x (public) and d (private).
     const jwk = await crypto.subtle.exportKey('jwk', privKey);
     const publicKeyBytes = fromBase64url(jwk.x!);
 
@@ -512,7 +493,7 @@ export class RatchetSession {
     const skippedMk = this.state.skippedKeys.get(skId);
     if (skippedMk) {
       this.state.skippedKeys.delete(skId);
-      return aesGcmDecrypt(skippedMk, new Uint8Array(message.header.ciphertext));
+      return aesGcmDecrypt(skippedMk, new Uint8Array(message.ciphertext));
     }
 
     // Check if DH ratchet needed
@@ -792,14 +773,14 @@ export async function generateSafetyNumber(
 ): Promise<string> {
   async function fingerprint(identityKey: Uint8Array, stableId: string): Promise<Uint8Array> {
     let data = concatBytes(
-      encoder.encode('SlimcordFingerprint'),
+      encoder.encode('DillaFingerprint'),
       identityKey,
       encoder.encode(stableId),
     );
     // Iterate hash 5200 times as Signal does
     for (let i = 0; i < 5200; i++) {
       const input = concatBytes(data, identityKey);
-      data = new Uint8Array(await crypto.subtle.digest('SHA-256', input));
+      data = new Uint8Array(await crypto.subtle.digest('SHA-256', input as unknown as BufferSource));
     }
     return data;
   }
@@ -903,7 +884,7 @@ export class CryptoManager {
     return toBase64(encoder.encode(JSON.stringify(msg)));
   }
 
-  async decryptChannel(channelId: string, senderId: string, ciphertext: string): Promise<string> {
+  async decryptChannel(channelId: string, _senderId: string, ciphertext: string): Promise<string> {
     const session = this.groupSessions.get(channelId);
     if (!session) throw new Error(`No group session for channel ${channelId}`);
     const msg: GroupMessageData = JSON.parse(decoder.decode(fromBase64(ciphertext)));
@@ -982,7 +963,7 @@ export async function passphraseToKey(passphrase: string): Promise<Uint8Array> {
     encoder.encode(passphrase),
     encoder.encode('session-encryption'),
     32,
-    encoder.encode('SlimcordSessions'),
+    encoder.encode('DillaSessions'),
   );
 }
 

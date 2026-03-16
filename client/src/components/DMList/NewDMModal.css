@@ -1,7 +1,9 @@
 .new-dm-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(0, 0, 0, 0.5);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -9,7 +11,10 @@
 }
 
 .new-dm-modal {
-  background: var(--bg-secondary);
+  background: var(--glass-bg-modal);
+  -webkit-backdrop-filter: blur(var(--glass-blur-heavy));
+  backdrop-filter: blur(var(--glass-blur-heavy));
+  border: 1px solid var(--glass-border);
   border-radius: 8px;
   width: 440px;
   max-height: 600px;
@@ -166,17 +171,20 @@
 .new-dm-create-btn {
   width: 100%;
   padding: 10px;
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 4px;
-  background: var(--bg-accent);
+  background: var(--gradient-accent);
   color: white;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
+  transition: filter 0.15s, box-shadow 0.15s;
+  box-shadow: 0 2px 8px rgba(232, 184, 75, 0.2);
 }
 
 .new-dm-create-btn:hover:not(:disabled) {
-  opacity: 0.9;
+  filter: brightness(1.1);
+  box-shadow: 0 4px 16px rgba(232, 184, 75, 0.3);
 }
 
 .new-dm-create-btn:disabled {

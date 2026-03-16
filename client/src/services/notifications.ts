@@ -1,15 +1,5 @@
-const NOTIFICATIONS_KEY = 'slimcord-notifications-enabled';
-
 class NotificationService {
-  private enabled: boolean;
-
-  constructor() {
-    try {
-      this.enabled = localStorage.getItem(NOTIFICATIONS_KEY) !== 'false';
-    } catch {
-      this.enabled = true;
-    }
-  }
+  private enabled = true;
 
   async requestPermission(): Promise<boolean> {
     if (!('Notification' in window)) return false;
@@ -26,8 +16,9 @@ class NotificationService {
     // Try Tauri notification API first (only in Tauri shell)
     if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
       try {
+        const mod = '@tauri-apps/api/notification';
         const { isPermissionGranted, requestPermission, sendNotification } =
-          await import('@tauri-apps/api/notification' as string);
+          await import(/* @vite-ignore */ mod);
         let permitted = await isPermissionGranted();
         if (!permitted) {
           const result = await requestPermission();
@@ -57,11 +48,6 @@ class NotificationService {
 
   setEnabled(enabled: boolean): void {
     this.enabled = enabled;
-    try {
-      localStorage.setItem(NOTIFICATIONS_KEY, String(enabled));
-    } catch {
-      // ignore
-    }
   }
 }
 

@@ -22,7 +22,7 @@
 .connection-status__bar {
   width: 3px;
   border-radius: 1px;
-  background: var(--interactive-muted, rgba(255, 255, 255, 0.15));
+  background: var(--interactive-muted);
   transition: background 0.2s;
 }
 
@@ -37,29 +37,29 @@
 
 /* Quality colors */
 .connection-status--excellent {
-  color: var(--status-online, #3ba55d);
+  color: var(--status-online);
 }
 
 .connection-status--good {
-  color: var(--status-online, #3ba55d);
+  color: var(--status-online);
 }
 
 .connection-status--poor {
-  color: var(--status-idle, #faa81a);
+  color: var(--status-idle);
 }
 
 .connection-status--disconnected {
-  color: var(--status-dnd, #ed4245);
+  color: var(--status-dnd);
 }
 
 .connection-status__label {
-  color: var(--text-muted, #72767d);
+  color: var(--text-muted);
   font-weight: 500;
   letter-spacing: 0.02em;
 }
 
 .connection-status--disconnected .connection-status__label {
-  color: var(--status-dnd, #ed4245);
+  color: var(--status-dnd);
 }
 
 /* Tooltip */
@@ -68,10 +68,12 @@
   bottom: calc(100% + 8px);
   left: 8px;
   width: 220px;
-  background: var(--bg-floating, #18191c);
+  background: var(--glass-bg-floating);
+  -webkit-backdrop-filter: blur(var(--glass-blur-heavy));
+  backdrop-filter: blur(var(--glass-blur-heavy));
+  border: 1px solid var(--glass-border);
   border-radius: 8px;
   padding: 12px;
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.24);
   z-index: 1000;
   pointer-events: none;
 }
@@ -79,7 +81,7 @@
 .connection-status__tooltip-title {
   font-size: 12px;
   font-weight: 700;
-  color: var(--text-normal, #dcddde);
+  color: var(--text-normal);
   margin-bottom: 8px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -91,11 +93,11 @@
   align-items: center;
   padding: 3px 0;
   font-size: 12px;
-  color: var(--text-muted, #72767d);
+  color: var(--text-muted);
 }
 
 .connection-status__tooltip-row span:last-child {
-  color: var(--text-normal, #dcddde);
+  color: var(--text-normal);
   font-weight: 500;
 }
 
@@ -108,16 +110,16 @@
 
 .connection-status__quality-badge--excellent,
 .connection-status__quality-badge--good {
-  background: rgba(59, 165, 93, 0.15);
-  color: var(--status-online, #3ba55d);
+  background: rgba(76, 175, 130, 0.15);
+  color: var(--status-online);
 }
 
 .connection-status__quality-badge--poor {
-  background: rgba(250, 168, 26, 0.15);
-  color: var(--status-idle, #faa81a);
+  background: rgba(232, 184, 75, 0.15);
+  color: var(--status-idle);
 }
 
 .connection-status__quality-badge--disconnected {
-  background: rgba(237, 66, 69, 0.15);
-  color: var(--status-dnd, #ed4245);
+  background: rgba(208, 90, 74, 0.15);
+  color: var(--status-dnd);
 }

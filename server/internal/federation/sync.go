@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/slimcord/slimcord-server/internal/db"
+	"github.com/dilla/dilla-server/internal/db"
 )
 
 // SyncManager handles state synchronization between nodes using Lamport clocks.

@@ -1,0 +1,11 @@
+{
+  "name": "Dilla",
+  "short_name": "Dilla",
+  "description": "Self-hosted, end-to-end encrypted chat.",
+  "theme_color": "#0c1218",
+  "background_color": "#0c1218",
+  "display": "standalone",
+  "icons": [
+    { "src": "/brand/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

@@ -5,28 +5,12 @@ import { useDMStore, type DMChannel } from '../../stores/dmStore';
 import { useTeamStore } from '../../stores/teamStore';
 import { api } from '../../services/api';
 import { ws } from '../../services/websocket';
+import { usernameColor, getInitials } from '../../utils/colors';
 import './DMList.css';
 
 interface Props {
   currentUserId: string;
   onNewDM: () => void;
-}
-
-function getInitials(name: string): string {
-  return name.slice(0, 2).toUpperCase();
-}
-
-function usernameColor(name: string): string {
-  const colors = [
-    '#f44336', '#e91e63', '#9c27b0', '#673ab7',
-    '#3f51b5', '#2196f3', '#03a9f4', '#00bcd4',
-    '#009688', '#4caf50', '#8bc34a', '#ff9800',
-  ];
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return colors[Math.abs(hash) % colors.length];
 }
 
 function formatLastMessage(dm: DMChannel): string {

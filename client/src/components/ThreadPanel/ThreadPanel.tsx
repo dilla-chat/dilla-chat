@@ -8,8 +8,10 @@ import { useMessageStore, type Message } from '../../stores/messageStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useTeamStore } from '../../stores/teamStore';
 import { api } from '../../services/api';
+import { usernameColor, getInitials } from '../../utils/colors';
 import { ws } from '../../services/websocket';
 import { cryptoService } from '../../services/crypto';
+import { cacheMessage, getCachedMessage, deleteCachedMessage } from '../../services/messageCache';
 import MessageInput from '../MessageInput/MessageInput';
 import './ThreadPanel.css';
 
@@ -26,22 +28,6 @@ function formatTime(iso: string): string {
   return `${date.toLocaleDateString()} ${time}`;
 }
 
-function getInitials(username: string): string {
-  return username.slice(0, 2).toUpperCase();
-}
-
-function usernameColor(username: string): string {
-  const colors = [
-    '#f44336', '#e91e63', '#9c27b0', '#673ab7',
-    '#3f51b5', '#2196f3', '#03a9f4', '#00bcd4',
-    '#009688', '#4caf50', '#8bc34a', '#ff9800',
-  ];
-  let hash = 0;
-  for (let i = 0; i < username.length; i++) {
-    hash = username.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return colors[Math.abs(hash) % colors.length];
-}
 
 const markdownComponents = {
   a: ({ ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
@@ -130,12 +116,15 @@ export default function ThreadPanel({ thread, onClose }: Props) {
         }
         const converted = await Promise.all(
           raw.map(async (msg) => {
+            const cached = await getCachedMessage(msg.id);
+            if (cached !== null) return { ...serverToMessage(msg), content: cached };
             let content = msg.content;
             if (derivedKey) {
               try {
                 content = await cryptoService.decryptMessage(
                   msg.author_id, msg.content, false, thread.channel_id, derivedKey,
                 );
+                await cacheMessage(msg.id, thread.channel_id, content);
               } catch { /* use raw */ }
             }
             return { ...serverToMessage(msg), content };
@@ -157,12 +146,14 @@ export default function ThreadPanel({ thread, onClose }: Props) {
   useEffect(() => {
     const unsubNew = ws.on('thread:message:new', async (payload: ServerMessage) => {
       if (payload.thread_id !== thread.id) return;
-      let content = payload.content;
-      if (derivedKey) {
+      const cached = await getCachedMessage(payload.id);
+      let content = cached ?? payload.content;
+      if (cached === null && derivedKey) {
         try {
           content = await cryptoService.decryptMessage(
             payload.author_id, payload.content, false, thread.channel_id, derivedKey,
           );
+          await cacheMessage(payload.id, thread.channel_id, content);
         } catch { /* use raw content */ }
       }
       addThreadMessage(thread.id, { ...serverToMessage(payload), content });
@@ -170,12 +161,14 @@ export default function ThreadPanel({ thread, onClose }: Props) {
 
     const unsubEdit = ws.on('thread:message:updated', async (payload: ServerMessage) => {
       if (payload.thread_id !== thread.id) return;
+      await deleteCachedMessage(payload.id);
       let content = payload.content;
       if (derivedKey) {
         try {
           content = await cryptoService.decryptMessage(
             payload.author_id, payload.content, false, thread.channel_id, derivedKey,
           );
+          await cacheMessage(payload.id, thread.channel_id, content);
         } catch { /* use raw content */ }
       }
       updateThreadMessage(thread.id, { ...serverToMessage(payload), content });
@@ -326,7 +319,7 @@ export default function ThreadPanel({ thread, onClose }: Props) {
             <span className="thread-parent-time">{formatTime(parentMessage.createdAt)}</span>
           </div>
           <div className="thread-parent-content">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents} skipHtml>
               {parentMessage.content}
             </ReactMarkdown>
           </div>
@@ -376,7 +369,7 @@ export default function ThreadPanel({ thread, onClose }: Props) {
                 </div>
               ) : (
                 <div className="thread-message-body">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents} skipHtml>
                     {msg.content}
                   </ReactMarkdown>
                   {msg.editedAt && (

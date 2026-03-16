@@ -11,15 +11,18 @@
 }
 
 .message-input-composer {
-  background: var(--input-bg);
-  border: 1px solid var(--divider);
-  border-radius: 8px;
+  background: var(--glass-bg-primary);
+  -webkit-backdrop-filter: blur(var(--glass-blur-light));
+  backdrop-filter: blur(var(--glass-blur-light));
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
   overflow: hidden;
-  transition: border-color 0.15s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .message-input-composer:focus-within {
-  border-color: var(--interactive-normal);
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 3px rgba(46, 139, 154, 0.12);
 }
 
 /* Typing indicator above the composer */
@@ -210,7 +213,7 @@
 .message-input-drag-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(232, 79, 171, 0.12);
+  background: rgba(46, 139, 154, 0.12);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -219,7 +222,7 @@
   font-size: 16px;
   font-weight: 600;
   pointer-events: none;
-  border-radius: 8px;
+  border-radius: 12px;
 }
 
 /* File preview area between textarea and action bar */

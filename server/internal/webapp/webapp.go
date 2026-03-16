@@ -1,4 +1,4 @@
-// Package webapp serves the embedded Slimcord web client.
+// Package webapp serves the embedded Dilla web client.
 // The client dist/ directory is copied here at build time by the Makefile.
 package webapp
 

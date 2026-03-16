@@ -117,13 +117,25 @@ func (s *SFU) HandleJoin(channelID, userID string) (*webrtc.SessionDescription, 
 	}
 	s.rooms[channelID][userID] = ps
 
-	// Add existing peers' tracks to this new peer connection so they can hear others.
+	// Add existing peers' tracks to this new peer connection so they can hear/see others.
 	for otherUID, otherPS := range s.rooms[channelID] {
 		if otherUID == userID {
 			continue
 		}
 		if _, err := pc.AddTrack(otherPS.localTrack); err != nil {
-			slog.Error("voice: failed to add track to new peer", "error", err, "other", otherUID)
+			slog.Error("voice: failed to add audio track to new peer", "error", err, "other", otherUID)
+		}
+		// Add existing screen share track so late joiners can see it.
+		if otherPS.screenTrack != nil {
+			if _, err := pc.AddTrack(otherPS.screenTrack); err != nil {
+				slog.Error("voice: failed to add screen track to new peer", "error", err, "other", otherUID)
+			}
+		}
+		// Add existing webcam track so late joiners can see it.
+		if otherPS.webcamTrack != nil {
+			if _, err := pc.AddTrack(otherPS.webcamTrack); err != nil {
+				slog.Error("voice: failed to add webcam track to new peer", "error", err, "other", otherUID)
+			}
 		}
 		// Add the new peer's track to the existing peer so they can hear the newcomer.
 		if _, err := otherPS.pc.AddTrack(localTrack); err != nil {
@@ -231,8 +243,8 @@ func (s *SFU) HandleJoin(channelID, userID string) (*webrtc.SessionDescription, 
 		return nil, fmt.Errorf("set local description: %w", err)
 	}
 
-	// Renegotiate all existing peers so they receive the new peer's audio track.
-	go s.RenegotiateAll(channelID)
+	// Renegotiate existing peers (not the new one) so they receive the new peer's audio track.
+	go s.RenegotiateAllExcept(channelID, userID)
 
 	return &offer, nil
 }
@@ -514,6 +526,29 @@ func (s *SFU) RemoveWebcamTrack(channelID, userID string) error {
 
 	ps.webcamTrack = nil
 	return nil
+}
+
+// RenegotiateAllExcept creates new offers for all peers except the excluded one.
+func (s *SFU) RenegotiateAllExcept(channelID, excludeUserID string) {
+	s.mu.RLock()
+	room, ok := s.rooms[channelID]
+	if !ok {
+		s.mu.RUnlock()
+		return
+	}
+	userIDs := make([]string, 0, len(room))
+	for uid := range room {
+		if uid != excludeUserID {
+			userIDs = append(userIDs, uid)
+		}
+	}
+	s.mu.RUnlock()
+
+	for _, uid := range userIDs {
+		if err := s.Renegotiate(channelID, uid); err != nil {
+			slog.Error("voice: renegotiate failed", "channel", channelID, "user", uid, "error", err)
+		}
+	}
 }
 
 // RenegotiateAll creates new offers for all peers in a room. Each triggers a RenegotiateEvent.

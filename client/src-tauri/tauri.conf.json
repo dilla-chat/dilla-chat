@@ -1,8 +1,8 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicoverbruggen/tauri-v2-docs/main/tauri.conf.json",
-  "productName": "Slimcord",
-  "version": "0.1.0",
-  "identifier": "com.slimcord.desktop",
+  "productName": "Dilla",
+  "version": "0.0.1",
+  "identifier": "com.dilla.desktop",
   "bundle": {
     "icon": [
       "icons/32x32.png",
@@ -29,7 +29,7 @@
   "app": {
     "windows": [
       {
-        "title": "Slimcord",
+        "title": "Dilla",
         "width": 1200,
         "height": 800,
         "minWidth": 800,
@@ -39,7 +39,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; connect-src 'self' https: wss:; img-src 'self' data: blob:"
     }
   }
 }

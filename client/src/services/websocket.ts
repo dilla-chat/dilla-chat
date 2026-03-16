@@ -1,3 +1,5 @@
+import { traceWSEvent } from './telemetry';
+
 type EventHandler = (payload: any) => void;
 
 interface WSEvent {
@@ -45,6 +47,7 @@ export class WebSocketService {
     socket.onopen = () => {
       this.reconnectAttempts.set(teamId, 0);
       this.startHeartbeat(teamId);
+      traceWSEvent('receive', 'ws:connected', { team_id: teamId });
       this.emit('ws:connected', { teamId });
     };
 
@@ -55,6 +58,7 @@ export class WebSocketService {
           this.handleResponse(data.payload);
           return;
         }
+        traceWSEvent('receive', data.type, { team_id: teamId });
         this.emit(data.type, data.payload);
       } catch {
         // ignore malformed messages
@@ -64,6 +68,7 @@ export class WebSocketService {
     socket.onclose = () => {
       this.connections.delete(teamId);
       this.stopHeartbeat(teamId);
+      traceWSEvent('receive', 'ws:disconnected', { team_id: teamId });
       this.emit('ws:disconnected', { teamId });
       this.scheduleReconnect(teamId);
     };
@@ -155,6 +160,7 @@ export class WebSocketService {
   send(teamId: string, event: WSEvent): void {
     const socket = this.connections.get(teamId);
     if (socket?.readyState === WebSocket.OPEN) {
+      traceWSEvent('send', event.type, { team_id: teamId });
       socket.send(JSON.stringify(event));
     } else {
       console.warn(`WebSocket not connected for team ${teamId}, dropping event: ${event.type}`);
