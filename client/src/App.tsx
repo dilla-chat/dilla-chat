@@ -5,7 +5,6 @@ import { recordException } from './services/telemetry';
 import './i18n';
 import './App.css';
 
-import Home from './pages/Home';
 import CreateIdentity from './pages/CreateIdentity';
 import Login from './pages/Login';
 import JoinTeam from './pages/JoinTeam';
@@ -49,7 +48,6 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
 function AuthRedirect() {
   const { isAuthenticated } = useAuthStore();
   const [target, setTarget] = useState<string | null>(null);
-  const [showHome, setShowHome] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -60,18 +58,13 @@ function AuthRedirect() {
       try {
         const { hasIdentity } = await import('./services/keyStore');
         const exists = await hasIdentity();
-        if (exists) {
-          setTarget('/login');
-        } else {
-          setShowHome(true);
-        }
+        setTarget(exists ? '/login' : '/create-identity');
       } catch {
-        setShowHome(true);
+        setTarget('/create-identity');
       }
     })();
   }, [isAuthenticated]);
 
-  if (showHome) return <Home />;
   if (!target) return null;
   return <Navigate to={target} replace />;
 }

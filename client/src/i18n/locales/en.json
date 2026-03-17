@@ -331,58 +331,6 @@
     "enable": "Enable Notifications",
     "disable": "Disable Notifications"
   },
-  "landing": {
-    "hero": {
-      "headline": "Va dillar du om?",
-      "pronunciation": "(vah dill-ar doo ohm)",
-      "explanation": "That's Gothenburg for \"what are you even talking about?\" — and honestly, we don't know. We can't. Dilla is self-hosted, end-to-end encrypted chat — your server, your kanals, your messages. Nobody's reading them. Not even us.",
-      "getStarted": "Get Started",
-      "viewGithub": "View on GitHub"
-    },
-    "features": {
-      "encryption": {
-        "title": "Zero-knowledge encryption",
-        "desc": "Messages are encrypted on your device with the Signal Protocol. The server never sees plaintext — not even file contents."
-      },
-      "selfHosted": {
-        "title": "Your server, your rules",
-        "desc": "A single Rust binary with SQLite. Deploy in minutes, own your data forever. No external dependencies."
-      },
-      "federation": {
-        "title": "Federated by design",
-        "desc": "Connect multiple servers into one team. If one node goes down, the rest keep running. SWIM gossip protocol handles discovery."
-      }
-    },
-    "voice": {
-      "title": "Voice, video & screen sharing",
-      "desc": "WebRTC voice channels with screen sharing, webcam, and real-time speaking detection. Cloudflare TURN for reliable NAT traversal."
-    },
-    "auth": {
-      "title": "No passwords. Ever.",
-      "desc": "Sign in with Touch ID, Windows Hello, or a security key. Ed25519 keypairs replace passwords. Your identity is a cryptographic key."
-    },
-    "channels": {
-      "title": "Channels, threads & DMs",
-      "desc": "Organized team communication with kanals, threaded replies, emoji reactions, typing indicators, and full message search."
-    },
-    "tech": {
-      "signal": "X3DH + Double Ratchet with forward secrecy",
-      "binary": "~15MB Go executable, SQLite, zero dependencies",
-      "desktop": "Tauri v2, ~5MB installer, Rust crypto backend",
-      "permissions": "12-bit granular permissions system",
-      "otel": "Built-in OpenTelemetry with Honeycomb support",
-      "license": "Free and open source, forever"
-    },
-    "cta": {
-      "headline": "Ready to take back control?",
-      "subline": "Deploy your own Dilla server in under 5 minutes.",
-      "createIdentity": "Create Identity",
-      "readDocs": "Read the Docs"
-    },
-    "footer": {
-      "madeIn": "Made in Gothenburg"
-    }
-  },
   "brand": {
     "featureE2E": "End-to-End Encrypted",
     "featureSelfHosted": "Self-Hosted",

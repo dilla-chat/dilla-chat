@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dilla — Self-hosted, end-to-end encrypted team chat</title>
+  <meta name="description" content="Dilla is a federated, end-to-end encrypted Discord alternative. Self-hosted, open source, zero-knowledge encryption.">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Dilla — Self-hosted, end-to-end encrypted team chat">
+  <meta property="og:description" content="A federated, end-to-end encrypted Discord alternative. Self-hosted, open source, zero-knowledge encryption.">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="brand/logo.svg">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Dilla — Self-hosted, end-to-end encrypted team chat">
+  <meta name="twitter:description" content="A federated, end-to-end encrypted Discord alternative. Self-hosted, open source, zero-knowledge encryption.">
+
+  <link rel="icon" href="brand/icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=JetBrains+Mono:wght@400&family=DM+Sans:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="landing">
+
+    <!-- Hero -->
+    <section class="landing-hero">
+      <img src="brand/logo.svg" alt="Dilla" class="landing-hero-logo">
+      <h1 class="landing-hero-headline">Va dillar du om?</h1>
+      <p class="landing-hero-pronunciation">(vah dill-ar doo ohm)</p>
+      <p class="landing-hero-explanation">That's Gothenburg for "what are you even talking about?" — and honestly, we don't know. We can't. Dilla is self-hosted, end-to-end encrypted chat — your server, your kanals, your messages. Nobody's reading them. Not even us.</p>
+      <div class="landing-hero-ctas">
+        <a href="https://github.com/dilla-io/dilla" class="btn-primary">Get Started</a>
+        <a href="https://github.com/dilla-io/dilla" target="_blank" rel="noopener noreferrer" class="btn-secondary">View on GitHub</a>
+      </div>
+      <div class="landing-scroll-indicator" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </div>
+    </section>
+
+    <!-- Problem/Solution Strip -->
+    <section class="landing-problems">
+      <div class="landing-problems-grid">
+        <div class="landing-problem-item">
+          <svg class="landing-problem-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M16 12H17.4C17.7314 12 18 12.2686 18 12.6V19.4C18 19.7314 17.7314 20 17.4 20H6.6C6.26863 20 6 19.7314 6 19.4V12.6C6 12.2686 6.26863 12 6.6 12H8M16 12V8C16 6.66667 15.2 4 12 4C8.8 4 8 6.66667 8 8V12M16 12H8"></path>
+          </svg>
+          <h3 class="landing-problem-title">Zero-knowledge encryption</h3>
+          <p class="landing-problem-desc">Messages are encrypted on your device with the Signal Protocol. The server never sees plaintext — not even file contents.</p>
+        </div>
+        <div class="landing-problem-item">
+          <svg class="landing-problem-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M6 18.01L6.01 17.9989" stroke-linecap="round" stroke-linejoin="round"></path>
+            <path d="M6 6.01L6.01 5.99889" stroke-linecap="round" stroke-linejoin="round"></path>
+            <path d="M2 9.4V2.6C2 2.26863 2.26863 2 2.6 2H21.4C21.7314 2 22 2.26863 22 2.6V9.4C22 9.73137 21.7314 10 21.4 10H2.6C2.26863 10 2 9.73137 2 9.4Z"></path>
+            <path d="M2 21.4V14.6C2 14.2686 2.26863 14 2.6 14H21.4C21.7314 14 22 14.2686 22 14.6V21.4C22 21.7314 21.7314 22 21.4 22H2.6C2.26863 22 2 21.7314 2 21.4Z"></path>
+          </svg>
+          <h3 class="landing-problem-title">Your server, your rules</h3>
+          <p class="landing-problem-desc">A single Rust binary with SQLite. Deploy in minutes, own your data forever. No external dependencies.</p>
+        </div>
+        <div class="landing-problem-item">
+          <svg class="landing-problem-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect width="7" height="5" rx=".6" transform="matrix(0 -1 -1 0 22 21)"></rect>
+            <rect width="7" height="5" rx=".6" transform="matrix(0 -1 -1 0 7 15.5)"></rect>
+            <rect width="7" height="5" rx=".6" transform="matrix(0 -1 -1 0 22 10)"></rect>
+            <path d="M17 17.5H13.5C12.3954 17.5 11.5 16.6046 11.5 15.5V8.5C11.5 7.39543 12.3954 6.5 13.5 6.5H17"></path>
+            <path d="M11.5 12H7"></path>
+          </svg>
+          <h3 class="landing-problem-title">Federated by design</h3>
+          <p class="landing-problem-desc">Connect multiple servers into one team. If one node goes down, the rest keep running. SWIM gossip protocol handles discovery.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Feature Showcase -->
+    <section class="landing-features">
+      <div class="landing-feature-row">
+        <div class="landing-feature-text">
+          <h2 class="landing-feature-title">Voice, video & screen sharing</h2>
+          <p class="landing-feature-desc">WebRTC voice channels with screen sharing, webcam, and real-time speaking detection. Cloudflare TURN for reliable NAT traversal.</p>
+        </div>
+        <div class="landing-feature-visual">
+          <svg class="landing-feature-visual-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18.1182 14.702L14 15.5C11.2183 14.1038 9.5 12.5 8.5 10L9.26995 5.8699L7.81452 2L4.0636 2C2.93605 2 2.04814 2.93178 2.21654 4.04668C2.63695 6.83 3.87653 11.8765 7.5 15.5C11.3052 19.3052 16.7857 20.9564 19.802 21.6127C20.9668 21.8662 22 20.9575 22 19.7655L22 16.1812L18.1182 14.702Z"></path>
+          </svg>
+        </div>
+      </div>
+
+      <div class="landing-feature-row reverse">
+        <div class="landing-feature-text">
+          <h2 class="landing-feature-title">No passwords. Ever.</h2>
+          <p class="landing-feature-desc">Sign in with Touch ID, Windows Hello, or a security key. Ed25519 keypairs replace passwords. Your identity is a cryptographic key.</p>
+        </div>
+        <div class="landing-feature-visual">
+          <svg class="landing-feature-visual-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M7 3.51555C8.4301 2.55827 10.1499 2 12 2C16.1031 2 19.5649 4.74572 20.6482 8.5"></path>
+            <path d="M21 22V14"></path>
+            <path d="M3 22V11C3 9.94809 3.18046 8.93834 3.51212 8"></path>
+            <path d="M18 22V11.3C18 7.82061 15.3137 5 12 5C8.68629 5 6 7.82061 6 11.3V14"></path>
+            <path d="M6 22V18"></path>
+            <path d="M9 22V11.15C9 9.4103 10.3431 8 12 8C12.8653 8 13.645 8.38466 14.1926 9"></path>
+            <path d="M15 22V14"></path>
+            <path d="M12 22V18.5"></path>
+            <path d="M12 11V14"></path>
+          </svg>
+        </div>
+      </div>
+
+      <div class="landing-feature-row">
+        <div class="landing-feature-text">
+          <h2 class="landing-feature-title">Channels, threads & DMs</h2>
+          <p class="landing-feature-desc">Organized team communication with kanals, threaded replies, emoji reactions, typing indicators, and full message search.</p>
+        </div>
+        <div class="landing-feature-visual">
+          <svg class="landing-feature-visual-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17 12.5C17.2761 12.5 17.5 12.2761 17.5 12C17.5 11.7239 17.2761 11.5 17 11.5C16.7239 11.5 16.5 11.7239 16.5 12C16.5 12.2761 16.7239 12.5 17 12.5Z" fill="currentColor"></path>
+            <path d="M12 12.5C12.2761 12.5 12.5 12.2761 12.5 12C12.5 11.7239 12.2761 11.5 12 11.5C11.7239 11.5 11.5 11.7239 11.5 12C11.5 12.2761 11.7239 12.5 12 12.5Z" fill="currentColor"></path>
+            <path d="M7 12.5C7.27614 12.5 7.5 12.2761 7.5 12C7.5 11.7239 7.27614 11.5 7 11.5C6.72386 11.5 6.5 11.7239 6.5 12C6.5 12.2761 6.72386 12.5 7 12.5Z" fill="currentColor"></path>
+            <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 13.8214 2.48697 15.5291 3.33782 17L2.5 21.5L7 20.6622C8.47087 21.513 10.1786 22 12 22Z"></path>
+          </svg>
+        </div>
+      </div>
+    </section>
+
+    <!-- Technical Highlights -->
+    <section class="landing-tech">
+      <h2 class="landing-tech-title">Built for the paranoid</h2>
+      <div class="landing-tech-grid">
+        <div class="landing-tech-card">
+          <div class="landing-tech-card-label">Signal Protocol</div>
+          <p class="landing-tech-card-text">X3DH + Double Ratchet with forward secrecy</p>
+        </div>
+        <div class="landing-tech-card">
+          <div class="landing-tech-card-label">Single Binary</div>
+          <p class="landing-tech-card-text">~15MB Go executable, SQLite, zero dependencies</p>
+        </div>
+        <div class="landing-tech-card">
+          <div class="landing-tech-card-label">Desktop App</div>
+          <p class="landing-tech-card-text">Tauri v2, ~5MB installer, Rust crypto backend</p>
+        </div>
+        <div class="landing-tech-card">
+          <div class="landing-tech-card-label">Permissions</div>
+          <p class="landing-tech-card-text">12-bit granular permissions system</p>
+        </div>
+        <div class="landing-tech-card">
+          <div class="landing-tech-card-label">Observability</div>
+          <p class="landing-tech-card-text">Built-in OpenTelemetry with Honeycomb support</p>
+        </div>
+        <div class="landing-tech-card">
+          <div class="landing-tech-card-label">License</div>
+          <p class="landing-tech-card-text">Free and open source, forever</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Bottom CTA -->
+    <section class="landing-cta">
+      <h2 class="landing-cta-headline">Ready to take back control?</h2>
+      <p class="landing-cta-subline">Deploy your own Dilla server in under 5 minutes.</p>
+      <div class="landing-cta-code">docker run -p 8080:8080 ghcr.io/dilla-io/dilla:latest</div>
+      <div class="landing-cta-buttons">
+        <a href="https://github.com/dilla-io/dilla" class="btn-primary">Get Started</a>
+        <a href="https://github.com/dilla-io/dilla" target="_blank" rel="noopener noreferrer" class="btn-secondary">Read the Docs</a>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="landing-footer">
+      <img src="brand/wordmark.svg" alt="Dilla" class="landing-footer-wordmark">
+      <div class="landing-footer-links">
+        <a href="https://github.com/dilla-io/dilla" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <a href="https://github.com/dilla-io/dilla" target="_blank" rel="noopener noreferrer">Documentation</a>
+        <a href="https://github.com/dilla-io/dilla/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">AGPLv3</a>
+      </div>
+      <p class="landing-footer-tagline">Made in Gothenburg</p>
+    </footer>
+
+  </div>
+</body>
+</html>
