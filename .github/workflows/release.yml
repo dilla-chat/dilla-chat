@@ -122,20 +122,110 @@ jobs:
           name: dilla-server-${{ matrix.name_suffix }}
           path: server-rs/dilla-server-${{ matrix.name_suffix }}.tar.gz
 
+  # Phase 2b: Build Tauri desktop apps (matrix)
+  build-desktop:
+    needs: build-client
+    strategy:
+      matrix:
+        include:
+          - platform: macos-arm64
+            os: macos-latest
+            rust_target: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin
+          - platform: macos-amd64
+            os: macos-14
+            rust_target: x86_64-apple-darwin
+            args: --target x86_64-apple-darwin
+          - platform: windows
+            os: windows-latest
+            rust_target: ''
+            args: ''
+          - platform: linux
+            os: ubuntu-22.04
+            rust_target: ''
+            args: ''
+      fail-fast: false
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Validate client build
+        shell: bash
+        run: |
+          if [ "${{ needs.build-client.result }}" != "success" ]; then
+            echo "Client build failed, cannot proceed with desktop build"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: cd client && npm ci
+
+      - name: Build desktop app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: client
+          tauriScript: npx tauri
+          args: ${{ matrix.args }}
+
+      - name: Upload desktop artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dilla-desktop-${{ matrix.platform }}
+          path: |
+            client/src-tauri/target/**/release/bundle/**/*.dmg
+            client/src-tauri/target/**/release/bundle/**/*.app.tar.gz
+            client/src-tauri/target/**/release/bundle/**/*.msi
+            client/src-tauri/target/**/release/bundle/**/*.exe
+            client/src-tauri/target/**/release/bundle/**/*.AppImage
+            client/src-tauri/target/**/release/bundle/**/*.deb
+
   # Phase 3: Create GitHub Release
   release:
-    needs: build-server
+    needs: [build-server, build-desktop]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
-          path: artifacts/
+          path: artifacts/server/
           pattern: dilla-server-*
           merge-multiple: true
 
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/desktop/
+          pattern: dilla-desktop-*
+          merge-multiple: true
+
+      - name: Flatten desktop artifacts
+        run: |
+          find artifacts/desktop -type f \( -name "*.dmg" -o -name "*.app.tar.gz" -o -name "*.msi" -o -name "*.exe" -o -name "*.AppImage" -o -name "*.deb" \) -exec cp {} artifacts/ \;
+          cp artifacts/server/* artifacts/
+          rm -rf artifacts/server artifacts/desktop
+
       - name: Generate SHA256SUMS
         working-directory: artifacts
-        run: sha256sum dilla-server-* > SHA256SUMS.txt
+        run: sha256sum * > SHA256SUMS.txt
 
       - uses: softprops/action-gh-release@v2
         with:
@@ -144,8 +234,8 @@ jobs:
 
   # Phase 4: Create issues for failures
   create-issues:
-    needs: [build-client, build-server, release]
-    if: always() && (needs.build-client.outputs.build_failed == 'true' || needs.build-server.result == 'failure' || needs.release.result == 'failure')
+    needs: [build-client, build-server, build-desktop, release]
+    if: always() && (needs.build-client.outputs.build_failed == 'true' || needs.build-server.result == 'failure' || needs.build-desktop.result == 'failure' || needs.release.result == 'failure')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -242,6 +332,51 @@ jobs:
                 title: title,
                 body: body,
                 labels: ['auto-fix', 'build', 'release', 'server']
+              });
+            }
+
+      - name: Create issue for desktop build failure
+        if: needs.build-desktop.result == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = '[Auto-fix] Release: Desktop build failure';
+            const body = `## Release Desktop Build Failure
+
+            One or more desktop builds failed during the release workflow.
+
+            **Tag**: ${{ github.ref_name }}
+            **Commit**: ${{ github.sha }}
+            **Workflow**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            Please check the workflow logs for specific build matrix failures.
+
+            This issue will be automatically fixed by the auto-fix workflow.
+            `;
+
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'auto-fix,build,release'
+            });
+
+            const existingIssue = issues.data.find(issue => issue.title === title);
+
+            if (existingIssue) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existingIssue.number,
+                body: `New desktop build failure detected:\n\n${body}`
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                labels: ['auto-fix', 'build', 'release', 'desktop']
               });
             }
 
