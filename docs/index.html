@@ -33,8 +33,8 @@
       <p class="landing-hero-pronunciation">(vah dill-ar doo ohm)</p>
       <p class="landing-hero-explanation">That's Gothenburg for "what are you even talking about?" — and honestly, we don't know. We can't. Dilla is self-hosted, end-to-end encrypted chat — your server, your kanals, your messages. Nobody's reading them. Not even us.</p>
       <div class="landing-hero-ctas">
-        <a href="https://github.com/dilla-io/dilla" class="btn-primary">Get Started</a>
-        <a href="https://github.com/dilla-io/dilla" target="_blank" rel="noopener noreferrer" class="btn-secondary">View on GitHub</a>
+        <a href="https://github.com/dilla-chat/dilla-chat" class="btn-primary">Get Started</a>
+        <a href="https://github.com/dilla-chat/dilla-chat" target="_blank" rel="noopener noreferrer" class="btn-secondary">View on GitHub</a>
       </div>
       <div class="landing-scroll-indicator" aria-hidden="true">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -137,7 +137,7 @@
         </div>
         <div class="landing-tech-card">
           <div class="landing-tech-card-label">Single Binary</div>
-          <p class="landing-tech-card-text">~15MB Go executable, SQLite, zero dependencies</p>
+          <p class="landing-tech-card-text">Rust binary with embedded SQLite — zero runtime dependencies</p>
         </div>
         <div class="landing-tech-card">
           <div class="landing-tech-card-label">Desktop App</div>
@@ -162,10 +162,23 @@
     <section class="landing-cta">
       <h2 class="landing-cta-headline">Ready to take back control?</h2>
       <p class="landing-cta-subline">Deploy your own Dilla server in under 5 minutes.</p>
-      <div class="landing-cta-code">docker run -p 8080:8080 ghcr.io/dilla-io/dilla:latest</div>
+      <div class="landing-cta-options">
+        <div class="landing-cta-option">
+          <div class="landing-cta-option-label">Docker</div>
+          <div class="landing-cta-code">docker run -p 8080:8080 ghcr.io/dilla-chat/dilla-chat:latest</div>
+        </div>
+        <div class="landing-cta-option">
+          <div class="landing-cta-option-label">Install script</div>
+          <div class="landing-cta-code">curl -fsSL https://dilla.chat/install.sh | sh</div>
+        </div>
+        <div class="landing-cta-option">
+          <div class="landing-cta-option-label">Binary</div>
+          <div class="landing-cta-code">Download from <a href="https://github.com/dilla-chat/dilla-chat/releases/latest">GitHub Releases</a></div>
+        </div>
+      </div>
       <div class="landing-cta-buttons">
-        <a href="https://github.com/dilla-io/dilla" class="btn-primary">Get Started</a>
-        <a href="https://github.com/dilla-io/dilla" target="_blank" rel="noopener noreferrer" class="btn-secondary">Read the Docs</a>
+        <a href="https://github.com/dilla-chat/dilla-chat" class="btn-primary">Get Started</a>
+        <a href="https://github.com/dilla-chat/dilla-chat" target="_blank" rel="noopener noreferrer" class="btn-secondary">Read the Docs</a>
       </div>
     </section>
 
@@ -173,9 +186,9 @@
     <footer class="landing-footer">
       <img src="brand/wordmark.svg" alt="Dilla" class="landing-footer-wordmark">
       <div class="landing-footer-links">
-        <a href="https://github.com/dilla-io/dilla" target="_blank" rel="noopener noreferrer">GitHub</a>
-        <a href="https://github.com/dilla-io/dilla" target="_blank" rel="noopener noreferrer">Documentation</a>
-        <a href="https://github.com/dilla-io/dilla/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">AGPLv3</a>
+        <a href="https://github.com/dilla-chat/dilla-chat" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <a href="https://github.com/dilla-chat/dilla-chat" target="_blank" rel="noopener noreferrer">Documentation</a>
+        <a href="https://github.com/dilla-chat/dilla-chat/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">AGPLv3</a>
       </div>
       <p class="landing-footer-tagline">Made in Gothenburg</p>
     </footer>

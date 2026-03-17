@@ -1,0 +1,9 @@
+target/
+node_modules/
+.git/
+client/dist/
+docs/
+branding/
+.claude/
+.claude-flow/
+*.md
