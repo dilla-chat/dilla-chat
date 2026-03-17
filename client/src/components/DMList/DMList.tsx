@@ -41,7 +41,12 @@ function getDMDisplayName(dm: DMChannel, currentUserId: string): string {
 export default function DMList({ currentUserId, onNewDM }: Props) {
   const { t } = useTranslation();
   const { activeTeamId } = useTeamStore();
-  const { dmChannels, activeDMId, setActiveDM, setDMChannels } = useDMStore();
+  const activeDMId = useDMStore((state) => state.activeDMId);
+  const setActiveDM = useDMStore((state) => state.setActiveDM);
+  const setDMChannels = useDMStore((state) => state.setDMChannels);
+  const channels = useDMStore((state) =>
+    activeTeamId ? (state.dmChannels[activeTeamId] ?? []) : []
+  );
   const [filter, setFilter] = useState('');
 
   useEffect(() => {
@@ -62,8 +67,6 @@ export default function DMList({ currentUserId, onNewDM }: Props) {
     };
     loadDMs();
   }, [activeTeamId, setDMChannels]);
-
-  const channels = useMemo(() => activeTeamId ? (dmChannels[activeTeamId] ?? []) : [], [activeTeamId, dmChannels]);
 
   const sorted = useMemo(() => {
     return [...channels].sort((a, b) => {
