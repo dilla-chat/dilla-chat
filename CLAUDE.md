@@ -8,29 +8,27 @@ Dilla is a federated, end-to-end encrypted Discord alternative. AGPLv3 licensed.
 
 ## Architecture
 
-**Monorepo with three language targets:**
-- **`server/`** — Go 1.24 backend (single binary, SQLite/SQLCipher, gorilla/websocket, Pion WebRTC SFU, Hashicorp Memberlist federation)
+**Monorepo with two language targets:**
+- **`server-rs/`** — Rust backend (single binary, axum, SQLite/SQLCipher via rusqlite, tokio-tungstenite WebSocket, webrtc-rs SFU, WebSocket federation transport)
 - **`client/src/`** — React 19 + TypeScript frontend (Zustand state, Vite bundler, react-router-dom v7)
 - **`client/src-tauri/`** — Rust/Tauri v2 desktop shell (Signal Protocol crypto, Ed25519 key management)
 
-**Communication pattern:** REST for CRUD operations, WebSocket for real-time events (messages, presence, voice signaling, typing indicators). The server embeds the built client via `internal/webapp/`.
+**Communication pattern:** REST for CRUD operations, WebSocket for real-time events (messages, presence, voice signaling, typing indicators). The server embeds the built client via rust-embed.
 
 **Auth:** Ed25519 challenge-response → JWT tokens. No passwords — identity is a keypair.
 
 **E2E encryption:** Signal Protocol (X3DH + Double Ratchet) implemented in Rust, called from React via Tauri IPC. Server sees metadata only.
 
-**Federation:** SWIM gossip protocol via Memberlist. Peers discover each other and sync state.
+**Federation:** WebSocket transport between nodes, Lamport clocks for ordering, full state sync. Peers discover each other and replicate messages.
 
 ## Build & Dev Commands
 
-### Server (`cd server`)
+### Server (`cd server-rs`)
 ```bash
-make build          # → bin/dilla-server
-make dev            # Run with debug logging
-make test           # Go tests
-make webapp         # Build client and embed in server binary
-make cross-compile  # Linux/macOS/Windows (amd64+arm64)
-make docker         # Docker image (Alpine-based)
+cargo build            # Debug build
+cargo build --release  # Release build → target/release/dilla-server
+cargo run              # Run with debug logging
+cargo test             # Run tests
 ```
 
 ### Client (`cd client`)
@@ -47,20 +45,26 @@ npm run tauri build  # Desktop installer
 ## Code Style
 
 - **TypeScript:** Prettier (semi, single quotes, 2-space indent, 100 print width, trailing commas). ESLint with typescript-eslint + react-hooks.
-- **Go:** Standard `go fmt` / `go vet`.
+- **Rust:** Standard `cargo fmt` / `cargo clippy`.
 - **CSS:** Use theme variables from `src/styles/theme.css` — never hardcode colors. BEM-like class naming.
 - **Commits:** Conventional commits (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`).
 
 ## Key Server Paths
 
-- Entrypoint: `server/cmd/dilla-server/main.go`
-- API handlers: `server/internal/api/` (router.go defines all routes)
-- WebSocket hub: `server/internal/ws/`
-- Database models/queries: `server/internal/db/`
-- SQL migrations: `server/migrations/`
-- Federation: `server/internal/federation/`
-- Voice SFU: `server/internal/voice/`
-- Config (flags + env vars): `server/internal/config/config.go`
+- Entrypoint: `server-rs/src/main.rs`
+- API handlers: `server-rs/src/api/` (mod.rs defines all routes)
+- WebSocket hub: `server-rs/src/ws/hub.rs`
+- WebSocket client handler: `server-rs/src/ws/client.rs`
+- WebSocket events/payloads: `server-rs/src/ws/events.rs`
+- Database models/queries: `server-rs/src/db/`
+- SQL migrations: `server-rs/src/db/migrations.rs`
+- Federation: `server-rs/src/federation/`
+- Voice SFU: `server-rs/src/voice/`
+- Config (env vars): `server-rs/src/config.rs`
+- Auth: `server-rs/src/auth.rs`
+- Presence: `server-rs/src/presence.rs`
+- Observability (OTel): `server-rs/src/observability/mod.rs`
+- Webapp embed: `server-rs/src/webapp/mod.rs`
 
 ## Key Client Paths
 

@@ -32,9 +32,9 @@ jobs:
           cache: npm
           cache-dependency-path: client/package-lock.json
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: server/go.mod
+      - name: Install Rust toolchain
+        if: contains(github.event.issue.labels.*.name, 'server')
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Install client dependencies
         run: cd client && npm ci
@@ -69,27 +69,8 @@ jobs:
           fi
 
           if [[ "${{ contains(github.event.issue.labels.*.name, 'server') }}" == "true" ]]; then
-            cd server
-            # Clean and rebuild
-            rm -rf bin
-            go mod tidy
-            make build
-          fi
-
-          if [[ "${{ contains(github.event.issue.labels.*.name, 'server-rs') }}" == "true" ]]; then
             cd server-rs
             cargo build
-          fi
-
-      - name: Attempt auto-fix for test issues
-        if: contains(github.event.issue.labels.*.name, 'test')
-        continue-on-error: true
-        run: |
-          if [[ "${{ contains(github.event.issue.labels.*.name, 'server') }}" == "true" ]]; then
-            cd server
-            # Update test dependencies
-            go mod tidy
-            go test ./... -v
           fi
 
       - name: Check for changes
