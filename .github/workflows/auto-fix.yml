@@ -76,6 +76,11 @@ jobs:
             make build
           fi
 
+          if [[ "${{ contains(github.event.issue.labels.*.name, 'server-rs') }}" == "true" ]]; then
+            cd server-rs
+            cargo build
+          fi
+
       - name: Attempt auto-fix for test issues
         if: contains(github.event.issue.labels.*.name, 'test')
         continue-on-error: true

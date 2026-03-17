@@ -67,7 +67,7 @@ jobs:
           cat /tmp/build-output.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-  # Test and build the server
+  # Test and build the Go server
   server-checks:
     needs: [client-checks]
     runs-on: ubuntu-latest
@@ -117,10 +117,44 @@ jobs:
           cat /tmp/build-output.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
+  # Build the Rust server
+  server-rs-checks:
+    runs-on: ubuntu-latest
+    outputs:
+      build_failed: ${{ steps.build.outcome == 'failure' }}
+      build_output: ${{ steps.build.outputs.output }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            server-rs/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('server-rs/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build server-rs
+        id: build
+        continue-on-error: true
+        working-directory: server-rs
+        run: |
+          set -o pipefail
+          cargo build 2>&1 | tee /tmp/build-output.txt
+          echo "output<<EOF" >> $GITHUB_OUTPUT
+          cat /tmp/build-output.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
   # Create issues for failures
   create-issues:
-    needs: [client-checks, server-checks]
-    if: always() && (needs.client-checks.outputs.lint_failed == 'true' || needs.client-checks.outputs.build_failed == 'true' || needs.server-checks.outputs.test_failed == 'true' || needs.server-checks.outputs.build_failed == 'true')
+    needs: [client-checks, server-checks, server-rs-checks]
+    if: always() && (needs.client-checks.outputs.lint_failed == 'true' || needs.client-checks.outputs.build_failed == 'true' || needs.server-checks.outputs.test_failed == 'true' || needs.server-checks.outputs.build_failed == 'true' || needs.server-rs-checks.outputs.build_failed == 'true')
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -325,5 +359,55 @@ jobs:
                 title: title,
                 body: body,
                 labels: ['auto-fix', 'build', 'server']
+              });
+            }
+
+      - name: Create issue for server-rs build failure
+        if: needs.server-rs-checks.outputs.build_failed == 'true'
+        uses: actions/github-script@v7
+        env:
+          BUILD_OUTPUT: ${{ needs.server-rs-checks.outputs.build_output }}
+        with:
+          script: |
+            const output = process.env.BUILD_OUTPUT;
+            const title = '[Auto-fix] Rust server build failure';
+            const body = `## Rust Server Build Failure
+
+            The Rust server (server-rs) build failed with the following error:
+
+            \`\`\`
+            ${output}
+            \`\`\`
+
+            **Triggered by**: ${{ github.event_name }} on ${{ github.ref }}
+            **Commit**: ${{ github.sha }}
+            **Workflow**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            This issue will be automatically fixed by the auto-fix workflow.
+            `;
+
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'auto-fix,build'
+            });
+
+            const existingIssue = issues.data.find(issue => issue.title === title);
+
+            if (existingIssue) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existingIssue.number,
+                body: `New build failure detected:\n\n${body}`
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                labels: ['auto-fix', 'build', 'server-rs']
               });
             }
