@@ -317,3 +317,19 @@
   padding: 4px 12px;
   font-weight: 500;
 }
+
+/* ===== Responsive ===== */
+@media (max-width: 767px) {
+  .message-input-wrapper {
+    padding: 0 8px 8px;
+  }
+
+  .message-input-textarea {
+    max-height: 150px;
+  }
+
+  .message-input-format-bar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+}

@@ -138,3 +138,47 @@
   background-color: var(--green-360);
   color: white;
 }
+
+/* ===== Responsive: full-width grid on mobile ===== */
+@media (max-width: 767px) {
+  .team-sidebar {
+    width: 100%;
+    height: auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    padding: 16px;
+    gap: 16px;
+    overflow-y: auto;
+  }
+
+  .team-list {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 16px;
+    padding: 0;
+  }
+
+  .team-icon-wrapper::before {
+    display: none;
+  }
+
+  .server-group {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .server-label {
+    width: 100%;
+    max-width: none;
+    text-align: left;
+  }
+
+  .team-separator {
+    width: 100%;
+    height: 1px;
+    margin: 4px 0;
+  }
+}
