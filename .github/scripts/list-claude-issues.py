@@ -27,7 +27,7 @@ def extract_fixed_issues(pr_body: str) -> List[int]:
         return []
 
     # Look for patterns like "Closes #123", "Fixes #123", "Resolves #123"
-    pattern = r'(?:Closes?|Fixes?|Resolves?)\s+(?:#|jonasthim/dilla-chat#)(\d+)'
+    pattern = r'(?:Closes?|Fixes?|Resolves?)\s+(?:#|dilla-chat/dilla-chat#)(\d+)'
     matches = re.findall(pattern, pr_body, re.IGNORECASE)
     return [int(m) for m in matches]
 
@@ -144,7 +144,7 @@ def main():
     print("    from github import Github", file=sys.stderr)
     print("    ", file=sys.stderr)
     print("    g = Github('your_token_here')", file=sys.stderr)
-    print("    repo = g.get_repo('jonasthim/dilla-chat')", file=sys.stderr)
+    print("    repo = g.get_repo('dilla-chat/dilla-chat')", file=sys.stderr)
     print("    ", file=sys.stderr)
     print("    # Get auto-fix issues", file=sys.stderr)
     print("    autofix_issues = repo.get_issues(labels=['auto-fix'], state='all')", file=sys.stderr)
@@ -162,7 +162,7 @@ def main():
             'title': '[Auto-fix] Client lint errors detected',
             'state': 'open',
             'labels': [{'name': 'auto-fix'}, {'name': 'lint'}, {'name': 'client'}],
-            'url': 'https://github.com/jonasthim/dilla-chat/issues/4'
+            'url': 'https://github.com/dilla-chat/dilla-chat/issues/4'
         }
     ]
 
@@ -172,8 +172,8 @@ def main():
             'title': '[Auto-fix] Fix client lint errors detected',
             'state': 'closed',
             'merged_at': '2026-03-16T19:44:49Z',
-            'url': 'https://github.com/jonasthim/dilla-chat/pull/7',
-            'body': '... Fixes jonasthim/dilla-chat#4'
+            'url': 'https://github.com/dilla-chat/dilla-chat/pull/7',
+            'body': '... Fixes dilla-chat/dilla-chat#4'
         }
     ]
 

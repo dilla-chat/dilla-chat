@@ -16,7 +16,7 @@ set -euo pipefail
 # Default values
 STATE="open"
 FORMAT="text"
-REPO="${GITHUB_REPOSITORY:-jonasthim/dilla-chat}"
+REPO="${GITHUB_REPOSITORY:-dilla-chat/dilla-chat}"
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do

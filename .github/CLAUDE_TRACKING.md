@@ -72,12 +72,12 @@ gh pr list --author "Claude" --state all --json number,title,state,url,body,merg
 ### Method 3: Using GitHub Web UI
 
 #### Find auto-fix issues:
-1. Go to the [Issues page](https://github.com/jonasthim/dilla-chat/issues)
+1. Go to the [Issues page](https://github.com/dilla-chat/dilla-chat/issues)
 2. Click on "Labels" and select `auto-fix`
 3. Or use this search query: `is:issue label:auto-fix`
 
 #### Find Claude PRs:
-1. Go to the [Pull Requests page](https://github.com/jonasthim/dilla-chat/pulls)
+1. Go to the [Pull Requests page](https://github.com/dilla-chat/dilla-chat/pulls)
 2. Use this search query: `is:pr author:app/anthropic-code-agent`
 3. Or filter by author: `Claude`
 
@@ -86,14 +86,14 @@ gh pr list --author "Claude" --state all --json number,title,state,url,body,merg
 #### Get auto-fix issues:
 ```bash
 curl -H "Authorization: token YOUR_TOKEN" \
-  "https://api.github.com/repos/jonasthim/dilla-chat/issues?labels=auto-fix&state=all"
+  "https://api.github.com/repos/dilla-chat/dilla-chat/issues?labels=auto-fix&state=all"
 ```
 
 #### Get Claude PRs:
 ```bash
 # Note: Claude's GitHub user ID is 242468646
 curl -H "Authorization: token YOUR_TOKEN" \
-  "https://api.github.com/repos/jonasthim/dilla-chat/pulls?state=all" \
+  "https://api.github.com/repos/dilla-chat/dilla-chat/pulls?state=all" \
   | jq '.[] | select(.user.id == 242468646)'
 ```
 
@@ -278,21 +278,21 @@ echo "$metrics" | jq '.'
 
 1. Verify GitHub CLI is installed: `gh --version`
 2. Verify authentication: `gh auth status`
-3. Verify repository access: `gh repo view jonasthim/dilla-chat`
+3. Verify repository access: `gh repo view dilla-chat/dilla-chat`
 
 ### Wrong Repository
 
 Set the repository explicitly:
 
 ```bash
-export GITHUB_REPOSITORY="jonasthim/dilla-chat"
+export GITHUB_REPOSITORY="dilla-chat/dilla-chat"
 .github/scripts/list-claude-issues.sh
 ```
 
 Or use gh with repo flag:
 
 ```bash
-gh issue list --repo jonasthim/dilla-chat --label "auto-fix"
+gh issue list --repo dilla-chat/dilla-chat --label "auto-fix"
 ```
 
 ## See Also
