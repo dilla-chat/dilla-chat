@@ -9,17 +9,17 @@ on:
       - main
 
 permissions:
-  contents: write
-  issues: write
-  pull-requests: write
+  contents: read
 
 jobs:
   # Test and build the client
   client-checks:
     runs-on: ubuntu-latest
     outputs:
+      test_failed: ${{ steps.test.outcome == 'failure' }}
       lint_failed: ${{ steps.lint.outcome == 'failure' }}
       build_failed: ${{ steps.build.outcome == 'failure' }}
+      test_output: ${{ steps.test.outputs.output }}
       lint_output: ${{ steps.lint.outputs.output }}
       build_output: ${{ steps.build.outputs.output }}
     steps:
@@ -32,31 +32,40 @@ jobs:
           cache-dependency-path: client/package-lock.json
 
       - name: Install dependencies
-        run: cd client && npm ci --legacy-peer-deps
+        run: cd client && npm ci
+
+      - name: Test client
+        id: test
+        continue-on-error: true
+        run: |
+          cd client
+          set -o pipefail
+          npm test 2>&1 | tee /tmp/test-output.txt
+          echo "output<<EOF" >> $GITHUB_OUTPUT
+          cat /tmp/test-output.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Lint client
         id: lint
         continue-on-error: true
         run: |
           cd client
-          OUTPUT=$(npm run lint 2>&1 || true)
-          echo "$OUTPUT"
+          set -o pipefail
+          npm run lint 2>&1 | tee /tmp/lint-output.txt
           echo "output<<EOF" >> $GITHUB_OUTPUT
-          echo "$OUTPUT" >> $GITHUB_OUTPUT
+          cat /tmp/lint-output.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-          npm run lint
 
       - name: Build client
         id: build
         continue-on-error: true
         run: |
           cd client
-          OUTPUT=$(npm run build 2>&1 || true)
-          echo "$OUTPUT"
+          set -o pipefail
+          npm run build 2>&1 | tee /tmp/build-output.txt
           echo "output<<EOF" >> $GITHUB_OUTPUT
-          echo "$OUTPUT" >> $GITHUB_OUTPUT
+          cat /tmp/build-output.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-          npm run build
 
   # Test and build the server
   server-checks:
@@ -78,30 +87,30 @@ jobs:
         continue-on-error: true
         working-directory: server
         run: |
-          OUTPUT=$(make test 2>&1 || true)
-          echo "$OUTPUT"
+          set -o pipefail
+          make test 2>&1 | tee /tmp/test-output.txt
           echo "output<<EOF" >> $GITHUB_OUTPUT
-          echo "$OUTPUT" >> $GITHUB_OUTPUT
+          cat /tmp/test-output.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-          make test
 
       - name: Build server
         id: build
         continue-on-error: true
         working-directory: server
         run: |
-          OUTPUT=$(make build 2>&1 || true)
-          echo "$OUTPUT"
+          set -o pipefail
+          make build 2>&1 | tee /tmp/build-output.txt
           echo "output<<EOF" >> $GITHUB_OUTPUT
-          echo "$OUTPUT" >> $GITHUB_OUTPUT
+          cat /tmp/build-output.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-          make build
 
   # Create issues for failures
   create-issues:
     needs: [client-checks, server-checks]
     if: always() && (needs.client-checks.outputs.lint_failed == 'true' || needs.client-checks.outputs.build_failed == 'true' || needs.server-checks.outputs.test_failed == 'true' || needs.server-checks.outputs.build_failed == 'true')
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
     steps:
       - uses: actions/checkout@v4
 
