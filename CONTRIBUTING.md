@@ -17,11 +17,10 @@ Thank you for your interest in contributing to Dilla! This document provides gui
 
 ## Development Setup
 
-### Server (Go)
+### Server (Rust)
 ```bash
-cd server
-go mod download
-make build
+cd server-rs
+cargo build
 ```
 
 ### Client (Tauri + React)
@@ -40,10 +39,10 @@ npm run tauri dev # Full Tauri dev mode
 - Format with Prettier (`npm run format`)
 - Lint with ESLint (`npm run lint`)
 
-### Go
-- Follow standard Go conventions (`go fmt`, `go vet`)
+### Rust
+- Follow standard Rust conventions (`cargo fmt`, `cargo clippy`)
 - Use meaningful variable names
-- Add comments for exported functions
+- Add doc comments for public functions
 
 ### CSS
 - Use CSS custom properties (variables) from `src/styles/theme.css`
@@ -64,7 +63,7 @@ Prefix with: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`
 
 ## Pull Requests
 
-1. Ensure your code builds without errors (`npm run build` for client, `make build` for server)
+1. Ensure your code builds without errors (`npm run build` for client, `cargo build` for server)
 2. Run linters and fix any issues
 3. Write a clear PR description explaining what changed and why
 4. Reference related issues with `Fixes #123` or `Closes #123`
@@ -74,7 +73,7 @@ Prefix with: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`
 
 - Use GitHub Issues to report bugs or request features
 - Include steps to reproduce for bug reports
-- Include your OS, Node.js version, Go version, and Rust version
+- Include your OS, Node.js version, and Rust version
 
 ## Security
 

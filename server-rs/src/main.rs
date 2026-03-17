@@ -81,8 +81,43 @@ async fn main() {
         _ => {}
     }
 
+    // Create Voice SFU and wire TURN provider.
+    let sfu = Arc::new(voice::SFU::new());
+    match cfg.turn_mode.as_str() {
+        "cloudflare" => {
+            let provider = voice::CFTurnClient::new(voice::CFTurnConfig {
+                key_id: cfg.cf_turn_key_id.clone(),
+                api_token: cfg.cf_turn_api_token.clone(),
+            });
+            sfu.set_turn_provider(Box::new(provider)).await;
+            tracing::info!("TURN provider: Cloudflare");
+        }
+        "self-hosted" => {
+            let urls: Vec<String> = if cfg.turn_urls.is_empty() {
+                Vec::new()
+            } else {
+                cfg.turn_urls.split(',').map(|s| s.trim().to_string()).collect()
+            };
+            let provider = voice::SelfHostedTurnClient::new(
+                cfg.turn_shared_secret.clone(),
+                urls,
+                std::time::Duration::from_secs(cfg.turn_ttl),
+            );
+            sfu.set_turn_provider(Box::new(provider)).await;
+            tracing::info!("TURN provider: self-hosted");
+        }
+        "" => {
+            tracing::info!("TURN provider: none (STUN-only fallback)");
+        }
+        other => {
+            tracing::warn!("unknown TURN mode '{}', using STUN-only fallback", other);
+        }
+    }
+
     // Create WebSocket hub.
-    let hub = Arc::new(ws::Hub::new(database.clone()));
+    let mut hub = ws::Hub::new(database.clone());
+    hub.voice_sfu = Some(sfu as Arc<dyn ws::hub::VoiceSFU>);
+    let hub = Arc::new(hub);
 
     // Spawn hub dispatch loop.
     let hub_runner = hub.clone();

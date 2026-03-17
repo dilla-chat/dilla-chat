@@ -346,7 +346,7 @@
       },
       "selfHosted": {
         "title": "Your server, your rules",
-        "desc": "A single Go binary with SQLite. Deploy in minutes, own your data forever. No external dependencies."
+        "desc": "A single Rust binary with SQLite. Deploy in minutes, own your data forever. No external dependencies."
       },
       "federation": {
         "title": "Federated by design",

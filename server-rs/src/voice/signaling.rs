@@ -957,6 +957,70 @@ async fn handle_leave_internal(
     }
 }
 
+// ---------------------------------------------------------------------------
+// VoiceSFU trait implementation (bridge for ws::Hub)
+// ---------------------------------------------------------------------------
+
+#[async_trait::async_trait]
+impl crate::ws::hub::VoiceSFU for SFU {
+    async fn handle_join(&self, channel_id: &str, user_id: &str) -> Result<String, String> {
+        let offer = self.handle_join(channel_id, user_id).await?;
+        serde_json::to_string(&offer).map_err(|e| format!("serialize offer: {e}"))
+    }
+
+    async fn handle_leave(&self, channel_id: &str, user_id: &str) {
+        self.handle_leave(channel_id, user_id).await;
+    }
+
+    async fn handle_answer(
+        &self,
+        channel_id: &str,
+        user_id: &str,
+        sdp: &str,
+    ) -> Result<(), String> {
+        let answer = RTCSessionDescription::answer(sdp.to_string())
+            .map_err(|e| format!("parse answer SDP: {e}"))?;
+        self.handle_answer(channel_id, user_id, answer).await
+    }
+
+    async fn handle_ice_candidate(
+        &self,
+        channel_id: &str,
+        user_id: &str,
+        candidate: &str,
+        sdp_mid: &str,
+        sdp_mline_index: u16,
+    ) -> Result<(), String> {
+        let init = RTCIceCandidateInit {
+            candidate: candidate.to_string(),
+            sdp_mid: Some(sdp_mid.to_string()),
+            sdp_mline_index: Some(sdp_mline_index),
+            username_fragment: None,
+        };
+        self.handle_ice_candidate(channel_id, user_id, init).await
+    }
+
+    async fn add_screen_track(&self, channel_id: &str, user_id: &str) -> Result<(), String> {
+        self.add_screen_track(channel_id, user_id).await
+    }
+
+    async fn remove_screen_track(&self, channel_id: &str, user_id: &str) -> Result<(), String> {
+        self.remove_screen_track(channel_id, user_id).await
+    }
+
+    async fn add_webcam_track(&self, channel_id: &str, user_id: &str) -> Result<(), String> {
+        self.add_webcam_track(channel_id, user_id).await
+    }
+
+    async fn remove_webcam_track(&self, channel_id: &str, user_id: &str) -> Result<(), String> {
+        self.remove_webcam_track(channel_id, user_id).await
+    }
+
+    async fn renegotiate_all(&self, channel_id: &str) {
+        self.renegotiate_all(channel_id).await;
+    }
+}
+
 /// Parse a JSON array of ICE servers into `Vec<RTCIceServer>`.
 fn parse_ice_servers(json: &serde_json::Value) -> Result<Vec<RTCIceServer>, String> {
     let arr = json

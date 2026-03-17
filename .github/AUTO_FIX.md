@@ -13,7 +13,7 @@ The CI workflow (`.github/workflows/ci.yml`) runs on every push to `main` and on
   - Builds the client to ensure it compiles successfully
 
 - **Server Checks**:
-  - Runs Go tests to ensure functionality
+  - Runs Rust tests to ensure functionality
   - Builds the server binary
 
 - **Issue Creation**:
@@ -69,7 +69,7 @@ The fallback auto-fix workflow (`.github/workflows/auto-fix.yml`) provides simpl
    - **Lint issues**: Runs `npm run lint --fix` and `npm run format`
    - **Build issues**:
      - Client: Reinstalls dependencies and rebuilds
-     - Server: Runs `go mod tidy` and rebuilds
+     - Server: Runs `cargo build` and rebuilds
    - **Test issues**: Updates dependencies and reruns tests
 
 3. **Creates a Pull Request**:

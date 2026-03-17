@@ -1,16 +1,5 @@
-# === Go ===
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-*.test
-*.out
-vendor/
+# === Build artifacts ===
 bin/
-/dilla-server
-server/dilla-server
-server/slimcord-server
 
 # === Rust / Cargo ===
 target/
@@ -22,9 +11,6 @@ Cargo.lock
 # === Node.js ===
 node_modules/
 dist/
-!server/internal/webapp/dist/
-server/internal/webapp/dist/*
-!server/internal/webapp/dist/index.html
 .npm
 *.tsbuildinfo
 

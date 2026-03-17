@@ -114,7 +114,7 @@ curl -H "Authorization: token YOUR_TOKEN" \
    - Creates branch: `auto-fix/issue-{number}`
    - Attempts automatic fixes based on labels:
      - `lint`: Runs `npm run lint --fix` and `npm run format`
-     - `build`: Reinstalls dependencies, runs `go mod tidy`
+     - `build`: Reinstalls dependencies, runs `cargo build`
      - `test`: Updates dependencies and reruns tests
 
 3. **PR Creation**
@@ -158,7 +158,7 @@ curl -H "Authorization: token YOUR_TOKEN" \
 ### Component Labels
 
 - **`client`**: Client-side (React/TypeScript) issues
-- **`server`**: Server-side (Go) issues
+- **`server`**: Server-side (Rust) issues
 - **`release`**: Issues from the release workflow
 
 ## Tracking Issue Resolution
