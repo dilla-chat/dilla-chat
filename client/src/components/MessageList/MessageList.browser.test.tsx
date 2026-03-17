@@ -57,7 +57,7 @@ describe('MessageList action bar positioning', () => {
   });
 
   test('message-actions has backdrop-filter', async () => {
-    const screen = await render(
+    await render(
       <div className="message-item">
         <div className="message-actions" data-testid="message-actions" style={{ display: 'flex' }}>
           <button className="message-action-btn">X</button>

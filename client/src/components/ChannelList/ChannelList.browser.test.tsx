@@ -88,7 +88,7 @@ describe('ChannelList context menu', () => {
   });
 
   test('context-menu has backdrop-filter', async () => {
-    const screen = await render(
+    await render(
       <div className="channel-context-menu" data-testid="ctx-menu" style={{ top: 100, left: 100 }}>
         <div className="channel-context-item">Edit</div>
       </div>,
