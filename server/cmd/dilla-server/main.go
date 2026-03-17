@@ -172,17 +172,39 @@ func main() {
 		}
 	}
 
-	// Set up Cloudflare TURN client for voice relay.
-	var cfTurnClient *voice.CFTurnClient
-	if cfg.CFTurnKeyID != "" && cfg.CFTurnAPIToken != "" {
-		cfTurnClient = voice.NewCFTurnClient(voice.CFTurnConfig{
+	// Set up TURN provider for voice relay.
+	var turnProvider voice.TURNCredentialProvider
+	turnMode := cfg.TurnMode
+	if turnMode == "" {
+		// Auto-detect: check for legacy Cloudflare env vars
+		if cfg.CFTurnKeyID != "" && cfg.CFTurnAPIToken != "" {
+			turnMode = "cloudflare"
+		}
+	}
+	switch turnMode {
+	case "cloudflare":
+		turnProvider = voice.NewCFTurnClient(voice.CFTurnConfig{
 			KeyID:    cfg.CFTurnKeyID,
 			APIToken: cfg.CFTurnAPIToken,
 		})
-		voiceSFU.SetCFTurnClient(cfTurnClient)
 		slog.Info("Cloudflare TURN enabled for voice relay")
-	} else {
-		slog.Warn("Cloudflare TURN disabled: set DILLA_CF_TURN_KEY_ID and DILLA_CF_TURN_API_TOKEN to enable voice relay")
+	case "self-hosted":
+		if cfg.TurnSharedSecret == "" || cfg.TurnURLs == "" {
+			slog.Error("self-hosted TURN requires DILLA_TURN_SHARED_SECRET and DILLA_TURN_URLS")
+			os.Exit(1)
+		}
+		turnURLs := strings.Split(cfg.TurnURLs, ",")
+		for i := range turnURLs {
+			turnURLs[i] = strings.TrimSpace(turnURLs[i])
+		}
+		ttl := time.Duration(cfg.TurnTTL) * time.Second
+		turnProvider = voice.NewSelfHostedTurnClient(cfg.TurnSharedSecret, turnURLs, ttl)
+		slog.Info("self-hosted TURN enabled for voice relay", "urls", turnURLs)
+	default:
+		slog.Warn("TURN disabled: set DILLA_TURN_MODE=self-hosted (or cloudflare) to enable voice relay")
+	}
+	if turnProvider != nil {
+		voiceSFU.SetTURNProvider(turnProvider)
 	}
 
 	// Set up presence manager.
@@ -312,7 +334,7 @@ func main() {
 		RateLimit:        cfg.RateLimit,
 		RateBurst:        cfg.RateBurst,
 		Domain:           cfg.Domain,
-		TURNClient:       cfTurnClient,
+		TURNClient:       turnProvider,
 		AllowedOrigins:   cfg.AllowedOrigins,
 		TrustedProxies:   cfg.TrustedProxies,
 		TLSEnabled:       cfg.TLSCert != "",

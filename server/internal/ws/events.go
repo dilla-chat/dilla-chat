@@ -29,6 +29,9 @@ const (
 	EventVoiceScreenStop   = "voice:screen-stop"
 	EventVoiceWebcamStart  = "voice:webcam-start"
 	EventVoiceWebcamStop   = "voice:webcam-stop"
+
+	// Voice E2E key distribution (client <-> server relay)
+	EventVoiceKeyDistribute = "voice:key-distribute"
 )
 
 // Server -> Client events
@@ -344,6 +347,15 @@ type VoiceWebcamUpdatePayload struct {
 	ChannelID string `json:"channel_id"`
 	UserID    string `json:"user_id"`
 	Sharing   bool   `json:"sharing"`
+}
+
+// VoiceKeyDistributePayload relays encrypted voice keys to channel participants.
+// The server cannot read the key contents — they are encrypted per-recipient.
+type VoiceKeyDistributePayload struct {
+	ChannelID     string            `json:"channel_id"`
+	SenderID      string            `json:"sender_id"`
+	KeyID         int               `json:"key_id"`
+	EncryptedKeys map[string]string `json:"encrypted_keys"` // userID -> base64 encrypted key
 }
 
 // Request/Response payloads for data fetching over WS

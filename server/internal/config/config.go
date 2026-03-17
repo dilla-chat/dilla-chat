@@ -31,8 +31,12 @@ type Config struct {
 	RateLimit      float64
 	RateBurst      int
 	Domain         string
-	CFTurnKeyID    string
-	CFTurnAPIToken string
+	CFTurnKeyID      string
+	CFTurnAPIToken   string
+	TurnMode         string // "cloudflare", "self-hosted", or "" (auto-detect)
+	TurnSharedSecret string
+	TurnURLs         string // comma-separated TURN server URLs
+	TurnTTL          int    // credential TTL in seconds
 	AllowedOrigins []string
 	TrustedProxies []string
 	Insecure       bool
@@ -77,6 +81,10 @@ func Load() *Config {
 	flag.StringVar(&cfg.Domain, "domain", envStr("DILLA_DOMAIN", ""), "Public domain for WebAuthn passkey RP ID")
 	flag.StringVar(&cfg.CFTurnKeyID, "cf-turn-key-id", envStr("DILLA_CF_TURN_KEY_ID", ""), "Cloudflare TURN key ID")
 	flag.StringVar(&cfg.CFTurnAPIToken, "cf-turn-api-token", envStr("DILLA_CF_TURN_API_TOKEN", ""), "Cloudflare TURN API token")
+	flag.StringVar(&cfg.TurnMode, "turn-mode", envStr("DILLA_TURN_MODE", ""), "TURN mode: cloudflare, self-hosted, or empty for auto-detect")
+	flag.StringVar(&cfg.TurnSharedSecret, "turn-shared-secret", envStr("DILLA_TURN_SHARED_SECRET", ""), "HMAC shared secret for self-hosted TURN")
+	flag.StringVar(&cfg.TurnURLs, "turn-urls", envStr("DILLA_TURN_URLS", ""), "Comma-separated TURN server URLs (e.g. turn:host:3478,turns:host:5349)")
+	flag.IntVar(&cfg.TurnTTL, "turn-ttl", envInt("DILLA_TURN_TTL", 86400), "TURN credential TTL in seconds")
 	flag.BoolVar(&cfg.Insecure, "insecure", false, "Allow running without DB passphrase (INSECURE)")
 
 	// OpenTelemetry

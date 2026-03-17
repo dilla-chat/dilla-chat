@@ -397,6 +397,18 @@ export class WebSocketService {
     });
   }
 
+  voiceKeyDistribute(
+    teamId: string,
+    channelId: string,
+    keyId: number,
+    encryptedKeys: Record<string, string>,
+  ): void {
+    this.send(teamId, {
+      type: 'voice:key-distribute',
+      payload: { channel_id: channelId, key_id: keyId, encrypted_keys: encryptedKeys },
+    });
+  }
+
   // DM WebSocket methods
   sendDMMessage(teamId: string, dmId: string, content: string, type: string = 'text'): void {
     this.send(teamId, {

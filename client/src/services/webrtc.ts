@@ -6,6 +6,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useUserSettingsStore } from '../stores/userSettingsStore';
 import { useAudioSettingsStore } from '../stores/audioSettingsStore';
 import { playJoinSound, playLeaveSound } from './sounds';
+import { VoiceKeyManager, supportsE2EVoice } from './voiceCrypto';
 
 const VAD_INTERVAL_MS = 100;
 
@@ -34,6 +35,12 @@ class WebRTCService {
   private gainNode: GainNode | null = null;
   private storeUnsubscribers: Array<() => void> = [];
   private pttListeners: Array<() => void> = [];
+
+  // E2E voice encryption
+  private e2eEnabled = false;
+  private voiceKeyManager = new VoiceKeyManager();
+  private encryptWorker: Worker | null = null;
+  private decryptWorkers: Map<string, Worker> = new Map();
 
   async connect(channelId: string, teamId: string): Promise<void> {
     this.channelId = channelId;
@@ -106,7 +113,7 @@ class WebRTCService {
             return { ...s, urls };
           });
         iceTransportPolicy = 'relay';
-        console.log('[Voice] Using Cloudflare TURN relay (no IP leaks)');
+        console.log('[Voice] Using TURN relay (no IP leaks)');
       }
     } catch {
       console.log('[Voice] TURN not available, using STUN');
@@ -120,6 +127,15 @@ class WebRTCService {
     for (const track of this.localStream.getTracks()) {
       this.pc.addTrack(track, this.localStream);
     }
+
+    // Set up E2E voice encryption if supported
+    this.e2eEnabled = supportsE2EVoice();
+    if (this.e2eEnabled) {
+      await this.setupE2EEncryption();
+    } else {
+      console.log('[Voice] E2E encryption not available (browser does not support RTCRtpScriptTransform)');
+    }
+    useVoiceStore.getState().setE2eVoice(this.e2eEnabled);
 
     // Handle ICE candidates
     this.pc.onicecandidate = (event) => {
@@ -136,6 +152,9 @@ class WebRTCService {
       const streamId = event.streams[0]?.id ?? track.id;
 
       console.log('[WebRTC] ontrack:', track.kind, 'stream:', streamId, 'track:', track.id);
+
+      // Apply E2E decrypt transform to incoming track
+      this.applyDecryptTransform(event.receiver, streamId);
 
       if (track.kind === 'video') {
         // Distinguish webcam vs screen by stream/track ID prefix
@@ -338,7 +357,11 @@ class WebRTCService {
           deafened: false,
           speaking: false,
           voiceLevel: 0,        });
-        if (payload.user_id !== this.localUserId) playJoinSound();
+        if (payload.user_id !== this.localUserId) {
+          playJoinSound();
+          // Distribute our E2E voice key to the new participant
+          this.distributeVoiceKey();
+        }
       }),
     );
 
@@ -365,7 +388,28 @@ class WebRTCService {
         if (sharer) {
           store().setScreenSharingUserId(sharer.user_id);
         }
+
+        // Distribute E2E voice key to existing participants after joining
+        this.distributeVoiceKey();
       }),
+    );
+
+    // E2E voice key distribution handler
+    this.unsubscribers.push(
+      ws.on(
+        'voice:key-distribute',
+        async (payload: {
+          sender_id: string;
+          key_id: number;
+          encrypted_keys: Record<string, string>;
+        }) => {
+          if (!this.e2eEnabled || !this.localUserId) return;
+          const myKey = payload.encrypted_keys[this.localUserId];
+          if (myKey) {
+            await this.handleReceivedVoiceKey(payload.sender_id, payload.key_id, myKey);
+          }
+        },
+      ),
     );
 
     this.unsubscribers.push(
@@ -407,6 +451,118 @@ class WebRTCService {
   async handleICECandidate(candidate: RTCIceCandidateInit): Promise<void> {
     if (!this.pc) return;
     await this.pc.addIceCandidate(new RTCIceCandidate(candidate));
+  }
+
+  /** Set up E2E voice encryption transforms on all senders. */
+  private async setupE2EEncryption(): Promise<void> {
+    if (!this.pc) return;
+
+    // Generate local voice key
+    const { rawKey, keyId } = await this.voiceKeyManager.generateLocalKey();
+
+    // Create encrypt worker and apply to all senders
+    this.encryptWorker = new Worker(
+      new URL('../workers/voiceEncryptWorker.ts', import.meta.url),
+      { type: 'module' },
+    );
+    this.encryptWorker.postMessage({
+      type: 'setKey',
+      key: rawKey.buffer,
+      keyId,
+    });
+
+    // Apply encrypt transform to all outgoing tracks
+    for (const sender of this.pc.getSenders()) {
+      if (sender.track) {
+        const transform = new RTCRtpScriptTransform(this.encryptWorker, { operation: 'encrypt' });
+        sender.transform = transform;
+      }
+    }
+
+    // Also set up our own key in the decrypt map (for self-hearing in some SFU configs)
+    await this.voiceKeyManager.setRemoteKey(this.localUserId ?? '', rawKey);
+
+    console.log('[Voice] E2E encryption enabled');
+  }
+
+  /** Distribute voice key to all participants in the channel. */
+  private distributeVoiceKey(): void {
+    if (!this.e2eEnabled || !this.teamId || !this.channelId) return;
+
+    const rawKey = this.voiceKeyManager.getLocalRawKey();
+    const keyId = this.voiceKeyManager.getLocalKeyId();
+    if (!rawKey) return;
+
+    // For now, distribute the raw key base64-encoded.
+    // In a full implementation, this would be encrypted per-recipient via Signal Protocol.
+    const keyBase64 = btoa(String.fromCharCode(...rawKey));
+
+    // Get all peers in the channel
+    const peers = useVoiceStore.getState().peers;
+    const encryptedKeys: Record<string, string> = {};
+    for (const userId of Object.keys(peers)) {
+      if (userId !== this.localUserId) {
+        encryptedKeys[userId] = keyBase64;
+      }
+    }
+
+    if (Object.keys(encryptedKeys).length > 0) {
+      ws.voiceKeyDistribute(this.teamId, this.channelId, keyId, encryptedKeys);
+    }
+  }
+
+  /** Handle received voice key from another participant. */
+  private async handleReceivedVoiceKey(
+    senderId: string,
+    keyId: number,
+    encryptedKey: string,
+  ): Promise<void> {
+    // Decode the key (in full implementation, decrypt via Signal Protocol first)
+    const rawKey = new Uint8Array(
+      atob(encryptedKey)
+        .split('')
+        .map((c) => c.charCodeAt(0)),
+    );
+
+    await this.voiceKeyManager.setRemoteKey(senderId, rawKey);
+
+    // Update all decrypt workers with the new key
+    for (const worker of this.decryptWorkers.values()) {
+      worker.postMessage({
+        type: 'addDecryptKey',
+        key: rawKey.buffer,
+        keyId,
+      });
+    }
+
+    console.log('[Voice] Received E2E key from', senderId);
+  }
+
+  /** Apply decrypt transform to an incoming track's receiver. */
+  private applyDecryptTransform(receiver: RTCRtpReceiver, streamId: string): void {
+    if (!this.e2eEnabled) return;
+
+    const worker = new Worker(
+      new URL('../workers/voiceEncryptWorker.ts', import.meta.url),
+      { type: 'module' },
+    );
+    this.decryptWorkers.set(streamId, worker);
+
+    const transform = new RTCRtpScriptTransform(worker, { operation: 'decrypt' });
+    receiver.transform = transform;
+
+    // Send all known keys to the new decrypt worker
+    const peers = useVoiceStore.getState().peers;
+    for (const userId of Object.keys(peers)) {
+      const rawKey = this.voiceKeyManager.getLocalRawKey();
+      if (userId === this.localUserId && rawKey) {
+        worker.postMessage({
+          type: 'addDecryptKey',
+          key: rawKey.buffer,
+          keyId: this.voiceKeyManager.getLocalKeyId(),
+        });
+      }
+    }
   }
 
   async disconnect(): Promise<void> {
@@ -483,6 +639,18 @@ class WebRTCService {
     this.channelId = null;
     this.teamId = null;
     this.localUserId = null;
+
+    // Clean up E2E encryption
+    this.e2eEnabled = false;
+    this.voiceKeyManager.clear();
+    if (this.encryptWorker) {
+      this.encryptWorker.terminate();
+      this.encryptWorker = null;
+    }
+    for (const worker of this.decryptWorkers.values()) {
+      worker.terminate();
+    }
+    this.decryptWorkers.clear();
   }
 
   toggleMute(): boolean {

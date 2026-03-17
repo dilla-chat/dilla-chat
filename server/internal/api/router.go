@@ -56,7 +56,7 @@ type RouterConfig struct {
 	RateBurst        int
 	MaxBodySize      int64
 	Domain           string
-	TURNClient       *voice.CFTurnClient
+	TURNClient       voice.TURNCredentialProvider
 	AllowedOrigins   []string
 	TrustedProxies   []string
 	TLSEnabled       bool

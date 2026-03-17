@@ -10,14 +10,14 @@ import (
 
 type TURNHandler struct {
 	auth *auth.AuthService
-	turn *voice.CFTurnClient
+	turn voice.TURNCredentialProvider
 }
 
-func NewTURNHandler(authSvc *auth.AuthService, turnClient *voice.CFTurnClient) *TURNHandler {
+func NewTURNHandler(authSvc *auth.AuthService, turnClient voice.TURNCredentialProvider) *TURNHandler {
 	return &TURNHandler{auth: authSvc, turn: turnClient}
 }
 
-// HandleGetCredentials returns TURN ICE servers from Cloudflare for the authenticated user.
+// HandleGetCredentials returns TURN ICE servers for the authenticated user.
 func (h *TURNHandler) HandleGetCredentials(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(auth.UserIDKey).(string)
 	if !ok || userID == "" {

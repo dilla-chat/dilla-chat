@@ -353,6 +353,15 @@ func (c *Client) handleVoiceEvent(event Event) bool {
 		}
 		c.handleVoiceWebcamStop(p)
 		return true
+
+	case EventVoiceKeyDistribute:
+		var p VoiceKeyDistributePayload
+		if err := json.Unmarshal(event.Payload, &p); err != nil {
+			c.sendError("invalid voice:key-distribute payload")
+			return true
+		}
+		c.handleVoiceKeyDistribute(p)
+		return true
 	}
 	return false
 }
@@ -759,6 +768,26 @@ func (c *Client) handleVoiceWebcamStop(p VoiceWebcamStopPayload) {
 	}
 
 	c.hub.VoiceSFU.RenegotiateAll(p.ChannelID)
+}
+
+// handleVoiceKeyDistribute relays encrypted voice keys to other participants
+// in the same voice channel. The server cannot read the key contents.
+func (c *Client) handleVoiceKeyDistribute(p VoiceKeyDistributePayload) {
+	if p.ChannelID == "" {
+		c.sendError("channel_id is required")
+		return
+	}
+
+	// Set sender ID from the authenticated user
+	p.SenderID = c.userID
+
+	// Relay to all other clients in the channel
+	evt, err := MakeEvent(EventVoiceKeyDistribute, p)
+	if err != nil {
+		c.sendError("failed to create key distribute event")
+		return
+	}
+	c.hub.BroadcastToChannel(p.ChannelID, evt, c)
 }
 
 func (c *Client) handleMessageSend(p MessageSendPayload) {

@@ -23,7 +23,7 @@ type SFU struct {
 	api          *webrtc.API
 	roomManager  *RoomManager
 	OnEvent      func(channelID string, event interface{})
-	cfTurnClient *CFTurnClient // nil if CF TURN not configured
+	turnProvider TURNCredentialProvider // nil if TURN not configured
 }
 
 func NewSFU(rm *RoomManager) *SFU {
@@ -59,20 +59,20 @@ func NewSFU(rm *RoomManager) *SFU {
 	}
 }
 
-// SetCFTurnClient configures the SFU to use Cloudflare TURN relay.
-func (s *SFU) SetCFTurnClient(c *CFTurnClient) {
-	s.cfTurnClient = c
+// SetTURNProvider configures the SFU to use a TURN relay for ICE.
+func (s *SFU) SetTURNProvider(p TURNCredentialProvider) {
+	s.turnProvider = p
 }
 
 func (s *SFU) iceConfig() webrtc.Configuration {
-	if s.cfTurnClient != nil {
-		iceServersJSON, err := s.cfTurnClient.GetICEServers()
+	if s.turnProvider != nil {
+		iceServersJSON, err := s.turnProvider.GetICEServers()
 		if err != nil {
-			slog.Error("failed to get CF TURN credentials, falling back to STUN", "error", err)
+			slog.Error("failed to get TURN credentials, falling back to STUN", "error", err)
 		} else {
 			var iceServers []webrtc.ICEServer
 			if err := json.Unmarshal(iceServersJSON, &iceServers); err != nil {
-				slog.Error("failed to parse CF TURN iceServers", "error", err)
+				slog.Error("failed to parse TURN iceServers", "error", err)
 			} else {
 				return webrtc.Configuration{
 					ICEServers:         iceServers,

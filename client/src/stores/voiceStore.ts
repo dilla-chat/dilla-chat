@@ -24,9 +24,11 @@ interface VoiceStore {
   // Voice occupants for ALL channels (not just the connected one)
   voiceOccupants: Record<string, VoicePeer[]>;
 
+  e2eVoice: boolean;
   peerConnection: RTCPeerConnection | null;
   localStream: MediaStream | null;
 
+  setE2eVoice(enabled: boolean): void;
   joinChannel(teamId: string, channelId: string): Promise<void>;
   leaveChannel(): void;
   toggleMute(): void;
@@ -71,8 +73,11 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
   remoteWebcamStreams: {},
   peers: {},
   voiceOccupants: {},
+  e2eVoice: false,
   peerConnection: null,
   localStream: null,
+
+  setE2eVoice: (enabled: boolean) => set({ e2eVoice: enabled }),
 
   joinChannel: async (teamId: string, channelId: string) => {
     const state = get();
