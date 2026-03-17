@@ -16,6 +16,7 @@ import ThreadPanel from '../components/ThreadPanel/ThreadPanel';
 import SearchBar from '../components/SearchBar/SearchBar';
 import ShortcutsModal from '../components/ShortcutsModal/ShortcutsModal';
 import ResizeHandle from '../components/ResizeHandle/ResizeHandle';
+import MobileTabBar, { type MobileTab } from '../components/MobileTabBar/MobileTabBar';
 import ChannelView from './ChannelView';
 import TitleBar from '../components/TitleBar/TitleBar';
 import { useTeamStore } from '../stores/teamStore';
@@ -24,6 +25,7 @@ import { useDMStore, type DMChannel } from '../stores/dmStore';
 import { useThreadStore } from '../stores/threadStore';
 import { usePresenceStore, type UserPresence } from '../stores/presenceStore';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
+import { useIsMobile } from '../hooks/useMediaQuery';
 import { api, type VoicePeer } from '../services/api';
 import { ws } from '../services/websocket';
 import { initCrypto } from '../services/crypto';
@@ -39,6 +41,8 @@ export default function AppLayout() {
   const { teams, derivedKey } = useAuthStore();
   const { activeDMId, setActiveDM, dmChannels } = useDMStore();
   const { activeThreadId, threadPanelOpen, threads, setActiveThread, setThreadPanelOpen } = useThreadStore();
+  const isMobile = useIsMobile();
+  const [mobileTab, setMobileTab] = useState<MobileTab>('chat');
   const [showMembers, setShowMembers] = useState(true);
   const [showDMMembers, setShowDMMembers] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
@@ -129,6 +133,14 @@ export default function AppLayout() {
       setActiveDM(null);
     }
   }, [activeChannelId]);
+
+  // Auto-switch to chat tab on mobile when a channel or DM is selected
+  useEffect(() => {
+    if (isMobile && (activeChannelId || activeDMId)) {
+      setMobileTab('chat');
+    }
+  }, [isMobile, activeChannelId, activeDMId]);
+
   const [showNewDM, setShowNewDM] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [channelWidth, setChannelWidth] = useState(240);
@@ -523,67 +535,93 @@ export default function AppLayout() {
     );
   }
 
-  return (
-    <>
-      <TitleBar />
-      <div className="app-layout-main">
-      <div className="left-panels">
-        <div className="left-panels-top">
-          <TeamSidebar />
-
-          <div className="channel-sidebar" style={{ width: channelWidth }}>
-            <div className="channel-sidebar-header">
-              <div className="channel-sidebar-header-top">
-                <span className="channel-sidebar-header-name">
-                  {isDMMode ? t('dm.title', 'Direct Messages') : (activeTeamId ? teamMap.get(activeTeamId)?.name : null) ?? t('app.name')}
-                </span>
-                <button
-                  className="sidebar-settings-btn"
-                  onClick={() => navigate('/app/settings')}
-                  title={t('teams.settings', 'Team Settings')}
-                  style={isDMMode ? { visibility: 'hidden' } : undefined}
-                >
-                  <Settings width={18} height={18} strokeWidth={2} />
-                </button>
-              </div>
-              <div className="channel-sidebar-tabs">
-                <button
-                  className={`sidebar-tab ${!isDMMode ? 'active' : ''}`}
-                  onClick={switchToChannels}
-                  title={t('channels.uncategorized', 'Channels')}
-                >
-                  <Hashtag width={16} height={16} strokeWidth={2} /> {t('channels.title', 'Kanals')}
-                </button>
-                <button
-                  className={`sidebar-tab ${isDMMode ? 'active' : ''}`}
-                  onClick={switchToDMs}
-                  title={t('dm.title', 'Direct Messages')}
-                >
-                  <ChatBubble width={16} height={16} strokeWidth={2} /> {t('dm.short', 'PMs')}
-                </button>
-              </div>
-            </div>
-
-            {isDMMode ? (
-              <DMList currentUserId={currentUserId} onNewDM={() => setShowNewDM(true)} />
-            ) : (
-              <ChannelList onCreateChannel={handleCreateChannel} />
-            )}
-          </div>
+  const channelSidebarContent = (
+    <div className={`channel-sidebar ${isMobile ? 'mobile-fullwidth' : ''}`} style={isMobile ? undefined : { width: channelWidth }}>
+      <div className="channel-sidebar-header">
+        <div className="channel-sidebar-header-top">
+          <span className="channel-sidebar-header-name">
+            {isDMMode ? t('dm.title', 'Direct Messages') : (activeTeamId ? teamMap.get(activeTeamId)?.name : null) ?? t('app.name')}
+          </span>
+          <button
+            className="sidebar-settings-btn"
+            onClick={() => navigate('/app/settings')}
+            title={t('teams.settings', 'Team Settings')}
+            style={isDMMode ? { visibility: 'hidden' } : undefined}
+          >
+            <Settings width={18} height={18} strokeWidth={2} />
+          </button>
         </div>
-
-        <div className="left-panels-bottom">
-          <VoiceControls />
-          <UserPanel
-            username={username}
-            displayName={displayName}
-            onSettingsClick={() => navigate('/app/user-settings')}
-          />
+        <div className="channel-sidebar-tabs">
+          <button
+            className={`sidebar-tab ${!isDMMode ? 'active' : ''}`}
+            onClick={switchToChannels}
+            title={t('channels.uncategorized', 'Channels')}
+          >
+            <Hashtag width={16} height={16} strokeWidth={2} /> {t('channels.title', 'Kanals')}
+          </button>
+          <button
+            className={`sidebar-tab ${isDMMode ? 'active' : ''}`}
+            onClick={switchToDMs}
+            title={t('dm.title', 'Direct Messages')}
+          >
+            <ChatBubble width={16} height={16} strokeWidth={2} /> {t('dm.short', 'PMs')}
+          </button>
         </div>
       </div>
 
-      <ResizeHandle onResize={handleChannelResize} />
+      {isDMMode ? (
+        <DMList currentUserId={currentUserId} onNewDM={() => setShowNewDM(true)} />
+      ) : (
+        <ChannelList onCreateChannel={handleCreateChannel} />
+      )}
+    </div>
+  );
 
+  return (
+    <>
+      <TitleBar />
+      <div className={`app-layout-main ${isMobile ? 'mobile' : ''}`}>
+      {!isMobile && (
+        <>
+          <div className="left-panels">
+            <div className="left-panels-top">
+              <TeamSidebar />
+              {channelSidebarContent}
+            </div>
+
+            <div className="left-panels-bottom">
+              <VoiceControls />
+              <UserPanel
+                username={username}
+                displayName={displayName}
+                onSettingsClick={() => navigate('/app/user-settings')}
+              />
+            </div>
+          </div>
+
+          <ResizeHandle onResize={handleChannelResize} />
+        </>
+      )}
+
+      {isMobile && mobileTab === 'teams' && (
+        <div className="mobile-tab-content">
+          <TeamSidebar />
+        </div>
+      )}
+
+      {isMobile && mobileTab === 'channels' && (
+        <div className="mobile-tab-content">
+          {channelSidebarContent}
+        </div>
+      )}
+
+      {isMobile && mobileTab === 'members' && (
+        <div className="mobile-tab-content">
+          <MemberList />
+        </div>
+      )}
+
+      {(!isMobile || mobileTab === 'chat') && (
       <div className="content-wrapper">
         <div className="content-header">
           {isDMMode && activeDM ? (
@@ -695,9 +733,22 @@ export default function AppLayout() {
             <ThreadPanel thread={activeThread} onClose={handleCloseThread} />
           )}
 
-          {!isDMMode && showMembers && <MemberList />}
+          {!isMobile && !isDMMode && showMembers && <MemberList />}
         </div>
       </div>
+      )}
+
+      {isMobile && (
+        <div className="mobile-bottom-controls">
+          <VoiceControls />
+          <UserPanel
+            username={username}
+            displayName={displayName}
+            onSettingsClick={() => navigate('/app/user-settings')}
+          />
+          <MobileTabBar activeTab={mobileTab} onTabChange={setMobileTab} />
+        </div>
+      )}
 
       {showCreateChannel && (
         <CreateChannel

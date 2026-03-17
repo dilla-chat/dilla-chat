@@ -147,3 +147,26 @@
   padding: 0 2px;
   font-weight: 500;
 }
+
+/* ===== Responsive ===== */
+@media (max-width: 767px) {
+  .header-search-input-wrapper {
+    width: 140px;
+  }
+
+  .header-search-input-wrapper.focused {
+    width: 200px;
+  }
+
+  .header-search-dropdown {
+    width: calc(100vw - 16px);
+    max-width: 420px;
+    right: -8px;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .header-search-dropdown {
+    width: min(420px, calc(100vw - 340px));
+  }
+}

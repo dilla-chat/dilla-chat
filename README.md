@@ -5,7 +5,7 @@
 Dilla is a privacy-first chat platform you run on your own infrastructure. Your messages. Your server. Your kanals.
 
 ![License](https://img.shields.io/badge/license-AGPLv3-blue)
-![Go](https://img.shields.io/badge/Go-1.24-00ADD8)
+![Rust](https://img.shields.io/badge/Rust-1.75+-DEA584)
 ![Tauri](https://img.shields.io/badge/Tauri-v2-FFC131)
 
 ---
@@ -38,7 +38,7 @@ Dilla is a privacy-first chat platform you run on your own infrastructure. Your 
 
 Dilla is an open-source chat platform that works like Discord but with two key differences:
 
-1. **You own the server.** A single Go binary runs your entire team — no cloud service needed.
+1. **You own the server.** A single Rust binary runs your entire team — no cloud service needed.
 2. **True E2E encryption.** Messages are encrypted on your device before they leave. The server never sees plaintext.
 
 Friends can each run a server and **federate** them together into a mesh for high availability. Users just see "teams" — the infrastructure is invisible.
@@ -70,21 +70,21 @@ Friends can each run a server and **federate** them together into a mesh for hig
 
 ```
 ┌──────────────────────────┐          ┌──────────────────────────┐
-│    Tauri Desktop Client  │          │    Go Server Binary       │
-│    React + Rust          │◄────────►│    Single binary, ~15MB   │
+│    Tauri Desktop Client  │          │    Rust Server Binary     │
+│    React + Rust          │◄────────►│    Single binary          │
 │    ~5MB installer        │  WebSocket│    SQLite + SQLCipher     │
 │                          │  (JSON)  │                           │
 │  ┌────────────────────┐  │          │  ┌──────────────────────┐ │
 │  │ Signal Protocol    │  │          │  │ WebSocket Hub        │ │
-│  │ (Rust, client-side)│  │          │  │ REST API             │ │
-│  │ Ed25519 + X25519   │  │          │  │ Pion WebRTC SFU      │ │
+│  │ (Rust, client-side)│  │          │  │ REST API (axum)      │ │
+│  │ Ed25519 + X25519   │  │          │  │ webrtc-rs SFU        │ │
 │  │ AES-256-GCM        │  │          │  │ Rate Limiting        │ │
 │  └────────────────────┘  │          │  │ Structured Logging   │ │
 └──────────────────────────┘          │  └──────────────────────┘ │
                                       └────────────┬─────────────┘
                                                    │ Federation
-                                                   │ (Memberlist gossip
-                                                   │  + WebSocket relay)
+                                                   │ (WebSocket relay
+                                                   │  + Lamport clocks)
                                                    ▼
                                       ┌──────────────────────────┐
                                       │  Other Server Nodes       │
@@ -105,19 +105,19 @@ Friends can each run a server and **federate** them together into a mesh for hig
 
 ### 1. Build the Server
 
-**Prerequisites:** Go 1.24+, GCC (for SQLite/CGo)
+**Prerequisites:** Rust 1.75+
 
 ```bash
-cd server
-make build
+cd server-rs
+cargo build --release
 ```
 
-This produces `./bin/dilla-server`.
+This produces `target/release/dilla-server`.
 
 ### 2. Start the Server
 
 ```bash
-./bin/dilla-server --team "My Team"
+DILLA_TEAM="My Team" ./target/release/dilla-server
 ```
 
 On first run, you'll see output like this:
@@ -178,13 +178,10 @@ Federation lets multiple server instances form a **mesh** that acts as one team.
 On another machine (or different port):
 
 ```bash
-./bin/dilla-server \
-  --team "My Team" \
-  --port 8081 \
-  --peers localhost:8080
+DILLA_TEAM="My Team" DILLA_PORT=8081 DILLA_PEERS=localhost:8080 ./target/release/dilla-server
 ```
 
-The nodes will discover each other via [Hashicorp Memberlist](https://github.com/hashicorp/memberlist) (SWIM gossip protocol) and sync state automatically.
+The nodes will discover each other via WebSocket federation and sync state automatically.
 
 ### Generate a Join Token (from the UI)
 
@@ -213,9 +210,8 @@ dilla-server --join-token <token>
 ### Build
 
 ```bash
-cd server
-make docker
-# or: docker build -t dilla-server .
+cd server-rs
+docker build -t dilla-server .
 ```
 
 ### Run
@@ -250,7 +246,7 @@ docker run -d \
 version: '3.8'
 services:
   dilla:
-    build: ./server
+    build: ./server-rs
     ports:
       - "8080:8080"
       - "8081:8081"
@@ -326,23 +322,18 @@ Every flag has an equivalent environment variable (prefix `DILLA_`). Env vars ar
 
 | Tool | Version | Why |
 |------|---------|-----|
-| Go | 1.24+ | Server binary |
-| GCC | any | SQLite CGo bindings |
-| Rust | 1.75+ | Tauri client backend + E2E crypto |
+| Rust | 1.75+ | Server binary + Tauri client backend + E2E crypto |
 | Node.js | 20+ | Client frontend |
 | npm | 9+ | Package management |
 
 ### Server
 
 ```bash
-cd server
+cd server-rs
 
-make build            # Build for current platform → bin/dilla-server
-make dev              # Run in dev mode (debug logging)
-make test             # Run all tests
-make cross-compile    # Build for Linux/macOS/Windows (amd64 + arm64)
-make docker           # Build Docker image
-make clean            # Remove build artifacts
+cargo build --release   # Build for current platform → target/release/dilla-server
+cargo run               # Run in dev mode (debug logging)
+cargo test              # Run all tests
 ```
 
 ### Client
@@ -366,31 +357,28 @@ npm run tauri build   # Build desktop installer for your platform
 
 ```
 dilla/
-├── server/                          # Go server binary
-│   ├── cmd/dilla-server/         # Entrypoint (main.go)
-│   ├── internal/
-│   │   ├── api/                     # REST handlers + middleware
-│   │   │   ├── router.go           # Route registration
-│   │   │   ├── auth.go             # Auth endpoints
-│   │   │   ├── dms.go              # Direct message endpoints
-│   │   │   ├── threads.go          # Thread endpoints
-│   │   │   ├── reactions.go        # Reaction endpoints
-│   │   │   ├── uploads.go          # File upload/download
-│   │   │   ├── voice.go            # Voice channel endpoints
-│   │   │   ├── presence.go         # Presence endpoints
-│   │   │   ├── federation.go       # Federation endpoints
-│   │   │   └── middleware.go        # Rate limiting, logging, validation
-│   │   ├── auth/                    # Ed25519 challenge-response + JWT
-│   │   ├── config/                  # CLI flags + env vars
-│   │   ├── db/                      # SQLite queries + models
-│   │   ├── federation/              # Memberlist mesh + state sync
-│   │   ├── presence/                # In-memory presence tracking
-│   │   ├── voice/                   # Pion WebRTC SFU
+├── server-rs/                       # Rust server binary
+│   ├── src/
+│   │   ├── main.rs                  # Entrypoint
+│   │   ├── api/                     # REST handlers (axum) + middleware
+│   │   │   ├── mod.rs              # Route registration + AppState
+│   │   │   ├── auth_handlers.rs    # Auth endpoints
+│   │   │   ├── dms.rs              # Direct message endpoints
+│   │   │   ├── threads.rs          # Thread endpoints
+│   │   │   ├── reactions.rs        # Reaction endpoints
+│   │   │   ├── uploads.rs          # File upload/download
+│   │   │   ├── voice.rs            # Voice channel endpoints
+│   │   │   ├── presence.rs         # Presence endpoints
+│   │   │   └── federation.rs       # Federation endpoints
+│   │   ├── auth.rs                  # Ed25519 challenge-response + JWT
+│   │   ├── config.rs                # Env vars configuration
+│   │   ├── db/                      # SQLite queries + models + migrations
+│   │   ├── federation/              # WebSocket mesh + state sync
+│   │   ├── presence.rs              # In-memory presence tracking
+│   │   ├── voice/                   # webrtc-rs SFU + TURN credentials
 │   │   └── ws/                      # WebSocket hub + events
-│   ├── migrations/                  # SQL schema migrations
-│   ├── Makefile
-│   ├── Dockerfile
-│   └── go.mod
+│   ├── Cargo.toml
+│   └── Dockerfile
 │
 ├── client/                          # Tauri desktop client
 │   ├── src/                         # React + TypeScript
@@ -438,11 +426,11 @@ dilla/
 
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
-| **Server** | Go 1.24 | Single-binary backend |
-| **Database** | SQLite + SQLCipher | Embedded DB with encryption at rest |
-| **WebSocket** | gorilla/websocket | Real-time messaging |
-| **Voice** | Pion WebRTC v4 | SFU for voice channels (Opus codec) |
-| **Federation** | Hashicorp Memberlist | SWIM gossip for peer discovery + health |
+| **Server** | Rust (axum + tokio) | Single-binary backend |
+| **Database** | SQLite + SQLCipher (rusqlite) | Embedded DB with encryption at rest |
+| **WebSocket** | tokio-tungstenite | Real-time messaging |
+| **Voice** | webrtc-rs | SFU for voice channels (Opus + VP8 codecs) |
+| **Federation** | WebSocket relay + Lamport clocks | Peer-to-peer mesh sync |
 | **Auth** | Ed25519 + JWT | Challenge-response authentication |
 | **Client Framework** | Tauri v2 (Rust) | Lightweight desktop app shell |
 | **Client UI** | React 19 + TypeScript | Frontend components |
@@ -460,7 +448,7 @@ dilla/
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/health` | `{"status": "ok", "uptime": "2h15m"}` |
-| `GET` | `/api/v1/version` | `{"version": "0.1.0", "go_version": "go1.24.3"}` |
+| `GET` | `/api/v1/version` | `{"version": "0.1.0"}` |
 
 ### Authentication (no auth required)
 
@@ -527,7 +515,7 @@ dilla/
 
 ### Voice, Presence, Invites, Roles, Federation, Uploads
 
-See the full route table in `server/internal/api/router.go`.
+See the full route table in `server-rs/src/api/mod.rs`.
 
 ### WebSocket
 

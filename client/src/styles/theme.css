@@ -105,5 +105,10 @@
   --member-sidebar-width: 240px;
   --user-panel-height: 52px;
   --titlebar-height: 32px;
+
+  /* Responsive breakpoints (documentation — CSS can't use vars in @media) */
+  /* --breakpoint-mobile: 768px */
+  /* --breakpoint-tablet: 1024px */
+  --bottom-tab-height: 56px;
 }
 
