@@ -69,6 +69,7 @@ jobs:
 
   # Test and build the server
   server-checks:
+    needs: [client-checks]
     runs-on: ubuntu-latest
     outputs:
       test_failed: ${{ steps.test.outcome == 'failure' }}
@@ -78,9 +79,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
       - uses: actions/setup-go@v5
         with:
           go-version-file: server/go.mod
+
+      - name: Build client for embedding
+        run: |
+          cd client && npm ci && npm run build
+          rm -rf ../server/internal/webapp/dist
+          cp -r dist ../server/internal/webapp/dist
 
       - name: Test server
         id: test

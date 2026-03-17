@@ -801,7 +801,7 @@ class ApiService {
     try {
       const data = await this.request(baseUrl, '/health', { method: 'GET' });
       const latency = Math.round(performance.now() - start);
-      return { ok: true, latency, uptime: (data as any)?.uptime || null };
+      return { ok: true, latency, uptime: (data as Record<string, unknown>)?.uptime as string || null };
     } catch {
       return { ok: false, latency: 0, uptime: null };
     }

@@ -40,7 +40,7 @@ export class VoiceKeyManager {
 
   /** Import a received key for a remote user. */
   async setRemoteKey(userId: string, rawKey: Uint8Array): Promise<void> {
-    const key = await crypto.subtle.importKey('raw', rawKey, { name: 'AES-GCM', length: 256 }, false, [
+    const key = await crypto.subtle.importKey('raw', rawKey as BufferSource, { name: 'AES-GCM', length: 256 }, false, [
       'decrypt',
     ]);
     this.keys.set(userId, key);

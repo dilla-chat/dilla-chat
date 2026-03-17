@@ -85,11 +85,14 @@ export default function ConnectionStatus() {
     return () => { unsub1(); unsub2(); };
   }, []);
 
-  // Periodic WS ping
+  // Periodic WS ping (fires immediately then every PING_INTERVAL)
   useEffect(() => {
-    pingServer();
+    const id = setTimeout(pingServer, 0);
     intervalRef.current = setInterval(pingServer, PING_INTERVAL);
-    return () => clearInterval(intervalRef.current!);
+    return () => {
+      clearTimeout(id);
+      clearInterval(intervalRef.current!);
+    };
   }, [pingServer]);
 
   const bars = qualityBars(state.quality);

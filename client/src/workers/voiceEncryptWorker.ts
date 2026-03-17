@@ -112,7 +112,6 @@ async function decryptFrame(
 }
 
 // Handle RTCRtpScriptTransform events
-// @ts-expect-error: rtctransform is a non-standard event for RTCRtpScriptTransform workers
 self.addEventListener('rtctransform', (event: Event) => {
   const transformEvent = event as RTCTransformEvent;
   const { readable, writable } = transformEvent.transformer;

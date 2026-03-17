@@ -90,13 +90,21 @@ export default function UserPanel({
   const statusLabel = myCustomStatus || t(`presence.${myStatus}`);
 
   const handleMute = () => {
-    muted ? playUnmuteSound() : playMuteSound();
+    if (muted) {
+      playUnmuteSound();
+    } else {
+      playMuteSound();
+    }
     webrtcService.toggleMute();
     toggleMute();
   };
 
   const handleDeafen = () => {
-    deafened ? playUnmuteSound() : playMuteSound();
+    if (deafened) {
+      playUnmuteSound();
+    } else {
+      playMuteSound();
+    }
     webrtcService.toggleDeafen();
     toggleDeafen();
   };

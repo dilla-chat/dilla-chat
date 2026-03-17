@@ -1,10 +1,11 @@
 import { traceWSEvent } from './telemetry';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type EventHandler = (payload: any) => void;
 
 interface WSEvent {
   type: string;
-  payload: any;
+  payload: Record<string, unknown>;
 }
 
 const MAX_RECONNECT_DELAY = 30_000;
@@ -147,7 +148,7 @@ export class WebSocketService {
     this.handlers.get(eventType)?.delete(handler);
   }
 
-  private emit(eventType: string, payload: any): void {
+  private emit(eventType: string, payload: unknown): void {
     this.handlers.get(eventType)?.forEach((handler) => {
       try {
         handler(payload);
@@ -190,9 +191,9 @@ export class WebSocketService {
   }
 
   // Request/response pattern for data fetching over WS
-  private pendingRequests: Map<string, { resolve: (data: any) => void; reject: (err: Error) => void }> = new Map();
+  private pendingRequests: Map<string, { resolve: (data: unknown) => void; reject: (err: Error) => void }> = new Map();
 
-  request<T = any>(teamId: string, action: string, payload: any = {}): Promise<T> {
+  request<T = unknown>(teamId: string, action: string, payload: Record<string, unknown> = {}): Promise<T> {
     return new Promise((resolve, reject) => {
       const id = crypto.randomUUID();
       const timeout = setTimeout(() => {
@@ -201,7 +202,7 @@ export class WebSocketService {
       }, 15_000);
 
       this.pendingRequests.set(id, {
-        resolve: (data: any) => {
+        resolve: (data: unknown) => {
           clearTimeout(timeout);
           this.pendingRequests.delete(id);
           resolve(data as T);
@@ -220,8 +221,13 @@ export class WebSocketService {
     });
   }
 
-  private handleResponse(payload: any): void {
-    const { id, ok, payload: data, error: errMsg } = payload;
+  private handleResponse(payload: Record<string, unknown>): void {
+    const { id, ok, payload: data, error: errMsg } = payload as {
+      id: string;
+      ok: boolean;
+      payload: unknown;
+      error?: string;
+    };
     const pending = this.pendingRequests.get(id);
     if (!pending) return;
     if (ok) {

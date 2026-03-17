@@ -14,7 +14,7 @@ export default function SetupAdmin() {
   const [searchParams] = useSearchParams();
   const { publicKey, derivedKey, addTeam, setPublicKey } = useAuthStore();
 
-  const isBrowser = !(window as any).__TAURI_INTERNALS__;
+  const isBrowser = !(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
   const [serverAddress, setServerAddress] = useState(
     isBrowser ? window.location.origin : '',
   );

@@ -23,7 +23,7 @@ export default function CreateIdentity() {
   const { setDerivedKey, setPublicKey } = useAuthStore();
 
   const hasPendingInvite = !!sessionStorage.getItem('pendingInviteToken');
-  const isBrowser = !(window as any).__TAURI_INTERNALS__;
+  const isBrowser = !(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
   const [serverAddress, setServerAddress] = useState(
     hasPendingInvite || isBrowser ? window.location.origin : '',
   );

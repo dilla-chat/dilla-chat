@@ -11,7 +11,7 @@ interface RTCRtpScriptTransform {
   readonly port: MessagePort;
 }
 
-declare var RTCRtpScriptTransform: RTCRtpScriptTransformConstructor;
+declare const RTCRtpScriptTransform: RTCRtpScriptTransformConstructor;
 
 interface RTCRtpSender {
   transform: RTCRtpScriptTransform | null;

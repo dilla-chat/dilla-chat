@@ -24,7 +24,7 @@ import { useDMStore, type DMChannel } from '../stores/dmStore';
 import { useThreadStore } from '../stores/threadStore';
 import { usePresenceStore, type UserPresence } from '../stores/presenceStore';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
-import { api } from '../services/api';
+import { api, type VoicePeer } from '../services/api';
 import { ws } from '../services/websocket';
 import { initCrypto } from '../services/crypto';
 import { unlockWithPrf } from '../services/keyStore';
@@ -154,27 +154,29 @@ export default function AppLayout() {
     }));
 
   // Helper: apply sync data to stores
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const applySyncData = (teamId: string, data: any) => {
     if (data.channels) {
-      const channels = (data.channels as any[]).map((ch) => ({
+      const channels = (data.channels as Record<string, unknown>[]).map((ch) => ({
         ...ch,
         teamId: ch.teamId ?? ch.team_id ?? teamId,
       })) as import('../stores/teamStore').Channel[];
       setChannels(teamId, channels);
     }
     if (data.team) setTeam(data.team as import('../stores/teamStore').Team);
-    if (data.members) setMembers(teamId, normalizeMembers(data.members));
+    if (data.members) setMembers(teamId, normalizeMembers(data.members as Record<string, unknown>[]));
     if (data.roles) setRoles(teamId, data.roles as import('../stores/teamStore').Role[]);
     if (data.presences) {
       // Presences from sync:init come as a map of userId -> presence objects
-      const presMap: Record<string, any> = {};
+      const presMap: Record<string, UserPresence> = {};
       const raw = data.presences;
       if (raw && typeof raw === 'object') {
-        for (const [userId, p] of Object.entries(raw as Record<string, any>)) {
+        for (const [userId, p] of Object.entries(raw as Record<string, Record<string, unknown>>)) {
           presMap[userId] = {
-            status: p.status ?? p.status_type ?? 'offline',
-            custom_status: p.custom_status ?? '',
-            last_active: p.last_active ?? '',
+            user_id: userId,
+            status: (p.status ?? p.status_type ?? 'offline') as UserPresence['status'],
+            custom_status: (p.custom_status ?? '') as string,
+            last_active: (p.last_active ?? '') as string,
           };
         }
       }
@@ -187,7 +189,7 @@ export default function AppLayout() {
       }
     }
     if (data.voice_states && typeof data.voice_states === 'object') {
-      useVoiceStore.getState().setVoiceOccupants(data.voice_states);
+      useVoiceStore.getState().setVoiceOccupants(data.voice_states as Record<string, VoicePeer[]>);
     }
     console.log(`[AppLayout] sync:init applied for team ${teamId}`);
   };
@@ -196,7 +198,7 @@ export default function AppLayout() {
   const loadDataViaREST = (teamId: string) => {
     console.log(`[AppLayout] Falling back to REST data load for ${teamId}`);
     api.getChannels(teamId).then((data) => {
-      const channels = (data as any[]).map((ch) => ({
+      const channels = (data as Record<string, unknown>[]).map((ch) => ({
         ...ch,
         teamId: ch.teamId ?? ch.team_id ?? teamId,
       })) as import('../stores/teamStore').Channel[];
@@ -233,9 +235,9 @@ export default function AppLayout() {
 
     const doSyncInit = () => {
       console.log(`[AppLayout] WS connected for team ${teamId}, requesting sync:init`);
-      ws.request(teamId, 'sync:init').then((data: any) => {
+      ws.request(teamId, 'sync:init').then((data: unknown) => {
         dataLoaded.current.add(teamId);
-        applySyncData(teamId, data);
+        applySyncData(teamId, data as Record<string, unknown>);
       }).catch((err: Error) => {
         console.warn('[AppLayout] sync:init failed, falling back to REST:', err.message);
         if (!dataLoaded.current.has(teamId)) {
@@ -290,11 +292,11 @@ export default function AppLayout() {
         const blob = await exportIdentityBlob();
         if (!blob) return;
         const allServers: string[] = [];
-        teams.forEach((entry: any) => {
+        teams.forEach((entry) => {
           if (entry.baseUrl) allServers.push(entry.baseUrl);
         });
         for (const [teamId, entry] of teams) {
-          const { baseUrl, token } = entry as any;
+          const { baseUrl, token } = entry;
           if (!baseUrl || !token) continue;
           const jwt = api.getConnectionInfo(teamId)?.token || token;
           try {

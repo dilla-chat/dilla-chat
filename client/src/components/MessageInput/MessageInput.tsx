@@ -33,7 +33,7 @@ function applyFormatting(textarea: HTMLTextAreaElement, format: FormatType, setV
   const selected = value.slice(start, end);
 
   let before = value.slice(0, start);
-  let after = value.slice(end);
+  const after = value.slice(end);
   let replacement: string;
   let cursorOffset: number;
 
@@ -203,12 +203,21 @@ export default function MessageInput({
 
   const hasContent = value.trim().length > 0 || pendingFiles.length > 0;
 
+  const editContent = editingMessage?.content ?? null;
+  const prevEditContentRef = useRef<string | null>(null);
+  if (editContent !== prevEditContentRef.current) {
+    prevEditContentRef.current = editContent;
+    if (editContent !== null) {
+      setValue(editContent);
+    }
+  }
+
+  // Focus textarea when entering edit mode
   useEffect(() => {
-    if (editingMessage) {
-      setValue(editingMessage.content);
+    if (editContent !== null) {
       textareaRef.current?.focus();
     }
-  }, [editingMessage]);
+  }, [editContent]);
 
   // Auto-resize textarea
   useEffect(() => {
