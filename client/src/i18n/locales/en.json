@@ -15,8 +15,8 @@
   "welcome": {
     "title": "Welcome to Dilla",
     "subtitle": "A federated, end-to-end encrypted team chat",
-    "tagline": "Va fan dillar du om?",
-    "pronunciation": "(vah fahn dill-ar doo ohm)",
+    "tagline": "Va dillar du om?",
+    "pronunciation": "(vah dill-ar doo ohm)",
     "description": "That's Gothenburg for \"what are you even talking about?\" — and honestly, we don't know. We can't. Dilla is self-hosted, end-to-end encrypted chat — your server, your kanals, your messages. Nobody's reading them. Not even us.",
     "createIdentity": "Create New Identity",
     "restoreBackup": "Restore from Backup"
@@ -333,8 +333,8 @@
   },
   "landing": {
     "hero": {
-      "headline": "Va fan dillar du om?",
-      "pronunciation": "(vah fahn dill-ar doo ohm)",
+      "headline": "Va dillar du om?",
+      "pronunciation": "(vah dill-ar doo ohm)",
       "explanation": "That's Gothenburg for \"what are you even talking about?\" — and honestly, we don't know. We can't. Dilla is self-hosted, end-to-end encrypted chat — your server, your kanals, your messages. Nobody's reading them. Not even us.",
       "getStarted": "Get Started",
       "viewGithub": "View on GitHub"
