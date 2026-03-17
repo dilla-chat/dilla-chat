@@ -254,6 +254,124 @@ pub struct DMMessageNewPayload {
     pub created_at: String,
 }
 
+// Thread payloads
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThreadMessageSendPayload {
+    pub thread_id: String,
+    pub content: String,
+    #[serde(default)]
+    pub nonce: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThreadMessageEditPayload {
+    pub thread_id: String,
+    pub message_id: String,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThreadMessageRemovePayload {
+    pub thread_id: String,
+    pub message_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThreadMessageNewPayload {
+    pub id: String,
+    pub thread_id: String,
+    pub channel_id: String,
+    pub author_id: String,
+    pub content: String,
+    #[serde(rename = "type")]
+    pub msg_type: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThreadUpdatedPayload {
+    pub id: String,
+    pub title: String,
+    pub message_count: i32,
+    pub last_message_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThreadMessageUpdatedPayload {
+    pub id: String,
+    pub thread_id: String,
+    pub content: String,
+    pub edited_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThreadMessageDeletedPayload {
+    pub id: String,
+    pub thread_id: String,
+}
+
+// Voice broadcast payloads
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceScreenPayload {
+    pub channel_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceScreenUpdatePayload {
+    pub channel_id: String,
+    pub user_id: String,
+    pub sharing: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceWebcamUpdatePayload {
+    pub channel_id: String,
+    pub user_id: String,
+    pub sharing: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceMuteUpdatePayload {
+    pub channel_id: String,
+    pub user_id: String,
+    pub muted: bool,
+    pub deafened: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceStatePayload {
+    pub channel_id: String,
+    pub peers: Vec<crate::voice::VoicePeer>,
+}
+
+// DM payloads
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DMMessageSendPayload {
+    pub dm_channel_id: String,
+    pub content: String,
+    #[serde(rename = "type", default)]
+    pub msg_type: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DMMessageEditPayload {
+    pub dm_channel_id: String,
+    pub message_id: String,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DMMessageDeletePayload {
+    pub dm_channel_id: String,
+    pub message_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DMTypingPayload {
+    pub dm_channel_id: String,
+}
+
+// Request/Response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RequestEvent {
     pub id: String,

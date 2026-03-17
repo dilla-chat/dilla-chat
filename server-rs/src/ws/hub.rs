@@ -1,5 +1,5 @@
-use super::events::Event;
 use crate::db::Database;
+use crate::voice::RoomManager;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
@@ -31,8 +31,25 @@ pub struct DirectMessage {
     pub data: Vec<u8>,
 }
 
+/// Trait for the Voice SFU, so client.rs can call SFU methods without depending
+/// on the full webrtc implementation at compile time.
+#[async_trait::async_trait]
+pub trait VoiceSFU: Send + Sync {
+    async fn handle_join(&self, channel_id: &str, user_id: &str) -> Result<String, String>;
+    async fn handle_leave(&self, channel_id: &str, user_id: &str);
+    async fn handle_answer(&self, channel_id: &str, user_id: &str, sdp: &str) -> Result<(), String>;
+    async fn handle_ice_candidate(&self, channel_id: &str, user_id: &str, candidate: &str, sdp_mid: &str, sdp_mline_index: u16) -> Result<(), String>;
+    async fn add_screen_track(&self, channel_id: &str, user_id: &str) -> Result<(), String>;
+    async fn remove_screen_track(&self, channel_id: &str, user_id: &str) -> Result<(), String>;
+    async fn add_webcam_track(&self, channel_id: &str, user_id: &str) -> Result<(), String>;
+    async fn remove_webcam_track(&self, channel_id: &str, user_id: &str) -> Result<(), String>;
+    async fn renegotiate_all(&self, channel_id: &str);
+}
+
 pub struct Hub {
     pub db: Database,
+    pub voice_room_manager: Option<Arc<RoomManager>>,
+    pub voice_sfu: Option<Arc<dyn VoiceSFU>>,
     clients: Arc<RwLock<HashMap<String, ClientHandle>>>,
     channels: Arc<RwLock<HashMap<String, HashSet<String>>>>,
     user_index: Arc<RwLock<HashMap<String, Vec<String>>>>,
@@ -82,6 +99,8 @@ impl Hub {
 
         Hub {
             db,
+            voice_room_manager: None,
+            voice_sfu: None,
             clients: Arc::new(RwLock::new(HashMap::new())),
             channels: Arc::new(RwLock::new(HashMap::new())),
             user_index: Arc::new(RwLock::new(HashMap::new())),

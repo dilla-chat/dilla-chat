@@ -1,5 +1,5 @@
 use super::models::*;
-use super::{new_id, now_str};
+use super::now_str;
 use rusqlite::{params, Connection, OptionalExtension};
 
 pub fn create_thread(conn: &Connection, thread: &Thread) -> Result<(), rusqlite::Error> {

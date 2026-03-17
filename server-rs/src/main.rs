@@ -158,6 +158,39 @@ async fn main() {
             });
         }));
 
+    // Start federation mesh node (if peers or federation port configured).
+    let mesh = if !cfg.peers.is_empty() || !cfg.node_name.is_empty() {
+        let mesh_config = federation::MeshConfig {
+            node_name: if cfg.node_name.is_empty() {
+                format!("node-{}", cfg.port)
+            } else {
+                cfg.node_name.clone()
+            },
+            bind_addr: cfg.fed_bind_addr.clone(),
+            bind_port: cfg.federation_port,
+            advertise_addr: cfg.fed_advert_addr.clone(),
+            advertise_port: cfg.fed_advert_port,
+            peers: cfg.peers.clone(),
+            tls_cert: cfg.tls_cert.clone(),
+            tls_key: cfg.tls_key.clone(),
+            join_secret: cfg.join_secret.clone(),
+        };
+
+        let mesh_node = Arc::new(federation::MeshNode::new(
+            mesh_config,
+            database.clone(),
+            hub.clone(),
+        ));
+
+        if let Err(e) = mesh_node.start().await {
+            tracing::error!("failed to start federation mesh: {}", e);
+        }
+
+        Some(mesh_node)
+    } else {
+        None
+    };
+
     // Build application state.
     let state = api::AppState {
         db: database.clone(),
@@ -165,6 +198,7 @@ async fn main() {
         hub: hub.clone(),
         presence: presence_mgr.clone(),
         config: Arc::new(cfg.clone()),
+        mesh,
     };
 
     // Create router.

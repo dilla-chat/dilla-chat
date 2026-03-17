@@ -12,10 +12,12 @@ pub mod uploads;
 pub mod prekeys;
 pub mod presence;
 pub mod voice;
+pub mod federation;
 
-use crate::auth::{self, AuthService, UserId};
+use crate::auth::{self, AuthService};
 use crate::config::Config;
 use crate::db::Database;
+use crate::federation::MeshNode;
 use crate::presence::PresenceManager;
 use crate::ws::Hub;
 use axum::{
@@ -36,6 +38,7 @@ pub struct AppState {
     pub hub: Arc<Hub>,
     pub presence: Arc<PresenceManager>,
     pub config: Arc<Config>,
+    pub mesh: Option<Arc<MeshNode>>,
 }
 
 pub fn create_router(state: AppState) -> Router {
@@ -66,6 +69,10 @@ pub fn create_router(state: AppState) -> Router {
         .route(
             "/api/v1/invites/:token/info",
             get(invites::get_invite_info),
+        )
+        .route(
+            "/api/v1/federation/join/:token",
+            get(federation::get_join_info),
         );
 
     // Protected routes (auth required).
@@ -212,6 +219,19 @@ pub fn create_router(state: AppState) -> Router {
         .route(
             "/api/v1/teams/:team_id/voice/:channel_id",
             get(voice::get_room),
+        )
+        // Federation
+        .route(
+            "/api/v1/federation/status",
+            get(federation::get_status),
+        )
+        .route(
+            "/api/v1/federation/peers",
+            get(federation::get_peers),
+        )
+        .route(
+            "/api/v1/federation/join-token",
+            post(federation::create_join_token),
         )
         // WebSocket
         .route("/ws", get(ws_handler))

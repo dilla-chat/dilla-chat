@@ -2,7 +2,7 @@ use crate::db::{self, Database};
 use crate::error::AppError;
 use axum::{
     extract::Request,
-    http::{self, StatusCode},
+    http::{self},
     middleware::Next,
     response::Response,
 };

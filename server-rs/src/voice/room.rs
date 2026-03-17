@@ -1,9 +1,9 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VoicePeer {
     pub user_id: String,
     pub username: String,
@@ -23,12 +23,15 @@ pub struct VoiceRoom {
 
 pub struct RoomManager {
     rooms: Arc<RwLock<HashMap<String, HashMap<String, VoicePeer>>>>,
+    /// Maps channel_id -> team_id for proper team-scoped room queries.
+    channel_teams: Arc<RwLock<HashMap<String, String>>>,
 }
 
 impl RoomManager {
     pub fn new() -> Self {
         RoomManager {
             rooms: Arc::new(RwLock::new(HashMap::new())),
+            channel_teams: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -37,7 +40,14 @@ impl RoomManager {
         channel_id: &str,
         user_id: &str,
         username: &str,
+        team_id: &str,
     ) {
+        // Track the channel -> team mapping.
+        {
+            let mut teams = self.channel_teams.write().await;
+            teams.insert(channel_id.to_string(), team_id.to_string());
+        }
+
         let mut rooms = self.rooms.write().await;
         let room = rooms.entry(channel_id.to_string()).or_default();
         room.insert(
@@ -60,6 +70,9 @@ impl RoomManager {
             room.remove(user_id);
             if room.is_empty() {
                 rooms.remove(channel_id);
+                // Also clean up team mapping.
+                let mut teams = self.channel_teams.write().await;
+                teams.remove(channel_id);
             }
         }
     }
@@ -117,16 +130,34 @@ impl RoomManager {
         }
     }
 
-    pub async fn get_rooms_by_team(&self, team_id: &str) -> Vec<VoiceRoom> {
-        // Note: In a full implementation, rooms would track team_id.
-        // For now, return all rooms.
+    /// Returns the user_id of the peer currently screen sharing in the given channel, if any.
+    pub async fn screen_sharer(&self, channel_id: &str) -> Option<String> {
         let rooms = self.rooms.read().await;
+        rooms.get(channel_id).and_then(|room| {
+            room.values()
+                .find(|peer| peer.screen_sharing)
+                .map(|peer| peer.user_id.clone())
+        })
+    }
+
+    /// Returns all active voice rooms belonging to the specified team.
+    pub async fn get_rooms_by_team(&self, team_id: &str) -> Vec<VoiceRoom> {
+        let rooms = self.rooms.read().await;
+        let teams = self.channel_teams.read().await;
+
         rooms
             .iter()
-            .map(|(channel_id, peers)| VoiceRoom {
-                channel_id: channel_id.clone(),
-                team_id: team_id.to_string(),
-                peers: peers.values().cloned().collect(),
+            .filter_map(|(channel_id, peers)| {
+                let ch_team = teams.get(channel_id)?;
+                if ch_team == team_id {
+                    Some(VoiceRoom {
+                        channel_id: channel_id.clone(),
+                        team_id: ch_team.clone(),
+                        peers: peers.values().cloned().collect(),
+                    })
+                } else {
+                    None
+                }
             })
             .collect()
     }

@@ -1,5 +1,4 @@
 use super::models::*;
-use super::{new_id, now_str};
 use rusqlite::{params, Connection, OptionalExtension};
 
 pub fn create_attachment(conn: &Connection, att: &Attachment) -> Result<(), rusqlite::Error> {
