@@ -1,0 +1,64 @@
+[package]
+name = "dilla-server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Web framework
+axum = { version = "0.8", features = ["ws", "multipart"] }
+axum-extra = { version = "0.10", features = ["typed-header"] }
+tokio = { version = "1", features = ["full"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "set-header", "limit", "fs"] }
+
+# Database
+rusqlite = { version = "0.32", features = ["bundled-sqlcipher"] }
+
+# Auth & Crypto
+jsonwebtoken = "9"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand = "0.8"
+hmac = "0.12"
+sha2 = "0.10"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Utilities
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+dotenvy = "0.15"
+base64 = "0.22"
+hex = "0.4"
+mime_guess = "2"
+tokio-util = { version = "0.7", features = ["io"] }
+futures = "0.3"
+bytes = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Rate limiting
+governor = "0.8"
+
+# TLS
+tokio-rustls = "0.26"
+rustls = "0.23"
+rustls-pemfile = "2"
+
+# Embed
+rust-embed = "8"
+
+# WebRTC
+webrtc = "0.11"
+
+# OpenTelemetry
+opentelemetry = "0.27"
+opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"] }
+opentelemetry-otlp = "0.27"
+tracing-opentelemetry = "0.28"
+
+# HTTP client (for TURN API calls)
+reqwest = { version = "0.12", features = ["json"] }

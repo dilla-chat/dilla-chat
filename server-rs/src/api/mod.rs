@@ -1,0 +1,290 @@
+pub mod auth_handlers;
+pub mod users;
+pub mod teams;
+pub mod channels;
+pub mod messages;
+pub mod roles;
+pub mod invites;
+pub mod dms;
+pub mod threads;
+pub mod reactions;
+pub mod uploads;
+pub mod prekeys;
+pub mod presence;
+pub mod voice;
+
+use crate::auth::{self, AuthService, UserId};
+use crate::config::Config;
+use crate::db::Database;
+use crate::presence::PresenceManager;
+use crate::ws::Hub;
+use axum::{
+    extract::Extension,
+    middleware,
+    routing::{delete, get, patch, post, put},
+    Json, Router,
+};
+use std::sync::Arc;
+use tower_http::cors::{Any, CorsLayer};
+
+pub static mut VERSION: &str = "dev";
+
+#[derive(Clone)]
+pub struct AppState {
+    pub db: Database,
+    pub auth: Arc<AuthService>,
+    pub hub: Arc<Hub>,
+    pub presence: Arc<PresenceManager>,
+    pub config: Arc<Config>,
+}
+
+pub fn create_router(state: AppState) -> Router {
+    let cors = if state.config.allowed_origins.is_empty() {
+        CorsLayer::very_permissive()
+    } else {
+        let origins: Vec<_> = state
+            .config
+            .allowed_origins
+            .iter()
+            .filter_map(|o| o.parse().ok())
+            .collect();
+        CorsLayer::new()
+            .allow_origin(origins)
+            .allow_methods(Any)
+            .allow_headers(Any)
+    };
+
+    // Public routes (no auth required).
+    let public = Router::new()
+        .route("/api/v1/health", get(health))
+        .route("/api/v1/version", get(version))
+        .route("/api/v1/config", get(get_config))
+        .route("/api/v1/auth/challenge", post(auth_handlers::challenge))
+        .route("/api/v1/auth/verify", post(auth_handlers::verify))
+        .route("/api/v1/auth/register", post(auth_handlers::register))
+        .route("/api/v1/auth/bootstrap", post(auth_handlers::bootstrap))
+        .route(
+            "/api/v1/invites/:token/info",
+            get(invites::get_invite_info),
+        );
+
+    // Protected routes (auth required).
+    let protected = Router::new()
+        // Users
+        .route("/api/v1/users/me", get(users::get_me).patch(users::update_me))
+        // Identity blob
+        .route(
+            "/api/v1/identity/blob",
+            get(users::get_identity_blob).put(users::put_identity_blob),
+        )
+        // Prekeys
+        .route(
+            "/api/v1/prekeys",
+            post(prekeys::upload).delete(prekeys::delete_own),
+        )
+        .route("/api/v1/prekeys/:user_id", get(prekeys::get_bundle))
+        // Teams
+        .route("/api/v1/teams", get(teams::list).post(teams::create))
+        .route(
+            "/api/v1/teams/:team_id",
+            get(teams::get_team).patch(teams::update),
+        )
+        // Members
+        .route(
+            "/api/v1/teams/:team_id/members",
+            get(teams::list_members),
+        )
+        .route(
+            "/api/v1/teams/:team_id/members/:user_id",
+            patch(teams::update_member).delete(teams::kick_member),
+        )
+        .route(
+            "/api/v1/teams/:team_id/members/:user_id/ban",
+            post(teams::ban_member).delete(teams::unban_member),
+        )
+        // Channels
+        .route(
+            "/api/v1/teams/:team_id/channels",
+            get(channels::list).post(channels::create),
+        )
+        .route(
+            "/api/v1/teams/:team_id/channels/:channel_id",
+            get(channels::get_channel)
+                .patch(channels::update)
+                .delete(channels::delete_channel),
+        )
+        // Messages
+        .route(
+            "/api/v1/teams/:team_id/channels/:channel_id/messages",
+            get(messages::list).post(messages::create),
+        )
+        .route(
+            "/api/v1/teams/:team_id/channels/:channel_id/messages/:message_id",
+            patch(messages::edit).delete(messages::delete_msg),
+        )
+        // Roles
+        .route(
+            "/api/v1/teams/:team_id/roles",
+            get(roles::list).post(roles::create),
+        )
+        .route(
+            "/api/v1/teams/:team_id/roles/reorder",
+            put(roles::reorder),
+        )
+        .route(
+            "/api/v1/teams/:team_id/roles/:role_id",
+            patch(roles::update).delete(roles::delete_role),
+        )
+        // Invites
+        .route(
+            "/api/v1/teams/:team_id/invites",
+            get(invites::list).post(invites::create),
+        )
+        .route(
+            "/api/v1/teams/:team_id/invites/:invite_id",
+            delete(invites::revoke),
+        )
+        // DMs
+        .route(
+            "/api/v1/teams/:team_id/dms",
+            get(dms::list).post(dms::create_or_get),
+        )
+        .route("/api/v1/teams/:team_id/dms/:dm_id", get(dms::get_dm))
+        .route(
+            "/api/v1/teams/:team_id/dms/:dm_id/messages",
+            get(dms::list_messages).post(dms::send_message),
+        )
+        .route(
+            "/api/v1/teams/:team_id/dms/:dm_id/messages/:message_id",
+            put(dms::edit_message).delete(dms::delete_message),
+        )
+        .route(
+            "/api/v1/teams/:team_id/dms/:dm_id/members",
+            post(dms::add_members),
+        )
+        .route(
+            "/api/v1/teams/:team_id/dms/:dm_id/members/:user_id",
+            delete(dms::remove_member),
+        )
+        // Threads
+        .route(
+            "/api/v1/teams/:team_id/channels/:channel_id/threads",
+            get(threads::list).post(threads::create),
+        )
+        .route(
+            "/api/v1/teams/:team_id/threads/:thread_id",
+            get(threads::get_thread)
+                .put(threads::update)
+                .delete(threads::delete_thread),
+        )
+        .route(
+            "/api/v1/teams/:team_id/threads/:thread_id/messages",
+            get(threads::list_messages).post(threads::create_message),
+        )
+        // Reactions
+        .route(
+            "/api/v1/teams/:team_id/channels/:channel_id/messages/:message_id/reactions/:emoji",
+            put(reactions::add).delete(reactions::remove),
+        )
+        .route(
+            "/api/v1/teams/:team_id/channels/:channel_id/messages/:message_id/reactions",
+            get(reactions::list),
+        )
+        // Uploads
+        .route(
+            "/api/v1/teams/:team_id/upload",
+            post(uploads::upload),
+        )
+        .route(
+            "/api/v1/teams/:team_id/attachments/:attachment_id",
+            get(uploads::download).delete(uploads::delete_attachment),
+        )
+        // Presence
+        .route(
+            "/api/v1/teams/:team_id/presence",
+            get(presence::get_all).put(presence::update_own),
+        )
+        .route(
+            "/api/v1/teams/:team_id/presence/:user_id",
+            get(presence::get_user),
+        )
+        // Voice
+        .route(
+            "/api/v1/teams/:team_id/voice/:channel_id",
+            get(voice::get_room),
+        )
+        // WebSocket
+        .route("/ws", get(ws_handler))
+        .layer(middleware::from_fn(auth::auth_middleware));
+
+    Router::new()
+        .merge(public)
+        .merge(protected)
+        .layer(Extension(state.auth.clone()))
+        .layer(cors)
+        .with_state(state)
+}
+
+async fn health() -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "status": "ok",
+    }))
+}
+
+async fn version() -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "version": unsafe { VERSION },
+        "runtime": "rust",
+    }))
+}
+
+async fn get_config(
+    axum::extract::State(state): axum::extract::State<AppState>,
+) -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "domain": state.config.domain,
+        "rp_id": state.config.domain,
+    }))
+}
+
+async fn ws_handler(
+    ws: axum::extract::WebSocketUpgrade,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+    Extension(auth_svc): Extension<Arc<AuthService>>,
+    axum::extract::State(state): axum::extract::State<AppState>,
+) -> impl axum::response::IntoResponse {
+    let token = params.get("token").cloned().unwrap_or_default();
+    let team_id = params.get("team").cloned().unwrap_or_default();
+
+    let user_id = match auth_svc.validate_jwt(&token) {
+        Ok(uid) => uid,
+        Err(_) => {
+            return axum::response::Response::builder()
+                .status(401)
+                .body(axum::body::Body::from("invalid token"))
+                .unwrap()
+                .into_response();
+        }
+    };
+
+    // Look up username.
+    let db = state.db.clone();
+    let uid_clone = user_id.clone();
+    let username = tokio::task::spawn_blocking(move || {
+        db.with_conn(|conn| {
+            crate::db::get_user_by_id(conn, &uid_clone)
+                .map(|u| u.map(|u| u.username).unwrap_or_default())
+        })
+    })
+    .await
+    .unwrap()
+    .unwrap_or_default();
+
+    let hub = state.hub.clone();
+    ws.on_upgrade(move |socket| {
+        crate::ws::client::handle_ws_connection(socket, hub, user_id, username, team_id)
+    })
+    .into_response()
+}
+
+use axum::response::IntoResponse;
