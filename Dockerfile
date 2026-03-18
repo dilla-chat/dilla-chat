@@ -4,6 +4,8 @@ WORKDIR /build/client
 COPY client/package.json client/package-lock.json ./
 RUN npm ci
 COPY client/ ./
+# Resolve the public/brand symlink (points to ../../branding outside client/)
+COPY branding/ ./public/brand/
 RUN npm run build
 
 # Stage 2: Build the Rust server
