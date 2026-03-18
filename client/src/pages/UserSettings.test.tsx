@@ -791,4 +791,50 @@ describe('UserSettings', () => {
     const meter = screen.getByRole('meter', { name: /Microphone level/ });
     expect(meter).toBeInTheDocument();
   });
+
+  it('renders input and output device options from enumerateDevices', async () => {
+    // Mock enumerateDevices to return actual devices
+    const mockDevices = [
+      { kind: 'audioinput', deviceId: 'mic-1', label: 'USB Microphone', groupId: 'g1' },
+      { kind: 'audiooutput', deviceId: 'spk-1', label: 'Headphones', groupId: 'g2' },
+      { kind: 'audioinput', deviceId: 'default', label: 'Default', groupId: 'g0' },
+    ];
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: {
+        enumerateDevices: vi.fn().mockResolvedValue(mockDevices),
+        getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] }),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      },
+      configurable: true,
+    });
+
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+
+    // Wait for devices to load (useEffect with enumerateDevices)
+    const { waitFor } = await import('@testing-library/react');
+    await waitFor(() => {
+      expect(screen.getByText('USB Microphone')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Headphones')).toBeInTheDocument();
+  });
+
+  it('mic test button is present and clickable', () => {
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    // The mic test button shows the i18n key
+    const btn = screen.getByRole('button', { name: /startTest|Test Mic/ });
+    expect(btn).toBeInTheDocument();
+    // Click should not throw
+    fireEvent.click(btn);
+  });
+
+  it('language tab renders change handler', () => {
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-language'));
+    // The language select should be present
+    const selects = document.querySelectorAll('select');
+    expect(selects.length).toBeGreaterThan(0);
+  });
 });
