@@ -1,0 +1,263 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+
+const mockNavigate = vi.fn();
+
+vi.mock('react-router-dom', () => ({
+  useNavigate: () => mockNavigate,
+  useParams: vi.fn(() => ({})),
+}));
+
+vi.mock('iconoir-react', () => ({
+  CloudCheck: () => <span data-testid="CloudCheck" />,
+  CloudXmark: () => <span data-testid="CloudXmark" />,
+  CloudSync: () => <span data-testid="CloudSync" />,
+}));
+
+vi.mock('../services/api', () => ({
+  api: {
+    addTeam: vi.fn(),
+    removeTeam: vi.fn(),
+    setToken: vi.fn(),
+    register: vi.fn(),
+    getInviteInfo: vi.fn(),
+    uploadPrekeyBundle: vi.fn(),
+  },
+}));
+
+vi.mock('../services/crypto', () => ({
+  cryptoService: {
+    generatePrekeyBundle: vi.fn().mockResolvedValue({
+      identity_key: [1, 2, 3],
+      signed_prekey: [4, 5, 6],
+      signed_prekey_signature: [7, 8, 9],
+      one_time_prekeys: [[10, 11, 12]],
+    }),
+  },
+}));
+
+vi.mock('../services/keyStore', () => ({
+  exportIdentityBlob: vi.fn().mockResolvedValue(null),
+  hasIdentity: vi.fn().mockResolvedValue(true),
+}));
+
+vi.mock('./PublicShell', () => ({
+  default: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="public-shell">{children}</div>
+  ),
+}));
+
+import JoinTeam from './JoinTeam';
+import { useAuthStore } from '../stores/authStore';
+import { api } from '../services/api';
+import { useParams } from 'react-router-dom';
+
+// Save original fetch
+const origFetch = globalThis.fetch;
+
+describe('JoinTeam', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockNavigate.mockClear();
+    useAuthStore.setState({
+      isAuthenticated: true,
+      derivedKey: 'test-key',
+      publicKey: 'test-pub-key',
+      teams: new Map(),
+      addTeam: vi.fn(),
+    });
+    vi.mocked(useParams).mockReturnValue({});
+    // Default: fetch rejects (server offline)
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('network'));
+  });
+
+  afterEach(() => {
+    globalThis.fetch = origFetch;
+  });
+
+  it('renders the join form', async () => {
+    render(<JoinTeam />);
+    await act(async () => {});
+    expect(screen.getByRole('heading', { name: 'join.title' })).toBeInTheDocument();
+    expect(screen.getByTestId('public-shell')).toBeInTheDocument();
+  });
+
+  it('renders server address input', async () => {
+    render(<JoinTeam />);
+    await act(async () => {});
+    expect(screen.getByPlaceholderText('join.serverAddress')).toBeInTheDocument();
+  });
+
+  it('renders invite token input', async () => {
+    render(<JoinTeam />);
+    await act(async () => {});
+    expect(screen.getByPlaceholderText('join.inviteToken')).toBeInTheDocument();
+  });
+
+  it('renders username input', async () => {
+    render(<JoinTeam />);
+    await act(async () => {});
+    expect(screen.getByPlaceholderText('Username')).toBeInTheDocument();
+  });
+
+  it('renders display name input', async () => {
+    render(<JoinTeam />);
+    await act(async () => {});
+    expect(screen.getByPlaceholderText('Display Name')).toBeInTheDocument();
+  });
+
+  it('shows back button that navigates back', async () => {
+    render(<JoinTeam />);
+    await act(async () => {});
+    const backBtn = screen.getByText(/Back/);
+    expect(backBtn).toBeInTheDocument();
+    fireEvent.click(backBtn);
+    expect(mockNavigate).toHaveBeenCalledWith(-1);
+  });
+
+  it('shows setup server link', async () => {
+    render(<JoinTeam />);
+    await act(async () => {});
+    expect(screen.getByText('Set up a new server instead')).toBeInTheDocument();
+  });
+
+  it('auto-fills server when arriving via invite link', async () => {
+    vi.mocked(useParams).mockReturnValue({ token: 'abc123' });
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true });
+
+    render(<JoinTeam />);
+    await act(async () => {});
+
+    // When fromInviteLink, server address and invite token inputs are hidden
+    expect(screen.queryByPlaceholderText('join.serverAddress')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('join.inviteToken')).not.toBeInTheDocument();
+  });
+
+  it('redirects to /app when authenticated with teams and no invite', async () => {
+    useAuthStore.setState({
+      isAuthenticated: true,
+      teams: new Map([['t1', { token: 'tok', user: {}, teamInfo: {}, baseUrl: 'http://localhost' }]]),
+    });
+
+    render(<JoinTeam />);
+    await act(async () => {});
+    expect(mockNavigate).toHaveBeenCalledWith('/app', { replace: true });
+  });
+
+  it('shows error on failed invite check', async () => {
+    vi.mocked(api.getInviteInfo).mockRejectedValueOnce(new Error('Invalid invite'));
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true });
+
+    render(<JoinTeam />);
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('join.serverAddress'), {
+        target: { value: 'https://example.com' },
+      });
+    });
+
+    // Wait for debounced server check
+    await waitFor(() => {
+      expect(screen.getByTestId('CloudCheck')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('join.inviteToken'), {
+        target: { value: 'invite-token-123' },
+      });
+      fireEvent.change(screen.getByPlaceholderText('Username'), {
+        target: { value: 'alice' },
+      });
+    });
+
+    const joinBtn = screen.getByText('join.title', { selector: 'button' });
+    fireEvent.click(joinBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Invalid invite/)).toBeInTheDocument();
+    });
+  });
+
+  it('shows team info after successful invite check', async () => {
+    vi.mocked(api.getInviteInfo).mockResolvedValueOnce({
+      team_name: 'Cool Team',
+      created_by: 'admin',
+    });
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true });
+
+    render(<JoinTeam />);
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('join.serverAddress'), {
+        target: { value: 'https://example.com' },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('CloudCheck')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('join.inviteToken'), {
+        target: { value: 'invite-token-123' },
+      });
+      fireEvent.change(screen.getByPlaceholderText('Username'), {
+        target: { value: 'alice' },
+      });
+    });
+
+    fireEvent.click(screen.getByText('join.title', { selector: 'button' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Cool Team')).toBeInTheDocument();
+    });
+  });
+
+  it('navigates to /app on successful join', async () => {
+    vi.mocked(api.getInviteInfo).mockResolvedValueOnce({
+      team_name: 'Cool Team',
+      created_by: 'admin',
+    });
+    vi.mocked(api.register).mockResolvedValueOnce({
+      token: 'jwt-tok',
+      user: { id: 'u1', username: 'alice' },
+      team: { id: 'team-1' },
+    });
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true });
+
+    render(<JoinTeam />);
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('join.serverAddress'), {
+        target: { value: 'https://example.com' },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('CloudCheck')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('join.inviteToken'), {
+        target: { value: 'invite-token' },
+      });
+      fireEvent.change(screen.getByPlaceholderText('Username'), {
+        target: { value: 'alice' },
+      });
+    });
+
+    // First check invite info
+    fireEvent.click(screen.getByText('join.title', { selector: 'button' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Cool Team')).toBeInTheDocument();
+    });
+
+    // Now click the actual join button
+    fireEvent.click(screen.getByText('join.join'));
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/app');
+    });
+  });
+});
