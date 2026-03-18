@@ -3,16 +3,13 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { decodeRecoveryKey, authenticatePasskey, prfOutputToBase64 } from '../services/webauthn';
-import { api } from '../services/api';
-import { initCrypto, getIdentityKeys } from '../services/crypto';
+import { initCrypto } from '../services/crypto';
 import {
   unlockWithPrf,
   unlockWithRecovery,
   unlockWithPassphrase,
   getCredentialInfo,
   getPublicKey,
-  exportIdentityBlob,
-  signChallenge,
   deleteIdentity,
   type KeySlot,
 } from '../services/keyStore';

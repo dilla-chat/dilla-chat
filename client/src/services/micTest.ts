@@ -14,7 +14,7 @@ export interface MicTestSession {
 }
 
 export interface MicTestOptions {
-  audioConstraints: MediaTrackConstraints;
+  audioConstraints: MediaTrackConstraints | boolean;
   inputVolume: number;
   useRNNoise: boolean;
   createNoiseSuppression?: () => {
