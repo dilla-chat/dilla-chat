@@ -19,11 +19,12 @@ beforeEach(() => {
 });
 
 describe('setDerivedKey', () => {
-  it('persists to sessionStorage and sets isAuthenticated', () => {
+  it('sets derivedKey in memory without persisting to sessionStorage', () => {
     getState().setDerivedKey('test-key-123');
     expect(getState().derivedKey).toBe('test-key-123');
     expect(getState().isAuthenticated).toBe(true);
-    expect(sessionStorage.getItem('dilla_derived_key')).toBe('test-key-123');
+    // derivedKey must NOT be persisted — it's the E2E encryption master key
+    expect(sessionStorage.getItem('dilla_derived_key')).toBeNull();
   });
 });
 
@@ -130,12 +131,12 @@ describe('logout', () => {
 });
 
 describe('setPassphrase (legacy)', () => {
-  it('sets derivedKey and isAuthenticated', () => {
+  it('sets derivedKey in memory without persisting', () => {
     getState().setPassphrase('my-passphrase');
     expect(getState().derivedKey).toBe('my-passphrase');
     expect(getState().passphrase).toBe('my-passphrase');
     expect(getState().isAuthenticated).toBe(true);
-    expect(sessionStorage.getItem('dilla_derived_key')).toBe('my-passphrase');
+    expect(sessionStorage.getItem('dilla_derived_key')).toBeNull();
   });
 });
 
@@ -215,9 +216,10 @@ describe('session storage persistence', () => {
     expect(getState().teams.has('t-loaded')).toBe(false);
   });
 
-  it('persists derivedKey to sessionStorage', () => {
+  it('does NOT persist derivedKey to sessionStorage (security)', () => {
     getState().setDerivedKey('dk-test');
-    expect(sessionStorage.getItem('dilla_derived_key')).toBe('dk-test');
+    expect(getState().derivedKey).toBe('dk-test');
+    expect(sessionStorage.getItem('dilla_derived_key')).toBeNull();
   });
 
   it('handles invalid JSON in sessionStorage gracefully', () => {
