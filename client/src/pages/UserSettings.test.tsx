@@ -897,7 +897,7 @@ describe('UserSettings', () => {
   });
 
   it('updates gain node when inputVolume changes during active mic test', async () => {
-    const { startMicTest } = await import('../services/micTest');
+    await import('../services/micTest');
     const { waitFor, act } = await import('@testing-library/react');
 
     render(<UserSettings />);

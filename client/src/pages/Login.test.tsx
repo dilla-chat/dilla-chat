@@ -616,7 +616,7 @@ describe('Login', () => {
   });
 
   it('passphrase unlock does nothing with empty input', async () => {
-    const { unlockWithPassphrase } = await import('../services/keyStore');
+    await import('../services/keyStore');
     mockValidIdentity();
     vi.mocked(authenticatePasskey).mockResolvedValueOnce({
       credentialId: 'cred1',

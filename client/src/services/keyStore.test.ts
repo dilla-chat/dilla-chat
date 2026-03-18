@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   createIdentity,
   createIdentityWithPassphrase,
@@ -20,7 +20,7 @@ import {
   generateRecoveryKey,
   signChallenge,
 } from './keyStore';
-import { randomBytes, ed25519Verify, importEd25519PublicKey, encoder } from './cryptoCore';
+import { randomBytes, ed25519Verify, importEd25519PublicKey } from './cryptoCore';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
