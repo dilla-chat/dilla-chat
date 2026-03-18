@@ -18,6 +18,10 @@ import {
 } from '../services/keyStore';
 import { fromBase64, toBase64 } from '../services/cryptoCore';
 import { usernameColor, getInitials } from '../utils/colors';
+import {
+  refreshServerTokens as doRefreshServerTokens,
+  tryReconnectToCurrentServer as doTryReconnect,
+} from '../services/authReconnect';
 import PublicShell from './PublicShell';
 
 type Mode = 'passkey' | 'recovery' | 'legacy';
@@ -47,99 +51,13 @@ export default function Login() {
   const [needsLoginPassphrase, setNeedsLoginPassphrase] = useState(false);
   const [loginPassphrase, setLoginPassphrase] = useState('');
 
-  // Re-authenticate with all persisted servers to get fresh JWT tokens
+  // Delegate to extracted service functions (fully unit-tested in authReconnect.test.ts)
   async function refreshServerTokens(pubKey: string, _derivedKeyB64: string) {
-    const keys = getIdentityKeys();
-    console.log(`[Login] refreshServerTokens: ${teams.size} teams to re-auth`);
-    for (const [teamId, entry] of teams) {
-      const baseUrl = (entry as { baseUrl?: string }).baseUrl;
-      if (!baseUrl) {
-        console.log(`[Login] Skipping team ${teamId} — no baseUrl`);
-        continue;
-      }
-      try {
-        console.log(`[Login] Re-auth team ${teamId} at ${baseUrl}`);
-        api.addTeam(teamId, baseUrl);
-        const { challenge_id, nonce } = await api.requestChallenge(teamId, pubKey);
-        const nonceBytes = fromBase64(nonce);
-        const sigBytes = await signChallenge(keys.signingKey, nonceBytes);
-        const signature = toBase64(sigBytes);
-        const result = await api.verifyChallenge(teamId, challenge_id, pubKey, signature);
-        api.setToken(teamId, result.token);
-        const { addTeam: updateTeam } = useAuthStore.getState();
-        updateTeam(teamId, result.token, entry.user, entry.teamInfo, baseUrl);
-        console.log(`[Login] Re-auth succeeded for team ${teamId}`);
-      } catch (e) {
-        console.warn(`[Login] Re-auth failed for team ${teamId}, removing stale team:`, e);
-        const { removeTeam } = useAuthStore.getState();
-        removeTeam(teamId);
-        api.removeTeam(teamId);
-      }
-    }
-
-    // Upload identity blob to all servers for cross-device recovery
-    const blob = await exportIdentityBlob();
-    if (!blob) return;
-    const allServers: string[] = [];
-    for (const [, entry] of teams) {
-      const url = (entry as { baseUrl?: string }).baseUrl;
-      if (url) allServers.push(url);
-    }
-    for (const [teamId, entry] of teams) {
-      const baseUrl = (entry as { baseUrl?: string }).baseUrl;
-      const token = (entry as { token?: string }).token;
-      if (!baseUrl || !token) continue;
-      try {
-        const freshEntry = useAuthStore.getState().teams.get(teamId) as { token?: string } | undefined;
-        const jwt = freshEntry?.token || token;
-        await fetch(`${baseUrl}/api/v1/identity/blob`, {
-          method: 'PUT',
-          headers: { 'Authorization': `Bearer ${jwt}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ blob, servers: allServers }),
-        });
-        console.log(`[Login] Identity blob uploaded to ${baseUrl}`);
-      } catch (e) {
-        console.warn(`[Login] Blob upload to ${baseUrl} failed:`, e);
-      }
-    }
+    await doRefreshServerTokens(teams, pubKey);
   }
 
   async function tryReconnectToCurrentServer(pubKey: string): Promise<boolean> {
-    const baseUrl = window.location.origin;
-    const keys = getIdentityKeys();
-    const tempId = '__reconnect__';
-
-    console.log('[Login] Attempting auto-reconnect to', baseUrl);
-    try {
-      api.addTeam(tempId, baseUrl);
-
-      const { challenge_id, nonce } = await api.requestChallenge(tempId, pubKey);
-      const nonceBytes = fromBase64(nonce);
-      const sigBytes = await signChallenge(keys.signingKey, nonceBytes);
-      const signature = toBase64(sigBytes);
-      const result = await api.verifyChallenge(tempId, challenge_id, pubKey, signature);
-
-      // Use JWT to discover teams on this server
-      const serverTeams = await api.listTeams(baseUrl, result.token);
-      api.removeTeam(tempId);
-
-      if (!serverTeams || serverTeams.length === 0) return false;
-
-      const { addTeam: storeAddTeam } = useAuthStore.getState();
-      for (const team of serverTeams) {
-        const t = team as { id?: string };
-        if (!t.id) continue;
-        api.addTeam(t.id, baseUrl);
-        api.setToken(t.id, result.token);
-        storeAddTeam(t.id, result.token, result.user, team, baseUrl);
-      }
-
-      return useAuthStore.getState().teams.size > 0;
-    } catch (e) {
-      console.log('[Login] Auto-reconnect failed:', e);
-      api.removeTeam(tempId);
-      return false;
-    }
+    return doTryReconnect(pubKey);
   }
 
   // Load identity info from IndexedDB on mount
