@@ -143,7 +143,6 @@ describe('cacheMessage and getCachedMessage with various data', () => {
   });
 
   it('stores cachedAt timestamp', async () => {
-    const before = Date.now();
     await cacheMessage('ts-1', 'ch-1', 'test');
     // Re-read to verify it was stored (indirectly through successful retrieval)
     const result = await getCachedMessage('ts-1');

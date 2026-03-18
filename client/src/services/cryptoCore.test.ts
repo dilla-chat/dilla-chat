@@ -651,7 +651,7 @@ describe('CryptoManager', () => {
     await alice.initSessionWithBundle('bob', bobBundle);
 
     // Encrypt a message so the session has some state
-    const ct = await alice.encryptDM('bob', 'test message');
+    await alice.encryptDM('bob', 'test message');
 
     // Serialize
     const json = alice.toJSON() as Record<string, unknown>;
@@ -771,13 +771,14 @@ describe('CryptoManager DM full roundtrip', () => {
     // Alice encrypts
     const ct = await alice.encryptDM('bob', 'hello bob from alice');
 
-    // Bob needs to set up his session as responder
-    // Access Bob's prekey secrets from the bundle generation
-    const bobSecrets = (bob as unknown as { prekeySecrets: { signed_prekey_private: Uint8Array; one_time_prekey_privates: Uint8Array[]; identity_dh_private: Uint8Array } }).prekeySecrets;
-
     // Decode the encrypted message to extract ephemeral key
     const msgData = JSON.parse(new TextDecoder().decode(fromBase64(ct)));
     // The message is a RatchetMessage envelope
+
+    // Verify the encrypted message has expected structure
+    expect(msgData).toBeDefined();
+    expect(typeof msgData).toBe('object');
+    expect(msgData).toHaveProperty('ciphertext');
 
     // For now, verify the encrypted format is correct
     expect(typeof ct).toBe('string');

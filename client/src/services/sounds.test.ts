@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, vi, beforeEach } from 'vitest';
 import { playJoinSound, playLeaveSound } from './sounds';
 import { useUserSettingsStore } from '../stores/userSettingsStore';
 
