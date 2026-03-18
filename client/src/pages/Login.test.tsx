@@ -479,7 +479,7 @@ describe('Login', () => {
 
     // Go to recovery mode
     mockValidIdentity();
-    const { rerender } = render(<Login />);
+    render(<Login />);
     await waitFor(() => {
       expect(screen.getAllByText('login.useRecoveryKey').length).toBeGreaterThan(0);
     });
