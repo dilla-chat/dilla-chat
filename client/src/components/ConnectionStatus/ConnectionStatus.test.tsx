@@ -77,4 +77,94 @@ describe('ConnectionStatus', () => {
     const latencyRow = rows[1];
     expect(latencyRow.textContent).toContain('\u2014');
   });
+
+  it('shows connected state and latency after successful ping', async () => {
+    const { ws } = await import('../../services/websocket');
+    (ws.isConnected as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    (ws.ping as ReturnType<typeof vi.fn>).mockResolvedValue(50);
+
+    const { container } = render(<ConnectionStatus />);
+
+    await vi.waitFor(() => {
+      // Should transition from disconnected to a connected state
+      const el = container.querySelector('.connection-status');
+      expect(el?.className).not.toContain('disconnected');
+    });
+
+    const statusEl = container.querySelector('.connection-status')!;
+    fireEvent.mouseEnter(statusEl);
+    expect(screen.getByText('Connected')).toBeInTheDocument();
+    expect(screen.getByText('50 ms')).toBeInTheDocument();
+  });
+
+  it('shows excellent quality for low latency', async () => {
+    const { ws } = await import('../../services/websocket');
+    (ws.isConnected as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    (ws.ping as ReturnType<typeof vi.fn>).mockResolvedValue(30);
+
+    const { container } = render(<ConnectionStatus />);
+
+    await vi.waitFor(() => {
+      expect(container.querySelector('.connection-status--excellent')).toBeInTheDocument();
+    });
+
+    fireEvent.mouseEnter(container.querySelector('.connection-status')!);
+    expect(screen.getByText('Excellent')).toBeInTheDocument();
+  });
+
+  it('shows good quality for moderate latency', async () => {
+    const { ws } = await import('../../services/websocket');
+    (ws.isConnected as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    (ws.ping as ReturnType<typeof vi.fn>).mockResolvedValue(150);
+
+    const { container } = render(<ConnectionStatus />);
+
+    await vi.waitFor(() => {
+      expect(container.querySelector('.connection-status--good')).toBeInTheDocument();
+    });
+  });
+
+  it('shows poor quality for high latency', async () => {
+    const { ws } = await import('../../services/websocket');
+    (ws.isConnected as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    (ws.ping as ReturnType<typeof vi.fn>).mockResolvedValue(300);
+
+    const { container } = render(<ConnectionStatus />);
+
+    await vi.waitFor(() => {
+      expect(container.querySelector('.connection-status--poor')).toBeInTheDocument();
+    });
+  });
+
+  it('handles ping failure gracefully', async () => {
+    const { ws } = await import('../../services/websocket');
+    (ws.isConnected as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    (ws.ping as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('timeout'));
+
+    const { container } = render(<ConnectionStatus />);
+
+    // Should not crash
+    await vi.waitFor(() => {
+      expect(container.querySelector('.connection-status')).toBeInTheDocument();
+    });
+  });
+
+  it('shows correct number of active bars for excellent quality', async () => {
+    const { ws } = await import('../../services/websocket');
+    (ws.isConnected as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    (ws.ping as ReturnType<typeof vi.fn>).mockResolvedValue(30);
+
+    const { container } = render(<ConnectionStatus />);
+
+    await vi.waitFor(() => {
+      const activeBars = container.querySelectorAll('.connection-status__bar.active');
+      expect(activeBars).toHaveLength(4);
+    });
+  });
+
+  it('renders without errors when no team is active', () => {
+    useTeamStore.setState({ activeTeamId: null });
+    const { container } = render(<ConnectionStatus />);
+    expect(container.querySelector('.connection-status')).toBeInTheDocument();
+  });
 });

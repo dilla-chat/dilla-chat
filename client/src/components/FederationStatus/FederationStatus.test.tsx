@@ -121,4 +121,85 @@ describe('FederationStatus', () => {
     render(<FederationStatus teamId="team-1" />);
     expect(screen.getByText('federation.autoRefresh')).toBeInTheDocument();
   });
+
+  it('shows mesh summary with connected/disconnected counts', async () => {
+    vi.useRealTimers();
+    render(<FederationStatus teamId="team-1" />);
+    await waitFor(() => {
+      expect(screen.getByText('federation.meshSummary')).toBeInTheDocument();
+    });
+  });
+
+  it('displays syncing status label', async () => {
+    vi.useRealTimers();
+    const { api } = await import('../../services/api');
+    (api.getFederationStatus as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      node_name: 'node-sync',
+      peers: [{ name: 'node-sync', address: 'sync.io:8443', status: 'syncing', last_seen: '2025-01-01T12:00:00Z' }],
+      lamport_ts: 10,
+    });
+    render(<FederationStatus teamId="team-1" />);
+    await waitFor(() => {
+      expect(screen.getByText('federation.statusSyncing')).toBeInTheDocument();
+    });
+  });
+
+  it('shows copy button for join command', async () => {
+    vi.useRealTimers();
+    render(<FederationStatus teamId="team-1" />);
+    fireEvent.click(screen.getByText('federation.generateJoinToken'));
+    await waitFor(() => {
+      // Two copy buttons: one for join command, one for curl
+      const copyBtns = screen.getAllByText('federation.copyToClipboard');
+      expect(copyBtns.length).toBe(2);
+    });
+  });
+
+  it('shows curl one-liner after generating token', async () => {
+    vi.useRealTimers();
+    render(<FederationStatus teamId="team-1" />);
+    fireEvent.click(screen.getByText('federation.generateJoinToken'));
+    await waitFor(() => {
+      expect(screen.getByText(/curl -sSL https:\/\/get\.dilla\.dev/)).toBeInTheDocument();
+    });
+  });
+
+  it('shows generating state on button while generating', async () => {
+    vi.useRealTimers();
+    const { api } = await import('../../services/api');
+    let resolveToken: (v: unknown) => void;
+    const tokenPromise = new Promise(r => { resolveToken = r; });
+    (api.generateJoinToken as ReturnType<typeof vi.fn>).mockReturnValueOnce(tokenPromise);
+
+    render(<FederationStatus teamId="team-1" />);
+    fireEvent.click(screen.getByText('federation.generateJoinToken'));
+
+    // Button should show '...' while generating
+    expect(screen.getByText('...')).toBeInTheDocument();
+    resolveToken!({ token: 'abc', join_command: 'dilla join --token abc' });
+    await waitFor(() => {
+      expect(screen.getByText('dilla join --token abc')).toBeInTheDocument();
+    });
+  });
+
+  it('shows error when token generation fails', async () => {
+    vi.useRealTimers();
+    const { api } = await import('../../services/api');
+    (api.generateJoinToken as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('Token generation failed'));
+
+    render(<FederationStatus teamId="team-1" />);
+    fireEvent.click(screen.getByText('federation.generateJoinToken'));
+    await waitFor(() => {
+      expect(screen.getByText('Token generation failed')).toBeInTheDocument();
+    });
+  });
+
+  it('renders node info section with lamport timestamp', async () => {
+    vi.useRealTimers();
+    render(<FederationStatus teamId="team-1" />);
+    await waitFor(() => {
+      expect(screen.getByText('federation.nodeInfo')).toBeInTheDocument();
+      expect(screen.getByText('federation.lamportTimestamp')).toBeInTheDocument();
+    });
+  });
 });

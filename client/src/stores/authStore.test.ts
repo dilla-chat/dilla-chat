@@ -128,3 +128,63 @@ describe('logout', () => {
     expect(sessionStorage.getItem('dilla_servers')).toBeNull();
   });
 });
+
+describe('setPassphrase (legacy)', () => {
+  it('sets derivedKey and isAuthenticated', () => {
+    getState().setPassphrase('my-passphrase');
+    expect(getState().derivedKey).toBe('my-passphrase');
+    expect(getState().passphrase).toBe('my-passphrase');
+    expect(getState().isAuthenticated).toBe(true);
+    expect(sessionStorage.getItem('dilla_derived_key')).toBe('my-passphrase');
+  });
+});
+
+describe('setPublicKey', () => {
+  it('sets public key', () => {
+    getState().setPublicKey('pub-key-hex');
+    expect(getState().publicKey).toBe('pub-key-hex');
+  });
+});
+
+describe('setCredentialIds', () => {
+  it('sets credential IDs', () => {
+    getState().setCredentialIds(['cred-1', 'cred-2']);
+    expect(getState().credentialIds).toEqual(['cred-1', 'cred-2']);
+  });
+});
+
+describe('addTeam without baseUrl', () => {
+  it('creates team entry with empty baseUrl', () => {
+    getState().addTeam('team-no-url', 'tok', {}, {});
+    expect(getState().teams.has('team-no-url')).toBe(true);
+    expect(getState().teams.get('team-no-url')!.baseUrl).toBe('');
+  });
+});
+
+describe('removeTeam with non-existent team', () => {
+  it('does not throw', () => {
+    expect(() => getState().removeTeam('non-existent')).not.toThrow();
+  });
+});
+
+describe('updateTeamUser with non-existent team', () => {
+  it('does nothing', () => {
+    getState().updateTeamUser('non-existent', { name: 'test' });
+    expect(getState().teams.size).toBe(0);
+  });
+});
+
+describe('setServerToken with non-existent server', () => {
+  it('does nothing', () => {
+    getState().setServerToken('non-existent', 'tok');
+    expect(getState().servers.size).toBe(0);
+  });
+});
+
+describe('removeTeam without serverId', () => {
+  it('handles team without serverId', () => {
+    getState().addTeam('team-ns', 'tok', {}, {});
+    getState().removeTeam('team-ns');
+    expect(getState().teams.has('team-ns')).toBe(false);
+  });
+});

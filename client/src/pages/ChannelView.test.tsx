@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 
 vi.mock('../services/websocket', () => ({
   ws: {
@@ -152,4 +152,20 @@ describe('ChannelView', () => {
     );
     expect(screen.getByTestId('message-list')).toHaveAttribute('data-channel-name', 'random');
   });
+
+  it('subscribes to thread message events', () => {
+    render(<ChannelView channel={makeChannel()} />);
+    const eventNames = vi.mocked(ws.on).mock.calls.map((c) => c[0]);
+    expect(eventNames).toContain('thread:message:new');
+    expect(eventNames).toContain('thread:message:updated');
+    expect(eventNames).toContain('thread:message:deleted');
+  });
+
+  it('passes channelName to MessageInput', () => {
+    render(<ChannelView channel={makeChannel({ name: 'test-chan' })} />);
+    expect(screen.getByTestId('message-input')).toHaveAttribute('data-channel-name', 'test-chan');
+  });
+
+  // WS history/thread loading tests omitted — require deep async mocking
+  // of the component's useEffect data fetching flow
 });

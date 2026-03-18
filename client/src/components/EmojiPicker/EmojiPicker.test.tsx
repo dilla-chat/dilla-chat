@@ -68,4 +68,27 @@ describe('EmojiPicker', () => {
     const { container } = render(<EmojiPicker onSelect={onSelect} onClose={onClose} />);
     expect(container.querySelector('.emoji-picker-container')).toBeInTheDocument();
   });
+
+  it('positions based on anchorRef when provided', () => {
+    const anchorRef = { current: document.createElement('button') };
+    // Mock getBoundingClientRect
+    anchorRef.current.getBoundingClientRect = () => ({
+      top: 100, left: 50, bottom: 120, right: 70, width: 20, height: 20, x: 50, y: 100, toJSON: () => {},
+    });
+    document.body.appendChild(anchorRef.current);
+
+    render(<EmojiPicker onSelect={onSelect} onClose={onClose} anchorRef={anchorRef} />);
+    // When anchorRef is provided, it portals to body with fixed positioning
+    const picker = document.querySelector('.emoji-picker-container');
+    expect(picker).toBeInTheDocument();
+    expect(picker?.getAttribute('style')).toContain('fixed');
+
+    document.body.removeChild(anchorRef.current);
+  });
+
+  it('uses absolute positioning when no anchorRef', () => {
+    const { container } = render(<EmojiPicker onSelect={onSelect} onClose={onClose} />);
+    const picker = container.querySelector('.emoji-picker-container');
+    expect(picker?.getAttribute('style')).toContain('absolute');
+  });
 });

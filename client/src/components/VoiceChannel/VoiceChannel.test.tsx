@@ -217,4 +217,100 @@ describe('VoiceChannel', () => {
     fireEvent.click(screen.getByText('voice.leave'));
     expect(leaveChannel).toHaveBeenCalled();
   });
+
+  it('shows participant count when connected', () => {
+    setVoiceState({
+      connected: true,
+      currentChannelId: 'voice-ch-1',
+      peers: {
+        'user-1': { user_id: 'user-1', username: 'alice', muted: false, deafened: false, speaking: false, voiceLevel: 0 },
+      },
+    });
+    render(<VoiceChannel channel={channel} />);
+    expect(screen.getByText('voice.participants')).toBeInTheDocument();
+  });
+
+  it('shows screen sharing indicator for peers', () => {
+    setVoiceState({
+      connected: true,
+      currentChannelId: 'voice-ch-1',
+      peers: {
+        'user-1': { user_id: 'user-1', username: 'alice', muted: false, deafened: false, speaking: false, voiceLevel: 0, screen_sharing: true },
+      },
+    });
+    render(<VoiceChannel channel={channel} />);
+    expect(screen.getByTestId('icon-screen')).toBeInTheDocument();
+  });
+
+  it('shows webcam indicator for peers with webcam sharing', () => {
+    setVoiceState({
+      connected: true,
+      currentChannelId: 'voice-ch-1',
+      peers: {
+        'user-1': { user_id: 'user-1', username: 'alice', muted: false, deafened: false, speaking: false, voiceLevel: 0, webcam_sharing: true },
+      },
+    });
+    render(<VoiceChannel channel={channel} />);
+    expect(screen.getByTestId('icon-camera')).toBeInTheDocument();
+  });
+
+  it('renders voice-level CSS variable for speaking peers', () => {
+    setVoiceState({
+      connected: true,
+      currentChannelId: 'voice-ch-1',
+      peers: {
+        'user-1': { user_id: 'user-1', username: 'alice', muted: false, deafened: false, speaking: true, voiceLevel: 0.7 },
+      },
+    });
+    const { container } = render(<VoiceChannel channel={channel} />);
+    const tile = container.querySelector('.voice-tile');
+    expect(tile).toBeInTheDocument();
+    expect(tile?.getAttribute('style')).toContain('--voice-level');
+  });
+
+  it('shows speaking label for speaking peers', () => {
+    setVoiceState({
+      connected: true,
+      currentChannelId: 'voice-ch-1',
+      peers: {
+        'user-1': { user_id: 'user-1', username: 'alice', muted: false, deafened: false, speaking: true, voiceLevel: 0.5 },
+      },
+    });
+    render(<VoiceChannel channel={channel} />);
+    expect(screen.getByText('voice.speaking')).toBeInTheDocument();
+  });
+
+  it('shows screen share banner when screen sharing is active', () => {
+    const mockStream = { id: 'screen-stream' } as unknown as MediaStream;
+    setVoiceState({
+      connected: true,
+      currentChannelId: 'voice-ch-1',
+      screenSharing: true,
+      localScreenStream: mockStream,
+      screenSharingUserId: null,
+      peers: {
+        'user-1': { user_id: 'user-1', username: 'alice', muted: false, deafened: false, speaking: false, voiceLevel: 0 },
+      },
+    });
+    render(<VoiceChannel channel={channel} />);
+    expect(screen.getByText(/Screen Share/)).toBeInTheDocument();
+  });
+
+  it('shows empty state icon when not connected', () => {
+    render(<VoiceChannel channel={channel} />);
+    expect(screen.getByTestId('icon-sound')).toBeInTheDocument();
+  });
+
+  it('renders peer initials in avatar', () => {
+    setVoiceState({
+      connected: true,
+      currentChannelId: 'voice-ch-1',
+      peers: {
+        'user-1': { user_id: 'user-1', username: 'alice', muted: false, deafened: false, speaking: false, voiceLevel: 0 },
+      },
+    });
+    const { container } = render(<VoiceChannel channel={channel} />);
+    const avatar = container.querySelector('.voice-tile-avatar');
+    expect(avatar?.textContent).toBe('AL');
+  });
 });

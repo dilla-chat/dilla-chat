@@ -633,4 +633,427 @@ describe('ApiService', () => {
       expect(() => api.getChannels('no-such-team')).rejects.toThrow('Not connected to team no-such-team');
     });
   });
+
+  // ── Bootstrap ────────────────────────────────────────────────────────────
+
+  describe('bootstrap', () => {
+    it('posts bootstrap data with team_name', async () => {
+      api.addTeam('t-boot', 'https://boot.io');
+      global.fetch = mockFetchResponse({ user: {}, token: 'tok', team: {} });
+
+      await api.bootstrap('t-boot', 'alice', 'Alice', 'pk', 'btoken', 'My Team');
+
+      const body = JSON.parse(lastFetchCall().init.body as string);
+      expect(body).toEqual({
+        username: 'alice',
+        display_name: 'Alice',
+        public_key: 'pk',
+        bootstrap_token: 'btoken',
+        team_name: 'My Team',
+      });
+    });
+
+    it('omits team_name when not provided', async () => {
+      api.addTeam('t-boot2', 'https://boot2.io');
+      global.fetch = mockFetchResponse({ user: {}, token: 'tok', team: {} });
+
+      await api.bootstrap('t-boot2', 'alice', 'Alice', 'pk', 'btoken');
+
+      const body = JSON.parse(lastFetchCall().init.body as string);
+      expect(body.team_name).toBeUndefined();
+    });
+  });
+
+  // ── updateMe ────────────────────────────────────────────────────────────
+
+  describe('updateMe', () => {
+    it('sends PATCH with user updates', async () => {
+      global.fetch = mockFetchResponse({ user: { id: 'u1', display_name: 'Updated' } });
+      const result = await api.updateMe('https://me.io', 'tok', { display_name: 'Updated' });
+
+      expect(result).toEqual({ id: 'u1', display_name: 'Updated' });
+      const { init } = lastFetchCall();
+      expect(init.method).toBe('PATCH');
+    });
+  });
+
+  // ── updateChannel ────────────────────────────────────────────────────────
+
+  describe('updateChannel', () => {
+    it('sends PATCH with channel updates', async () => {
+      api.addTeam('t-uc', 'https://uc.io');
+      api.setToken('t-uc', 'tok');
+      global.fetch = mockFetchResponse({ id: 'ch1', name: 'renamed' });
+
+      await api.updateChannel('t-uc', 'ch1', { name: 'renamed' });
+
+      const { url, init } = lastFetchCall();
+      expect(url).toBe('https://uc.io/api/v1/teams/t-uc/channels/ch1');
+      expect(init.method).toBe('PATCH');
+    });
+  });
+
+  // ── updateTeam ────────────────────────────────────────────────────────────
+
+  describe('updateTeam', () => {
+    it('sends PATCH to team endpoint', async () => {
+      api.addTeam('t-ut', 'https://ut.io');
+      api.setToken('t-ut', 'tok');
+      global.fetch = mockFetchResponse({});
+
+      await api.updateTeam('t-ut', { name: 'New Name' });
+
+      const { init } = lastFetchCall();
+      expect(init.method).toBe('PATCH');
+    });
+  });
+
+  // ── updateMember ────────────────────────────────────────────────────────
+
+  describe('updateMember', () => {
+    it('sends PATCH to member endpoint', async () => {
+      api.addTeam('t-um', 'https://um.io');
+      api.setToken('t-um', 'tok');
+      global.fetch = mockFetchResponse({});
+
+      await api.updateMember('t-um', 'u1', { nickname: 'nick' });
+
+      const { url, init } = lastFetchCall();
+      expect(url).toBe('https://um.io/api/v1/teams/t-um/members/u1');
+      expect(init.method).toBe('PATCH');
+    });
+  });
+
+  // ── Threads (extended) ─────────────────────────────────────────────────
+
+  describe('getChannelThreads', () => {
+    it('unwraps threads array', async () => {
+      api.addTeam('t-gct', 'https://gct.io');
+      api.setToken('t-gct', 'tok');
+      global.fetch = mockFetchResponse({ threads: [{ id: 'th1' }] });
+
+      const result = await api.getChannelThreads('t-gct', 'ch1');
+      expect(result).toEqual([{ id: 'th1' }]);
+    });
+  });
+
+  describe('getThread', () => {
+    it('unwraps thread object', async () => {
+      api.addTeam('t-gt', 'https://gt.io');
+      api.setToken('t-gt', 'tok');
+      global.fetch = mockFetchResponse({ thread: { id: 'th1', title: 'Test' } });
+
+      const result = await api.getThread('t-gt', 'th1');
+      expect(result).toEqual({ id: 'th1', title: 'Test' });
+    });
+  });
+
+  describe('getThreadMessages', () => {
+    it('constructs URL with params', async () => {
+      api.addTeam('t-gtm', 'https://gtm.io');
+      api.setToken('t-gtm', 'tok');
+      global.fetch = mockFetchResponse({ messages: [{ id: 'm1' }] });
+
+      const result = await api.getThreadMessages('t-gtm', 'th1', 'before-id', 25);
+      expect(result).toEqual([{ id: 'm1' }]);
+      const { url } = lastFetchCall();
+      expect(url).toContain('before=before-id');
+      expect(url).toContain('limit=25');
+    });
+  });
+
+  // ── DM extended ─────────────────────────────────────────────────────────
+
+  describe('getDMChannel', () => {
+    it('unwraps channel object', async () => {
+      api.addTeam('t-gdc', 'https://gdc.io');
+      api.setToken('t-gdc', 'tok');
+      global.fetch = mockFetchResponse({ channel: { id: 'dm1' } });
+
+      const result = await api.getDMChannel('t-gdc', 'dm1');
+      expect(result).toEqual({ id: 'dm1' });
+    });
+  });
+
+  describe('sendDMMessage', () => {
+    it('posts content', async () => {
+      api.addTeam('t-sdm', 'https://sdm.io');
+      api.setToken('t-sdm', 'tok');
+      global.fetch = mockFetchResponse({ id: 'm1' });
+
+      await api.sendDMMessage('t-sdm', 'dm1', 'Hello');
+
+      const body = JSON.parse(lastFetchCall().init.body as string);
+      expect(body).toEqual({ content: 'Hello' });
+    });
+  });
+
+  describe('editDMMessage', () => {
+    it('sends PUT', async () => {
+      api.addTeam('t-edm', 'https://edm.io');
+      api.setToken('t-edm', 'tok');
+      global.fetch = mockFetchResponse({});
+
+      await api.editDMMessage('t-edm', 'dm1', 'm1', 'Updated');
+      expect(lastFetchCall().init.method).toBe('PUT');
+    });
+  });
+
+  describe('deleteDMMessage', () => {
+    it('sends DELETE', async () => {
+      api.addTeam('t-ddm', 'https://ddm.io');
+      api.setToken('t-ddm', 'tok');
+      global.fetch = mockFetchResponse({});
+
+      await api.deleteDMMessage('t-ddm', 'dm1', 'm1');
+      expect(lastFetchCall().init.method).toBe('DELETE');
+    });
+  });
+
+  describe('addDMMembers', () => {
+    it('posts user_ids', async () => {
+      api.addTeam('t-adm', 'https://adm.io');
+      api.setToken('t-adm', 'tok');
+      global.fetch = mockFetchResponse({});
+
+      await api.addDMMembers('t-adm', 'dm1', ['u1', 'u2']);
+      const body = JSON.parse(lastFetchCall().init.body as string);
+      expect(body).toEqual({ user_ids: ['u1', 'u2'] });
+    });
+  });
+
+  describe('removeDMMember', () => {
+    it('sends DELETE to member endpoint', async () => {
+      api.addTeam('t-rdm', 'https://rdm.io');
+      api.setToken('t-rdm', 'tok');
+      global.fetch = mockFetchResponse({});
+
+      await api.removeDMMember('t-rdm', 'dm1', 'u1');
+      expect(lastFetchCall().init.method).toBe('DELETE');
+    });
+  });
+
+  // ── Roles extended ──────────────────────────────────────────────────────
+
+  describe('updateRole', () => {
+    it('sends PATCH', async () => {
+      api.addTeam('t-ur', 'https://ur.io');
+      api.setToken('t-ur', 'tok');
+      global.fetch = mockFetchResponse({});
+
+      await api.updateRole('t-ur', 'r1', { name: 'Renamed' });
+      expect(lastFetchCall().init.method).toBe('PATCH');
+    });
+  });
+
+  describe('deleteRole', () => {
+    it('sends DELETE', async () => {
+      api.addTeam('t-dr', 'https://dr.io');
+      api.setToken('t-dr', 'tok');
+      global.fetch = mockFetchResponse({});
+
+      await api.deleteRole('t-dr', 'r1');
+      expect(lastFetchCall().init.method).toBe('DELETE');
+    });
+  });
+
+  // ── Presence extended ───────────────────────────────────────────────────
+
+  describe('getUserPresence', () => {
+    it('fetches user presence', async () => {
+      api.addTeam('t-gup', 'https://gup.io');
+      api.setToken('t-gup', 'tok');
+      global.fetch = mockFetchResponse({ user_id: 'u1', status: 'online' });
+
+      const result = await api.getUserPresence('t-gup', 'u1');
+      expect(result.user_id).toBe('u1');
+    });
+  });
+
+  describe('updatePresence', () => {
+    it('sends PUT with status', async () => {
+      api.addTeam('t-upres', 'https://upres.io');
+      api.setToken('t-upres', 'tok');
+      global.fetch = mockFetchResponse({});
+
+      await api.updatePresence('t-upres', 'online', 'Working');
+
+      const body = JSON.parse(lastFetchCall().init.body as string);
+      expect(body).toEqual({ status_type: 'online', custom_status: 'Working' });
+    });
+  });
+
+  // ── getPresences with alternate key ──────────────────────────────────────
+
+  describe('getPresences with presence key', () => {
+    it('handles presence key', async () => {
+      api.addTeam('t-pres2', 'https://pres2.io');
+      api.setToken('t-pres2', 'tok');
+      global.fetch = mockFetchResponse({
+        presence: [{ user_id: 'u1', status: 'online' }],
+      });
+
+      const result = await api.getPresences('t-pres2');
+      expect(result['u1'].status).toBe('online');
+    });
+
+    it('handles direct array response', async () => {
+      api.addTeam('t-pres3', 'https://pres3.io');
+      api.setToken('t-pres3', 'tok');
+      global.fetch = mockFetchResponse([{ user_id: 'u1', status_type: 'idle' }]);
+
+      const result = await api.getPresences('t-pres3');
+      expect(result['u1'].status).toBe('idle');
+    });
+  });
+
+  // ── deleteAttachment ────────────────────────────────────────────────────
+
+  describe('deleteAttachment', () => {
+    it('sends DELETE', async () => {
+      api.addTeam('t-da', 'https://da.io');
+      api.setToken('t-da', 'tok');
+      global.fetch = mockFetchResponse({});
+
+      await api.deleteAttachment('t-da', 'att1');
+      expect(lastFetchCall().init.method).toBe('DELETE');
+    });
+  });
+
+  // ── uploadFile error ────────────────────────────────────────────────────
+
+  describe('uploadFile error', () => {
+    it('throws on error response', async () => {
+      api.addTeam('t-ufe', 'https://ufe.io');
+      api.setToken('t-ufe', 'tok');
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 413,
+        text: () => Promise.resolve('File too large'),
+      });
+
+      const file = new File(['data'], 'big.bin', { type: 'application/octet-stream' });
+      await expect(api.uploadFile('t-ufe', file)).rejects.toThrow('Upload error 413: File too large');
+    });
+  });
+
+  // ── getInviteInfo ────────────────────────────────────────────────────────
+
+  describe('getInviteInfo', () => {
+    it('fetches invite info by token', async () => {
+      global.fetch = mockFetchResponse({ team_name: 'Cool Team' });
+      const result = await api.getInviteInfo('https://inv.io', 'abc123') as Record<string, unknown>;
+      expect(result.team_name).toBe('Cool Team');
+      const { url } = lastFetchCall();
+      expect(url).toBe('https://inv.io/api/v1/invites/abc123/info');
+    });
+  });
+
+  // ── listTeams / createTeam ──────────────────────────────────────────────
+
+  describe('listTeams', () => {
+    it('unwraps teams array', async () => {
+      global.fetch = mockFetchResponse({ teams: [{ id: 't1' }] });
+      const result = await api.listTeams('https://lt.io', 'tok');
+      expect(result).toEqual([{ id: 't1' }]);
+    });
+  });
+
+  describe('createTeam', () => {
+    it('unwraps team object', async () => {
+      global.fetch = mockFetchResponse({ team: { id: 't1', name: 'New' } });
+      const result = await api.createTeam('https://ct.io', 'tok', 'New', 'desc');
+      expect(result).toEqual({ id: 't1', name: 'New' });
+    });
+  });
+
+  // ── federation peers ────────────────────────────────────────────────────
+
+  describe('getFederationPeers', () => {
+    it('returns peers array', async () => {
+      api.addTeam('t-fp', 'https://fp.io');
+      api.setToken('t-fp', 'tok');
+      global.fetch = mockFetchResponse([{ name: 'node1' }]);
+
+      const result = await api.getFederationPeers('t-fp');
+      expect(result).toEqual([{ name: 'node1' }]);
+    });
+  });
+
+  // ── Voice ────────────────────────────────────────────────────────────────
+
+  describe('getVoiceState', () => {
+    it('fetches voice state', async () => {
+      api.addTeam('t-vs', 'https://vs.io');
+      api.setToken('t-vs', 'tok');
+      global.fetch = mockFetchResponse({ channel_id: 'ch1', peers: [] });
+
+      const result = await api.getVoiceState('t-vs', 'ch1');
+      expect(result.channel_id).toBe('ch1');
+    });
+  });
+
+  describe('getTURNCredentials', () => {
+    it('fetches TURN credentials', async () => {
+      api.addTeam('t-turn', 'https://turn.io');
+      api.setToken('t-turn', 'tok');
+      global.fetch = mockFetchResponse({ iceServers: [{ urls: 'turn:turn.io' }] });
+
+      const result = await api.getTURNCredentials('t-turn');
+      expect(result.iceServers).toHaveLength(1);
+    });
+  });
+
+  // ── Reactions extended ─────────────────────────────────────────────────
+
+  describe('getReactions', () => {
+    it('fetches reactions', async () => {
+      api.addTeam('t-gr', 'https://gr.io');
+      api.setToken('t-gr', 'tok');
+      global.fetch = mockFetchResponse([{ emoji: '👍', count: 1, users: ['u1'], me: true }]);
+
+      const result = await api.getReactions('t-gr', 'ch1', 'msg1');
+      expect(result[0].emoji).toBe('👍');
+    });
+  });
+
+  // ── Thread management extended ─────────────────────────────────────────
+
+  describe('updateThread', () => {
+    it('sends PUT with title', async () => {
+      api.addTeam('t-uth', 'https://uth.io');
+      api.setToken('t-uth', 'tok');
+      global.fetch = mockFetchResponse({});
+
+      await api.updateThread('t-uth', 'th1', 'New Title');
+      expect(lastFetchCall().init.method).toBe('PUT');
+    });
+  });
+
+  describe('deleteThread', () => {
+    it('sends DELETE', async () => {
+      api.addTeam('t-dth', 'https://dth.io');
+      api.setToken('t-dth', 'tok');
+      global.fetch = mockFetchResponse({});
+
+      await api.deleteThread('t-dth', 'th1');
+      expect(lastFetchCall().init.method).toBe('DELETE');
+    });
+  });
+
+  // ── enableMockApi ───────────────────────────────────────────────────────
+
+  describe('enableMockApi', () => {
+    it('overrides api methods', async () => {
+      const { enableMockApi } = await import('./api');
+      const mock = {
+        checkHealth: vi.fn().mockResolvedValue(true),
+      };
+      enableMockApi(mock);
+      const result = await api.checkHealth('https://mock.io');
+      expect(result).toBe(true);
+      expect(mock.checkHealth).toHaveBeenCalled();
+    });
+  });
 });

@@ -129,4 +129,54 @@ describe('MemberList', () => {
     fireEvent.click(screen.getByText('Alice'));
     expect(screen.getByTestId('user-profile')).toBeInTheDocument();
   });
+
+  it('closes popup on close button click', () => {
+    render(<MemberList />);
+    fireEvent.click(screen.getByText('Alice'));
+    expect(screen.getByTestId('user-profile')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Close'));
+    expect(screen.queryByTestId('user-profile')).not.toBeInTheDocument();
+  });
+
+  it('shows Send button in popup for other users', () => {
+    render(<MemberList />);
+    fireEvent.click(screen.getByText('Bob'));
+    expect(screen.getByText('Send')).toBeInTheDocument();
+  });
+
+  it('does not show Send button for own profile', () => {
+    render(<MemberList />);
+    fireEvent.click(screen.getByText('Alice'));
+    // Current user is user-1 (Alice), so no Send button
+    expect(screen.queryByText('Send')).not.toBeInTheDocument();
+  });
+
+  it('sorts online members by status priority', () => {
+    const { container } = render(<MemberList />);
+    const memberItems = container.querySelectorAll('.member-item:not(.offline)');
+    const names = Array.from(memberItems).map(el => el.querySelector('.member-display-name')?.textContent);
+    // alice=online, bob=idle => alice before bob
+    expect(names[0]).toBe('Alice');
+    expect(names[1]).toBe('Bob');
+  });
+
+  it('renders nickname when available', () => {
+    const members = new Map([
+      ['team-1', [
+        { id: 'member-1', userId: 'user-1', username: 'alice', displayName: 'Alice', nickname: 'Ali', roles: [], statusType: 'online' },
+      ]],
+    ]);
+    useTeamStore.setState({ activeTeamId: 'team-1', members });
+    render(<MemberList />);
+    expect(screen.getByText('Ali')).toBeInTheDocument();
+  });
+
+  it('closes popup on document click', () => {
+    render(<MemberList />);
+    fireEvent.click(screen.getByText('Alice'));
+    expect(screen.getByTestId('user-profile')).toBeInTheDocument();
+    // Simulate document click
+    fireEvent.click(document);
+    expect(screen.queryByTestId('user-profile')).not.toBeInTheDocument();
+  });
 });
