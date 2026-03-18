@@ -628,4 +628,132 @@ describe('JoinTeam', () => {
       expect(screen.queryByTestId('CloudXmark')).not.toBeInTheDocument();
     });
   });
+
+  it('auto-fills server from origin when arriving via invite link', async () => {
+    vi.mocked(useParams).mockReturnValue({ token: 'invite-xyz' });
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true });
+    vi.mocked(api.getInviteInfo).mockResolvedValueOnce({
+      team_name: 'Invite Team',
+      created_by: 'admin',
+    });
+
+    render(<JoinTeam />);
+    // fromInviteLink sets serverAddress to window.location.origin
+    await waitFor(() => {
+      expect(screen.getByText('Invite Team')).toBeInTheDocument();
+    });
+  });
+
+  it('uploads identity blob on successful join', async () => {
+    const { exportIdentityBlob } = await import('../services/keyStore');
+    vi.mocked(exportIdentityBlob).mockResolvedValue('encrypted-blob-data');
+    vi.mocked(api.getInviteInfo).mockResolvedValueOnce({
+      team_name: 'Team',
+      created_by: 'admin',
+    });
+    vi.mocked(api.register).mockResolvedValueOnce({
+      token: 'jwt-tok',
+      user: { id: 'u1', username: 'alice' },
+      team: { id: 'team-1' },
+    });
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true });
+
+    render(<JoinTeam />);
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('join.serverAddress'), {
+        target: { value: 'https://example.com' },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('CloudCheck')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('join.inviteToken'), {
+        target: { value: 'token' },
+      });
+      fireEvent.change(screen.getByPlaceholderText('Username'), {
+        target: { value: 'alice' },
+      });
+    });
+
+    fireEvent.click(screen.getByText('join.title', { selector: 'button' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Team')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('join.join'));
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/app');
+    });
+
+    // Verify fetch was called for blob upload
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'https://example.com/api/v1/identity/blob',
+      expect.objectContaining({ method: 'PUT' }),
+    );
+  });
+
+  it('handles identity blob upload failure gracefully', async () => {
+    const { exportIdentityBlob } = await import('../services/keyStore');
+    vi.mocked(exportIdentityBlob).mockRejectedValue(new Error('blob export failed'));
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.mocked(api.getInviteInfo).mockResolvedValueOnce({
+      team_name: 'Team',
+      created_by: 'admin',
+    });
+    vi.mocked(api.register).mockResolvedValueOnce({
+      token: 'jwt-tok',
+      user: { id: 'u1', username: 'alice' },
+      team: { id: 'team-1' },
+    });
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true });
+
+    render(<JoinTeam />);
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('join.serverAddress'), {
+        target: { value: 'https://example.com' },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('CloudCheck')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('join.inviteToken'), {
+        target: { value: 'token' },
+      });
+      fireEvent.change(screen.getByPlaceholderText('Username'), {
+        target: { value: 'alice' },
+      });
+    });
+
+    fireEvent.click(screen.getByText('join.title', { selector: 'button' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Team')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('join.join'));
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/app');
+    });
+
+    consoleSpy.mockRestore();
+  });
+
+  it('changes display name input value', async () => {
+    render(<JoinTeam />);
+    await act(async () => {});
+    const displayInput = screen.getByPlaceholderText('Display Name');
+    fireEvent.change(displayInput, { target: { value: 'New Display' } });
+    expect(displayInput).toHaveValue('New Display');
+  });
 });

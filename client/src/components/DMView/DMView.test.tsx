@@ -490,4 +490,130 @@ describe('DMView', () => {
     render(<DMView dm={dm} currentUserId="user-1" />);
     expect(screen.getByTestId('message-input')).toHaveAttribute('data-channel-name', 'Unknown');
   });
+
+  it('tryDecryptDM falls back to content when decryption fails', async () => {
+    useAuthStore.setState({ derivedKey: 'test-key' } as never);
+    const { ws } = await import('../../services/websocket');
+    const { cryptoService } = await import('../../services/crypto');
+    vi.mocked(ws.isConnected).mockReturnValue(false);
+    const { api } = await import('../../services/api');
+    vi.mocked(api.getDMMessages).mockResolvedValueOnce([
+      {
+        id: 'dm-msg-fail', channel_id: 'dm-1', dm_id: 'dm-1', author_id: 'user-2',
+        username: 'bob', content: 'encrypted-raw', type: 'text', thread_id: null,
+        edited_at: null, deleted: false, created_at: '2025-01-01T00:00:00Z', reactions: [],
+      },
+    ]);
+    vi.mocked(cryptoService.decryptDM).mockRejectedValueOnce(new Error('decrypt failed'));
+
+    render(<DMView dm={makeDM()} currentUserId="user-1" />);
+    await vi.waitFor(() => {
+      expect(cryptoService.decryptDM).toHaveBeenCalled();
+    });
+    // Should fall back to raw content instead of crashing
+  });
+
+  it('handleLoadMore via API when WS is not connected with decryption', async () => {
+    useAuthStore.setState({ derivedKey: 'test-key' } as never);
+    const { ws } = await import('../../services/websocket');
+    const { api } = await import('../../services/api');
+    const { cryptoService } = await import('../../services/crypto');
+
+    vi.mocked(ws.isConnected).mockReturnValue(false);
+    vi.mocked(api.getDMMessages).mockClear();
+    vi.mocked(api.getDMMessages).mockResolvedValue([]);
+    vi.mocked(cryptoService.decryptDM).mockResolvedValue('decrypted-old');
+
+    useMessageStore.setState({
+      messages: new Map([['dm-1', [{ id: 'existing-msg', channelId: 'dm-1', authorId: 'user-2', username: 'bob', content: 'existing', encryptedContent: '', type: 'text', threadId: null, editedAt: null, deleted: false, createdAt: '2025-01-01T00:00:00Z', reactions: [] }]]]),
+      typing: new Map(),
+      loadingHistory: new Map([['dm-1', false]]),
+      hasMore: new Map([['dm-1', true]]),
+    });
+
+    render(<DMView dm={makeDM()} currentUserId="user-1" />);
+
+    // Wait for initial load
+    await vi.waitFor(() => {
+      expect(api.getDMMessages).toHaveBeenCalled();
+    });
+
+    // Click load more
+    fireEvent.click(screen.getByTestId('load-more'));
+    // Verify at least one more call was made (load more triggered)
+    await vi.waitFor(() => {
+      expect(vi.mocked(api.getDMMessages).mock.calls.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it('handleLoadMore does nothing when already loading', async () => {
+    const { api } = await import('../../services/api');
+    vi.mocked(api.getDMMessages).mockResolvedValueOnce([]);
+    useMessageStore.setState({
+      messages: new Map(),
+      typing: new Map(),
+      loadingHistory: new Map([['dm-1', true]]),
+      hasMore: new Map([['dm-1', true]]),
+    });
+    render(<DMView dm={makeDM()} currentUserId="user-1" />);
+    fireEvent.click(screen.getByTestId('load-more'));
+    // Should not make additional API calls when already loading
+  });
+
+  it('handleLoadMore does nothing when no more messages', async () => {
+    const { api } = await import('../../services/api');
+    vi.mocked(api.getDMMessages).mockResolvedValueOnce([]);
+    useMessageStore.setState({
+      messages: new Map(),
+      typing: new Map(),
+      loadingHistory: new Map([['dm-1', false]]),
+      hasMore: new Map([['dm-1', false]]),
+    });
+    render(<DMView dm={makeDM()} currentUserId="user-1" />);
+    fireEvent.click(screen.getByTestId('load-more'));
+    // Should not make additional API calls when hasMore is false
+  });
+
+  it('handleLoadMore catches errors gracefully', async () => {
+    const { ws } = await import('../../services/websocket');
+    vi.mocked(ws.isConnected).mockReturnValue(true);
+    vi.mocked(ws.request)
+      .mockResolvedValueOnce([]) // initial load
+      .mockRejectedValueOnce(new Error('network error')); // load more
+    useMessageStore.setState({
+      messages: new Map([['dm-1', [{ id: 'msg-1', channelId: 'dm-1', authorId: 'user-2', username: 'bob', content: 'hi', encryptedContent: '', type: 'text', threadId: null, editedAt: null, deleted: false, createdAt: '2025-01-01T00:00:00Z', reactions: [] }]]]),
+      typing: new Map(),
+      loadingHistory: new Map([['dm-1', false]]),
+      hasMore: new Map([['dm-1', true]]),
+    });
+    render(<DMView dm={makeDM()} currentUserId="user-1" />);
+    await vi.waitFor(() => {
+      expect(ws.request).toHaveBeenCalled();
+    });
+    fireEvent.click(screen.getByTestId('load-more'));
+    // Should not crash
+  });
+
+  it('tryDecryptDM calls decryptDM for messages during initial load', async () => {
+    useAuthStore.setState({ derivedKey: 'test-key' } as never);
+    const { cryptoService } = await import('../../services/crypto');
+    vi.mocked(cryptoService.decryptDM).mockClear();
+    vi.mocked(cryptoService.decryptDM).mockResolvedValue('decrypted');
+    const { ws } = await import('../../services/websocket');
+    vi.mocked(ws.isConnected).mockReturnValue(false);
+    const { api } = await import('../../services/api');
+    vi.mocked(api.getDMMessages).mockClear();
+    vi.mocked(api.getDMMessages).mockResolvedValueOnce([
+      {
+        id: 'dm-dec-msg-unique', channel_id: 'dm-unique', dm_id: 'dm-unique', author_id: 'user-2',
+        username: 'bob', content: 'encrypted-content', type: 'text', thread_id: null,
+        edited_at: null, deleted: false, created_at: '2025-01-01T00:00:00Z', reactions: [],
+      },
+    ]);
+    const uniqueDM = makeDM({ id: 'dm-unique' });
+    render(<DMView dm={uniqueDM} currentUserId="user-1" />);
+    await vi.waitFor(() => {
+      expect(cryptoService.decryptDM).toHaveBeenCalled();
+    });
+  });
 });

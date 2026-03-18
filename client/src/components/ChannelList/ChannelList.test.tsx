@@ -254,4 +254,18 @@ describe('ChannelList', () => {
     fireEvent.click(document);
     expect(container.querySelector('.channel-context-menu')).not.toBeInTheDocument();
   });
+
+  it('logs error when delete channel fails', async () => {
+    const { api } = await import('../../services/api');
+    vi.mocked(api.deleteChannel).mockRejectedValueOnce(new Error('Delete failed'));
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    render(<ChannelList />);
+    const channelItem = screen.getByText('general').closest('.channel-item')!;
+    fireEvent.contextMenu(channelItem);
+    fireEvent.click(screen.getByText('Delete Channel'));
+    await vi.waitFor(() => {
+      expect(consoleSpy).toHaveBeenCalledWith('[ChannelList] Delete failed:', expect.any(Error));
+    });
+    consoleSpy.mockRestore();
+  });
 });

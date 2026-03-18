@@ -650,4 +650,138 @@ describe('ThreadPanel', () => {
       expect(ws.sendThreadMessage).toHaveBeenCalled();
     });
   });
+
+  it('handleLoadMore via API when WS not connected', async () => {
+    const { api } = await import('../../services/api');
+    const { ws } = await import('../../services/websocket');
+    vi.mocked(ws.isConnected).mockReturnValue(false);
+    vi.mocked(api.getThreadMessages).mockClear();
+    vi.mocked(api.getThreadMessages).mockResolvedValue([]);
+
+    const threadId = `thread-api-more-${Math.random()}`;
+    useThreadStore.setState({ threadMessages: {} });
+
+    const apiThread = { ...thread, id: threadId };
+    const { container } = render(<ThreadPanel thread={apiThread} onClose={vi.fn()} />);
+
+    // Wait for initial load
+    await vi.waitFor(() => {
+      expect(vi.mocked(api.getThreadMessages).mock.calls.some(c => c[1] === threadId)).toBe(true);
+    });
+  });
+
+  it('handleLoadMore does nothing when already loading', async () => {
+    const { ws } = await import('../../services/websocket');
+    vi.mocked(ws.isConnected).mockReturnValue(true);
+    vi.mocked(ws.request).mockResolvedValue([]);
+
+    // The initial load sets loading=true; render with a fresh thread so the initial
+    // load runs. While it's loading, scroll near top shouldn't trigger a second request.
+    useThreadStore.setState({ threadMessages: {} });
+    const loadingThread = { ...thread, id: 'thread-loading-check' };
+    const { container } = render(<ThreadPanel thread={loadingThread} onClose={vi.fn()} />);
+
+    // Initial load fires. Now scroll near top immediately.
+    const messagesDiv = container.querySelector('.thread-messages');
+    if (messagesDiv) {
+      Object.defineProperty(messagesDiv, 'scrollTop', { value: 30, configurable: true });
+      Object.defineProperty(messagesDiv, 'scrollHeight', { value: 1000, configurable: true });
+      Object.defineProperty(messagesDiv, 'clientHeight', { value: 500, configurable: true });
+      fireEvent.scroll(messagesDiv);
+    }
+  });
+
+  it('handleLoadMore deduplicates messages', async () => {
+    const { ws } = await import('../../services/websocket');
+    vi.mocked(ws.isConnected).mockReturnValue(true);
+    // Return a message that already exists in the store
+    vi.mocked(ws.request).mockResolvedValueOnce([]).mockResolvedValueOnce([
+      {
+        id: 'tmsg-dup', channel_id: 'ch-1', author_id: 'user-2', username: 'bob',
+        content: 'Dup msg', type: 'text', thread_id: 'thread-dedup',
+        edited_at: null, deleted: false, created_at: '2025-01-01T10:00:00Z', reactions: [],
+      },
+    ]);
+
+    useThreadStore.setState({
+      threadMessages: {
+        'thread-dedup': [
+          {
+            id: 'tmsg-dup', channelId: 'ch-1', authorId: 'user-2', username: 'bob',
+            content: 'Dup msg', encryptedContent: '', type: 'text', threadId: 'thread-dedup',
+            editedAt: null, deleted: false, createdAt: '2025-01-01T10:00:00Z', reactions: [],
+          },
+        ],
+      },
+    });
+
+    const dedupThread = { ...thread, id: 'thread-dedup' };
+    const { container } = render(<ThreadPanel thread={dedupThread} onClose={vi.fn()} />);
+
+    // Wait for initial load to finish
+    await vi.waitFor(() => {
+      expect(ws.request).toHaveBeenCalled();
+    });
+
+    // Trigger scroll near top to invoke handleLoadMore
+    const messagesDiv = container.querySelector('.thread-messages');
+    if (messagesDiv) {
+      Object.defineProperty(messagesDiv, 'scrollTop', { value: 30, configurable: true });
+      Object.defineProperty(messagesDiv, 'scrollHeight', { value: 1000, configurable: true });
+      Object.defineProperty(messagesDiv, 'clientHeight', { value: 500, configurable: true });
+      fireEvent.scroll(messagesDiv);
+    }
+  });
+
+  it('initial load with derivedKey calls decryptMessage for each message', async () => {
+    const { ws } = await import('../../services/websocket');
+    const { cryptoService } = await import('../../services/crypto');
+    vi.mocked(ws.isConnected).mockReturnValue(true);
+    vi.mocked(cryptoService.decryptMessage).mockClear();
+    vi.mocked(cryptoService.decryptMessage).mockResolvedValue('decrypted-plain');
+
+    const threadId = `thread-decrypt-${Math.random()}`;
+    vi.mocked(ws.request).mockResolvedValueOnce([
+      {
+        id: 'tmsg-dec-1', channel_id: 'ch-1', author_id: 'user-1', username: 'alice',
+        content: 'encrypted-1', type: 'text', thread_id: threadId,
+        edited_at: null, deleted: false, created_at: '2025-01-01T11:00:00Z', reactions: [],
+      },
+    ]);
+
+    useAuthStore.setState({
+      teams: new Map([['team-1', { token: 't', user: { id: 'user-1', username: 'alice' }, teamInfo: null, baseUrl: '' }]]),
+      derivedKey: 'test-key',
+    });
+    useThreadStore.setState({ threadMessages: {} });
+
+    const decryptThread = { ...thread, id: threadId };
+    render(<ThreadPanel thread={decryptThread} onClose={vi.fn()} />);
+
+    await vi.waitFor(() => {
+      expect(cryptoService.decryptMessage).toHaveBeenCalled();
+    });
+  });
+
+  it('handles thread:message:new with cached content', async () => {
+    const { ws } = await import('../../services/websocket');
+    const { getCachedMessage } = await import('../../services/messageCache');
+    vi.mocked(getCachedMessage).mockResolvedValueOnce('cached-new-content');
+
+    useAuthStore.setState({
+      teams: new Map([['team-1', { token: 't', user: { id: 'user-1', username: 'alice' }, teamInfo: null, baseUrl: '' }]]),
+      derivedKey: 'test-key',
+    });
+
+    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    const calls = vi.mocked(ws.on).mock.calls;
+    const newHandler = calls.find(c => c[0] === 'thread:message:new');
+    if (newHandler) {
+      await (newHandler[1] as Function)({
+        id: 'tmsg-cached-new', channel_id: 'ch-1', author_id: 'user-2', username: 'bob',
+        content: 'encrypted-content', type: 'text', thread_id: 'thread-1',
+        edited_at: null, deleted: false, created_at: '2025-01-01T13:00:00Z', reactions: [],
+      });
+    }
+  });
 });

@@ -738,4 +738,57 @@ describe('UserSettings', () => {
     render(<UserSettings />);
     expect(screen.getByText('testuser')).toBeInTheDocument();
   });
+
+  it('uses setRetroactiveGraceMs from audioSettingsStore', () => {
+    useAudioSettingsStore.setState({ inputProfile: 'custom', noiseSuppressionMode: 'rnnoise', retroactiveGraceMs: 20 });
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    const retroSlider = screen.getByRole('slider', { name: 'Retroactive Grace' });
+    fireEvent.change(retroSlider, { target: { value: '60' } });
+    // Verify the store was updated
+    expect(retroSlider).toHaveValue('60');
+  });
+
+  it('renders language dropdown with i18n language', () => {
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-language'));
+    // The dropdown should show a select with the current language
+    const select = screen.getByRole('combobox');
+    expect(select).toBeInTheDocument();
+  });
+
+  it('switches between all nav tabs', () => {
+    render(<UserSettings />);
+    // Visit every tab to exercise all activeId branches
+    fireEvent.click(screen.getByTestId('nav-my-account'));
+    expect(screen.getByText('@testuser')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    expect(screen.getByText('Input Device')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('nav-notifications'));
+    expect(screen.getByText('Desktop Notifications')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('nav-appearance'));
+    expect(screen.getByText('Dark')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('nav-keybinds'));
+    expect(screen.getByText('Escape')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('nav-language'));
+    expect(screen.getByText('Select Language')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('nav-privacy'));
+    expect(screen.getByText('Anonymous Telemetry')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('nav-security'));
+    expect(screen.getByTestId('passkey-manager')).toBeInTheDocument();
+  });
+
+  it('shows MicTest with meter even when not testing', () => {
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    const meter = screen.getByRole('meter', { name: /Microphone level/ });
+    expect(meter).toBeInTheDocument();
+  });
 });

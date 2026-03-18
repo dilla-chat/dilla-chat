@@ -178,4 +178,27 @@ describe('EditChannel', () => {
     render(<EditChannel channel={channel} onClose={vi.fn()} />);
     expect(screen.getByText('Development')).toBeInTheDocument();
   });
+
+  it('updates topic via textarea change', () => {
+    render(<EditChannel channel={channel} onClose={vi.fn()} />);
+    const textarea = screen.getByDisplayValue('General discussion');
+    fireEvent.change(textarea, { target: { value: 'New topic' } });
+    expect(textarea).toHaveValue('New topic');
+  });
+
+  it('saves topic change via API', async () => {
+    const { api } = await import('../../services/api');
+    vi.mocked(api.updateChannel).mockClear();
+    const onClose = vi.fn();
+    render(<EditChannel channel={channel} onClose={onClose} />);
+
+    const textarea = screen.getByDisplayValue('General discussion');
+    fireEvent.change(textarea, { target: { value: 'Updated topic' } });
+    fireEvent.click(screen.getByText('Save'));
+
+    await waitFor(() => {
+      expect(api.updateChannel).toHaveBeenCalledWith('team-1', 'ch-1', expect.objectContaining({ topic: 'Updated topic' }));
+      expect(onClose).toHaveBeenCalled();
+    });
+  });
 });
