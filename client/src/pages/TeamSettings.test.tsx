@@ -541,4 +541,307 @@ describe('TeamSettings', () => {
     fireEvent.change(fileInput, { target: { value: '20971520' } });
     expect(fileInput).toHaveValue(20971520);
   });
+
+  it('changes icon URL in overview', () => {
+    render(<TeamSettings />);
+    const iconInput = screen.getByDisplayValue('');
+    fireEvent.change(iconInput, { target: { value: 'https://example.com/icon.png' } });
+  });
+
+  it('overview save handles API failure', async () => {
+    const { api } = await import('../services/api');
+    vi.mocked(api.updateTeam).mockRejectedValueOnce(new Error('fail'));
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByText('Save Changes'));
+    await vi.waitFor(() => {
+      // Should not crash, button should not show "Saving..." after error
+      expect(screen.getByText('Save Changes')).toBeInTheDocument();
+    });
+  });
+
+  it('creates invite with specific options and shows it in table', async () => {
+    const { api } = await import('../services/api');
+    vi.mocked(api.createInvite).mockResolvedValueOnce({
+      invite: {
+        id: 'inv-1', token: 'abc123', created_by: 'admin',
+        uses: 0, max_uses: 10, expires_at: '2025-06-01T00:00:00Z',
+      },
+    });
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-invites'));
+    fireEvent.click(screen.getByText('Create Invite'));
+    await vi.waitFor(() => {
+      expect(screen.getByText(/abc123/)).toBeInTheDocument();
+    });
+  });
+
+  it('revokes an invite', async () => {
+    const { api } = await import('../services/api');
+    vi.mocked(api.listInvites).mockResolvedValueOnce([
+      { id: 'inv-1', token: 'tok1', created_by: 'admin', uses: 0, max_uses: null, expires_at: null },
+    ]);
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-invites'));
+    await vi.waitFor(() => {
+      expect(screen.getByText('Revoke')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('Revoke'));
+    await vi.waitFor(() => {
+      expect(api.revokeInvite).toHaveBeenCalledWith('team1', 'inv-1');
+    });
+  });
+
+  it('copies invite link to clipboard', async () => {
+    const clipboardWriteText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText: clipboardWriteText } });
+
+    const { api } = await import('../services/api');
+    vi.mocked(api.listInvites).mockResolvedValueOnce([
+      { id: 'inv-1', token: 'abc123', created_by: 'admin', uses: 0, max_uses: null, expires_at: null },
+    ]);
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-invites'));
+    await vi.waitFor(() => {
+      expect(screen.getByText(/abc123/)).toBeInTheDocument();
+    });
+    // Click the copy button
+    const copyBtn = screen.getByTitle('Copy invite link');
+    fireEvent.click(copyBtn);
+    expect(clipboardWriteText).toHaveBeenCalled();
+  });
+
+  it('shows invite with uses count and expiry date', async () => {
+    const { api } = await import('../services/api');
+    vi.mocked(api.listInvites).mockResolvedValueOnce([
+      { id: 'inv-1', token: 'xyz', created_by: 'alice', uses: 3, max_uses: 10, expires_at: '2025-06-15T12:00:00Z' },
+    ]);
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-invites'));
+    await vi.waitFor(() => {
+      expect(screen.getByText('alice')).toBeInTheDocument();
+      expect(screen.getByText('3/10')).toBeInTheDocument();
+    });
+  });
+
+  it('shows invite with unlimited uses', async () => {
+    const { api } = await import('../services/api');
+    vi.mocked(api.listInvites).mockResolvedValueOnce([
+      { id: 'inv-2', token: 'tok2', created_by: 'bob', uses: 0, max_uses: null, expires_at: null },
+    ]);
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-invites'));
+    await vi.waitFor(() => {
+      // Unlimited uses displays as "0/∞"
+      const usesCell = screen.getByText(/0\/∞/);
+      expect(usesCell).toBeInTheDocument();
+    });
+  });
+
+  it('bans tab shows no banned users message', () => {
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-bans'));
+    expect(screen.getByText('No banned users')).toBeInTheDocument();
+  });
+
+  it('role creation handles API failure', async () => {
+    const { api } = await import('../services/api');
+    vi.mocked(api.createRole).mockRejectedValueOnce(new Error('fail'));
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-roles'));
+    fireEvent.click(screen.getByText('Create Role'));
+    // Should not crash
+    await vi.waitFor(() => {
+      expect(api.createRole).toHaveBeenCalled();
+    });
+  });
+
+  it('role save handles API failure', async () => {
+    const { api } = await import('../services/api');
+    vi.mocked(api.updateRole).mockRejectedValueOnce(new Error('fail'));
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-roles'));
+    fireEvent.click(screen.getByText('Admin'));
+    fireEvent.click(screen.getByText('Save Changes'));
+    await vi.waitFor(() => {
+      expect(api.updateRole).toHaveBeenCalled();
+    });
+  });
+
+  it('role delete handles API failure', async () => {
+    const { api } = await import('../services/api');
+    vi.mocked(api.deleteRole).mockRejectedValueOnce(new Error('fail'));
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-roles'));
+    fireEvent.click(screen.getByText('Admin'));
+    fireEvent.click(screen.getByText('Delete Role'));
+    await vi.waitFor(() => {
+      expect(api.deleteRole).toHaveBeenCalled();
+    });
+  });
+
+  it('does not delete default role', async () => {
+    const { api } = await import('../services/api');
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-roles'));
+    // Select default Member role
+    const memberTexts = screen.getAllByText('Member');
+    fireEvent.click(memberTexts[memberTexts.length - 1]);
+    // No Delete Role button for default role
+    expect(screen.queryByText('Delete Role')).not.toBeInTheDocument();
+    expect(api.deleteRole).not.toHaveBeenCalled();
+  });
+
+  it('kick handles API failure', async () => {
+    const { api } = await import('../services/api');
+    vi.mocked(api.kickMember).mockRejectedValueOnce(new Error('fail'));
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-members'));
+    fireEvent.click(screen.getByText('Alice'));
+    fireEvent.click(screen.getByText('Kick'));
+    await vi.waitFor(() => {
+      expect(api.kickMember).toHaveBeenCalled();
+    });
+  });
+
+  it('ban handles API failure', async () => {
+    const { api } = await import('../services/api');
+    vi.mocked(api.banMember).mockRejectedValueOnce(new Error('fail'));
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-members'));
+    fireEvent.click(screen.getByText('Alice'));
+    fireEvent.click(screen.getByText('Ban'));
+    await vi.waitFor(() => {
+      expect(api.banMember).toHaveBeenCalled();
+    });
+  });
+
+  it('member role toggle handles API failure', async () => {
+    const { api } = await import('../services/api');
+    vi.mocked(api.updateMember).mockRejectedValueOnce(new Error('fail'));
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-members'));
+    fireEvent.click(screen.getByText('Bob'));
+    const checkboxes = screen.getAllByRole('checkbox');
+    if (checkboxes.length > 0) {
+      fireEvent.click(checkboxes[0]);
+      await vi.waitFor(() => {
+        expect(api.updateMember).toHaveBeenCalled();
+      });
+    }
+  });
+
+  it('invite creation handles API failure', async () => {
+    const { api } = await import('../services/api');
+    vi.mocked(api.createInvite).mockRejectedValueOnce(new Error('fail'));
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-invites'));
+    fireEvent.click(screen.getByText('Create Invite'));
+    await vi.waitFor(() => {
+      expect(api.createInvite).toHaveBeenCalled();
+    });
+  });
+
+  it('invite revoke handles API failure', async () => {
+    const { api } = await import('../services/api');
+    vi.mocked(api.listInvites).mockResolvedValueOnce([
+      { id: 'inv-1', token: 'tok1', created_by: 'admin', uses: 0, max_uses: null, expires_at: null },
+    ]);
+    vi.mocked(api.revokeInvite).mockRejectedValueOnce(new Error('fail'));
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-invites'));
+    await vi.waitFor(() => {
+      expect(screen.getByText('Revoke')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('Revoke'));
+    await vi.waitFor(() => {
+      expect(api.revokeInvite).toHaveBeenCalled();
+    });
+  });
+
+  it('shows "Saving..." while overview save is in progress', async () => {
+    const { api } = await import('../services/api');
+    let resolveSave: (v: unknown) => void;
+    vi.mocked(api.updateTeam).mockReturnValueOnce(new Promise(r => { resolveSave = r; }) as Promise<unknown>);
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByText('Save Changes'));
+    expect(screen.getByText('Saving...')).toBeInTheDocument();
+    resolveSave!({});
+  });
+
+  it('shows "Creating..." while invite is being created', async () => {
+    const { api } = await import('../services/api');
+    let resolveCreate: (v: unknown) => void;
+    vi.mocked(api.createInvite).mockReturnValueOnce(new Promise(r => { resolveCreate = r; }) as Promise<unknown>);
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-invites'));
+    fireEvent.click(screen.getByText('Create Invite'));
+    expect(screen.getByText('Creating...')).toBeInTheDocument();
+    resolveCreate!({ invite: { id: 'inv-1', token: 'abc', created_by: 'admin', uses: 0, max_uses: null, expires_at: null } });
+  });
+
+  it('removes member role when toggling off', async () => {
+    const { api } = await import('../services/api');
+    // Alice has Admin role, toggling it off should remove it
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-members'));
+    fireEvent.click(screen.getByText('Alice'));
+    const checkboxes = screen.getAllByRole('checkbox');
+    // Alice's Admin checkbox should be checked
+    if (checkboxes.length > 0) {
+      fireEvent.click(checkboxes[0]);
+      await vi.waitFor(() => {
+        expect(api.updateMember).toHaveBeenCalled();
+      });
+    }
+  });
+
+  it('clicks invite link text to copy', async () => {
+    const clipboardWriteText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText: clipboardWriteText } });
+
+    const { api } = await import('../services/api');
+    vi.mocked(api.listInvites).mockResolvedValueOnce([
+      { id: 'inv-1', token: 'tok1', created_by: 'admin', uses: 0, max_uses: null, expires_at: null },
+    ]);
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-invites'));
+    await vi.waitFor(() => {
+      expect(screen.getByText(/tok1/)).toBeInTheDocument();
+    });
+    // Click the invite link text span
+    const linkText = screen.getByText(/tok1/);
+    fireEvent.click(linkText);
+    expect(clipboardWriteText).toHaveBeenCalled();
+  });
+
+  it('shows copied state after copy button click', async () => {
+    const clipboardWriteText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText: clipboardWriteText } });
+
+    const { api } = await import('../services/api');
+    vi.mocked(api.listInvites).mockResolvedValueOnce([
+      { id: 'inv-1', token: 'tok1', created_by: 'admin', uses: 0, max_uses: null, expires_at: null },
+    ]);
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-invites'));
+    await vi.waitFor(() => {
+      expect(screen.getByTitle('Copy invite link')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTitle('Copy invite link'));
+    await vi.waitFor(() => {
+      expect(screen.getByTitle('Copied!')).toBeInTheDocument();
+    });
+  });
+
+  it('shows invite never expiry text when expires_at is null', async () => {
+    const { api } = await import('../services/api');
+    vi.mocked(api.listInvites).mockResolvedValueOnce([
+      { id: 'inv-1', token: 'tok1', created_by: 'admin', uses: 0, max_uses: null, expires_at: null },
+    ]);
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-invites'));
+    await vi.waitFor(() => {
+      expect(screen.getByText('invites.never')).toBeInTheDocument();
+    });
+  });
 });

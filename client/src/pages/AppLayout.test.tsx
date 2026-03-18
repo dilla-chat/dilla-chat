@@ -605,4 +605,190 @@ describe('AppLayout behavioral', () => {
       (leftHandler[1] as Function)({ channel_id: '', user_id: '' });
     }
   });
+
+  it('uploads identity blob when derivedKey is set and data is loaded', async () => {
+    const mockExportBlob = vi.fn().mockResolvedValue('encrypted-blob');
+    vi.doMock('../services/keyStore', () => ({
+      unlockWithPrf: vi.fn(),
+      exportIdentityBlob: mockExportBlob,
+    }));
+
+    useAuthStore.setState({
+      derivedKey: 'test-derived-key',
+      teams: new Map([
+        ['team1', { baseUrl: 'http://localhost:8080', token: 'tok', user: { id: 'u1', username: 'tester', display_name: 'Tester' }, teamInfo: {} }],
+      ]),
+    });
+
+    // Make sync:init succeed so dataLoaded is populated
+    vi.mocked(ws.isConnected).mockReturnValue(true);
+    vi.mocked(ws.request).mockResolvedValue({ channels: [], team: { id: 'team1', name: 'T' }, members: [], roles: [], presences: {} });
+
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true });
+
+    render(<AppLayout />);
+    await waitFor(() => {
+      expect(ws.request).toHaveBeenCalled();
+    });
+  });
+
+  it('re-initializes crypto from persisted derivedKey', async () => {
+    const { fromBase64 } = await import('../services/cryptoCore');
+    const { unlockWithPrf } = await import('../services/keyStore');
+    const { initCrypto } = await import('../services/crypto');
+
+    useAuthStore.setState({
+      derivedKey: 'test-derived-key',
+      teams: new Map([
+        ['team1', { baseUrl: 'http://localhost:8080', token: 'tok', user: { id: 'u1', username: 'tester', display_name: 'Tester' }, teamInfo: {} }],
+      ]),
+    });
+
+    render(<AppLayout />);
+    await waitFor(() => {
+      expect(fromBase64).toHaveBeenCalledWith('test-derived-key');
+    });
+  });
+
+  it('shows group DM toggle members button and toggles it', async () => {
+    useTeamStore.setState({ activeChannelId: '' });
+    useDMStore.setState({
+      activeDMId: 'dm-grp2', setActiveDM: vi.fn(),
+      dmChannels: { team1: [{
+        id: 'dm-grp2',
+        members: [
+          { user_id: 'u1', username: 'tester', display_name: 'Tester' },
+          { user_id: 'u2', username: 'bob', display_name: 'Bob' },
+        ],
+        is_group: true, created_at: '', last_message_at: null,
+      }] },
+    });
+    render(<AppLayout />);
+    await waitFor(() => {
+      expect(screen.getByTestId('dm-view')).toBeInTheDocument();
+    });
+    // Find toggle member list button in DM header
+    const toggleBtns = screen.getAllByTitle('Toggle Member List');
+    if (toggleBtns.length > 0) {
+      fireEvent.click(toggleBtns[0]);
+    }
+  });
+
+  it('shows lock icon on DM header when derivedKey is set', async () => {
+    useAuthStore.setState({
+      derivedKey: 'some-key',
+      teams: new Map([
+        ['team1', { baseUrl: 'http://localhost:8080', token: 'tok', user: { id: 'u1', username: 'tester', display_name: 'Tester' }, teamInfo: {} }],
+      ]),
+    });
+    useTeamStore.setState({ activeChannelId: '' });
+    useDMStore.setState({
+      activeDMId: 'dm-lock', setActiveDM: vi.fn(),
+      dmChannels: { team1: [{
+        id: 'dm-lock',
+        members: [
+          { user_id: 'u1', username: 'tester', display_name: 'Tester' },
+          { user_id: 'u2', username: 'bob', display_name: 'Bob' },
+        ],
+        is_group: false, created_at: '', last_message_at: null,
+      }] },
+    });
+    render(<AppLayout />);
+    await waitFor(() => {
+      expect(screen.getByTestId('Lock')).toBeInTheDocument();
+    });
+  });
+
+  it('shows group DM name from members when no name set', async () => {
+    useTeamStore.setState({ activeChannelId: '' });
+    useDMStore.setState({
+      activeDMId: 'dm-grp3', setActiveDM: vi.fn(),
+      dmChannels: { team1: [{
+        id: 'dm-grp3',
+        members: [
+          { user_id: 'u1', username: 'tester', display_name: 'Tester' },
+          { user_id: 'u2', username: 'bob', display_name: 'Bob' },
+          { user_id: 'u3', username: 'charlie', display_name: 'Charlie' },
+        ],
+        is_group: true, created_at: '', last_message_at: null,
+      }] },
+    });
+    render(<AppLayout />);
+    await waitFor(() => {
+      // Group DM shows member names joined
+      expect(screen.getByText('Tester, Bob, Charlie')).toBeInTheDocument();
+    });
+  });
+
+  it('shows group DM member count', async () => {
+    useTeamStore.setState({ activeChannelId: '' });
+    useDMStore.setState({
+      activeDMId: 'dm-grp4', setActiveDM: vi.fn(),
+      dmChannels: { team1: [{
+        id: 'dm-grp4',
+        members: [
+          { user_id: 'u1', username: 'tester', display_name: 'Tester' },
+          { user_id: 'u2', username: 'bob', display_name: 'Bob' },
+          { user_id: 'u3', username: 'charlie', display_name: 'Charlie' },
+        ],
+        is_group: true, created_at: '', last_message_at: null,
+      }] },
+    });
+    render(<AppLayout />);
+    await waitFor(() => {
+      // The t() mock returns the key, so look for the translated key
+      expect(screen.getByText(/members/i)).toBeInTheDocument();
+    });
+  });
+
+  it('shows 1:1 DM fallback name when no other member', async () => {
+    useTeamStore.setState({ activeChannelId: '' });
+    useDMStore.setState({
+      activeDMId: 'dm-solo', setActiveDM: vi.fn(),
+      dmChannels: { team1: [{
+        id: 'dm-solo',
+        members: [{ user_id: 'u1', username: 'tester', display_name: 'Tester' }],
+        is_group: false, created_at: '', last_message_at: null,
+      }] },
+    });
+    render(<AppLayout />);
+    await waitFor(() => {
+      expect(screen.getByText('Direct Message')).toBeInTheDocument();
+    });
+  });
+
+  it('handles WS connection with https URL', async () => {
+    vi.mocked(api.getConnectionInfo).mockReturnValue({ baseUrl: 'https://example.com', token: 'tok' });
+    render(<AppLayout />);
+    await waitFor(() => {
+      expect(ws.connect).toHaveBeenCalledWith('team1', 'wss://example.com/ws', 'tok');
+    });
+  });
+
+  it('syncs own presence from sync:init presences', async () => {
+    vi.mocked(ws.isConnected).mockReturnValue(true);
+    vi.mocked(ws.request).mockResolvedValue({
+      channels: [],
+      team: { id: 'team1', name: 'Test Team' },
+      members: [],
+      roles: [],
+      presences: { 'u1': { status: 'online', custom_status: 'Working' } },
+    });
+    render(<AppLayout />);
+    await waitFor(() => {
+      expect(ws.request).toHaveBeenCalled();
+    });
+  });
+
+  it('REST fallback calls getPresences and syncs own status', async () => {
+    vi.mocked(ws.request).mockRejectedValue(new Error('sync failed'));
+    vi.mocked(ws.isConnected).mockReturnValue(true);
+    vi.mocked(api.getPresences).mockResolvedValue({
+      u1: { user_id: 'u1', status: 'online', custom_status: 'hi', last_active: '' },
+    });
+    render(<AppLayout />);
+    await waitFor(() => {
+      expect(api.getPresences).toHaveBeenCalledWith('team1');
+    });
+  });
 });

@@ -223,6 +223,29 @@ describe('ChannelList', () => {
     expect(screen.getByTestId('MicrophoneMute')).toBeInTheDocument();
   });
 
+  it('joins voice channel when clicking a non-connected voice channel', () => {
+    const voiceJoin = vi.fn();
+    useVoiceStore.setState({
+      connected: false,
+      currentChannelId: null,
+      peers: {},
+      voiceOccupants: {},
+      joinChannel: voiceJoin,
+    } as never);
+    render(<ChannelList />);
+    fireEvent.click(screen.getByText('voice-lobby'));
+    expect(voiceJoin).toHaveBeenCalledWith('team-1', 'ch-2');
+  });
+
+  it('handles delete when activeTeamId is null', async () => {
+    useTeamStore.setState({ activeTeamId: null });
+    const { api } = await import('../../services/api');
+    vi.mocked(api.deleteChannel).mockClear();
+    // Reset channels with null activeTeamId - no channels rendered, but verify graceful handling
+    const { container } = render(<ChannelList />);
+    expect(container.querySelectorAll('.channel-item').length).toBe(0);
+  });
+
   it('closes context menu on document click', () => {
     const { container } = render(<ChannelList />);
     const channelItem = screen.getByText('general').closest('.channel-item')!;

@@ -968,6 +968,80 @@ describe('ApiService', () => {
     });
   });
 
+  // ── generateJoinToken ─────────────────────────────────────────────────
+
+  describe('generateJoinToken', () => {
+    it('posts to join-token endpoint', async () => {
+      api.addTeam('t-jt', 'https://jt.io');
+      api.setToken('t-jt', 'tok');
+      global.fetch = mockFetchResponse({ token: 'abc', join_command: 'dilla join abc' });
+
+      const result = await api.generateJoinToken('t-jt');
+      expect(result.token).toBe('abc');
+      expect(result.join_command).toBe('dilla join abc');
+      const { url, init } = lastFetchCall();
+      expect(url).toBe('https://jt.io/api/v1/federation/join-token');
+      expect(init.method).toBe('POST');
+    });
+  });
+
+  // ── getDMChannels ───────────────────────────────────────────────────
+
+  describe('getDMChannels', () => {
+    it('unwraps channels array', async () => {
+      api.addTeam('t-gdmc', 'https://gdmc.io');
+      api.setToken('t-gdmc', 'tok');
+      global.fetch = mockFetchResponse({ channels: [{ id: 'dm1' }, { id: 'dm2' }] });
+
+      const result = await api.getDMChannels('t-gdmc');
+      expect(result).toEqual([{ id: 'dm1' }, { id: 'dm2' }]);
+    });
+  });
+
+  // ── Prekey bundles ──────────────────────────────────────────────────
+
+  describe('uploadPrekeyBundle', () => {
+    it('posts bundle to prekeys endpoint', async () => {
+      api.addTeam('t-upk', 'https://upk.io');
+      api.setToken('t-upk', 'tok');
+      global.fetch = mockFetchResponse({});
+
+      await api.uploadPrekeyBundle('t-upk', {
+        identity_key: 'ik',
+        signed_prekey: 'spk',
+        signed_prekey_signature: 'sig',
+        one_time_prekeys: ['otk1', 'otk2'],
+      });
+
+      const { url, init } = lastFetchCall();
+      // uploadPrekeyBundle passes teamId directly as baseUrl
+      expect(url).toBe('t-upk/api/v1/prekeys');
+      expect(init.method).toBe('POST');
+      const body = JSON.parse(init.body as string);
+      expect(body.identity_key).toBe('ik');
+      expect(body.one_time_prekeys).toEqual(['otk1', 'otk2']);
+    });
+  });
+
+  describe('getPrekeyBundle', () => {
+    it('fetches prekey bundle for user', async () => {
+      api.addTeam('t-gpk', 'https://gpk.io');
+      api.setToken('t-gpk', 'tok');
+      global.fetch = mockFetchResponse({
+        identity_key: 'ik',
+        signed_prekey: 'spk',
+        signed_prekey_signature: 'sig',
+        one_time_prekeys: ['otk1'],
+      });
+
+      const result = await api.getPrekeyBundle('t-gpk', 'user-1');
+      expect(result.identity_key).toBe('ik');
+      const { url } = lastFetchCall();
+      // getPrekeyBundle passes teamId directly as baseUrl
+      expect(url).toBe('t-gpk/api/v1/prekeys/user-1');
+    });
+  });
+
   // ── federation peers ────────────────────────────────────────────────────
 
   describe('getFederationPeers', () => {

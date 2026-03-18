@@ -39,7 +39,13 @@ vi.mock('../PresenceIndicator/PresenceIndicator', () => ({
 }));
 
 vi.mock('../StatusPicker/StatusPicker', () => ({
-  default: () => <div data-testid="status-picker" />,
+  default: ({ onStatusChange, onCustomStatusChange, onClose }: { onStatusChange: (s: string) => void; onCustomStatusChange: (s: string) => void; onClose: () => void }) => (
+    <div data-testid="status-picker">
+      <button data-testid="set-away" onClick={() => onStatusChange('away')}>Set Away</button>
+      <button data-testid="set-custom" onClick={() => onCustomStatusChange('Busy')}>Set Custom</button>
+      <button data-testid="close-picker" onClick={onClose}>Close</button>
+    </div>
+  ),
 }));
 
 describe('UserPanel', () => {
@@ -259,5 +265,41 @@ describe('UserPanel', () => {
     // Mute, Deafen, Settings
     const buttons = document.querySelectorAll('.user-panel-btn');
     expect(buttons.length).toBe(3);
+  });
+
+  it('handleStatusChange updates presence via WS', async () => {
+    const { ws } = await import('../../services/websocket');
+    vi.mocked(ws.updatePresence).mockClear();
+    render(<UserPanel username="alice" />);
+    const avatar = document.querySelector('.user-panel-avatar')!;
+    fireEvent.click(avatar);
+    fireEvent.click(screen.getByTestId('set-away'));
+    expect(ws.updatePresence).toHaveBeenCalledWith('team-1', 'away', undefined);
+  });
+
+  it('handleCustomStatusChange updates presence via WS', async () => {
+    const { ws } = await import('../../services/websocket');
+    vi.mocked(ws.updatePresence).mockClear();
+    render(<UserPanel username="alice" />);
+    const info = document.querySelector('.user-panel-info')!;
+    fireEvent.click(info);
+    fireEvent.click(screen.getByTestId('set-custom'));
+    expect(ws.updatePresence).toHaveBeenCalledWith('team-1', 'online', 'Busy');
+  });
+
+  it('closes status picker via onClose', () => {
+    render(<UserPanel username="alice" />);
+    const avatar = document.querySelector('.user-panel-avatar')!;
+    fireEvent.click(avatar);
+    expect(screen.getByTestId('status-picker')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('close-picker'));
+    expect(screen.queryByTestId('status-picker')).not.toBeInTheDocument();
+  });
+
+  it('renders without activeTeamId and currentUserId empty', () => {
+    useTeamStore.setState({ activeTeamId: null });
+    useAuthStore.setState({ teams: new Map() } as never);
+    render(<UserPanel username="alice" />);
+    expect(screen.getByText('alice')).toBeInTheDocument();
   });
 });

@@ -345,4 +345,149 @@ describe('DMView', () => {
     // With null activeTeamId, handleSend returns early
     expect(ws.sendDMMessage).not.toHaveBeenCalled();
   });
+
+  it('encrypts DM messages when derivedKey is set', async () => {
+    useAuthStore.setState({ derivedKey: 'test-key' } as never);
+    const { ws } = await import('../../services/websocket');
+    const { cryptoService } = await import('../../services/crypto');
+    vi.mocked(cryptoService.encryptDM).mockResolvedValueOnce('encrypted-text');
+    render(<DMView dm={makeDM()} currentUserId="user-1" />);
+    fireEvent.click(screen.getByTestId('send-btn'));
+    await vi.waitFor(() => {
+      expect(cryptoService.encryptDM).toHaveBeenCalled();
+    });
+  });
+
+  it('falls back to plaintext when encryption fails', async () => {
+    useAuthStore.setState({ derivedKey: 'test-key' } as never);
+    const { ws } = await import('../../services/websocket');
+    const { cryptoService } = await import('../../services/crypto');
+    vi.mocked(cryptoService.encryptDM).mockRejectedValueOnce(new Error('encrypt failed'));
+    render(<DMView dm={makeDM()} currentUserId="user-1" />);
+    fireEvent.click(screen.getByTestId('send-btn'));
+    await vi.waitFor(() => {
+      expect(ws.sendDMMessage).toHaveBeenCalledWith('team-1', 'dm-1', 'test message');
+    });
+  });
+
+  it('decrypts DM messages with derivedKey during load', async () => {
+    useAuthStore.setState({ derivedKey: 'test-key' } as never);
+    const { ws } = await import('../../services/websocket');
+    const { cryptoService } = await import('../../services/crypto');
+    vi.mocked(ws.isConnected).mockReturnValue(false);
+    const { api } = await import('../../services/api');
+    vi.mocked(api.getDMMessages).mockResolvedValueOnce([
+      {
+        id: 'dm-msg-enc', channel_id: 'dm-1', dm_id: 'dm-1', author_id: 'user-2',
+        username: 'bob', content: 'encrypted', type: 'text', thread_id: null,
+        edited_at: null, deleted: false, created_at: '2025-01-01T00:00:00Z', reactions: [],
+      },
+    ]);
+    vi.mocked(cryptoService.decryptDM).mockResolvedValueOnce('decrypted');
+
+    render(<DMView dm={makeDM()} currentUserId="user-1" />);
+    await vi.waitFor(() => {
+      expect(cryptoService.decryptDM).toHaveBeenCalled();
+    });
+  });
+
+  it('handles load more via WS when connected', async () => {
+    const { ws } = await import('../../services/websocket');
+    vi.mocked(ws.isConnected).mockReturnValue(true);
+    vi.mocked(ws.request).mockResolvedValueOnce([]);
+    useMessageStore.setState({
+      messages: new Map([['dm-1', [{ id: 'old-msg', channelId: 'dm-1', authorId: 'user-2', username: 'bob', content: 'old', encryptedContent: '', type: 'text', threadId: null, editedAt: null, deleted: false, createdAt: '2025-01-01T00:00:00Z', reactions: [] }]]]),
+      typing: new Map(),
+      loadingHistory: new Map([['dm-1', false]]),
+      hasMore: new Map([['dm-1', true]]),
+    });
+    render(<DMView dm={makeDM()} currentUserId="user-1" />);
+    fireEvent.click(screen.getByTestId('load-more'));
+    await vi.waitFor(() => {
+      expect(ws.request).toHaveBeenCalledWith('team-1', 'dms:messages', expect.objectContaining({ dm_id: 'dm-1' }));
+    });
+  });
+
+  it('does not load more when activeTeamId is null', async () => {
+    useTeamStore.setState({ activeTeamId: null as unknown as string });
+    const { ws } = await import('../../services/websocket');
+    vi.mocked(ws.request).mockClear();
+    useMessageStore.setState({
+      messages: new Map(),
+      typing: new Map(),
+      loadingHistory: new Map([['dm-1', false]]),
+      hasMore: new Map([['dm-1', true]]),
+    });
+    render(<DMView dm={makeDM()} currentUserId="user-1" />);
+    fireEvent.click(screen.getByTestId('load-more'));
+    expect(ws.request).not.toHaveBeenCalled();
+  });
+
+  it('does not edit when activeTeamId is null', async () => {
+    useTeamStore.setState({ activeTeamId: null as unknown as string });
+    const { ws } = await import('../../services/websocket');
+    vi.mocked(ws.editDMMessage).mockClear();
+    render(<DMView dm={makeDM()} currentUserId="user-1" />);
+    fireEvent.click(screen.getByTestId('edit-msg'));
+    fireEvent.click(screen.getByTestId('edit-btn'));
+    expect(ws.editDMMessage).not.toHaveBeenCalled();
+  });
+
+  it('does not delete when activeTeamId is null', async () => {
+    useTeamStore.setState({ activeTeamId: null as unknown as string });
+    const { ws } = await import('../../services/websocket');
+    vi.mocked(ws.deleteDMMessage).mockClear();
+    render(<DMView dm={makeDM()} currentUserId="user-1" />);
+    fireEvent.click(screen.getByTestId('delete-msg'));
+    expect(ws.deleteDMMessage).not.toHaveBeenCalled();
+  });
+
+  it('does not type when activeTeamId is null', async () => {
+    useTeamStore.setState({ activeTeamId: null as unknown as string });
+    const { ws } = await import('../../services/websocket');
+    vi.mocked(ws.startDMTyping).mockClear();
+    render(<DMView dm={makeDM()} currentUserId="user-1" />);
+    fireEvent.click(screen.getByTestId('typing-btn'));
+    expect(ws.startDMTyping).not.toHaveBeenCalled();
+  });
+
+  it('ignores dm:message:updated for other DMs', async () => {
+    const { ws } = await import('../../services/websocket');
+    render(<DMView dm={makeDM()} currentUserId="user-1" />);
+    const calls = vi.mocked(ws.on).mock.calls;
+    const editHandler = calls.find(c => c[0] === 'dm:message:updated');
+    if (editHandler) {
+      await (editHandler[1] as Function)({
+        dm_id: 'other-dm', message_id: 'msg-x', content: 'edited', author_id: 'user-3', username: 'charlie',
+      });
+    }
+  });
+
+  it('ignores dm:message:deleted for other DMs', async () => {
+    const { ws } = await import('../../services/websocket');
+    render(<DMView dm={makeDM()} currentUserId="user-1" />);
+    const calls = vi.mocked(ws.on).mock.calls;
+    const deleteHandler = calls.find(c => c[0] === 'dm:message:deleted');
+    if (deleteHandler) {
+      (deleteHandler[1] as Function)({ dm_id: 'other-dm', message_id: 'msg-x' });
+    }
+  });
+
+  it('ignores dm:typing:indicator for other DMs', async () => {
+    const { ws } = await import('../../services/websocket');
+    render(<DMView dm={makeDM()} currentUserId="user-1" />);
+    const calls = vi.mocked(ws.on).mock.calls;
+    const typingHandler = calls.find(c => c[0] === 'dm:typing:indicator');
+    if (typingHandler) {
+      (typingHandler[1] as Function)({ dm_id: 'other-dm', user_id: 'user-3', username: 'charlie' });
+    }
+  });
+
+  it('shows Unknown when no other member found', () => {
+    const dm = makeDM({
+      members: [{ user_id: 'user-1', username: 'alice', display_name: 'Alice' }],
+    });
+    render(<DMView dm={dm} currentUserId="user-1" />);
+    expect(screen.getByTestId('message-input')).toHaveAttribute('data-channel-name', 'Unknown');
+  });
 });

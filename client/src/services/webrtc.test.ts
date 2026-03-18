@@ -1038,6 +1038,63 @@ describe('WebRTCService', () => {
       webrtcService.startVAD();
       webrtcService.stopVAD();
     });
+
+    it('VAD timer detects speaking and updates local level', async () => {
+      vi.useFakeTimers();
+      await webrtcService.connect('ch-1', 'team-1');
+
+      // Add self as a peer so updateLocalLevel finds the peer
+      useVoiceStore.getState().addPeer({
+        user_id: 'user-1',
+        username: 'testuser',
+        muted: false,
+        deafened: false,
+        speaking: false,
+        voiceLevel: 0,
+      });
+
+      webrtcService.startVAD();
+
+      // Advance timer to trigger the VAD interval callback
+      // The mock analyser getByteFrequencyData fills with 0, so avg=0, level=0, isSpeaking=false
+      vi.advanceTimersByTime(150);
+
+      // updateLocalLevel should have been called (peer exists for user-1)
+      expect(useVoiceStore.getState().peers['user-1'].voiceLevel).toBe(0);
+
+      webrtcService.stopVAD();
+      vi.useRealTimers();
+    });
+
+    it('VAD timer detects speaking transition', async () => {
+      vi.useFakeTimers();
+      await webrtcService.connect('ch-1', 'team-1');
+
+      useVoiceStore.getState().addPeer({
+        user_id: 'user-1',
+        username: 'testuser',
+        muted: false,
+        deafened: false,
+        speaking: false,
+        voiceLevel: 0,
+      });
+
+      // Override the analyser mock to simulate loud audio
+      const mockCtx = new EnhancedMockAudioContext();
+      const fakeAnalyser = mockCtx.createAnalyser();
+      // Make getByteFrequencyData fill array with high values
+      fakeAnalyser.getByteFrequencyData.mockImplementation((arr: Uint8Array) => {
+        for (let i = 0; i < arr.length; i++) arr[i] = 200;
+      });
+
+      webrtcService.startVAD();
+
+      // Advance timer
+      vi.advanceTimersByTime(150);
+
+      webrtcService.stopVAD();
+      vi.useRealTimers();
+    });
   });
 
   describe('screen sharing edge cases', () => {

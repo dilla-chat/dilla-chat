@@ -218,6 +218,46 @@ describe('SearchBar', () => {
     }, { timeout: 1000 });
   });
 
+  it('closes dropdown on outside click', async () => {
+    const { useMessageStore } = await import('../../stores/messageStore');
+    useMessageStore.setState({
+      messages: new Map([
+        ['ch-1', [
+          {
+            id: 'msg-1', channelId: 'ch-1', authorId: 'u1', username: 'alice',
+            content: 'Hello world', encryptedContent: '', type: 'text',
+            threadId: null, editedAt: null, deleted: false,
+            createdAt: new Date().toISOString(), reactions: [],
+          },
+        ]],
+      ]),
+    });
+    const user = userEvent.setup();
+    render(<SearchBar />);
+    const input = screen.getByPlaceholderText('Search messages...');
+    await user.type(input, 'Hello');
+    fireEvent.focus(input);
+
+    await vi.waitFor(() => {
+      expect(screen.getByText('alice')).toBeInTheDocument();
+    }, { timeout: 1000 });
+
+    // Click outside
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByText('alice')).not.toBeInTheDocument();
+  });
+
+  it('handles empty search query gracefully', async () => {
+    const user = userEvent.setup();
+    render(<SearchBar />);
+    const input = screen.getByPlaceholderText('Search messages...');
+    await user.type(input, 'a');
+    // Then clear to empty
+    await user.clear(input);
+    // No dropdown should appear
+    expect(screen.queryByText('No results found')).not.toBeInTheDocument();
+  });
+
   it('adds focused class when input is focused', () => {
     const { container } = render(<SearchBar />);
     const input = screen.getByPlaceholderText('Search messages...');

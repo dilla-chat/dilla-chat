@@ -358,4 +358,108 @@ describe('MessageInput', () => {
     fireEvent.keyDown(textarea, { key: 'x', ctrlKey: true, shiftKey: true });
     expect(textarea).toHaveValue('~~strikethrough~~');
   });
+
+  it('displays file size in KB format', () => {
+    const file = new File(['x'.repeat(2048)], 'medium.txt', { type: 'text/plain' });
+    Object.defineProperty(file, 'size', { value: 2048 });
+    render(<MessageInput {...defaultProps} />);
+    const wrapper = document.querySelector('.message-input-wrapper')!;
+    fireEvent.drop(wrapper, { dataTransfer: { files: [file] } });
+    expect(screen.getByText('2.0 KB')).toBeInTheDocument();
+  });
+
+  it('displays file size in MB format', () => {
+    const file = new File(['x'], 'large.bin', { type: 'application/octet-stream' });
+    Object.defineProperty(file, 'size', { value: 2 * 1024 * 1024 });
+    render(<MessageInput {...defaultProps} />);
+    const wrapper = document.querySelector('.message-input-wrapper')!;
+    fireEvent.drop(wrapper, { dataTransfer: { files: [file] } });
+    expect(screen.getByText('2.0 MB')).toBeInTheDocument();
+  });
+
+  it('adds files via file input change handler', () => {
+    render(<MessageInput {...defaultProps} />);
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(['data'], 'input-file.txt', { type: 'text/plain' });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+    expect(screen.getByText('input-file.txt')).toBeInTheDocument();
+  });
+
+  it('shows image preview for image files', () => {
+    const file = new File(['img'], 'photo.png', { type: 'image/png' });
+    render(<MessageInput {...defaultProps} />);
+    const wrapper = document.querySelector('.message-input-wrapper')!;
+    fireEvent.drop(wrapper, { dataTransfer: { files: [file] } });
+    const img = document.querySelector('.file-preview-thumb');
+    expect(img).toBeInTheDocument();
+  });
+
+  it('shows page icon for non-image files', () => {
+    const file = new File(['data'], 'doc.pdf', { type: 'application/pdf' });
+    render(<MessageInput {...defaultProps} />);
+    const wrapper = document.querySelector('.message-input-wrapper')!;
+    fireEvent.drop(wrapper, { dataTransfer: { files: [file] } });
+    expect(screen.getByTestId('page')).toBeInTheDocument();
+  });
+
+  it('handles paste with image files', () => {
+    render(<MessageInput {...defaultProps} />);
+    const textarea = getTextarea();
+    const file = new File(['img'], 'pasted.png', { type: 'image/png' });
+    const clipboardData = {
+      items: [{ type: 'image/png', getAsFile: () => file }],
+    };
+    fireEvent.paste(textarea, { clipboardData });
+    expect(screen.getByText('pasted.png')).toBeInTheDocument();
+  });
+
+  it('ignores paste without image files', () => {
+    render(<MessageInput {...defaultProps} />);
+    const textarea = getTextarea();
+    const clipboardData = {
+      items: [{ type: 'text/plain', getAsFile: () => null }],
+    };
+    fireEvent.paste(textarea, { clipboardData });
+    // No file previews should appear
+    expect(document.querySelector('.message-input-file-previews')).not.toBeInTheDocument();
+  });
+
+  it('shows drag overlay when dragging files', () => {
+    render(<MessageInput {...defaultProps} />);
+    const wrapper = document.querySelector('.message-input-wrapper')!;
+    fireEvent.dragOver(wrapper);
+    expect(screen.getByText('Drop files here to upload')).toBeInTheDocument();
+  });
+
+  it('does not drop when no files in dataTransfer', () => {
+    render(<MessageInput {...defaultProps} />);
+    const wrapper = document.querySelector('.message-input-wrapper')!;
+    fireEvent.drop(wrapper, { dataTransfer: { files: [] } });
+    expect(document.querySelector('.message-input-file-previews')).not.toBeInTheDocument();
+  });
+
+  it('send button enabled when files are pending even without text', () => {
+    const file = new File(['data'], 'test.txt', { type: 'text/plain' });
+    render(<MessageInput {...defaultProps} />);
+    const wrapper = document.querySelector('.message-input-wrapper')!;
+    fireEvent.drop(wrapper, { dataTransfer: { files: [file] } });
+    expect(screen.getByTitle('Send Message')).not.toBeDisabled();
+  });
+
+  it('sends files without text when onUploadFile is provided', async () => {
+    const mockAttachment = { id: 'att-1', message_id: 'msg-1', filename: 'test.txt', content_type: 'text/plain', size: 4, url: '/test.txt' };
+    const onUploadFile = vi.fn().mockResolvedValue(mockAttachment);
+    const onSend = vi.fn();
+    render(<MessageInput {...defaultProps} onSend={onSend} onUploadFile={onUploadFile} />);
+
+    const file = new File(['data'], 'test.txt', { type: 'text/plain' });
+    const wrapper = document.querySelector('.message-input-wrapper')!;
+    fireEvent.drop(wrapper, { dataTransfer: { files: [file] } });
+
+    fireEvent.click(screen.getByTitle('Send Message'));
+
+    await vi.waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith('', [mockAttachment]);
+    });
+  });
 });

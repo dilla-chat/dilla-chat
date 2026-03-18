@@ -114,6 +114,20 @@ describe('FilePreview', () => {
     expect(screen.getByText('document.pdf')).toBeInTheDocument();
   });
 
+  it('closes lightbox when clicking on it', () => {
+    render(<FilePreview attachments={[imageAttachment]} teamId="team-1" />);
+    fireEvent.click(screen.getByAltText('photo.png'));
+    // Lightbox should be open
+    const images = screen.getAllByAltText('photo.png');
+    expect(images.length).toBe(2);
+    // Click the lightbox overlay to close
+    const lightbox = document.querySelector('.file-preview-lightbox')!;
+    fireEvent.click(lightbox);
+    // Should be back to just one image
+    const imagesAfter = screen.getAllByAltText('photo.png');
+    expect(imagesAfter.length).toBe(1);
+  });
+
   it('formats file sizes correctly', () => {
     const smallFile: Attachment = { ...fileAttachment, id: 'small', size: 500 };
     const mediumFile: Attachment = { ...fileAttachment, id: 'medium', size: 1536, filename: 'medium.pdf' };

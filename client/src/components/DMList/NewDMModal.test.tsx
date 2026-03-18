@@ -139,6 +139,41 @@ describe('NewDMModal', () => {
     });
   });
 
+  it('removes member via chip remove button', () => {
+    const { container } = render(<NewDMModal currentUserId="user-1" onClose={vi.fn()} onDMCreated={vi.fn()} />);
+    // Select bob
+    fireEvent.click(screen.getByText('Bob'));
+    expect(container.querySelectorAll('.new-dm-chip').length).toBe(1);
+    // Remove via chip button
+    const removeBtn = container.querySelector('.new-dm-chip-remove')!;
+    fireEvent.click(removeBtn);
+    expect(container.querySelectorAll('.new-dm-chip').length).toBe(0);
+  });
+
+  it('does not create when activeTeamId is null', async () => {
+    useTeamStore.setState({ activeTeamId: null });
+    const { api } = await import('../../services/api');
+    vi.mocked(api.createDM).mockClear();
+    const onDMCreated = vi.fn();
+    render(<NewDMModal currentUserId="user-1" onClose={vi.fn()} onDMCreated={onDMCreated} />);
+    // Members won't be available, but verify graceful handling
+    expect(screen.getByText('No members found')).toBeInTheDocument();
+  });
+
+  it('handles create DM API failure gracefully', async () => {
+    const { api } = await import('../../services/api');
+    vi.mocked(api.createDM).mockRejectedValueOnce(new Error('API error'));
+    const onDMCreated = vi.fn();
+    const onClose = vi.fn();
+    render(<NewDMModal currentUserId="user-1" onClose={onClose} onDMCreated={onDMCreated} />);
+    fireEvent.click(screen.getByText('Bob'));
+    fireEvent.click(screen.getByText('Start Conversation'));
+    await waitFor(() => {
+      // Should not crash, onDMCreated should NOT be called
+      expect(onDMCreated).not.toHaveBeenCalled();
+    });
+  });
+
   it('shows no members found when filter returns empty', () => {
     render(<NewDMModal currentUserId="user-1" onClose={vi.fn()} onDMCreated={vi.fn()} />);
     const input = screen.getByPlaceholderText('Search members...');

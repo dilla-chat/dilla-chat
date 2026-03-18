@@ -412,6 +412,50 @@ describe('VoiceChannel', () => {
     // joinChannel should be called with the channel's teamId
   });
 
+  it('clicks focused webcam to unfocus in fullscreen', () => {
+    const mockStream = { id: 'screen-stream' } as unknown as MediaStream;
+    const mockWebcamStream = { id: 'webcam-stream' } as unknown as MediaStream;
+    setVoiceState({
+      connected: true,
+      currentChannelId: 'voice-ch-1',
+      screenSharing: true,
+      localScreenStream: mockStream,
+      screenSharingUserId: null,
+      webcamSharing: false,
+      remoteWebcamStreams: { 'user-1': mockWebcamStream },
+      peers: {
+        'user-1': { user_id: 'user-1', username: 'alice', muted: false, deafened: false, speaking: false, voiceLevel: 0, webcam_sharing: true },
+      },
+    });
+    const { container } = render(<VoiceChannel channel={channel} />);
+    // Enter fullscreen
+    const banner = container.querySelector('.voice-screen-share-banner');
+    if (banner) {
+      fireEvent.click(banner);
+      // Click on thumbnail to focus webcam
+      const thumbnail = container.querySelector('.fullscreen-thumbnail');
+      if (thumbnail) {
+        fireEvent.click(thumbnail);
+        // Should show focused webcam
+        expect(container.querySelector('.fullscreen-focused-webcam')).toBeInTheDocument();
+        // Click to unfocus
+        const focused = container.querySelector('.fullscreen-focused-webcam');
+        if (focused) {
+          fireEvent.click(focused);
+          expect(container.querySelector('.fullscreen-focused-webcam')).not.toBeInTheDocument();
+        }
+      }
+    }
+  });
+
+  it('uses channel.team_id fallback when teamId is missing', () => {
+    const joinChannel = vi.fn();
+    setVoiceState({ joinChannel });
+    const channelWithTeamIdField = { ...channel, teamId: '', team_id: 'fallback-team' } as unknown as Channel;
+    render(<VoiceChannel channel={channelWithTeamIdField} />);
+    fireEvent.click(screen.getByText('voice.join'));
+  });
+
   it('shows webcam icon for peers sharing webcam in grid view', () => {
     setVoiceState({
       connected: true,

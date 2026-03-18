@@ -686,4 +686,56 @@ describe('UserSettings', () => {
     fireEvent.click(screen.getByTestId('nav-voice-video'));
     expect(screen.getByText(/Hold a key to transmit/)).toBeInTheDocument();
   });
+
+  it('shows language selector in language tab', () => {
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-language'));
+    expect(screen.getByText('Select Language')).toBeInTheDocument();
+  });
+
+  it('keyCodeToLabel converts KeyX to X', () => {
+    useAudioSettingsStore.setState({ inputProfile: 'custom', pushToTalk: true, pushToTalkKey: 'KeyA' });
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    expect(screen.getByText('A')).toBeInTheDocument();
+  });
+
+  it('keyCodeToLabel converts DigitX to X', () => {
+    useAudioSettingsStore.setState({ inputProfile: 'custom', pushToTalk: true, pushToTalkKey: 'Digit5' });
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    expect(screen.getByText('5')).toBeInTheDocument();
+  });
+
+  it('keyCodeToLabel handles camelCase codes', () => {
+    useAudioSettingsStore.setState({ inputProfile: 'custom', pushToTalk: true, pushToTalkKey: 'ShiftLeft' });
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    expect(screen.getByText('Shift Left')).toBeInTheDocument();
+  });
+
+  it('does not save display name when baseUrl or token is missing', async () => {
+    const { api } = await import('../services/api');
+    useAuthStore.setState({
+      teams: new Map([
+        ['team1', { baseUrl: '', token: null, user: { id: 'u1', username: 'testuser', display_name: 'Test User' }, teamInfo: {} }],
+      ]),
+    });
+    render(<UserSettings />);
+    fireEvent.click(screen.getByText('Edit'));
+    const input = screen.getByDisplayValue('Test User');
+    fireEvent.change(input, { target: { value: 'New Name' } });
+    fireEvent.blur(input);
+    expect(api.updateMe).not.toHaveBeenCalled();
+  });
+
+  it('shows username as display name when display name is empty', () => {
+    useAuthStore.setState({
+      teams: new Map([
+        ['team1', { baseUrl: 'http://localhost:8080', token: 'tok', user: { id: 'u1', username: 'testuser', display_name: '' }, teamInfo: {} }],
+      ]),
+    });
+    render(<UserSettings />);
+    expect(screen.getByText('testuser')).toBeInTheDocument();
+  });
 });

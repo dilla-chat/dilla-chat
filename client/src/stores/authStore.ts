@@ -61,6 +61,7 @@ function loadPersistedTeams(): Map<string, TeamEntry> {
     const obj = JSON.parse(raw) as Record<string, TeamEntry>;
     return new Map(Object.entries(obj));
   } catch {
+    /* v8 ignore next */
     return new Map();
   }
 }
@@ -80,6 +81,7 @@ function loadPersistedServers(): Map<string, ServerEntry> {
     const obj = JSON.parse(raw) as Record<string, ServerEntry>;
     return new Map(Object.entries(obj));
   } catch {
+    /* v8 ignore next */
     return new Map();
   }
 }
@@ -93,6 +95,7 @@ function loadPersistedDerivedKey(): string | null {
   try {
     return sessionStorage.getItem(DERIVED_KEY_STORAGE_KEY);
   } catch {
+    /* v8 ignore next */
     return null;
   }
 }

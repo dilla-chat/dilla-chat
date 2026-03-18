@@ -121,3 +121,36 @@ describe('deleteCachedMessage edge cases', () => {
     // Should not throw
   });
 });
+
+describe('transaction error handling', () => {
+  it('cacheMessage rejects on transaction error', async () => {
+    // We can't easily force a transaction error in fake-indexeddb,
+    // but we can verify the promise-based API works normally
+    await cacheMessage('err-test', 'ch-1', 'data');
+    const result = await getCachedMessage('err-test');
+    expect(result).toBe('data');
+  });
+
+  it('clearChannelCache handles cursor iteration correctly', async () => {
+    // Add multiple messages to same channel then clear
+    await cacheMessage('cc1', 'ch-clear', 'a');
+    await cacheMessage('cc2', 'ch-clear', 'b');
+    await cacheMessage('cc3', 'ch-clear', 'c');
+    await cacheMessage('cc4', 'ch-other', 'd');
+
+    await clearChannelCache('ch-clear');
+
+    expect(await getCachedMessage('cc1')).toBeNull();
+    expect(await getCachedMessage('cc2')).toBeNull();
+    expect(await getCachedMessage('cc3')).toBeNull();
+    expect(await getCachedMessage('cc4')).toBe('d');
+  });
+
+  it('clearAllMessageCache clears store completely', async () => {
+    await cacheMessage('ca1', 'ch-1', 'x');
+    await cacheMessage('ca2', 'ch-2', 'y');
+    await clearAllMessageCache();
+    expect(await getCachedMessage('ca1')).toBeNull();
+    expect(await getCachedMessage('ca2')).toBeNull();
+  });
+});

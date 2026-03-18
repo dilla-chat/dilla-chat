@@ -185,6 +185,28 @@ describe('DMList', () => {
     expect(items[0].textContent).toContain('Alice, Bob, Charlie');
   });
 
+  it('renders yesterday timestamp', () => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const dmYesterday = {
+      ...dmChannel,
+      last_message: { content: 'Yesterday msg', createdAt: yesterday.toISOString() },
+    };
+    useDMStore.setState({ dmChannels: { 'team-1': [dmYesterday] } });
+    render(<DMList currentUserId="user-1" onNewDM={vi.fn()} />);
+    expect(screen.getByText('Yesterday')).toBeInTheDocument();
+  });
+
+  it('renders old date timestamp', () => {
+    const dmOld = {
+      ...dmChannel,
+      last_message: { content: 'Old msg', createdAt: '2020-06-15T10:00:00Z' },
+    };
+    useDMStore.setState({ dmChannels: { 'team-1': [dmOld] } });
+    render(<DMList currentUserId="user-1" onNewDM={vi.fn()} />);
+    expect(screen.getByText(/2020/)).toBeInTheDocument();
+  });
+
   it('renders timestamp for today messages', () => {
     const dmToday = {
       ...dmChannel,

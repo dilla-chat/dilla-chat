@@ -408,4 +408,224 @@ describe('JoinTeam', () => {
     expect(displayInput).toHaveValue('stored-name');
     localStorage.removeItem('dilla_username');
   });
+
+  it('redirects to create-identity when no identity exists and no derivedKey', async () => {
+    const { hasIdentity } = await import('../services/keyStore');
+    vi.mocked(hasIdentity).mockResolvedValue(false);
+    useAuthStore.setState({ derivedKey: null, publicKey: null });
+
+    render(<JoinTeam />);
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/create-identity', { replace: true });
+    });
+  });
+
+  it('stores pending invite token in session storage before redirect', async () => {
+    const { hasIdentity } = await import('../services/keyStore');
+    vi.mocked(hasIdentity).mockResolvedValue(false);
+    vi.mocked(useParams).mockReturnValue({ token: 'invite-abc' });
+    useAuthStore.setState({ derivedKey: null, publicKey: null });
+
+    render(<JoinTeam />);
+    await waitFor(() => {
+      expect(sessionStorage.getItem('pendingInviteToken')).toBe('invite-abc');
+    });
+  });
+
+  it('handles join error from registration API', async () => {
+    vi.mocked(api.getInviteInfo).mockResolvedValueOnce({
+      team_name: 'Team',
+      created_by: 'admin',
+    });
+    vi.mocked(api.register).mockRejectedValueOnce(new Error('Registration failed'));
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true });
+
+    render(<JoinTeam />);
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('join.serverAddress'), {
+        target: { value: 'https://example.com' },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('CloudCheck')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('join.inviteToken'), {
+        target: { value: 'token' },
+      });
+      fireEvent.change(screen.getByPlaceholderText('Username'), {
+        target: { value: 'alice' },
+      });
+    });
+
+    fireEvent.click(screen.getByText('join.title', { selector: 'button' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Team')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('join.join'));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Registration failed/)).toBeInTheDocument();
+    });
+  });
+
+  it('does nothing on check invite if server address is empty', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true });
+
+    render(<JoinTeam />);
+    await act(async () => {});
+
+    // Leave server address empty
+    fireEvent.change(screen.getByPlaceholderText('join.inviteToken'), {
+      target: { value: 'token' },
+    });
+
+    // Button should be disabled because server is not online
+    const joinBtn = screen.getByText('join.title', { selector: 'button' });
+    expect(joinBtn).toBeDisabled();
+  });
+
+  it('normalizes server address without http prefix', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true });
+    vi.mocked(api.getInviteInfo).mockResolvedValueOnce({
+      team_name: 'Team',
+      created_by: 'admin',
+    });
+
+    render(<JoinTeam />);
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('join.serverAddress'), {
+        target: { value: 'example.com' },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('CloudCheck')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('join.inviteToken'), {
+        target: { value: 'token' },
+      });
+      fireEvent.change(screen.getByPlaceholderText('Username'), {
+        target: { value: 'alice' },
+      });
+    });
+
+    fireEvent.click(screen.getByText('join.title', { selector: 'button' }));
+
+    await waitFor(() => {
+      expect(api.getInviteInfo).toHaveBeenCalledWith('https://example.com', 'token');
+    });
+  });
+
+  it('shows invite link auto-check for invite link with team info', async () => {
+    vi.mocked(useParams).mockReturnValue({ token: 'abc123' });
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true });
+    vi.mocked(api.getInviteInfo).mockResolvedValueOnce({
+      team_name: 'Auto Team',
+      created_by: 'admin',
+    });
+
+    render(<JoinTeam />);
+    await waitFor(() => {
+      expect(screen.getByText('Auto Team')).toBeInTheDocument();
+    });
+  });
+
+  it('handles join with team id in result that differs from tempId', async () => {
+    vi.mocked(api.getInviteInfo).mockResolvedValueOnce({
+      team_name: 'Team',
+      created_by: 'admin',
+    });
+    vi.mocked(api.register).mockResolvedValueOnce({
+      token: 'jwt-tok',
+      user: { id: 'u1', username: 'alice' },
+      team: { id: 'real-team-id' },
+    });
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true });
+
+    render(<JoinTeam />);
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('join.serverAddress'), {
+        target: { value: 'https://example.com' },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('CloudCheck')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('join.inviteToken'), {
+        target: { value: 'token' },
+      });
+      fireEvent.change(screen.getByPlaceholderText('Username'), {
+        target: { value: 'alice' },
+      });
+    });
+
+    fireEvent.click(screen.getByText('join.title', { selector: 'button' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Team')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('join.join'));
+
+    await waitFor(() => {
+      expect(api.removeTeam).toHaveBeenCalled();
+      expect(api.addTeam).toHaveBeenCalledWith('real-team-id', 'https://example.com');
+      expect(mockNavigate).toHaveBeenCalledWith('/app');
+    });
+  });
+
+  it('handles server health returning non-ok', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: false });
+    render(<JoinTeam />);
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('join.serverAddress'), {
+        target: { value: 'https://bad-server.com' },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('CloudXmark')).toBeInTheDocument();
+    });
+  });
+
+  it('clears server status when address is emptied', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true });
+    render(<JoinTeam />);
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('join.serverAddress'), {
+        target: { value: 'https://example.com' },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('CloudCheck')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('join.serverAddress'), {
+        target: { value: '' },
+      });
+    });
+
+    await waitFor(() => {
+      // Neither CloudCheck nor CloudXmark should be shown
+      expect(screen.queryByTestId('CloudCheck')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('CloudXmark')).not.toBeInTheDocument();
+    });
+  });
 });

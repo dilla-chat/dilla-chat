@@ -162,6 +162,78 @@ describe('ConnectionStatus', () => {
     });
   });
 
+  it('updates state on ws:connected event', async () => {
+    const { ws } = await import('../../services/websocket');
+    let connectedHandler: Function = () => {};
+    vi.mocked(ws.on).mockImplementation((event: string, handler: Function) => {
+      if (event === 'ws:connected') connectedHandler = handler;
+      return vi.fn();
+    });
+
+    const { container } = render(<ConnectionStatus />);
+    // Trigger the connected handler
+    connectedHandler();
+
+    await vi.waitFor(() => {
+      const statusEl = container.querySelector('.connection-status')!;
+      fireEvent.mouseEnter(statusEl);
+      expect(screen.getByText('Connected')).toBeInTheDocument();
+    });
+  });
+
+  it('updates state on ws:disconnected event', async () => {
+    const { ws } = await import('../../services/websocket');
+    let disconnectedHandler: Function = () => {};
+    vi.mocked(ws.on).mockImplementation((event: string, handler: Function) => {
+      if (event === 'ws:disconnected') disconnectedHandler = handler;
+      return vi.fn();
+    });
+
+    // Start connected
+    vi.mocked(ws.isConnected).mockReturnValue(true);
+    vi.mocked(ws.ping).mockResolvedValue(50);
+
+    const { container } = render(<ConnectionStatus />);
+
+    await vi.waitFor(() => {
+      expect(container.querySelector('.connection-status--excellent')).toBeInTheDocument();
+    });
+
+    // Trigger disconnected
+    disconnectedHandler();
+
+    await vi.waitFor(() => {
+      expect(container.querySelector('.connection-status--disconnected')).toBeInTheDocument();
+    });
+  });
+
+  it('shows poor state when ping fails but ws is still connected', async () => {
+    const { ws } = await import('../../services/websocket');
+    vi.mocked(ws.isConnected).mockReturnValue(true);
+    vi.mocked(ws.ping).mockRejectedValue(new Error('timeout'));
+
+    const { container } = render(<ConnectionStatus />);
+
+    await vi.waitFor(() => {
+      // Should show poor quality since ping failed but ws is connected
+      const statusEl = container.querySelector('.connection-status')!;
+      fireEvent.mouseEnter(statusEl);
+      expect(screen.getByText('Poor')).toBeInTheDocument();
+    });
+  });
+
+  it('shows disconnected when ws not connected and no activeTeamId for ping', async () => {
+    const { ws } = await import('../../services/websocket');
+    vi.mocked(ws.isConnected).mockReturnValue(false);
+    useTeamStore.setState({ activeTeamId: 'team-1' });
+
+    const { container } = render(<ConnectionStatus />);
+
+    await vi.waitFor(() => {
+      expect(container.querySelector('.connection-status--disconnected')).toBeInTheDocument();
+    });
+  });
+
   it('renders without errors when no team is active', () => {
     useTeamStore.setState({ activeTeamId: null });
     const { container } = render(<ConnectionStatus />);

@@ -171,6 +171,48 @@ describe('MemberList', () => {
     expect(screen.getByText('Ali')).toBeInTheDocument();
   });
 
+  it('sends DM when Send button is clicked in popup', async () => {
+    const { api } = await import('../../services/api');
+    render(<MemberList />);
+    fireEvent.click(screen.getByText('Bob'));
+    expect(screen.getByText('Send')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Send'));
+    await vi.waitFor(() => {
+      expect(api.createDM).toHaveBeenCalledWith('team-1', ['user-2']);
+    });
+  });
+
+  it('does not send DM when activeTeamId is null', async () => {
+    useTeamStore.setState({ activeTeamId: null });
+    const { api } = await import('../../services/api');
+    vi.mocked(api.createDM).mockClear();
+    render(<MemberList />);
+    // No popup can be opened, but verify no crash
+    expect(screen.queryByTestId('user-profile')).not.toBeInTheDocument();
+  });
+
+  it('sorts members alphabetically within same priority', () => {
+    const members = new Map([
+      ['team-1', [
+        makeMember('1', 'zebra', 'Zebra'),
+        makeMember('2', 'apple', 'Apple'),
+      ]],
+    ]);
+    useTeamStore.setState({ activeTeamId: 'team-1', members });
+    usePresenceStore.setState({
+      presences: {
+        'team-1': {
+          'user-1': { user_id: 'user-1', status: 'online', custom_status: '', last_active: '' },
+          'user-2': { user_id: 'user-2', status: 'online', custom_status: '', last_active: '' },
+        },
+      },
+    });
+    const { container } = render(<MemberList />);
+    const names = Array.from(container.querySelectorAll('.member-display-name')).map(el => el.textContent);
+    expect(names[0]).toBe('Apple');
+    expect(names[1]).toBe('Zebra');
+  });
+
   it('closes popup on document click', () => {
     render(<MemberList />);
     fireEvent.click(screen.getByText('Alice'));

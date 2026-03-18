@@ -240,6 +240,39 @@ describe('FederationStatus', () => {
     });
   });
 
+  it('copies curl one-liner to clipboard', async () => {
+    vi.useRealTimers();
+    const writeTextMock = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText: writeTextMock } });
+
+    render(<FederationStatus teamId="team-1" />);
+    fireEvent.click(screen.getByText('federation.generateJoinToken'));
+
+    await waitFor(() => {
+      expect(screen.getByText(/curl -sSL/)).toBeInTheDocument();
+    });
+
+    const copyBtns = screen.getAllByText('federation.copyToClipboard');
+    // Click the curl copy button (second one)
+    fireEvent.click(copyBtns[1]);
+    expect(writeTextMock).toHaveBeenCalledWith(expect.stringContaining('curl -sSL'));
+  });
+
+  it('handles invalid date gracefully in formatLastSeen', async () => {
+    vi.useRealTimers();
+    const { api } = await import('../../services/api');
+    (api.getFederationStatus as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      node_name: 'node-test',
+      peers: [{ name: 'peer-1', address: 'addr:8443', status: 'connected', last_seen: 'invalid-date' }],
+      lamport_ts: 5,
+    });
+
+    render(<FederationStatus teamId="team-1" />);
+    await waitFor(() => {
+      expect(screen.getByText('peer-1')).toBeInTheDocument();
+    });
+  });
+
   it('shows copied state after copying', async () => {
     vi.useRealTimers();
     Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });

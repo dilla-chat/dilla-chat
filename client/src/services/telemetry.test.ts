@@ -198,8 +198,10 @@ describe('telemetry', () => {
   describe('initTelemetry', () => {
     it('starts telemetry when store is enabled', async () => {
       const { useTelemetryStore } = await import('../stores/telemetryStore');
-      useTelemetryStore.setState({ enabled: false });
+      useTelemetryStore.setState({ enabled: true });
       await initTelemetry();
+      // SDK should now be active since enabled was true
+      await stopTelemetry();
     });
 
     it('subscribes to store changes and starts/stops on toggle', async () => {

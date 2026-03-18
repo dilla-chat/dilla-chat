@@ -273,6 +273,7 @@ export default function CreateIdentity() {
           onKeyDown={(e) => e.key === 'Enter' && handleCreateWithPasskey()}
           autoFocus
         />
+        {/* istanbul ignore next -- Tauri-only: server input hidden in browser mode */}
         {!hasPendingInvite && !isBrowser && (
           <input
             type="text"

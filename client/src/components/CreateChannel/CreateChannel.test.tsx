@@ -105,6 +105,96 @@ describe('CreateChannel', () => {
     expect(screen.getByPlaceholderText('Category name')).toBeInTheDocument();
   });
 
+  it('switches back to text type', () => {
+    const { container } = render(<CreateChannel onClose={vi.fn()} />);
+    fireEvent.click(screen.getByText('channels.voice'));
+    fireEvent.click(screen.getByText('channels.text'));
+    const activeBtn = container.querySelector('.channel-type-btn.active');
+    expect(activeBtn?.textContent).toContain('channels.text');
+  });
+
+  it('handles create channel failure gracefully', async () => {
+    const { api } = await import('../../services/api');
+    vi.mocked(api.createChannel).mockRejectedValueOnce(new Error('Create failed'));
+    const onClose = vi.fn();
+    render(<CreateChannel onClose={onClose} />);
+
+    const input = screen.getByPlaceholderText('General Chat');
+    fireEvent.change(input, { target: { value: 'fail-channel' } });
+
+    const buttons = screen.getAllByText('channels.create');
+    const createBtn = buttons.find((b) => b.tagName === 'BUTTON')!;
+    fireEvent.click(createBtn);
+
+    await waitFor(() => {
+      // onClose should NOT be called on failure
+      expect(onClose).not.toHaveBeenCalled();
+    });
+  });
+
+  it('creates channel with new category', async () => {
+    const { api } = await import('../../services/api');
+    const onClose = vi.fn();
+    render(<CreateChannel onClose={onClose} />);
+
+    const input = screen.getByPlaceholderText('General Chat');
+    fireEvent.change(input, { target: { value: 'my-channel' } });
+
+    const select = screen.getByDisplayValue('No category');
+    fireEvent.change(select, { target: { value: '__new__' } });
+    const newCatInput = screen.getByPlaceholderText('Category name');
+    fireEvent.change(newCatInput, { target: { value: 'Custom' } });
+
+    const buttons = screen.getAllByText('channels.create');
+    const createBtn = buttons.find((b) => b.tagName === 'BUTTON')!;
+    fireEvent.click(createBtn);
+
+    await waitFor(() => {
+      expect(api.createChannel).toHaveBeenCalledWith('team-1', expect.objectContaining({
+        name: 'my-channel',
+        category: 'Custom',
+      }));
+      expect(onClose).toHaveBeenCalled();
+    });
+  });
+
+  it('creates voice channel with topic', async () => {
+    const { api } = await import('../../services/api');
+    const onClose = vi.fn();
+    render(<CreateChannel onClose={onClose} />);
+
+    fireEvent.click(screen.getByText('channels.voice'));
+    const input = screen.getByPlaceholderText('General Chat');
+    fireEvent.change(input, { target: { value: 'voice-room' } });
+
+    const topicInput = screen.getByPlaceholderText('What is this channel about?');
+    fireEvent.change(topicInput, { target: { value: 'Voice chat' } });
+
+    const buttons = screen.getAllByText('channels.create');
+    const createBtn = buttons.find((b) => b.tagName === 'BUTTON')!;
+    fireEvent.click(createBtn);
+
+    await waitFor(() => {
+      expect(api.createChannel).toHaveBeenCalledWith('team-1', expect.objectContaining({
+        type: 'voice',
+        topic: 'Voice chat',
+      }));
+    });
+  });
+
+  it('does not create when activeTeamId is null', async () => {
+    useTeamStore.setState({ activeTeamId: null });
+    const { api } = await import('../../services/api');
+    vi.mocked(api.createChannel).mockClear();
+    render(<CreateChannel onClose={vi.fn()} />);
+    const input = screen.getByPlaceholderText('General Chat');
+    fireEvent.change(input, { target: { value: 'channel' } });
+    const buttons = screen.getAllByText('channels.create');
+    const createBtn = buttons.find((b) => b.tagName === 'BUTTON')!;
+    fireEvent.click(createBtn);
+    expect(api.createChannel).not.toHaveBeenCalled();
+  });
+
   it('uses defaultCategory prop', () => {
     render(<CreateChannel defaultCategory="Gaming" onClose={vi.fn()} />);
     // The select should show Gaming if it exists, otherwise category state is 'Gaming'

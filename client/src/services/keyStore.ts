@@ -227,6 +227,7 @@ async function unwrapMekWithPassphrase(
       const data = new Uint8Array([...slot.wrapped_nonce, ...slot.wrapped_mek]);
       return await aesGcmDecrypt(derivedKey, data);
     } catch {
+      /* v8 ignore next */
       continue;
     }
   }

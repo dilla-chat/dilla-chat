@@ -541,4 +541,113 @@ describe('ThreadPanel', () => {
     render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
     expect(screen.getByText(/Today at/)).toBeInTheDocument();
   });
+
+  it('loads more messages via handleLoadMore with WS', async () => {
+    const { ws } = await import('../../services/websocket');
+    vi.mocked(ws.isConnected).mockReturnValue(true);
+    vi.mocked(ws.request).mockResolvedValueOnce([]);
+
+    useThreadStore.setState({
+      threadMessages: {
+        'thread-loadmore': [
+          {
+            id: 'tmsg-old', channelId: 'ch-1', authorId: 'user-2', username: 'bob',
+            content: 'Old msg', encryptedContent: '', type: 'text', threadId: 'thread-loadmore',
+            editedAt: null, deleted: false, createdAt: '2025-01-01T11:00:00Z', reactions: [],
+          },
+        ],
+      },
+    });
+
+    const loadMoreThread = { ...thread, id: 'thread-loadmore' };
+    const { container } = render(<ThreadPanel thread={loadMoreThread} onClose={vi.fn()} />);
+
+    // Simulate scroll near top to trigger load more
+    const messagesDiv = container.querySelector('.thread-messages');
+    if (messagesDiv) {
+      Object.defineProperty(messagesDiv, 'scrollTop', { value: 30, configurable: true });
+      Object.defineProperty(messagesDiv, 'scrollHeight', { value: 1000, configurable: true });
+      Object.defineProperty(messagesDiv, 'clientHeight', { value: 500, configurable: true });
+      fireEvent.scroll(messagesDiv);
+    }
+
+    await vi.waitFor(() => {
+      expect(ws.request).toHaveBeenCalledWith('team-1', 'threads:messages', expect.objectContaining({
+        thread_id: 'thread-loadmore',
+      }));
+    });
+  });
+
+
+  it('decrypts messages with derivedKey during initial load via WS', async () => {
+    const { ws } = await import('../../services/websocket');
+    const { cryptoService } = await import('../../services/crypto');
+    vi.mocked(ws.isConnected).mockReturnValue(true);
+    vi.mocked(ws.request).mockResolvedValueOnce([
+      {
+        id: 'tmsg-enc', channel_id: 'ch-1', author_id: 'user-1', username: 'alice',
+        content: 'encrypted-content', type: 'text', thread_id: 'thread-decrypt',
+        edited_at: null, deleted: false, created_at: '2025-01-01T11:00:00Z', reactions: [],
+      },
+    ]);
+    vi.mocked(cryptoService.decryptMessage).mockResolvedValueOnce('decrypted-content');
+
+    useAuthStore.setState({
+      teams: new Map([['team-1', { token: 't', user: { id: 'user-1', username: 'alice' }, teamInfo: null, baseUrl: '' }]]),
+      derivedKey: 'test-key',
+    });
+    useThreadStore.setState({ threadMessages: {} });
+
+    const decryptThread = { ...thread, id: 'thread-decrypt' };
+    render(<ThreadPanel thread={decryptThread} onClose={vi.fn()} />);
+
+    await vi.waitFor(() => {
+      expect(cryptoService.decryptMessage).toHaveBeenCalled();
+    });
+  });
+
+  it('handles thread:message:updated for other thread (ignores)', async () => {
+    const { ws } = await import('../../services/websocket');
+    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    const calls = vi.mocked(ws.on).mock.calls;
+    const editHandler = calls.find(c => c[0] === 'thread:message:updated');
+    if (editHandler) {
+      await (editHandler[1] as Function)({
+        id: 'tmsg-1', channel_id: 'ch-1', author_id: 'user-1', username: 'alice',
+        content: 'Edited', type: 'text', thread_id: 'other-thread',
+        edited_at: '2025-01-01T12:30:00Z', deleted: false, created_at: '2025-01-01T11:00:00Z', reactions: [],
+      });
+    }
+    // Should not crash and should not update messages
+  });
+
+  it('handles thread:message:deleted for other thread (ignores)', async () => {
+    const { ws } = await import('../../services/websocket');
+    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    const calls = vi.mocked(ws.on).mock.calls;
+    const deleteHandler = calls.find(c => c[0] === 'thread:message:deleted');
+    if (deleteHandler) {
+      (deleteHandler[1] as Function)({ message_id: 'tmsg-1', thread_id: 'other-thread' });
+    }
+  });
+
+  it('encrypts messages with derivedKey during send', async () => {
+    useAuthStore.setState({
+      teams: new Map([['team-1', { token: 't', user: { id: 'user-1', username: 'alice' }, teamInfo: null, baseUrl: '' }]]),
+      derivedKey: 'test-key',
+    });
+    const { cryptoService } = await import('../../services/crypto');
+    vi.mocked(cryptoService.encryptMessage).mockRejectedValueOnce(new Error('encryption failed'));
+
+    const { ws } = await import('../../services/websocket');
+    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    const input = screen.getByTestId('message-input').querySelector('input')!;
+    fireEvent.change(input, { target: { value: 'plaintext msg' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await vi.waitFor(() => {
+      // Should fall through and send plaintext
+      expect(ws.sendThreadMessage).toHaveBeenCalled();
+    });
+  });
 });

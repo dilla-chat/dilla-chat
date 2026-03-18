@@ -244,6 +244,74 @@ describe('PasskeyManager', () => {
     expect(writeTextMock).toHaveBeenCalledWith('RECOVERY-KEY');
   });
 
+  it('uploads identity blob to servers when regenerating recovery key', async () => {
+    const { getCredentialInfo, exportIdentityBlob, generateRecoveryKey } = await import('../../services/keyStore');
+
+    (generateRecoveryKey as ReturnType<typeof vi.fn>).mockReturnValue(new Uint8Array(32));
+
+    (getCredentialInfo as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      credentials: [],
+      prfSalt: new Uint8Array(32),
+    });
+
+    const mockBlob = 'encoded-blob-data';
+    (exportIdentityBlob as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockBlob);
+
+    // Set up teams with baseUrl and token
+    useAuthStore.setState({
+      derivedKey: 'test-key',
+      teams: new Map([
+        ['team-1', { token: 'tok1', user: {}, teamInfo: null, baseUrl: 'https://server1.example.com' }],
+        ['team-2', { token: 'tok2', user: {}, teamInfo: null, baseUrl: 'https://server2.example.com' }],
+      ]),
+    } as never);
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'));
+
+    render(<PasskeyManager />);
+    await screen.findByText('No passkeys registered');
+
+    fireEvent.click(screen.getByText('Regenerate Recovery Key'));
+    await vi.waitFor(() => {
+      expect(screen.getByText('RECOVERY-KEY')).toBeInTheDocument();
+      expect(fetchSpy).toHaveBeenCalled();
+    });
+
+    fetchSpy.mockRestore();
+  });
+
+  it('handles fetch failure during blob upload gracefully', async () => {
+    const { getCredentialInfo, exportIdentityBlob, generateRecoveryKey } = await import('../../services/keyStore');
+
+    (generateRecoveryKey as ReturnType<typeof vi.fn>).mockReturnValue(new Uint8Array(32));
+
+    (getCredentialInfo as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      credentials: [],
+      prfSalt: new Uint8Array(32),
+    });
+
+    (exportIdentityBlob as ReturnType<typeof vi.fn>).mockResolvedValueOnce('blob');
+
+    useAuthStore.setState({
+      derivedKey: 'test-key',
+      teams: new Map([
+        ['team-1', { token: 'tok1', user: {}, teamInfo: null, baseUrl: 'https://server1.example.com' }],
+      ]),
+    } as never);
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network error'));
+
+    render(<PasskeyManager />);
+    await screen.findByText('No passkeys registered');
+
+    fireEvent.click(screen.getByText('Regenerate Recovery Key'));
+    await vi.waitFor(() => {
+      expect(screen.getByText('RECOVERY-KEY')).toBeInTheDocument();
+    });
+
+    fetchSpy.mockRestore();
+  });
+
   it('shows default name "Passkey" when credential has no name', async () => {
     const { getCredentialInfo } = await import('../../services/keyStore');
 

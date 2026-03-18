@@ -32,4 +32,22 @@ describe('sounds', () => {
       playLeaveSound();
     });
   });
+
+  describe('setTimeout callbacks', () => {
+    it('playJoinSound fires second tone via setTimeout', () => {
+      vi.useFakeTimers();
+      useUserSettingsStore.setState({ soundNotifications: true });
+      playJoinSound();
+      vi.advanceTimersByTime(100);
+      vi.useRealTimers();
+    });
+
+    it('playLeaveSound fires second tone via setTimeout', () => {
+      vi.useFakeTimers();
+      useUserSettingsStore.setState({ soundNotifications: true });
+      playLeaveSound();
+      vi.advanceTimersByTime(100);
+      vi.useRealTimers();
+    });
+  });
 });

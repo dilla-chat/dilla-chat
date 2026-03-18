@@ -132,6 +132,26 @@ describe('NotificationService', () => {
     vi.doUnmock('@tauri-apps/api/notification');
   });
 
+  it('notify uses Tauri API and requests permission when not granted', async () => {
+    const mockSendNotification = vi.fn();
+    const mockIsPermissionGranted = vi.fn().mockResolvedValue(false);
+    const mockRequestPermission = vi.fn().mockResolvedValue('granted');
+
+    (window as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+
+    vi.doMock('@tauri-apps/api/notification', () => ({
+      isPermissionGranted: mockIsPermissionGranted,
+      requestPermission: mockRequestPermission,
+      sendNotification: mockSendNotification,
+    }));
+
+    vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+    await notificationService.notify('Title', 'Body');
+
+    delete (window as Record<string, unknown>).__TAURI_INTERNALS__;
+    vi.doUnmock('@tauri-apps/api/notification');
+  });
+
   it('notify falls through to browser API when Tauri import fails', async () => {
     (window as Record<string, unknown>).__TAURI_INTERNALS__ = {};
 

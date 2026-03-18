@@ -302,6 +302,7 @@ export default function Login() {
     }
   };
 
+  /* istanbul ignore next -- Legacy mode unreachable in current UI flow */
   const handleLegacyUnlock = async () => {
     setError('');
     if (!legacyPassphrase) return;
@@ -442,6 +443,7 @@ export default function Login() {
         </div>
       )}
 
+      {/* istanbul ignore next -- Legacy mode unreachable in current UI flow */}
       {mode === 'legacy' && (
         <div className="form">
           <p style={{ opacity: 0.7, fontSize: '0.9rem' }}>{t('login.legacyDetected')}</p>

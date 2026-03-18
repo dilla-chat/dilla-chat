@@ -185,6 +185,30 @@ describe('VoiceControls', () => {
     expect(container.querySelector('.voice-controls')).toBeInTheDocument();
   });
 
+  it('handles screen share failure gracefully', async () => {
+    const { webrtcService } = await import('../../services/webrtc');
+    vi.mocked(webrtcService.startScreenShare).mockRejectedValueOnce(new Error('Permission denied'));
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    render(<VoiceControls />);
+    fireEvent.click(screen.getByTitle('Share screen'));
+    await vi.waitFor(() => {
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('[Voice] Screen share failed:'), expect.any(Error));
+    });
+    consoleSpy.mockRestore();
+  });
+
+  it('handles webcam failure gracefully', async () => {
+    const { webrtcService } = await import('../../services/webrtc');
+    vi.mocked(webrtcService.startWebcam).mockRejectedValueOnce(new Error('No camera'));
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    render(<VoiceControls />);
+    fireEvent.click(screen.getByTitle('Share camera'));
+    await vi.waitFor(() => {
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('[Voice] Webcam failed:'), expect.any(Error));
+    });
+    consoleSpy.mockRestore();
+  });
+
   it('shows voice channel name fallback when channel not found', () => {
     setVoiceState({ currentChannelId: 'unknown-ch' });
     useTeamStore.setState({

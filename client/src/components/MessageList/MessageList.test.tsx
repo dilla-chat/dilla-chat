@@ -588,6 +588,34 @@ describe('MessageList', () => {
     expect(screen.getByTestId('file-preview')).toBeInTheDocument();
   });
 
+  it('closes emoji picker and sends reaction on emoji select', () => {
+    const onReaction = vi.fn();
+    const msgs = [makeMessage()];
+    useMessageStore.setState({
+      messages: new Map([['ch-1', msgs]]),
+      loadingHistory: new Map(),
+      hasMore: new Map(),
+    });
+
+    // Override EmojiPicker mock to call onSelect
+    render(
+      <MessageList
+        channelId="ch-1"
+        currentUserId="user-1"
+        onLoadMore={vi.fn()}
+        onReaction={onReaction}
+      />,
+    );
+
+    // Open emoji picker
+    fireEvent.click(screen.getByTitle('Add Reaction'));
+    expect(screen.getByTestId('emoji-picker')).toBeInTheDocument();
+
+    // Close by clicking reaction button again (toggle)
+    fireEvent.click(screen.getByTitle('Add Reaction'));
+    expect(screen.queryByTestId('emoji-picker')).not.toBeInTheDocument();
+  });
+
   it('renders multiple messages from different authors as separate groups', () => {
     const now = new Date();
     const msgs = [

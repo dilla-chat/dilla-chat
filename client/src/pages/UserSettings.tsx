@@ -584,7 +584,8 @@ export default function UserSettings() {
               value={i18n.language}
               onChange={(e) => i18n.changeLanguage(e.target.value)}
             >
-              {(i18n.options.supportedLngs
+              {/* istanbul ignore next -- i18n.options requires full i18next init */}
+              {(i18n.options?.supportedLngs
                 ? (i18n.options.supportedLngs as string[]).filter((l) => l !== 'cimode')
                 : [i18n.language]
               ).map((lng) => (
@@ -751,6 +752,7 @@ function MicTest({ deviceId, inputVolume }: { deviceId: string; inputVolume: num
 
   // Restart test when noise suppression setting changes during active test
   useEffect(() => {
+    /* istanbul ignore next -- requires AudioContext which is unavailable in jsdom */
     if (testing) {
       stopTest();
       startTest();
@@ -760,6 +762,7 @@ function MicTest({ deviceId, inputVolume }: { deviceId: string; inputVolume: num
 
   useEffect(() => {
     return () => {
+      /* istanbul ignore next -- cleanup refs only populated during active mic test */
       if (nsRef.current) {
         nsRef.current.cleanup();
       }

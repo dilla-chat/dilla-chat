@@ -476,6 +476,40 @@ describe('joinChannel', () => {
     expect(getState().connected).toBe(false);
     expect(getState().connecting).toBe(false);
   });
+
+  it('adds self as peer when auth entry has user.id', async () => {
+    const { useAuthStore } = await import('./authStore');
+    useAuthStore.setState({
+      teams: new Map([
+        ['team-1', { token: 'tok', user: { id: 'self-user', username: 'MySelf' }, teamInfo: {}, baseUrl: 'http://localhost' }],
+      ]),
+    });
+
+    const { webrtcService } = await import('../services/webrtc');
+    vi.mocked(webrtcService.connect).mockClear();
+    await getState().joinChannel('team-1', 'ch-1');
+
+    expect(getState().connected).toBe(true);
+    expect(getState().peers['self-user']).toBeDefined();
+    expect(getState().peers['self-user'].username).toBe('MySelf');
+  });
+
+  it('falls back when auth entry has no user.id', async () => {
+    const { useAuthStore } = await import('./authStore');
+    useAuthStore.setState({
+      teams: new Map([
+        ['team-1', { token: 'tok', user: {}, teamInfo: {}, baseUrl: 'http://localhost' }],
+      ]),
+    });
+
+    const { webrtcService } = await import('../services/webrtc');
+    vi.mocked(webrtcService.connect).mockClear();
+    await getState().joinChannel('team-1', 'ch-1');
+
+    expect(getState().connected).toBe(true);
+    // No self peer added since user.id is missing
+    expect(Object.keys(getState().peers)).toHaveLength(0);
+  });
 });
 
 describe('setRemoteWebcamStream', () => {
