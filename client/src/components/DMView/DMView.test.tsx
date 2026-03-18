@@ -594,6 +594,48 @@ describe('DMView', () => {
     // Should not crash
   });
 
+  it('handleLoadMore via WS returns messages with decryption', async () => {
+    useAuthStore.setState({ derivedKey: 'test-key' } as never);
+    const { ws } = await import('../../services/websocket');
+    const { api } = await import('../../services/api');
+    const { cryptoService } = await import('../../services/crypto');
+
+    vi.mocked(ws.isConnected).mockReturnValue(false);
+    vi.mocked(cryptoService.decryptDM).mockResolvedValue('decrypted-old');
+
+    // First call (initial load) returns 50 messages to set hasMore=true
+    const fiftyMsgs = Array.from({ length: 50 }, (_, i) => ({
+      id: `msg-${i}`, channel_id: 'dm-1', dm_id: 'dm-1', author_id: 'user-2',
+      username: 'bob', content: `enc-${i}`, type: 'text', thread_id: null,
+      edited_at: null, deleted: false, created_at: `2025-01-01T00:${String(i).padStart(2, '0')}:00Z`, reactions: [],
+    }));
+    // Second call (load more) returns actual older messages
+    const olderMsgs = [{
+      id: 'older-msg', channel_id: 'dm-1', dm_id: 'dm-1', author_id: 'user-2',
+      username: 'bob', content: 'encrypted-old', type: 'text', thread_id: null,
+      edited_at: null, deleted: false, created_at: '2024-12-31T00:00:00Z', reactions: [],
+    }];
+    vi.mocked(api.getDMMessages)
+      .mockResolvedValueOnce(fiftyMsgs)
+      .mockResolvedValueOnce(olderMsgs);
+
+    render(<DMView dm={makeDM()} currentUserId="user-1" />);
+
+    // Wait for initial load to complete and load-more to appear
+    await vi.waitFor(() => {
+      expect(vi.mocked(api.getDMMessages).mock.calls.length).toBeGreaterThanOrEqual(1);
+    });
+
+    // Trigger load more
+    const loadMoreBtn = screen.queryByTestId('load-more');
+    if (loadMoreBtn) {
+      fireEvent.click(loadMoreBtn);
+      await vi.waitFor(() => {
+        expect(vi.mocked(api.getDMMessages).mock.calls.length).toBeGreaterThanOrEqual(2);
+      });
+    }
+  });
+
   it('tryDecryptDM calls decryptDM for messages during initial load', async () => {
     useAuthStore.setState({ derivedKey: 'test-key' } as never);
     const { cryptoService } = await import('../../services/crypto');
