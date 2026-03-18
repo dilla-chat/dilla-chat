@@ -722,15 +722,25 @@ describe('Session encryption (passphrase-based)', () => {
     await expect(decryptSessionData(encrypted, 'wrong')).rejects.toThrow();
   });
 
-  it('passphraseToKey produces deterministic output', async () => {
-    const k1 = await passphraseToKey('test-pass');
-    const k2 = await passphraseToKey('test-pass');
+  it('passphraseToKey produces deterministic output with same salt', async () => {
+    const salt = new Uint8Array(16).fill(42);
+    const k1 = await passphraseToKey('test-pass', salt);
+    const k2 = await passphraseToKey('test-pass', salt);
     expect(Array.from(k1)).toEqual(Array.from(k2));
   });
 
   it('passphraseToKey produces different output for different passphrases', async () => {
-    const k1 = await passphraseToKey('pass1');
-    const k2 = await passphraseToKey('pass2');
+    const salt = new Uint8Array(16).fill(42);
+    const k1 = await passphraseToKey('pass1', salt);
+    const k2 = await passphraseToKey('pass2', salt);
+    expect(Array.from(k1)).not.toEqual(Array.from(k2));
+  });
+
+  it('passphraseToKey produces different output for different salts', async () => {
+    const salt1 = new Uint8Array(16).fill(1);
+    const salt2 = new Uint8Array(16).fill(2);
+    const k1 = await passphraseToKey('same-pass', salt1);
+    const k2 = await passphraseToKey('same-pass', salt2);
     expect(Array.from(k1)).not.toEqual(Array.from(k2));
   });
 });
