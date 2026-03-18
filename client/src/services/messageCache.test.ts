@@ -81,4 +81,43 @@ describe('clearAllMessageCache', () => {
     expect(await getCachedMessage('m1')).toBeNull();
     expect(await getCachedMessage('m2')).toBeNull();
   });
+
+  it('is safe to call when cache is empty', async () => {
+    await clearAllMessageCache();
+    expect(await getCachedMessage('m1')).toBeNull();
+  });
+});
+
+describe('getCachedMessages edge cases', () => {
+  it('skips missing ids without error', async () => {
+    await cacheMessage('m1', 'ch-1', 'hello');
+    const results = await getCachedMessages(['m1', 'missing-id']);
+    expect(results.size).toBe(1);
+    expect(results.get('m1')).toBe('hello');
+    expect(results.has('missing-id')).toBe(false);
+  });
+});
+
+describe('clearChannelCache edge cases', () => {
+  it('is safe when channel has no messages', async () => {
+    await clearChannelCache('empty-channel');
+    // Should not throw
+  });
+
+  it('only clears target channel', async () => {
+    await cacheMessage('m1', 'ch-1', 'a');
+    await cacheMessage('m2', 'ch-2', 'b');
+    await cacheMessage('m3', 'ch-1', 'c');
+    await clearChannelCache('ch-1');
+    expect(await getCachedMessage('m1')).toBeNull();
+    expect(await getCachedMessage('m3')).toBeNull();
+    expect(await getCachedMessage('m2')).toBe('b');
+  });
+});
+
+describe('deleteCachedMessage edge cases', () => {
+  it('is safe to delete non-existent message', async () => {
+    await deleteCachedMessage('nonexistent');
+    // Should not throw
+  });
 });

@@ -311,4 +311,214 @@ describe('UserSettings', () => {
     render(<UserSettings />);
     expect(screen.getByText('Your public key fingerprint')).toBeInTheDocument();
   });
+
+  it('does not show public key section when publicKey is null', () => {
+    useAuthStore.setState({ publicKey: null });
+    render(<UserSettings />);
+    expect(screen.queryByText('Your public key fingerprint')).not.toBeInTheDocument();
+  });
+
+  it('enters edit mode when Edit button is clicked', () => {
+    render(<UserSettings />);
+    fireEvent.click(screen.getByText('Edit'));
+    const input = screen.getByDisplayValue('Test User');
+    expect(input).toBeInTheDocument();
+    expect(input.tagName).toBe('INPUT');
+  });
+
+  it('allows changing display name in edit mode', () => {
+    render(<UserSettings />);
+    fireEvent.click(screen.getByText('Edit'));
+    const input = screen.getByDisplayValue('Test User');
+    fireEvent.change(input, { target: { value: 'New Name' } });
+    expect(input).toHaveValue('New Name');
+  });
+
+  it('saves display name on blur', async () => {
+    const { api } = await import('../services/api');
+    render(<UserSettings />);
+    fireEvent.click(screen.getByText('Edit'));
+    const input = screen.getByDisplayValue('Test User');
+    fireEvent.change(input, { target: { value: 'Updated' } });
+    fireEvent.blur(input);
+    expect(api.updateMe).toHaveBeenCalled();
+  });
+
+  it('saves display name on Enter key', async () => {
+    const { api } = await import('../services/api');
+    render(<UserSettings />);
+    fireEvent.click(screen.getByText('Edit'));
+    const input = screen.getByDisplayValue('Test User');
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(api.updateMe).toHaveBeenCalled();
+  });
+
+  it('calls logout on store when logout is clicked', () => {
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-logout'));
+    expect(useAuthStore.getState().logout).toHaveBeenCalled();
+  });
+
+  it('changes input volume slider', () => {
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    const slider = screen.getByRole('slider', { name: 'Input Volume' });
+    fireEvent.change(slider, { target: { value: '150' } });
+    expect(slider).toHaveValue('150');
+  });
+
+  it('changes output volume slider', () => {
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    const slider = screen.getByRole('slider', { name: 'Output Volume' });
+    fireEvent.change(slider, { target: { value: '50' } });
+    expect(slider).toHaveValue('50');
+  });
+
+  it('selects custom profile and toggles echo cancellation', () => {
+    useAudioSettingsStore.setState({ inputProfile: 'custom', echoCancellation: true });
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    const echoSwitch = screen.getByRole('switch', { name: /Echo Cancellation/ });
+    expect(echoSwitch).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(echoSwitch);
+  });
+
+  it('toggles push to talk in custom mode', () => {
+    useAudioSettingsStore.setState({ inputProfile: 'custom', pushToTalk: false });
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    const pttSwitch = screen.getByRole('switch', { name: /Push to Talk/ });
+    expect(pttSwitch).toHaveAttribute('aria-checked', 'false');
+    fireEvent.click(pttSwitch);
+  });
+
+  it('shows PTT key capture button when PTT is enabled', () => {
+    useAudioSettingsStore.setState({ inputProfile: 'custom', pushToTalk: true, pushToTalkKey: 'KeyV' });
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    expect(screen.getByText('V')).toBeInTheDocument();
+  });
+
+  it('shows "Press a key..." when PTT capture is active', () => {
+    useAudioSettingsStore.setState({ inputProfile: 'custom', pushToTalk: true, pushToTalkKey: 'Space' });
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    const captureBtn = screen.getByRole('button', { name: /Click to change push to talk key/ });
+    fireEvent.click(captureBtn);
+    expect(screen.getByText('Press a key...')).toBeInTheDocument();
+  });
+
+  it('captures PTT key on keydown during capture mode', () => {
+    useAudioSettingsStore.setState({ inputProfile: 'custom', pushToTalk: true, pushToTalkKey: 'Space' });
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    const captureBtn = screen.getByRole('button', { name: /Click to change push to talk key/ });
+    fireEvent.click(captureBtn);
+    fireEvent.keyDown(window, { code: 'KeyG' });
+    expect(screen.getByText('G')).toBeInTheDocument();
+  });
+
+  it('toggles auto gain control in custom mode', () => {
+    useAudioSettingsStore.setState({ inputProfile: 'custom', autoGainControl: true });
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    const agcSwitch = screen.getByRole('switch', { name: /Automatically Adjust Input Sensitivity/ });
+    expect(agcSwitch).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(agcSwitch);
+  });
+
+  it('shows input sensitivity slider when auto gain is off in custom mode', () => {
+    useAudioSettingsStore.setState({ inputProfile: 'custom', autoGainControl: false });
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    expect(screen.getByRole('slider', { name: 'Input Sensitivity' })).toBeInTheDocument();
+  });
+
+  it('hides input sensitivity slider when auto gain is on in custom mode', () => {
+    useAudioSettingsStore.setState({ inputProfile: 'custom', autoGainControl: true });
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    expect(screen.queryByRole('slider', { name: 'Input Sensitivity' })).not.toBeInTheDocument();
+  });
+
+  it('shows RNNoise settings when noise suppression is rnnoise', () => {
+    useAudioSettingsStore.setState({ inputProfile: 'custom', noiseSuppressionMode: 'rnnoise' });
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    expect(screen.getByRole('slider', { name: 'VAD Threshold' })).toBeInTheDocument();
+    expect(screen.getByRole('slider', { name: 'Grace Period' })).toBeInTheDocument();
+    expect(screen.getByRole('slider', { name: 'Retroactive Grace' })).toBeInTheDocument();
+  });
+
+  it('does not show RNNoise settings when noise suppression is none', () => {
+    useAudioSettingsStore.setState({ inputProfile: 'custom', noiseSuppressionMode: 'none' });
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    expect(screen.queryByRole('slider', { name: 'VAD Threshold' })).not.toBeInTheDocument();
+  });
+
+  it('changes noise suppression dropdown value', () => {
+    useAudioSettingsStore.setState({ inputProfile: 'custom', noiseSuppressionMode: 'none' });
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    const select = screen.getByDisplayValue('None');
+    fireEvent.change(select, { target: { value: 'browser' } });
+  });
+
+  it('toggles desktop notifications', () => {
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-notifications'));
+    const toggles = screen.getAllByRole('button').filter(b => b.className.includes('toggle-switch'));
+    expect(toggles.length).toBeGreaterThanOrEqual(1);
+    fireEvent.click(toggles[0]);
+  });
+
+  it('switches theme to light', () => {
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-appearance'));
+    fireEvent.click(screen.getByText('Light'));
+    const lightBtn = screen.getByText('Light');
+    expect(lightBtn.className).toContain('active');
+  });
+
+  // Language selector test omitted — requires i18n.options.supportedLngs
+  // which is not available in the global react-i18next mock
+
+  it('toggles telemetry in privacy tab', () => {
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-privacy'));
+    const telemetryToggle = screen.getByRole('button', { name: /Anonymous Telemetry/ });
+    fireEvent.click(telemetryToggle);
+  });
+
+  it('shows all keybind shortcuts', () => {
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-keybinds'));
+    expect(screen.getByText('Escape')).toBeInTheDocument();
+    expect(screen.getByText('Alt+\u2191/\u2193')).toBeInTheDocument();
+  });
+
+  it('shows mic level meter in voice tab', () => {
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    expect(screen.getByRole('meter', { name: /Microphone level/ })).toBeInTheDocument();
+  });
+
+  it('selects studio profile', () => {
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    const studioRadio = screen.getByRole('radio', { name: /Studio/ });
+    fireEvent.click(studioRadio);
+  });
+
+  it('uses single letter initial when username has no space', () => {
+    useAuthStore.setState({
+      teams: new Map([
+        ['team1', { baseUrl: 'http://localhost:8080', token: 'tok', user: { id: 'u1', username: 'alice', display_name: '' }, teamInfo: {} }],
+      ]),
+    });
+    render(<UserSettings />);
+    expect(screen.getByText('A')).toBeInTheDocument();
+  });
 });

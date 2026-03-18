@@ -327,4 +327,206 @@ describe('MessageList', () => {
     );
     expect(screen.getByText('{{count}} replies')).toBeInTheDocument();
   });
+
+  it('shows single reply text for thread with count 1', () => {
+    const msgs = [makeMessage()];
+    useMessageStore.setState({
+      messages: new Map([['ch-1', msgs]]),
+      loadingHistory: new Map(),
+      hasMore: new Map(),
+    });
+    render(
+      <MessageList
+        channelId="ch-1"
+        currentUserId="user-1"
+        onLoadMore={vi.fn()}
+        threadInfo={{ 'msg-1': { count: 1, lastReplyAt: null } }}
+      />,
+    );
+    expect(screen.getByText('1 reply')).toBeInTheDocument();
+  });
+
+  it('shows thread last reply time', () => {
+    const msgs = [makeMessage()];
+    useMessageStore.setState({
+      messages: new Map([['ch-1', msgs]]),
+      loadingHistory: new Map(),
+      hasMore: new Map(),
+    });
+    render(
+      <MessageList
+        channelId="ch-1"
+        currentUserId="user-1"
+        onLoadMore={vi.fn()}
+        threadInfo={{ 'msg-1': { count: 2, lastReplyAt: new Date().toISOString() } }}
+      />,
+    );
+    expect(screen.getByText(/Last reply/)).toBeInTheDocument();
+  });
+
+  it('calls onOpenThread when thread indicator is clicked', () => {
+    const onOpenThread = vi.fn();
+    const msgs = [makeMessage()];
+    useMessageStore.setState({
+      messages: new Map([['ch-1', msgs]]),
+      loadingHistory: new Map(),
+      hasMore: new Map(),
+    });
+    render(
+      <MessageList
+        channelId="ch-1"
+        currentUserId="user-1"
+        onLoadMore={vi.fn()}
+        onOpenThread={onOpenThread}
+        threadInfo={{ 'msg-1': { count: 2, lastReplyAt: null } }}
+      />,
+    );
+    fireEvent.click(screen.getByText('{{count}} replies').closest('button')!);
+    expect(onOpenThread).toHaveBeenCalledWith('msg-1');
+  });
+
+  it('calls onReply when reply button is clicked', () => {
+    const onReply = vi.fn();
+    const msgs = [makeMessage()];
+    useMessageStore.setState({
+      messages: new Map([['ch-1', msgs]]),
+      loadingHistory: new Map(),
+      hasMore: new Map(),
+    });
+    render(
+      <MessageList
+        channelId="ch-1"
+        currentUserId="user-1"
+        onLoadMore={vi.fn()}
+        onReply={onReply}
+      />,
+    );
+    fireEvent.click(screen.getByTitle('Reply'));
+    expect(onReply).toHaveBeenCalledWith(expect.objectContaining({ id: 'msg-1' }));
+  });
+
+  it('calls onCreateThread when thread button is clicked', () => {
+    const onCreateThread = vi.fn();
+    const msgs = [makeMessage()];
+    useMessageStore.setState({
+      messages: new Map([['ch-1', msgs]]),
+      loadingHistory: new Map(),
+      hasMore: new Map(),
+    });
+    render(
+      <MessageList
+        channelId="ch-1"
+        currentUserId="user-1"
+        onLoadMore={vi.fn()}
+        onCreateThread={onCreateThread}
+      />,
+    );
+    fireEvent.click(screen.getByTitle('Create Thread'));
+    expect(onCreateThread).toHaveBeenCalledWith(expect.objectContaining({ id: 'msg-1' }));
+  });
+
+  it('renders reaction button when onReaction provided', () => {
+    const msgs = [makeMessage()];
+    useMessageStore.setState({
+      messages: new Map([['ch-1', msgs]]),
+      loadingHistory: new Map(),
+      hasMore: new Map(),
+    });
+    render(
+      <MessageList
+        channelId="ch-1"
+        currentUserId="user-1"
+        onLoadMore={vi.fn()}
+        onReaction={vi.fn()}
+      />,
+    );
+    expect(screen.getByTitle('Add Reaction')).toBeInTheDocument();
+  });
+
+  it('opens emoji picker when reaction button is clicked', () => {
+    const msgs = [makeMessage()];
+    useMessageStore.setState({
+      messages: new Map([['ch-1', msgs]]),
+      loadingHistory: new Map(),
+      hasMore: new Map(),
+    });
+    render(
+      <MessageList
+        channelId="ch-1"
+        currentUserId="user-1"
+        onLoadMore={vi.fn()}
+        onReaction={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByTitle('Add Reaction'));
+    expect(screen.getByTestId('emoji-picker')).toBeInTheDocument();
+  });
+
+  it('does not show action buttons on deleted messages', () => {
+    const msgs = [makeMessage({ deleted: true })];
+    useMessageStore.setState({
+      messages: new Map([['ch-1', msgs]]),
+      loadingHistory: new Map(),
+      hasMore: new Map(),
+    });
+    const { container } = render(
+      <MessageList
+        channelId="ch-1"
+        currentUserId="user-1"
+        onLoadMore={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+    expect(container.querySelector('.message-actions')).not.toBeInTheDocument();
+  });
+
+  it('creates separate groups for messages far apart in time', () => {
+    const now = new Date();
+    const msgs = [
+      makeMessage({ id: 'msg-1', content: 'First', createdAt: now.toISOString() }),
+      makeMessage({
+        id: 'msg-2',
+        content: 'Second',
+        createdAt: new Date(now.getTime() + 8 * 60 * 1000).toISOString(),
+      }),
+    ];
+    useMessageStore.setState({
+      messages: new Map([['ch-1', msgs]]),
+      loadingHistory: new Map(),
+      hasMore: new Map(),
+    });
+    render(
+      <MessageList channelId="ch-1" currentUserId="user-2" onLoadMore={vi.fn()} />,
+    );
+    // Should have two username headers (two groups)
+    const usernames = screen.getAllByText('alice');
+    expect(usernames).toHaveLength(2);
+  });
+
+  it('strips [DEV: unencrypted] prefix from content', () => {
+    const msgs = [makeMessage({ content: '[DEV: unencrypted] Hello world' })];
+    useMessageStore.setState({
+      messages: new Map([['ch-1', msgs]]),
+      loadingHistory: new Map(),
+      hasMore: new Map(),
+    });
+    render(
+      <MessageList channelId="ch-1" currentUserId="user-1" onLoadMore={vi.fn()} />,
+    );
+    expect(screen.getByText('Hello world')).toBeInTheDocument();
+    expect(screen.queryByText('[DEV: unencrypted]')).not.toBeInTheDocument();
+  });
+
+  it('renders empty list when no messages for channel', () => {
+    useMessageStore.setState({
+      messages: new Map(),
+      loadingHistory: new Map(),
+      hasMore: new Map(),
+    });
+    const { container } = render(
+      <MessageList channelId="ch-1" currentUserId="user-1" onLoadMore={vi.fn()} />,
+    );
+    expect(container.querySelectorAll('.message-group').length).toBe(0);
+  });
 });

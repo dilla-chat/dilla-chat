@@ -152,4 +152,72 @@ describe('UserPanel', () => {
     fireEvent.click(avatar);
     expect(screen.getByTestId('status-picker')).toBeInTheDocument();
   });
+
+  it('toggles status picker on info click', () => {
+    render(<UserPanel username="alice" />);
+    const info = document.querySelector('.user-panel-info')!;
+    fireEvent.click(info);
+    expect(screen.getByTestId('status-picker')).toBeInTheDocument();
+  });
+
+  it('closes status picker on second avatar click', () => {
+    render(<UserPanel username="alice" />);
+    const avatar = document.querySelector('.user-panel-avatar')!;
+    fireEvent.click(avatar);
+    expect(screen.getByTestId('status-picker')).toBeInTheDocument();
+    fireEvent.click(avatar);
+    expect(screen.queryByTestId('status-picker')).not.toBeInTheDocument();
+  });
+
+  it('mute button calls toggleMute and plays sound', async () => {
+    const { playMuteSound } = await import('../../utils/sounds');
+    const { webrtcService } = await import('../../services/webrtc');
+    render(<UserPanel username="alice" />);
+    fireEvent.click(screen.getByTitle('Mute'));
+    expect(playMuteSound).toHaveBeenCalled();
+    expect(webrtcService.toggleMute).toHaveBeenCalled();
+  });
+
+  it('unmute button calls toggleMute and plays unmute sound', async () => {
+    useVoiceStore.setState({ muted: true } as never);
+    const { playUnmuteSound } = await import('../../utils/sounds');
+    const { webrtcService } = await import('../../services/webrtc');
+    render(<UserPanel username="alice" />);
+    // Muted state shows 'Unmute' title
+    fireEvent.click(screen.getByTitle('Unmute'));
+    expect(playUnmuteSound).toHaveBeenCalled();
+    expect(webrtcService.toggleMute).toHaveBeenCalled();
+  });
+
+  it('deafen button calls toggleDeafen and plays sound', async () => {
+    const { playMuteSound } = await import('../../utils/sounds');
+    const { webrtcService } = await import('../../services/webrtc');
+    render(<UserPanel username="alice" />);
+    fireEvent.click(screen.getByTitle('Deafen'));
+    expect(playMuteSound).toHaveBeenCalled();
+    expect(webrtcService.toggleDeafen).toHaveBeenCalled();
+  });
+
+  it('undeafen button calls toggleDeafen and plays unmute sound', async () => {
+    useVoiceStore.setState({ deafened: true } as never);
+    const { playUnmuteSound } = await import('../../utils/sounds');
+    const { webrtcService } = await import('../../services/webrtc');
+    render(<UserPanel username="alice" />);
+    fireEvent.click(screen.getByTitle('Undeafen'));
+    expect(playUnmuteSound).toHaveBeenCalled();
+    expect(webrtcService.toggleDeafen).toHaveBeenCalled();
+  });
+
+  it('shows muted icon with active class when muted', () => {
+    useVoiceStore.setState({ muted: true } as never);
+    const { container } = render(<UserPanel username="alice" />);
+    const muteBtn = container.querySelector('.user-panel-btn-active');
+    expect(muteBtn).toBeInTheDocument();
+  });
+
+  it('renders without activeTeamId', () => {
+    useTeamStore.setState({ activeTeamId: null });
+    render(<UserPanel username="alice" />);
+    expect(screen.getByText('alice')).toBeInTheDocument();
+  });
 });

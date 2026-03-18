@@ -433,3 +433,30 @@ describe('cleanup', () => {
     expect(getState().e2eVoice).toBe(true);
   });
 });
+
+describe('joinChannel', () => {
+  it('does nothing when already connecting', async () => {
+    useVoiceStore.setState({ connecting: true });
+    await getState().joinChannel('team-1', 'ch-1');
+    expect(getState().connected).toBe(false);
+  });
+
+  it('does nothing when already connected to same channel', async () => {
+    useVoiceStore.setState({ connected: true, currentChannelId: 'ch-1' });
+    const { webrtcService } = await import('../services/webrtc');
+    await getState().joinChannel('team-1', 'ch-1');
+    expect(webrtcService.connect).not.toHaveBeenCalled();
+  });
+});
+
+describe('setRemoteWebcamStream', () => {
+  it('does not affect other users when removing', () => {
+    const stream1 = new MediaStream();
+    const stream2 = new MediaStream();
+    getState().setRemoteWebcamStream('u1', stream1);
+    getState().setRemoteWebcamStream('u2', stream2);
+    getState().setRemoteWebcamStream('u1', null);
+    expect(getState().remoteWebcamStreams['u1']).toBeUndefined();
+    expect(getState().remoteWebcamStreams['u2']).toBe(stream2);
+  });
+});

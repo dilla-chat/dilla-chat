@@ -260,4 +260,152 @@ describe('JoinTeam', () => {
       expect(mockNavigate).toHaveBeenCalledWith('/app');
     });
   });
+
+  it('shows offline icon when server is unreachable', async () => {
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('network'));
+    render(<JoinTeam />);
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('join.serverAddress'), {
+        target: { value: 'https://bad-server.com' },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('CloudXmark')).toBeInTheDocument();
+    });
+  });
+
+  it('shows online icon when server responds ok', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true });
+    render(<JoinTeam />);
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('join.serverAddress'), {
+        target: { value: 'https://good-server.com' },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('CloudCheck')).toBeInTheDocument();
+    });
+  });
+
+  it('navigates to /setup when setup link clicked', async () => {
+    render(<JoinTeam />);
+    await act(async () => {});
+    fireEvent.click(screen.getByText('Set up a new server instead'));
+    expect(mockNavigate).toHaveBeenCalledWith('/setup');
+  });
+
+  it('shows error when not authenticated (no derivedKey)', async () => {
+    useAuthStore.setState({ derivedKey: null, publicKey: null });
+
+    vi.mocked(api.getInviteInfo).mockResolvedValueOnce({
+      team_name: 'Team',
+      created_by: 'admin',
+    });
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true });
+
+    render(<JoinTeam />);
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('join.serverAddress'), {
+        target: { value: 'https://example.com' },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('CloudCheck')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('join.inviteToken'), {
+        target: { value: 'token' },
+      });
+      fireEvent.change(screen.getByPlaceholderText('Username'), {
+        target: { value: 'bob' },
+      });
+    });
+
+    fireEvent.click(screen.getByText('join.title', { selector: 'button' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Team')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('join.join'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Not authenticated')).toBeInTheDocument();
+    });
+  });
+
+  it('shows invited by info when available', async () => {
+    vi.mocked(api.getInviteInfo).mockResolvedValueOnce({
+      team_name: 'Cool Team',
+      created_by: 'adminuser',
+    });
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true });
+
+    render(<JoinTeam />);
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('join.serverAddress'), {
+        target: { value: 'https://example.com' },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('CloudCheck')).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('join.inviteToken'), {
+        target: { value: 'token' },
+      });
+      fireEvent.change(screen.getByPlaceholderText('Username'), {
+        target: { value: 'alice' },
+      });
+    });
+
+    fireEvent.click(screen.getByText('join.title', { selector: 'button' }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/adminuser/)).toBeInTheDocument();
+    });
+  });
+
+  it('disables join button when server is not online', async () => {
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('network'));
+    render(<JoinTeam />);
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('join.serverAddress'), {
+        target: { value: 'https://bad.com' },
+      });
+      fireEvent.change(screen.getByPlaceholderText('join.inviteToken'), {
+        target: { value: 'tok' },
+      });
+      fireEvent.change(screen.getByPlaceholderText('Username'), {
+        target: { value: 'bob' },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('CloudXmark')).toBeInTheDocument();
+    });
+
+    const joinBtn = screen.getByText('join.title', { selector: 'button' });
+    expect(joinBtn).toBeDisabled();
+  });
+
+  it('shows display name input with localStorage default', async () => {
+    localStorage.setItem('dilla_username', 'stored-name');
+    render(<JoinTeam />);
+    await act(async () => {});
+    const displayInput = screen.getByPlaceholderText('Display Name');
+    expect(displayInput).toHaveValue('stored-name');
+    localStorage.removeItem('dilla_username');
+  });
 });

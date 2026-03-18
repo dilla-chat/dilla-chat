@@ -91,4 +91,80 @@ describe('NoiseSuppression', () => {
     const result = await ns.waitForReady(100);
     expect(result).toBe(false);
   });
+
+  it('waitForReady resolves true when initialized during wait', async () => {
+    // Set initialized to true after a delay
+    setTimeout(() => {
+      (ns as unknown as Record<string, unknown>).initialized = true;
+    }, 50);
+    const result = await ns.waitForReady(500);
+    expect(result).toBe(true);
+  });
+
+  it('setVadThreshold does nothing when no node', () => {
+    expect(() => ns.setVadThreshold(0.5)).not.toThrow();
+  });
+
+  it('setVadGracePeriodMs does nothing when no node', () => {
+    expect(() => ns.setVadGracePeriodMs(300)).not.toThrow();
+  });
+
+  it('setRetroactiveGraceMs does nothing when no node', () => {
+    expect(() => ns.setRetroactiveGraceMs(100)).not.toThrow();
+  });
+
+  it('setEnabled without node only sets the flag', () => {
+    ns.setEnabled(false);
+    expect(ns.isEnabled()).toBe(false);
+    // No postMessage should be called (no node)
+  });
+
+  it('cleanup with store unsubscribe', () => {
+    const unsub = vi.fn();
+    (ns as unknown as Record<string, unknown>).storeUnsubscribe = unsub;
+
+    ns.cleanup();
+    expect(unsub).toHaveBeenCalled();
+    expect(ns.isInitialized()).toBe(false);
+  });
+
+  it('initWorklet creates worklet node and sets up handlers', async () => {
+    const ns2 = new NoiseSuppression();
+    const mockWorkletNode = {
+      port: {
+        postMessage: vi.fn(),
+        onmessage: null as ((e: MessageEvent) => void) | null,
+      },
+      disconnect: vi.fn(),
+    };
+
+    const mockCtx = {
+      audioWorklet: {
+        addModule: vi.fn().mockResolvedValue(undefined),
+      },
+    };
+
+    const OrigAWN = globalThis.AudioWorkletNode;
+    (globalThis as Record<string, unknown>).AudioWorkletNode = function() { return mockWorkletNode; };
+
+    await ns2.initWorklet(mockCtx as unknown as AudioContext);
+
+    expect(mockCtx.audioWorklet.addModule).toHaveBeenCalled();
+    expect(ns2.getWorkletNode()).toBe(mockWorkletNode);
+    expect(mockWorkletNode.port.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'enable', enabled: true }),
+    );
+
+    // Simulate ready message
+    mockWorkletNode.port.onmessage!({ data: { type: 'ready' } } as MessageEvent);
+    expect(ns2.isInitialized()).toBe(true);
+
+    // Clean up
+    ns2.cleanup();
+    if (OrigAWN) {
+      (globalThis as Record<string, unknown>).AudioWorkletNode = OrigAWN;
+    } else {
+      delete (globalThis as Record<string, unknown>).AudioWorkletNode;
+    }
+  });
 });

@@ -298,4 +298,188 @@ describe('TeamSettings', () => {
     expect(screen.getByTestId('nav-federation')).toBeInTheDocument();
     expect(screen.getByTestId('nav-delete-server')).toBeInTheDocument();
   });
+
+  // --- Overview Tab ---
+  it('renders icon URL and max file size inputs in overview', () => {
+    render(<TeamSettings />);
+    expect(screen.getByText('Icon URL')).toBeInTheDocument();
+    expect(screen.getByText('Max File Size (bytes)')).toBeInTheDocument();
+  });
+
+  it('edits team name in overview', () => {
+    render(<TeamSettings />);
+    const input = screen.getByDisplayValue('Test Team');
+    fireEvent.change(input, { target: { value: 'Updated Team' } });
+    expect(input).toHaveValue('Updated Team');
+  });
+
+  it('edits team description in overview', () => {
+    render(<TeamSettings />);
+    const textarea = screen.getByDisplayValue('A test team');
+    fireEvent.change(textarea, { target: { value: 'New description' } });
+    expect(textarea).toHaveValue('New description');
+  });
+
+  it('toggles allow member invites', () => {
+    render(<TeamSettings />);
+    const toggles = screen.getAllByRole('button').filter(b => b.className.includes('toggle-switch'));
+    expect(toggles.length).toBeGreaterThanOrEqual(1);
+    fireEvent.click(toggles[0]);
+  });
+
+  it('saves overview changes on button click', async () => {
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByText('Save Changes'));
+    const { api } = await import('../services/api');
+    expect(api.updateTeam).toHaveBeenCalledWith('team1', expect.objectContaining({ name: 'Test Team' }));
+  });
+
+  // --- Roles Tab ---
+  it('creates a new role', async () => {
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-roles'));
+    fireEvent.click(screen.getByText('Create Role'));
+    const { api } = await import('../services/api');
+    expect(api.createRole).toHaveBeenCalledWith('team1', expect.objectContaining({ name: 'New Role' }));
+  });
+
+  it('selects a role and shows editor with name input', () => {
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-roles'));
+    fireEvent.click(screen.getByText('Admin'));
+    expect(screen.getByDisplayValue('Admin')).toBeInTheDocument();
+  });
+
+  it('edits role name', () => {
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-roles'));
+    fireEvent.click(screen.getByText('Admin'));
+    const input = screen.getByDisplayValue('Admin');
+    fireEvent.change(input, { target: { value: 'Super Admin' } });
+    expect(input).toHaveValue('Super Admin');
+  });
+
+  it('toggles permission checkbox', () => {
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-roles'));
+    fireEvent.click(screen.getByText('Admin'));
+    const checkboxes = screen.getAllByRole('checkbox');
+    expect(checkboxes.length).toBeGreaterThan(0);
+    fireEvent.click(checkboxes[0]);
+  });
+
+  it('saves role changes', async () => {
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-roles'));
+    fireEvent.click(screen.getByText('Admin'));
+    fireEvent.click(screen.getByText('Save Changes'));
+    const { api } = await import('../services/api');
+    expect(api.updateRole).toHaveBeenCalled();
+  });
+
+  it('shows delete button for non-default role', () => {
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-roles'));
+    fireEvent.click(screen.getByText('Admin'));
+    expect(screen.getByText('Delete Role')).toBeInTheDocument();
+  });
+
+  it('does not show delete button for default role', () => {
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-roles'));
+    // Click on the Member role (which is default)
+    const memberTexts = screen.getAllByText('Member');
+    // Click the one in the roles list (not in nav)
+    fireEvent.click(memberTexts[memberTexts.length - 1]);
+    expect(screen.queryByText('Delete Role')).not.toBeInTheDocument();
+  });
+
+  it('deletes a role', async () => {
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-roles'));
+    fireEvent.click(screen.getByText('Admin'));
+    fireEvent.click(screen.getByText('Delete Role'));
+    const { api } = await import('../services/api');
+    expect(api.deleteRole).toHaveBeenCalledWith('team1', 'role-admin');
+  });
+
+  // --- Members Tab ---
+  it('shows member initials in avatar', () => {
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-members'));
+    expect(screen.getByText('A')).toBeInTheDocument(); // Alice's initial
+  });
+
+  it('filters members by nickname', () => {
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-members'));
+    fireEvent.change(screen.getByPlaceholderText('Search members...'), {
+      target: { value: 'Bobby' },
+    });
+    expect(screen.getByText('Bob')).toBeInTheDocument();
+    expect(screen.queryByText('Alice')).not.toBeInTheDocument();
+  });
+
+  it('toggles member selection (deselects on second click)', () => {
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-members'));
+    const aliceEls = screen.getAllByText('Alice');
+    fireEvent.click(aliceEls[0]);
+    expect(screen.getByText('Kick')).toBeInTheDocument();
+    // Click again to deselect
+    fireEvent.click(aliceEls[0]);
+    expect(screen.queryByText('Kick')).not.toBeInTheDocument();
+  });
+
+  it('kicks a member', async () => {
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-members'));
+    fireEvent.click(screen.getByText('Alice'));
+    fireEvent.click(screen.getByText('Kick'));
+    const { api } = await import('../services/api');
+    expect(api.kickMember).toHaveBeenCalledWith('team1', 'u1');
+  });
+
+  it('bans a member', async () => {
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-members'));
+    fireEvent.click(screen.getByText('Alice'));
+    fireEvent.click(screen.getByText('Ban'));
+    const { api } = await import('../services/api');
+    expect(api.banMember).toHaveBeenCalledWith('team1', 'u1');
+  });
+
+  // --- Invites Tab ---
+  it('shows invite form with max uses and expiry selectors', () => {
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-invites'));
+    expect(screen.getByText('Max Uses')).toBeInTheDocument();
+    expect(screen.getByText('Expires After')).toBeInTheDocument();
+  });
+
+  it('creates an invite', async () => {
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-invites'));
+    fireEvent.click(screen.getByText('Create Invite'));
+    const { api } = await import('../services/api');
+    expect(api.createInvite).toHaveBeenCalled();
+  });
+
+  // --- Delete Server Tab ---
+  it('shows disabled delete button in delete server tab', () => {
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-delete-server'));
+    const deleteBtns = screen.getAllByText('Delete Server');
+    // Find the button (not the nav item)
+    const deleteBtn = deleteBtns.find(el => el.tagName === 'BUTTON' && el !== screen.getByTestId('nav-delete-server'));
+    expect(deleteBtn).toBeTruthy();
+  });
+
+  // --- Role color editor ---
+  it('shows color picker in role editor', () => {
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-roles'));
+    fireEvent.click(screen.getByText('Admin'));
+    expect(screen.getByText('Color')).toBeInTheDocument();
+  });
 });

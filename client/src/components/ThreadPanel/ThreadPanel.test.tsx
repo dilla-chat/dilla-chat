@@ -211,4 +211,94 @@ describe('ThreadPanel', () => {
     render(<ThreadPanel thread={emptyThread} onClose={vi.fn()} />);
     expect(screen.getByText('No replies yet. Start the conversation!')).toBeInTheDocument();
   });
+
+  it('shows 1 reply subtitle for single message', () => {
+    useThreadStore.setState({
+      threadMessages: {
+        'thread-1': [
+          {
+            id: 'tmsg-1', channelId: 'ch-1', authorId: 'user-1', username: 'alice',
+            content: 'Hello', encryptedContent: '', type: 'text', threadId: 'thread-1',
+            editedAt: null, deleted: false, createdAt: '2025-01-01T11:00:00Z', reactions: [],
+          },
+        ],
+      },
+    });
+    const singleReply = { ...thread, message_count: 1 };
+    render(<ThreadPanel thread={singleReply} onClose={vi.fn()} />);
+    expect(screen.getAllByText('1 reply').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('shows deleted message placeholder for deleted messages', () => {
+    useThreadStore.setState({
+      threadMessages: {
+        'thread-1': [
+          {
+            id: 'tmsg-del', channelId: 'ch-1', authorId: 'user-1', username: 'alice',
+            content: '', encryptedContent: '', type: 'text', threadId: 'thread-1',
+            editedAt: null, deleted: true, createdAt: '2025-01-01T11:00:00Z', reactions: [],
+          },
+        ],
+      },
+    });
+    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    expect(screen.getByText('[message deleted]')).toBeInTheDocument();
+  });
+
+  it('shows edited indicator for edited messages', () => {
+    useThreadStore.setState({
+      threadMessages: {
+        'thread-1': [
+          {
+            id: 'tmsg-ed', channelId: 'ch-1', authorId: 'user-2', username: 'bob',
+            content: 'Edited msg', encryptedContent: '', type: 'text', threadId: 'thread-1',
+            editedAt: '2025-01-01T12:00:00Z', deleted: false, createdAt: '2025-01-01T11:00:00Z', reactions: [],
+          },
+        ],
+      },
+    });
+    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    expect(screen.getByText('(edited)')).toBeInTheDocument();
+  });
+
+  it('clicking edit button sets editing message', () => {
+    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    const editBtn = screen.getByTestId('EditPencil').closest('button')!;
+    fireEvent.click(editBtn);
+    // The MessageInput should now have an input; verify it exists
+    expect(screen.getByTestId('message-input')).toBeInTheDocument();
+  });
+
+  it('clicking delete button calls ws.deleteThreadMessage', async () => {
+    const { ws } = await import('../../services/websocket');
+    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    const deleteBtn = screen.getByTestId('Trash').closest('button')!;
+    fireEvent.click(deleteBtn);
+    expect(ws.deleteThreadMessage).toHaveBeenCalledWith('team-1', 'thread-1', 'tmsg-1');
+  });
+
+  it('does not show edit/delete for other users messages', () => {
+    // bob's message (user-2) should not have edit/delete since current user is user-1
+    // alice's message (user-1) should have them
+    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    // Only one set of edit/delete (for alice)
+    expect(screen.getAllByTestId('EditPencil')).toHaveLength(1);
+    expect(screen.getAllByTestId('Trash')).toHaveLength(1);
+  });
+
+  it('sends message via thread input', async () => {
+    const { ws } = await import('../../services/websocket');
+    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    const input = screen.getByTestId('message-input').querySelector('input')!;
+    fireEvent.change(input, { target: { value: 'new reply' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(ws.sendThreadMessage).toHaveBeenCalledWith('team-1', 'thread-1', 'new reply');
+  });
+
+  it('renders without parent message when not found', () => {
+    useMessageStore.setState({ messages: new Map() });
+    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    // Should still render thread messages without crash
+    expect(screen.getByText('Hello from thread')).toBeInTheDocument();
+  });
 });

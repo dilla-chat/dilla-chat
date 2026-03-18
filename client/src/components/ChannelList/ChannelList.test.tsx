@@ -139,4 +139,96 @@ describe('ChannelList', () => {
     const { container } = render(<ChannelList />);
     expect(container.querySelector('.channel-tilde')).toBeInTheDocument();
   });
+
+  it('opens edit channel dialog from context menu', () => {
+    const { container } = render(<ChannelList />);
+    const channelItem = screen.getByText('general').closest('.channel-item')!;
+    fireEvent.contextMenu(channelItem);
+    fireEvent.click(screen.getByText('Edit Channel'));
+    expect(screen.getByTestId('edit-channel')).toBeInTheDocument();
+  });
+
+  it('closes edit channel dialog', () => {
+    render(<ChannelList />);
+    const channelItem = screen.getByText('general').closest('.channel-item')!;
+    fireEvent.contextMenu(channelItem);
+    fireEvent.click(screen.getByText('Edit Channel'));
+    fireEvent.click(screen.getByText('close-edit'));
+    expect(screen.queryByTestId('edit-channel')).not.toBeInTheDocument();
+  });
+
+  it('deletes channel from context menu', async () => {
+    const { api } = await import('../../services/api');
+    render(<ChannelList />);
+    const channelItem = screen.getByText('general').closest('.channel-item')!;
+    fireEvent.contextMenu(channelItem);
+    fireEvent.click(screen.getByText('Delete Channel'));
+    await vi.waitFor(() => {
+      expect(api.deleteChannel).toHaveBeenCalledWith('team-1', 'ch-1');
+    });
+  });
+
+  it('calls onCreateChannel with category when add button is clicked', () => {
+    const onCreate = vi.fn();
+    render(<ChannelList onCreateChannel={onCreate} />);
+    const addBtns = document.querySelectorAll('.channel-category-add');
+    fireEvent.click(addBtns[0]);
+    expect(onCreate).toHaveBeenCalled();
+  });
+
+  it('groups channels by category', () => {
+    const channels = new Map([['team-1', [
+      { id: 'ch-1', teamId: 'team-1', name: 'general', topic: '', type: 'text' as const, position: 0, category: 'Dev' },
+      { id: 'ch-3', teamId: 'team-1', name: 'random', topic: '', type: 'text' as const, position: 1, category: 'Dev' },
+      voiceChannel,
+    ]]]);
+    useTeamStore.setState({ channels });
+    render(<ChannelList />);
+    expect(screen.getByText('Dev')).toBeInTheDocument();
+    expect(screen.getByText('general')).toBeInTheDocument();
+    expect(screen.getByText('random')).toBeInTheDocument();
+  });
+
+  it('shows voice channel users when voice connected', () => {
+    useVoiceStore.setState({
+      connected: true,
+      currentChannelId: 'ch-2',
+      peers: {
+        'user-1': { user_id: 'user-1', username: 'alice', muted: false, deafened: false, speaking: false, voiceLevel: 0 },
+      },
+    });
+    render(<ChannelList />);
+    expect(screen.getByText('alice')).toBeInTheDocument();
+  });
+
+  it('shows voice occupants when not connected to that channel', () => {
+    useVoiceStore.setState({
+      voiceOccupants: {
+        'ch-2': [{ user_id: 'user-2', username: 'bob', muted: false, deafened: false, speaking: false, voiceLevel: 0 }],
+      },
+    });
+    render(<ChannelList />);
+    expect(screen.getByText('bob')).toBeInTheDocument();
+  });
+
+  it('shows muted icon for muted voice users', () => {
+    useVoiceStore.setState({
+      connected: true,
+      currentChannelId: 'ch-2',
+      peers: {
+        'user-1': { user_id: 'user-1', username: 'alice', muted: true, deafened: false, speaking: false, voiceLevel: 0 },
+      },
+    });
+    render(<ChannelList />);
+    expect(screen.getByTestId('MicrophoneMute')).toBeInTheDocument();
+  });
+
+  it('closes context menu on document click', () => {
+    const { container } = render(<ChannelList />);
+    const channelItem = screen.getByText('general').closest('.channel-item')!;
+    fireEvent.contextMenu(channelItem);
+    expect(container.querySelector('.channel-context-menu')).toBeInTheDocument();
+    fireEvent.click(document);
+    expect(container.querySelector('.channel-context-menu')).not.toBeInTheDocument();
+  });
 });

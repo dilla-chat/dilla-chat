@@ -129,4 +129,70 @@ describe('VoiceControls', () => {
     const btn = screen.getByTitle('Stop camera');
     expect(btn.className).toContain('active');
   });
+
+  it('calls startScreenShare when screen share button clicked', async () => {
+    const { webrtcService } = await import('../../services/webrtc');
+    render(<VoiceControls />);
+    fireEvent.click(screen.getByTitle('Share screen'));
+    await vi.waitFor(() => {
+      expect(webrtcService.startScreenShare).toHaveBeenCalled();
+    });
+  });
+
+  it('calls stopScreenShare when stop sharing button clicked', async () => {
+    const { webrtcService } = await import('../../services/webrtc');
+    setVoiceState({ screenSharing: true });
+    render(<VoiceControls />);
+    fireEvent.click(screen.getByTitle('Stop sharing'));
+    await vi.waitFor(() => {
+      expect(webrtcService.stopScreenShare).toHaveBeenCalled();
+    });
+  });
+
+  it('calls startWebcam when camera button clicked', async () => {
+    const { webrtcService } = await import('../../services/webrtc');
+    render(<VoiceControls />);
+    fireEvent.click(screen.getByTitle('Share camera'));
+    await vi.waitFor(() => {
+      expect(webrtcService.startWebcam).toHaveBeenCalled();
+    });
+  });
+
+  it('calls stopWebcam when stop camera button clicked', async () => {
+    const { webrtcService } = await import('../../services/webrtc');
+    setVoiceState({ webcamSharing: true });
+    render(<VoiceControls />);
+    fireEvent.click(screen.getByTitle('Stop camera'));
+    await vi.waitFor(() => {
+      expect(webrtcService.stopWebcam).toHaveBeenCalled();
+    });
+  });
+
+  it('shows channel name without team when no team name', () => {
+    useTeamStore.setState({
+      channels: new Map([
+        ['team-1', [{ id: 'ch-1', teamId: 'team-1', name: 'Voice Lounge', topic: '', type: 'voice' as const, position: 0, category: '' }]],
+      ]),
+      teams: new Map(),
+    } as never);
+    render(<VoiceControls />);
+    expect(screen.getByText('Voice Lounge')).toBeInTheDocument();
+  });
+
+  it('renders when connecting', () => {
+    setVoiceState({ connected: false, connecting: true });
+    const { container } = render(<VoiceControls />);
+    expect(container.querySelector('.voice-controls')).toBeInTheDocument();
+  });
+
+  it('shows voice channel name fallback when channel not found', () => {
+    setVoiceState({ currentChannelId: 'unknown-ch' });
+    useTeamStore.setState({
+      channels: new Map([['team-1', []]]),
+      teams: new Map([['team-1', { id: 'team-1', name: 'My Team' }]]),
+    } as never);
+    render(<VoiceControls />);
+    // Should show fallback text
+    expect(screen.getByText(/My Team/)).toBeInTheDocument();
+  });
 });

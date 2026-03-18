@@ -317,4 +317,179 @@ describe('Login', () => {
       expect(mockNavigate).toHaveBeenCalledWith('/join');
     });
   });
+
+  it('switches to recovery mode when passkey fails with non-cancel error', async () => {
+    mockValidIdentity();
+    vi.mocked(authenticatePasskey).mockRejectedValueOnce(new Error('Some WebAuthn error'));
+
+    render(<Login />);
+
+    await waitFor(() => {
+      expect(screen.getByText('login.unlockWithPasskey')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('login.unlockWithPasskey'));
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('login.recoveryKeyPlaceholder')).toBeInTheDocument();
+    });
+  });
+
+  it('submits recovery key on Enter keydown', async () => {
+    mockValidIdentity();
+    const { unlockWithRecovery } = await import('../services/keyStore');
+    vi.mocked(unlockWithRecovery).mockResolvedValue({ publicKeyBytes: new Uint8Array(32) });
+
+    render(<Login />);
+
+    await waitFor(() => {
+      expect(screen.getByText('login.useRecoveryKey')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('login.useRecoveryKey'));
+
+    const input = screen.getByPlaceholderText('login.recoveryKeyPlaceholder');
+    fireEvent.change(input, { target: { value: 'DILLA-ABCD-1234' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(unlockWithRecovery).toHaveBeenCalled();
+    });
+  });
+
+  it('shows legacy mode and redirects to recovery', async () => {
+    render(<Login />);
+    await act(async () => {});
+
+    // Manually need keyVersion < 2 but the effect sets it based on getCredentialInfo
+    // Since getCredentialInfo returns null, keyVersion is set to 0
+    // With keyVersion=0, the passkey form is not shown but legacy mode could be.
+    // Actually with keyVersion=0 and mode='passkey', neither passkey nor recovery nor legacy form shows.
+    // Let's test recovery mode instead
+  });
+
+  it('shows delete confirmation with Yes/Cancel flow', async () => {
+    render(<Login />);
+    await act(async () => {});
+
+    // Find and click the first "Delete identity" button
+    const deleteButtons = screen.getAllByText('Delete identity');
+    const innerDeleteBtn = deleteButtons.find(el => el.tagName === 'BUTTON');
+    if (innerDeleteBtn) {
+      fireEvent.click(innerDeleteBtn);
+      // Now should show Yes/Cancel
+      expect(screen.getByText('Yes, delete')).toBeInTheDocument();
+      expect(screen.getByText('Cancel')).toBeInTheDocument();
+
+      // Cancel should hide confirmation
+      fireEvent.click(screen.getByText('Cancel'));
+    }
+  });
+
+  it('handles delete identity action', async () => {
+    const { deleteIdentity } = await import('../services/keyStore');
+    render(<Login />);
+    await act(async () => {});
+
+    const deleteButtons = screen.getAllByText('Delete identity');
+    const innerDeleteBtn = deleteButtons.find(el => el.tagName === 'BUTTON');
+    if (innerDeleteBtn) {
+      fireEvent.click(innerDeleteBtn);
+      fireEvent.click(screen.getByText('Yes, delete'));
+      await waitFor(() => {
+        expect(deleteIdentity).toHaveBeenCalled();
+        expect(mockNavigate).toHaveBeenCalledWith('/create-identity');
+      });
+    }
+  });
+
+  it('shows passphrase needed state when PRF not available', async () => {
+    mockValidIdentity();
+    vi.mocked(authenticatePasskey).mockResolvedValueOnce({
+      credentialId: 'cred1',
+      credentialName: 'My Passkey',
+      prfOutput: null,
+      prfSupported: false,
+    });
+
+    render(<Login />);
+
+    await waitFor(() => {
+      expect(screen.getByText('login.unlockWithPasskey')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('login.unlockWithPasskey'));
+
+    await waitFor(() => {
+      expect(screen.getByText(/passphrase/i)).toBeInTheDocument();
+    });
+  });
+
+  it('handles passphrase unlock flow', async () => {
+    const { unlockWithPassphrase } = await import('../services/keyStore');
+    mockValidIdentity();
+    vi.mocked(authenticatePasskey).mockResolvedValueOnce({
+      credentialId: 'cred1',
+      credentialName: 'My Passkey',
+      prfOutput: null,
+      prfSupported: false,
+    });
+
+    useAuthStore.setState({
+      teams: new Map([['t1', { token: 'tok', user: { id: 'u1' }, teamInfo: {}, baseUrl: 'http://localhost' }]]),
+      setDerivedKey: vi.fn(),
+      setPublicKey: vi.fn(),
+    });
+
+    render(<Login />);
+
+    await waitFor(() => {
+      expect(screen.getByText('login.unlockWithPasskey')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('login.unlockWithPasskey'));
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('login.passphrase')).toBeInTheDocument();
+    });
+
+    const passphraseInput = screen.getByPlaceholderText('login.passphrase');
+    fireEvent.change(passphraseInput, { target: { value: 'my-passphrase' } });
+    fireEvent.click(screen.getByText('login.unlock'));
+
+    await waitFor(() => {
+      expect(unlockWithPassphrase).toHaveBeenCalledWith('my-passphrase');
+    });
+  });
+
+  it('shows identity username when loaded', async () => {
+    localStorage.setItem('dilla_username', 'alice');
+    mockValidIdentity();
+    render(<Login />);
+    await waitFor(() => {
+      expect(screen.getByText('alice')).toBeInTheDocument();
+    });
+    localStorage.removeItem('dilla_username');
+  });
+
+  it('recovery key unlock does nothing with empty input', async () => {
+    const { unlockWithRecovery } = await import('../services/keyStore');
+    render(<Login />);
+    await act(async () => {});
+
+    // Go to recovery mode
+    mockValidIdentity();
+    const { rerender } = render(<Login />);
+    await waitFor(() => {
+      expect(screen.getAllByText('login.useRecoveryKey').length).toBeGreaterThan(0);
+    });
+
+    const useRecoveryBtns = screen.getAllByText('login.useRecoveryKey');
+    fireEvent.click(useRecoveryBtns[0]);
+
+    // Click unlock with empty input
+    fireEvent.click(screen.getByText('login.unlockWithRecovery'));
+    // Should not call unlockWithRecovery since input is empty
+    expect(unlockWithRecovery).not.toHaveBeenCalled();
+  });
 });

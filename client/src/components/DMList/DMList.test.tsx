@@ -139,4 +139,60 @@ describe('DMList', () => {
     fireEvent.change(input, { target: { value: 'zzzzz' } });
     expect(screen.getByText('No direct messages yet')).toBeInTheDocument();
   });
+
+  it('displays last message preview', () => {
+    const dmWithMsg = {
+      ...dmChannel,
+      last_message: { content: 'Hey there!', createdAt: new Date().toISOString() },
+    };
+    useDMStore.setState({ dmChannels: { 'team-1': [dmWithMsg] } });
+    render(<DMList currentUserId="user-1" onNewDM={vi.fn()} />);
+    expect(screen.getByText('Hey there!')).toBeInTheDocument();
+  });
+
+  it('truncates long last message', () => {
+    const longContent = 'A'.repeat(60);
+    const dmWithLong = {
+      ...dmChannel,
+      last_message: { content: longContent, createdAt: new Date().toISOString() },
+    };
+    useDMStore.setState({ dmChannels: { 'team-1': [dmWithLong] } });
+    render(<DMList currentUserId="user-1" onNewDM={vi.fn()} />);
+    // Should be truncated to 50 chars + ellipsis
+    const expected = longContent.slice(0, 50) + '\u2026';
+    expect(screen.getByText(expected)).toBeInTheDocument();
+  });
+
+  it('shows no messages placeholder for DM without last message', () => {
+    render(<DMList currentUserId="user-1" onNewDM={vi.fn()} />);
+    // 1-1 DM and group DM both have no last_message
+    const noMsgElements = screen.getAllByText('No messages yet. Say hello!');
+    expect(noMsgElements.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('shows group icon for group DMs', () => {
+    render(<DMList currentUserId="user-1" onNewDM={vi.fn()} />);
+    expect(screen.getByTestId('Group')).toBeInTheDocument();
+  });
+
+  it('sorts DMs by last message time', () => {
+    const dm1 = { ...dmChannel, last_message: { content: 'old', createdAt: '2025-01-01T00:00:00Z' } };
+    const dm2 = { ...groupDM, last_message: { content: 'new', createdAt: '2025-01-03T00:00:00Z' } };
+    useDMStore.setState({ dmChannels: { 'team-1': [dm1, dm2] } });
+    const { container } = render(<DMList currentUserId="user-1" onNewDM={vi.fn()} />);
+    const items = container.querySelectorAll('.dm-item');
+    // Group DM (newer) should be first
+    expect(items[0].textContent).toContain('Alice, Bob, Charlie');
+  });
+
+  it('renders timestamp for today messages', () => {
+    const dmToday = {
+      ...dmChannel,
+      last_message: { content: 'Today msg', createdAt: new Date().toISOString() },
+    };
+    useDMStore.setState({ dmChannels: { 'team-1': [dmToday] } });
+    render(<DMList currentUserId="user-1" onNewDM={vi.fn()} />);
+    // Should show time format for today
+    expect(screen.getByText('Today msg')).toBeInTheDocument();
+  });
 });

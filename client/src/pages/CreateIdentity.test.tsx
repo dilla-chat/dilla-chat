@@ -286,4 +286,208 @@ describe('CreateIdentity', () => {
 
     expect(screen.getByText('Minimum 12 characters')).toBeInTheDocument();
   });
+
+  it('shows mismatch error when passphrases do not match', async () => {
+    vi.mocked(registerPasskey).mockResolvedValueOnce({
+      credentialId: 'cred1',
+      credentialName: 'My Passkey',
+      prfOutput: null,
+      prfSupported: false,
+    });
+
+    render(<CreateIdentity />);
+    fireEvent.change(screen.getByPlaceholderText('Username'), { target: { value: 'alice' } });
+    fireEvent.click(screen.getByText('identity.createWithPasskey'));
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Passphrase')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText('Passphrase'), { target: { value: 'longpassphrase1' } });
+    fireEvent.change(screen.getByPlaceholderText('Confirm Passphrase'), { target: { value: 'longpassphrase2' } });
+
+    expect(screen.getByText('identity.passphraseNoMatch')).toBeInTheDocument();
+  });
+
+  it('disables continue button when passphrases do not match', async () => {
+    vi.mocked(registerPasskey).mockResolvedValueOnce({
+      credentialId: 'cred1',
+      credentialName: 'My Passkey',
+      prfOutput: null,
+      prfSupported: false,
+    });
+
+    render(<CreateIdentity />);
+    fireEvent.change(screen.getByPlaceholderText('Username'), { target: { value: 'alice' } });
+    fireEvent.click(screen.getByText('identity.createWithPasskey'));
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Passphrase')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText('Passphrase'), { target: { value: 'longpassphrase1' } });
+    fireEvent.change(screen.getByPlaceholderText('Confirm Passphrase'), { target: { value: 'different' } });
+
+    const continueBtn = screen.getByText('identity.continue');
+    expect(continueBtn).toBeDisabled();
+  });
+
+  it('submits passphrase and shows recovery key', async () => {
+    vi.mocked(registerPasskey).mockResolvedValueOnce({
+      credentialId: 'cred1',
+      credentialName: 'My Passkey',
+      prfOutput: null,
+      prfSupported: false,
+    });
+
+    render(<CreateIdentity />);
+    fireEvent.change(screen.getByPlaceholderText('Username'), { target: { value: 'alice' } });
+    fireEvent.click(screen.getByText('identity.createWithPasskey'));
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Passphrase')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText('Passphrase'), { target: { value: 'longpassphrase1' } });
+    fireEvent.change(screen.getByPlaceholderText('Confirm Passphrase'), { target: { value: 'longpassphrase1' } });
+    fireEvent.click(screen.getByText('identity.continue'));
+
+    await waitFor(() => {
+      expect(screen.getByText('identity.recoveryKeyTitle')).toBeInTheDocument();
+    });
+  });
+
+  it('copies recovery key on button click', async () => {
+    const clipboardWriteText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText: clipboardWriteText } });
+
+    vi.mocked(registerPasskey).mockResolvedValueOnce({
+      credentialId: 'cred1',
+      credentialName: 'My Passkey',
+      prfOutput: new Uint8Array(32),
+      prfSupported: true,
+    });
+
+    render(<CreateIdentity />);
+    fireEvent.change(screen.getByPlaceholderText('Username'), { target: { value: 'alice' } });
+    fireEvent.click(screen.getByText('identity.createWithPasskey'));
+
+    await waitFor(() => {
+      expect(screen.getByText('identity.recoveryKeyCopy')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('identity.recoveryKeyCopy'));
+
+    await waitFor(() => {
+      expect(clipboardWriteText).toHaveBeenCalledWith('DILLA-ABCD-EFGH-1234-5678');
+    });
+  });
+
+  it('navigates to join path on done step with pending invite', async () => {
+    sessionStorage.setItem('pendingInviteToken', 'invite-abc');
+
+    vi.mocked(registerPasskey).mockResolvedValueOnce({
+      credentialId: 'cred1',
+      credentialName: 'My Passkey',
+      prfOutput: new Uint8Array(32),
+      prfSupported: true,
+    });
+
+    render(<CreateIdentity />);
+    fireEvent.change(screen.getByPlaceholderText('Username'), { target: { value: 'alice' } });
+    fireEvent.click(screen.getByText('identity.createWithPasskey'));
+
+    await waitFor(() => {
+      expect(screen.getByText('identity.recoveryKeyTitle')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByText('identity.continue'));
+
+    await waitFor(() => {
+      expect(screen.getByText('auth.joinTeam')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('auth.joinTeam'));
+    expect(mockNavigate).toHaveBeenCalledWith('/join/invite-abc');
+  });
+
+  it('shows skip for now button on done step', async () => {
+    vi.mocked(registerPasskey).mockResolvedValueOnce({
+      credentialId: 'cred1',
+      credentialName: 'My Passkey',
+      prfOutput: new Uint8Array(32),
+      prfSupported: true,
+    });
+
+    render(<CreateIdentity />);
+    fireEvent.change(screen.getByPlaceholderText('Username'), { target: { value: 'alice' } });
+    fireEvent.click(screen.getByText('identity.createWithPasskey'));
+
+    await waitFor(() => {
+      expect(screen.getByText('identity.recoveryKeyTitle')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByText('identity.continue'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Skip for now')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Skip for now'));
+    expect(mockNavigate).toHaveBeenCalledWith('/app');
+  });
+
+  it('handles Enter key on username to trigger creation', async () => {
+    vi.mocked(registerPasskey).mockImplementation(() => new Promise(() => {}));
+
+    render(<CreateIdentity />);
+    const usernameInput = screen.getByPlaceholderText('Username');
+    fireEvent.change(usernameInput, { target: { value: 'alice' } });
+    fireEvent.keyDown(usernameInput, { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(screen.getByText('Opening browser for passkey setup...')).toBeInTheDocument();
+    });
+  });
+
+  it('stores username in localStorage', async () => {
+    vi.mocked(registerPasskey).mockImplementation(() => new Promise(() => {}));
+
+    render(<CreateIdentity />);
+    fireEvent.change(screen.getByPlaceholderText('Username'), { target: { value: 'myuser' } });
+    fireEvent.click(screen.getByText('identity.createWithPasskey'));
+
+    await waitFor(() => {
+      expect(localStorage.getItem('dilla_username')).toBe('myuser');
+    });
+  });
+
+  it('navigates to setup on done step', async () => {
+    vi.mocked(registerPasskey).mockResolvedValueOnce({
+      credentialId: 'cred1',
+      credentialName: 'My Passkey',
+      prfOutput: new Uint8Array(32),
+      prfSupported: true,
+    });
+
+    render(<CreateIdentity />);
+    fireEvent.change(screen.getByPlaceholderText('Username'), { target: { value: 'alice' } });
+    fireEvent.click(screen.getByText('identity.createWithPasskey'));
+
+    await waitFor(() => {
+      expect(screen.getByText('identity.recoveryKeyTitle')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByText('identity.continue'));
+
+    await waitFor(() => {
+      expect(screen.getByText('setup.title')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('setup.title'));
+    expect(mockNavigate).toHaveBeenCalledWith('/setup');
+  });
 });
