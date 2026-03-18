@@ -105,7 +105,7 @@ export default function ChannelList({ onCreateChannel }: Props) {
 
             return (
               <div key={ch.id}>
-                <div
+                <button
                   className={`channel-item ${activeChannelId === ch.id ? 'active' : ''}`}
                   onClick={() => {
                     setActiveChannel(ch.id);
@@ -117,7 +117,7 @@ export default function ChannelList({ onCreateChannel }: Props) {
                 >
                   <span className={`channel-icon ${isVoice && voicePeerList.length > 0 ? 'voice-active' : ''}`}>{isVoice ? <SoundHigh width={16} height={16} strokeWidth={2} /> : <span className="channel-tilde">~</span>}</span>
                   <span className="channel-name">{ch.name}</span>
-                </div>
+                </button>
                 {voicePeerList.length > 0 && (
                   <div className="voice-channel-users">
                     {voicePeerList.map((peer) => (

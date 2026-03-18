@@ -59,8 +59,8 @@ export default function CreateChannel({ defaultCategory, onClose }: Props) {
 
   return (
     <div className="create-channel-overlay" onClick={onClose}>
-      <div className="create-channel-modal" onClick={(e) => e.stopPropagation()}>
-        <h2>{t('channels.create')}</h2>
+      <div className="create-channel-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="create-channel-title">
+        <h2 id="create-channel-title">{t('channels.create')}</h2>
 
         <div className="create-channel-field">
           <label>{t('channels.type', 'Channel Type')}</label>
@@ -81,8 +81,9 @@ export default function CreateChannel({ defaultCategory, onClose }: Props) {
         </div>
 
         <div className="create-channel-field">
-          <label>{t('channels.name', 'Channel Name')}</label>
+          <label htmlFor="create-channel-name">{t('channels.name', 'Channel Name')}</label>
           <input
+            id="create-channel-name"
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -92,8 +93,8 @@ export default function CreateChannel({ defaultCategory, onClose }: Props) {
         </div>
 
         <div className="create-channel-field">
-          <label>{t('channels.categoryLabel', 'Category')}</label>
-          <select value={category} onChange={(e) => setCategory(e.target.value)}>
+          <label htmlFor="create-channel-category">{t('channels.categoryLabel', 'Category')}</label>
+          <select id="create-channel-category" value={category} onChange={(e) => setCategory(e.target.value)}>
             <option value="">{t('channels.noCategory', 'No category')}</option>
             {existingCategories.map((cat) => (
               <option key={cat} value={cat}>
@@ -114,8 +115,9 @@ export default function CreateChannel({ defaultCategory, onClose }: Props) {
         </div>
 
         <div className="create-channel-field">
-          <label>{t('channels.topicLabel', 'Topic')} ({t('channels.optional', 'optional')})</label>
+          <label htmlFor="create-channel-topic">{t('channels.topicLabel', 'Topic')} ({t('channels.optional', 'optional')})</label>
           <textarea
+            id="create-channel-topic"
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
             placeholder={t('channels.topicPlaceholder', 'What is this channel about?')}

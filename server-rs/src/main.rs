@@ -19,6 +19,11 @@ use tokio::signal;
 
 #[tokio::main]
 async fn main() {
+    // Set version.
+    api::VERSION
+        .set(env!("CARGO_PKG_VERSION").to_string())
+        .ok();
+
     // Load configuration.
     let cfg = Config::load();
 

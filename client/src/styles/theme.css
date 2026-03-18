@@ -14,7 +14,7 @@
   --text-normal: #e8edf2;     /* Body text */
   --text-primary: #f0f4f8;    /* Headers, emphasized */
   --text-secondary: #8fa3b8;  /* Subheaders */
-  --text-muted: #4d6478;      /* Muted text */
+  --text-muted: #7a8e9e;      /* Muted text — 4.5:1 on #121c26 */
   --text-link: #3ba8ba;       /* Teal links */
   --text-positive: #4caf82;
   --text-danger: #d05a4a;

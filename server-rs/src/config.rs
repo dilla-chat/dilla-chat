@@ -1,6 +1,7 @@
 use std::env;
+use std::fmt;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Config {
     pub port: u16,
     pub data_dir: String,
@@ -164,6 +165,32 @@ impl Config {
     }
 }
 
+impl fmt::Debug for Config {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Config")
+            .field("port", &self.port)
+            .field("data_dir", &self.data_dir)
+            .field("db_passphrase", &if self.db_passphrase.is_empty() { "<empty>" } else { "<redacted>" })
+            .field("tls_cert", &self.tls_cert)
+            .field("tls_key", &if self.tls_key.is_empty() { "<empty>" } else { "<redacted>" })
+            .field("peers", &self.peers)
+            .field("team_name", &self.team_name)
+            .field("federation_port", &self.federation_port)
+            .field("node_name", &self.node_name)
+            .field("join_secret", &if self.join_secret.is_empty() { "<empty>" } else { "<redacted>" })
+            .field("domain", &self.domain)
+            .field("cf_turn_key_id", &self.cf_turn_key_id)
+            .field("cf_turn_api_token", &if self.cf_turn_api_token.is_empty() { "<empty>" } else { "<redacted>" })
+            .field("turn_mode", &self.turn_mode)
+            .field("turn_shared_secret", &if self.turn_shared_secret.is_empty() { "<empty>" } else { "<redacted>" })
+            .field("allowed_origins", &self.allowed_origins)
+            .field("insecure", &self.insecure)
+            .field("otel_enabled", &self.otel_enabled)
+            .field("otel_api_key", &if self.otel_api_key.is_empty() { "<empty>" } else { "<redacted>" })
+            .finish_non_exhaustive()
+    }
+}
+
 fn env_str(key: &str, fallback: &str) -> String {
     env::var(key).unwrap_or_else(|_| fallback.to_string())
 }
@@ -208,4 +235,120 @@ fn env_bool(key: &str, fallback: bool) -> bool {
         .ok()
         .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
         .unwrap_or(fallback)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Helper to build a Config with sensible defaults for testing.
+    fn test_config() -> Config {
+        Config {
+            port: 8080,
+            data_dir: "./data".into(),
+            db_passphrase: "super-secret-passphrase".into(),
+            tls_cert: "cert.pem".into(),
+            tls_key: "private-key-material".into(),
+            peers: vec![],
+            team_name: "test-team".into(),
+            federation_port: 8081,
+            node_name: "node1".into(),
+            join_secret: "join-secret-value".into(),
+            fed_bind_addr: "0.0.0.0".into(),
+            fed_advert_addr: "".into(),
+            fed_advert_port: 0,
+            max_upload_size: 25 * 1024 * 1024,
+            upload_dir: "./data/uploads".into(),
+            log_level: "info".into(),
+            log_format: "text".into(),
+            rate_limit: 100.0,
+            rate_burst: 200,
+            domain: "example.com".into(),
+            cf_turn_key_id: "key-id-123".into(),
+            cf_turn_api_token: "cf-turn-token-secret".into(),
+            turn_mode: "cloudflare".into(),
+            turn_shared_secret: "turn-shared-secret-value".into(),
+            turn_urls: "".into(),
+            turn_ttl: 86400,
+            allowed_origins: vec![],
+            trusted_proxies: vec![],
+            insecure: false,
+            otel_enabled: false,
+            otel_protocol: "http".into(),
+            otel_endpoint: "localhost:4317".into(),
+            otel_http_endpoint: "".into(),
+            otel_insecure: false,
+            otel_service_name: "dilla-server".into(),
+            otel_api_key: "otel-api-key-secret".into(),
+            otel_api_header: "x-api-key".into(),
+        }
+    }
+
+    #[test]
+    fn test_config_debug_redacts_secrets() {
+        let cfg = test_config();
+        let debug_output = format!("{:?}", cfg);
+
+        // The debug output must contain <redacted> for all secret fields.
+        assert!(
+            debug_output.contains("<redacted>"),
+            "debug output should contain <redacted>"
+        );
+
+        // The actual secret values must NOT appear in the debug output.
+        let secrets = [
+            "super-secret-passphrase",
+            "private-key-material",
+            "join-secret-value",
+            "cf-turn-token-secret",
+            "turn-shared-secret-value",
+            "otel-api-key-secret",
+        ];
+        for secret in &secrets {
+            assert!(
+                !debug_output.contains(secret),
+                "debug output must not contain secret value: {}",
+                secret
+            );
+        }
+
+        // Non-secret fields should still appear.
+        assert!(debug_output.contains("8080"), "port should be visible");
+        assert!(
+            debug_output.contains("example.com"),
+            "domain should be visible"
+        );
+    }
+
+    #[test]
+    fn test_config_debug_shows_empty_for_unset_secrets() {
+        let mut cfg = test_config();
+        cfg.db_passphrase = String::new();
+        cfg.tls_key = String::new();
+        cfg.join_secret = String::new();
+        cfg.cf_turn_api_token = String::new();
+        cfg.turn_shared_secret = String::new();
+        cfg.otel_api_key = String::new();
+
+        let debug_output = format!("{:?}", cfg);
+
+        // When secrets are empty, they should show <empty> instead of <redacted>.
+        assert!(
+            debug_output.contains("<empty>"),
+            "debug output should contain <empty> for unset secrets"
+        );
+    }
+
+    #[test]
+    fn test_config_validate_valid() {
+        let cfg = test_config();
+        assert!(cfg.validate().is_ok());
+    }
+
+    #[test]
+    fn test_config_validate_invalid_port() {
+        let mut cfg = test_config();
+        cfg.port = 0;
+        assert!(cfg.validate().is_err());
+    }
 }

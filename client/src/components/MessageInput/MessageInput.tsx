@@ -174,7 +174,7 @@ function TypingIndicator({ channelId, currentUserId }: { channelId: string; curr
     text = t('messages.typingSeveral', 'Several people are typing...');
   }
 
-  return <div className="typing-indicator">{text}</div>;
+  return <div className="typing-indicator" role="status" aria-live="polite">{text}</div>;
 }
 
 export default function MessageInput({

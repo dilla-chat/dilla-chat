@@ -226,7 +226,8 @@
   box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.24);
 }
 
-.message-item:hover .message-actions {
+.message-item:hover .message-actions,
+.message-item:focus-within .message-actions {
   display: flex;
 }
 

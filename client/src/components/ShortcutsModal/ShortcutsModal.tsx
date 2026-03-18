@@ -23,9 +23,9 @@ export default function ShortcutsModal({ onClose }: Props) {
 
   return (
     <div className="shortcuts-overlay" onClick={onClose}>
-      <div className="shortcuts-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="shortcuts-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="shortcuts-title">
         <div className="shortcuts-header">
-          <h2>{t('shortcuts.title', 'Keyboard Shortcuts')}</h2>
+          <h2 id="shortcuts-title">{t('shortcuts.title', 'Keyboard Shortcuts')}</h2>
           <button className="shortcuts-close" onClick={onClose}><Xmark width={20} height={20} strokeWidth={2} /></button>
         </div>
         <div className="shortcuts-list">

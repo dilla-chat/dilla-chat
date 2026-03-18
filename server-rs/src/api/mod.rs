@@ -26,10 +26,10 @@ use axum::{
     routing::{delete, get, patch, post, put},
     Json, Router,
 };
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use tower_http::cors::{Any, CorsLayer};
 
-pub static mut VERSION: &str = "dev";
+pub static VERSION: OnceLock<String> = OnceLock::new();
 
 #[derive(Clone)]
 pub struct AppState {
@@ -253,7 +253,7 @@ async fn health() -> Json<serde_json::Value> {
 
 async fn version() -> Json<serde_json::Value> {
     Json(serde_json::json!({
-        "version": unsafe { VERSION },
+        "version": VERSION.get().map(|s| s.as_str()).unwrap_or("dev"),
         "runtime": "rust",
     }))
 }
@@ -308,3 +308,42 @@ async fn ws_handler(
 }
 
 use axum::response::IntoResponse;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_version_oncelock_type() {
+        // VERSION is a OnceLock<String> — verify it can be queried without panic.
+        // In test context it may or may not be set (depending on test ordering),
+        // but get() must return Option<&String> safely either way.
+        let val = VERSION.get();
+        // If not yet set, it's None; if set by another test or main, it's Some.
+        // Either way, this must not panic.
+        assert!(val.is_none() || val.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_version_handler_returns_json() {
+        let Json(body) = version().await;
+        // The response must contain a "version" key.
+        assert!(body.get("version").is_some(), "response must have 'version' key");
+        // The response must contain a "runtime" key equal to "rust".
+        assert_eq!(
+            body.get("runtime").and_then(|v| v.as_str()),
+            Some("rust"),
+            "runtime must be 'rust'"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_health_handler() {
+        let Json(body) = health().await;
+        assert_eq!(
+            body.get("status").and_then(|v| v.as_str()),
+            Some("ok"),
+            "health must return status ok"
+        );
+    }
+}

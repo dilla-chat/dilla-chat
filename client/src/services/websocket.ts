@@ -419,35 +419,35 @@ export class WebSocketService {
   sendDMMessage(teamId: string, dmId: string, content: string, type: string = 'text'): void {
     this.send(teamId, {
       type: 'dm:message:send',
-      payload: { dm_id: dmId, content, type },
+      payload: { dm_channel_id: dmId, content, type },
     });
   }
 
   editDMMessage(teamId: string, dmId: string, messageId: string, content: string): void {
     this.send(teamId, {
       type: 'dm:message:edit',
-      payload: { dm_id: dmId, message_id: messageId, content },
+      payload: { dm_channel_id: dmId, message_id: messageId, content },
     });
   }
 
   deleteDMMessage(teamId: string, dmId: string, messageId: string): void {
     this.send(teamId, {
       type: 'dm:message:delete',
-      payload: { dm_id: dmId, message_id: messageId },
+      payload: { dm_channel_id: dmId, message_id: messageId },
     });
   }
 
   startDMTyping(teamId: string, dmId: string): void {
     this.send(teamId, {
       type: 'dm:typing:start',
-      payload: { dm_id: dmId },
+      payload: { dm_channel_id: dmId },
     });
   }
 
   stopDMTyping(teamId: string, dmId: string): void {
     this.send(teamId, {
       type: 'dm:typing:stop',
-      payload: { dm_id: dmId },
+      payload: { dm_channel_id: dmId },
     });
   }
 }

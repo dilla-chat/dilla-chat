@@ -111,17 +111,19 @@ async fn handle_event(
 ) {
     match event.event_type.as_str() {
         EVENT_CHANNEL_JOIN => {
-            if let Ok(p) = serde_json::from_value::<ChannelJoinPayload>(event.payload) {
-                hub.subscribe(client_id, &p.channel_id).await;
+            match serde_json::from_value::<ChannelJoinPayload>(event.payload) {
+                Ok(p) => hub.subscribe(client_id, &p.channel_id).await,
+                Err(e) => tracing::warn!(error = %e, event = "channel:join", "failed to parse payload"),
             }
         }
         EVENT_CHANNEL_LEAVE => {
-            if let Ok(p) = serde_json::from_value::<ChannelJoinPayload>(event.payload) {
-                hub.unsubscribe(client_id, &p.channel_id).await;
+            match serde_json::from_value::<ChannelJoinPayload>(event.payload) {
+                Ok(p) => hub.unsubscribe(client_id, &p.channel_id).await,
+                Err(e) => tracing::warn!(error = %e, event = "channel:leave", "failed to parse payload"),
             }
         }
         EVENT_MESSAGE_SEND => {
-            handle_message_send(hub, client_id, user_id, username, event.payload).await;
+            handle_message_send(hub, client_id, user_id, username, team_id, event.payload).await;
         }
         EVENT_MESSAGE_EDIT => {
             handle_message_edit(hub, user_id, event.payload).await;
@@ -244,18 +246,21 @@ async fn handle_event(
         }
         // DM events
         EVENT_DM_MESSAGE_SEND => {
-            if let Ok(p) = serde_json::from_value::<DMMessageSendPayload>(event.payload) {
-                handle_dm_message_send(hub, user_id, username, p).await;
+            match serde_json::from_value::<DMMessageSendPayload>(event.payload) {
+                Ok(p) => handle_dm_message_send(hub, user_id, username, p).await,
+                Err(e) => tracing::warn!(error = %e, event = "dm:message:send", "failed to parse payload"),
             }
         }
         EVENT_DM_MESSAGE_EDIT => {
-            if let Ok(p) = serde_json::from_value::<DMMessageEditPayload>(event.payload) {
-                handle_dm_message_edit(hub, user_id, p).await;
+            match serde_json::from_value::<DMMessageEditPayload>(event.payload) {
+                Ok(p) => handle_dm_message_edit(hub, user_id, p).await,
+                Err(e) => tracing::warn!(error = %e, event = "dm:message:edit", "failed to parse payload"),
             }
         }
         EVENT_DM_MESSAGE_DELETE => {
-            if let Ok(p) = serde_json::from_value::<DMMessageDeletePayload>(event.payload) {
-                handle_dm_message_delete(hub, user_id, p).await;
+            match serde_json::from_value::<DMMessageDeletePayload>(event.payload) {
+                Ok(p) => handle_dm_message_delete(hub, user_id, p).await,
+                Err(e) => tracing::warn!(error = %e, event = "dm:message:delete", "failed to parse payload"),
             }
         }
         EVENT_DM_TYPING_START | EVENT_DM_TYPING_STOP => {
@@ -304,12 +309,44 @@ async fn handle_message_send(
     _client_id: &str,
     user_id: &str,
     username: &str,
+    team_id: &str,
     payload: serde_json::Value,
 ) {
     let p: MessageSendPayload = match serde_json::from_value(payload) {
         Ok(p) => p,
-        Err(_) => return,
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to parse message send payload");
+            return;
+        }
     };
+
+    // Verify the channel belongs to the user's team before creating the message.
+    let db = hub.db.clone();
+    let cid = p.channel_id.clone();
+    let tid = team_id.to_string();
+    let channel_ok = tokio::task::spawn_blocking(move || {
+        db.with_conn(|conn| {
+            let channel = db::get_channel_by_id(conn, &cid)?;
+            match channel {
+                Some(ch) if ch.team_id == tid => Ok(true),
+                Some(_) => Ok(false),
+                None => Ok(false),
+            }
+        })
+    })
+    .await
+    .unwrap_or(Ok(false))
+    .unwrap_or(false);
+
+    if !channel_ok {
+        tracing::warn!(
+            user_id = user_id,
+            channel_id = %p.channel_id,
+            team_id = team_id,
+            "message:send denied — channel does not belong to user's team"
+        );
+        return;
+    }
 
     let msg_id = db::new_id();
     let now = db::now_str();
@@ -372,24 +409,34 @@ async fn handle_message_send(
 async fn handle_message_edit(hub: &Hub, user_id: &str, payload: serde_json::Value) {
     let p: MessageEditPayload = match serde_json::from_value(payload) {
         Ok(p) => p,
-        Err(_) => return,
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to parse message edit payload");
+            return;
+        }
     };
 
     let db = hub.db.clone();
     let mid = p.message_id.clone();
     let content = p.content.clone();
     let uid = user_id.to_string();
-    let _ = tokio::task::spawn_blocking(move || {
+    let edited = tokio::task::spawn_blocking(move || {
         db.with_conn(|conn| {
             if let Ok(Some(msg)) = db::get_message_by_id(conn, &mid) {
                 if msg.author_id == uid {
                     db::update_message_content(conn, &mid, &content)?;
+                    return Ok(true);
                 }
             }
-            Ok(())
+            Ok(false)
         })
     })
-    .await;
+    .await
+    .unwrap_or(Ok(false))
+    .unwrap_or(false);
+
+    if !edited {
+        return;
+    }
 
     let evt = Event::new(EVENT_MESSAGE_UPDATED, &p);
     if let Ok(evt) = evt {
@@ -406,23 +453,33 @@ async fn handle_message_edit(hub: &Hub, user_id: &str, payload: serde_json::Valu
 async fn handle_message_delete(hub: &Hub, user_id: &str, payload: serde_json::Value) {
     let p: MessageDeletePayload = match serde_json::from_value(payload) {
         Ok(p) => p,
-        Err(_) => return,
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to parse message delete payload");
+            return;
+        }
     };
 
     let db = hub.db.clone();
     let mid = p.message_id.clone();
     let uid = user_id.to_string();
-    let _ = tokio::task::spawn_blocking(move || {
+    let deleted = tokio::task::spawn_blocking(move || {
         db.with_conn(|conn| {
             if let Ok(Some(msg)) = db::get_message_by_id(conn, &mid) {
                 if msg.author_id == uid {
                     db::soft_delete_message(conn, &mid)?;
+                    return Ok(true);
                 }
             }
-            Ok(())
+            Ok(false)
         })
     })
-    .await;
+    .await
+    .unwrap_or(Ok(false))
+    .unwrap_or(false);
+
+    if !deleted {
+        return;
+    }
 
     let evt = Event::new(EVENT_MESSAGE_DELETED, &p);
     if let Ok(evt) = evt {
@@ -1039,6 +1096,26 @@ async fn handle_dm_message_send(
     username: &str,
     p: DMMessageSendPayload,
 ) {
+    // Verify the user is a member of the DM channel.
+    let db = hub.db.clone();
+    let dm_id_check = p.dm_channel_id.clone();
+    let uid_check = user_id.to_string();
+    let is_member = tokio::task::spawn_blocking(move || {
+        db.with_conn(|conn| db::is_dm_member(conn, &dm_id_check, &uid_check))
+    })
+    .await
+    .unwrap_or(Ok(false))
+    .unwrap_or(false);
+
+    if !is_member {
+        tracing::warn!(
+            user_id = user_id,
+            dm_channel_id = %p.dm_channel_id,
+            "dm:message:send denied — user is not a member of this DM channel"
+        );
+        return;
+    }
+
     let db = hub.db.clone();
     let dm_id = p.dm_channel_id.clone();
     let uid = user_id.to_string();
@@ -1101,6 +1178,26 @@ async fn handle_dm_message_send(
 }
 
 async fn handle_dm_message_edit(hub: &Hub, user_id: &str, p: DMMessageEditPayload) {
+    // Verify the user is a member of the DM channel.
+    let db = hub.db.clone();
+    let dm_id_check = p.dm_channel_id.clone();
+    let uid_check = user_id.to_string();
+    let is_member = tokio::task::spawn_blocking(move || {
+        db.with_conn(|conn| db::is_dm_member(conn, &dm_id_check, &uid_check))
+    })
+    .await
+    .unwrap_or(Ok(false))
+    .unwrap_or(false);
+
+    if !is_member {
+        tracing::warn!(
+            user_id = user_id,
+            dm_channel_id = %p.dm_channel_id,
+            "dm:message:edit denied — user is not a member of this DM channel"
+        );
+        return;
+    }
+
     let db = hub.db.clone();
     let mid = p.message_id.clone();
     let content = p.content.clone();
@@ -1143,6 +1240,26 @@ async fn handle_dm_message_edit(hub: &Hub, user_id: &str, p: DMMessageEditPayloa
 }
 
 async fn handle_dm_message_delete(hub: &Hub, user_id: &str, p: DMMessageDeletePayload) {
+    // Verify the user is a member of the DM channel.
+    let db = hub.db.clone();
+    let dm_id_check = p.dm_channel_id.clone();
+    let uid_check = user_id.to_string();
+    let is_member = tokio::task::spawn_blocking(move || {
+        db.with_conn(|conn| db::is_dm_member(conn, &dm_id_check, &uid_check))
+    })
+    .await
+    .unwrap_or(Ok(false))
+    .unwrap_or(false);
+
+    if !is_member {
+        tracing::warn!(
+            user_id = user_id,
+            dm_channel_id = %p.dm_channel_id,
+            "dm:message:delete denied — user is not a member of this DM channel"
+        );
+        return;
+    }
+
     let db = hub.db.clone();
     let mid = p.message_id.clone();
     let uid = user_id.to_string();

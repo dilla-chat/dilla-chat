@@ -156,7 +156,7 @@ export default function MessageList({
   );
 
   return (
-    <div className="message-list" ref={containerRef} onScroll={handleScroll}>
+    <div className="message-list" ref={containerRef} onScroll={handleScroll} role="log" aria-live="polite">
       {isLoading && (
         <div className="message-list-loading">{t('app.loading', 'Loading...')}</div>
       )}

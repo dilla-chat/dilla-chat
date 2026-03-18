@@ -59,6 +59,9 @@
   width: 48px;
   height: 48px;
   border-radius: 50%;
+  border: none;
+  padding: 0;
+  font-family: inherit;
   background-color: var(--bg-primary);
   color: var(--brand-500);
   display: flex;

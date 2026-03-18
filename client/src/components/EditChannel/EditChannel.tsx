@@ -56,12 +56,13 @@ export default function EditChannel({ channel, onClose }: Props) {
 
   return (
     <div className="edit-channel-overlay" onClick={onClose}>
-      <div className="edit-channel-modal" onClick={(e) => e.stopPropagation()}>
-        <h2>{t('channels.editChannel', 'Edit Channel')}</h2>
+      <div className="edit-channel-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="edit-channel-title">
+        <h2 id="edit-channel-title">{t('channels.editChannel', 'Edit Channel')}</h2>
 
         <div className="edit-channel-field">
-          <label>{t('channels.name', 'Channel Name')}</label>
+          <label htmlFor="edit-channel-name">{t('channels.name', 'Channel Name')}</label>
           <input
+            id="edit-channel-name"
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -71,8 +72,8 @@ export default function EditChannel({ channel, onClose }: Props) {
         </div>
 
         <div className="edit-channel-field">
-          <label>{t('channels.categoryLabel', 'Category')}</label>
-          <select value={category} onChange={(e) => setCategory(e.target.value)}>
+          <label htmlFor="edit-channel-category">{t('channels.categoryLabel', 'Category')}</label>
+          <select id="edit-channel-category" value={category} onChange={(e) => setCategory(e.target.value)}>
             <option value="">{t('channels.noCategory', 'No category')}</option>
             {existingCategories.map((cat) => (
               <option key={cat} value={cat}>
@@ -93,8 +94,9 @@ export default function EditChannel({ channel, onClose }: Props) {
         </div>
 
         <div className="edit-channel-field">
-          <label>{t('channels.topicLabel', 'Topic')} ({t('channels.optional', 'optional')})</label>
+          <label htmlFor="edit-channel-topic">{t('channels.topicLabel', 'Topic')} ({t('channels.optional', 'optional')})</label>
           <textarea
+            id="edit-channel-topic"
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
             placeholder={t('channels.topicPlaceholder', 'What is this channel about?')}

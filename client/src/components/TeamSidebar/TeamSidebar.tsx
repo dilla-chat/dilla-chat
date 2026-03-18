@@ -45,13 +45,13 @@ export default function TeamSidebar() {
         key={teamId} 
         className={`team-icon-wrapper ${isActive ? 'active' : ''}`}
       >
-        <div 
+        <button
           className={`team-icon ${isActive ? 'active' : ''}`}
           title={name}
           onClick={() => setActiveTeam(teamId)}
         >
           {initial}
-        </div>
+        </button>
       </div>
     );
   };
