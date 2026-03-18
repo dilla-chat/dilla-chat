@@ -1,8 +1,11 @@
-name: Docker
+name: Docker Dev
 
 on:
   push:
-    tags: ['v*']
+    branches: [main]
+    tags-ignore: ['v*']
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
@@ -13,8 +16,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - uses: docker/setup-qemu-action@v3
 
       - uses: docker/setup-buildx-action@v3
 
@@ -30,15 +31,13 @@ jobs:
         with:
           images: ghcr.io/dilla-chat/dilla-chat
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
+            type=raw,value=dev
+            type=raw,value={{date 'YYYYMMDD'}}-{{sha}}
 
       - uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
+          push: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
