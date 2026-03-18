@@ -492,4 +492,152 @@ describe('Login', () => {
     // Should not call unlockWithRecovery since input is empty
     expect(unlockWithRecovery).not.toHaveBeenCalled();
   });
+
+  it('shows recovery key error on invalid recovery key', async () => {
+    const { unlockWithRecovery } = await import('../services/keyStore');
+    vi.mocked(unlockWithRecovery).mockRejectedValueOnce(new Error('Invalid key'));
+
+    mockValidIdentity();
+    render(<Login />);
+
+    await waitFor(() => {
+      expect(screen.getByText('login.useRecoveryKey')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('login.useRecoveryKey'));
+    const input = screen.getByPlaceholderText('login.recoveryKeyPlaceholder');
+    fireEvent.change(input, { target: { value: 'INVALID-KEY' } });
+    fireEvent.click(screen.getByText('login.unlockWithRecovery'));
+
+    await waitFor(() => {
+      expect(screen.getByText('login.invalidRecoveryKey')).toBeInTheDocument();
+    });
+  });
+
+  it('legacy mode redirects to recovery with error message', async () => {
+    // Manually set mode to legacy by rendering when keyVersion=0
+    vi.mocked(getCredentialInfo).mockResolvedValue(null);
+    render(<Login />);
+    await act(async () => {});
+    // keyVersion is set to 0 from null getCredentialInfo
+    // No passkey form shown; the component should show recover link
+    expect(screen.getByText('Recover identity from server')).toBeInTheDocument();
+  });
+
+  it('shows passphrase input and recovery link when PRF not supported', async () => {
+    mockValidIdentity();
+    vi.mocked(authenticatePasskey).mockResolvedValueOnce({
+      credentialId: 'cred1',
+      credentialName: 'My Passkey',
+      prfOutput: null,
+      prfSupported: false,
+    });
+
+    render(<Login />);
+    await waitFor(() => {
+      expect(screen.getByText('login.unlockWithPasskey')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('login.unlockWithPasskey'));
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('login.passphrase')).toBeInTheDocument();
+      expect(screen.getByText('login.useRecoveryKey')).toBeInTheDocument();
+    });
+
+    // Click use recovery key from passphrase view
+    fireEvent.click(screen.getByText('login.useRecoveryKey'));
+    expect(screen.getByPlaceholderText('login.recoveryKeyPlaceholder')).toBeInTheDocument();
+  });
+
+  it('passphrase unlock handles Enter key', async () => {
+    const { unlockWithPassphrase } = await import('../services/keyStore');
+    mockValidIdentity();
+    vi.mocked(authenticatePasskey).mockResolvedValueOnce({
+      credentialId: 'cred1',
+      credentialName: 'My Passkey',
+      prfOutput: null,
+      prfSupported: false,
+    });
+
+    useAuthStore.setState({
+      teams: new Map([['t1', { token: 'tok', user: { id: 'u1' }, teamInfo: {}, baseUrl: 'http://localhost' }]]),
+      setDerivedKey: vi.fn(),
+      setPublicKey: vi.fn(),
+    });
+
+    render(<Login />);
+    await waitFor(() => {
+      expect(screen.getByText('login.unlockWithPasskey')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('login.unlockWithPasskey'));
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('login.passphrase')).toBeInTheDocument();
+    });
+
+    const input = screen.getByPlaceholderText('login.passphrase');
+    fireEvent.change(input, { target: { value: 'test-pass' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(unlockWithPassphrase).toHaveBeenCalledWith('test-pass');
+    });
+  });
+
+  it('passphrase unlock shows error on failure', async () => {
+    const { unlockWithPassphrase } = await import('../services/keyStore');
+    vi.mocked(unlockWithPassphrase).mockRejectedValueOnce(new Error('wrong'));
+
+    mockValidIdentity();
+    vi.mocked(authenticatePasskey).mockResolvedValueOnce({
+      credentialId: 'cred1',
+      credentialName: 'My Passkey',
+      prfOutput: null,
+      prfSupported: false,
+    });
+
+    render(<Login />);
+    await waitFor(() => {
+      expect(screen.getByText('login.unlockWithPasskey')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('login.unlockWithPasskey'));
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('login.passphrase')).toBeInTheDocument();
+    });
+
+    const input = screen.getByPlaceholderText('login.passphrase');
+    fireEvent.change(input, { target: { value: 'wrong-pass' } });
+    fireEvent.click(screen.getByText('login.unlock'));
+
+    await waitFor(() => {
+      expect(screen.getByText('login.wrongPassphrase')).toBeInTheDocument();
+    });
+  });
+
+  it('passphrase unlock does nothing with empty input', async () => {
+    const { unlockWithPassphrase } = await import('../services/keyStore');
+    mockValidIdentity();
+    vi.mocked(authenticatePasskey).mockResolvedValueOnce({
+      credentialId: 'cred1',
+      credentialName: 'My Passkey',
+      prfOutput: null,
+      prfSupported: false,
+    });
+
+    render(<Login />);
+    await waitFor(() => {
+      expect(screen.getByText('login.unlockWithPasskey')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('login.unlockWithPasskey'));
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('login.passphrase')).toBeInTheDocument();
+    });
+
+    // Don't enter any passphrase, just click unlock
+    // Button should be disabled
+    const unlockBtn = screen.getByText('login.unlock');
+    expect(unlockBtn).toBeDisabled();
+  });
 });

@@ -529,4 +529,80 @@ describe('MessageList', () => {
     );
     expect(container.querySelectorAll('.message-group').length).toBe(0);
   });
+
+  it('calls onLoadMore when scrolled to top with more history', () => {
+    const onLoadMore = vi.fn();
+    const msgs = [makeMessage()];
+    useMessageStore.setState({
+      messages: new Map([['ch-1', msgs]]),
+      loadingHistory: new Map([['ch-1', false]]),
+      hasMore: new Map([['ch-1', true]]),
+    });
+    const { container } = render(
+      <MessageList channelId="ch-1" currentUserId="user-1" onLoadMore={onLoadMore} />,
+    );
+    const list = container.querySelector('.message-list')!;
+    // Simulate scroll to top
+    Object.defineProperty(list, 'scrollTop', { value: 50, configurable: true });
+    Object.defineProperty(list, 'scrollHeight', { value: 1000, configurable: true });
+    Object.defineProperty(list, 'clientHeight', { value: 500, configurable: true });
+    fireEvent.scroll(list);
+    expect(onLoadMore).toHaveBeenCalled();
+  });
+
+  it('does not call onLoadMore when not scrolled to top', () => {
+    const onLoadMore = vi.fn();
+    const msgs = [makeMessage()];
+    useMessageStore.setState({
+      messages: new Map([['ch-1', msgs]]),
+      loadingHistory: new Map([['ch-1', false]]),
+      hasMore: new Map([['ch-1', true]]),
+    });
+    const { container } = render(
+      <MessageList channelId="ch-1" currentUserId="user-1" onLoadMore={onLoadMore} />,
+    );
+    const list = container.querySelector('.message-list')!;
+    Object.defineProperty(list, 'scrollTop', { value: 500, configurable: true });
+    Object.defineProperty(list, 'scrollHeight', { value: 1000, configurable: true });
+    Object.defineProperty(list, 'clientHeight', { value: 500, configurable: true });
+    fireEvent.scroll(list);
+    expect(onLoadMore).not.toHaveBeenCalled();
+  });
+
+  it('renders messages with attachments', () => {
+    const msgs = [
+      makeMessage({
+        id: 'msg-attach',
+      }),
+    ];
+    // Add attachments to message
+    const msgWithAttach = { ...msgs[0], attachments: [{ url: '/file.jpg', filename: 'file.jpg', size: 1024, content_type: 'image/jpeg' }] };
+    useMessageStore.setState({
+      messages: new Map([['ch-1', [msgWithAttach as unknown as Message]]]),
+      loadingHistory: new Map(),
+      hasMore: new Map(),
+    });
+    render(
+      <MessageList channelId="ch-1" currentUserId="user-1" onLoadMore={vi.fn()} />,
+    );
+    expect(screen.getByTestId('file-preview')).toBeInTheDocument();
+  });
+
+  it('renders multiple messages from different authors as separate groups', () => {
+    const now = new Date();
+    const msgs = [
+      makeMessage({ id: 'msg-1', authorId: 'user-1', username: 'alice', content: 'Hello', createdAt: now.toISOString() }),
+      makeMessage({ id: 'msg-2', authorId: 'user-2', username: 'bob', content: 'Hi', createdAt: now.toISOString() }),
+    ];
+    useMessageStore.setState({
+      messages: new Map([['ch-1', msgs]]),
+      loadingHistory: new Map(),
+      hasMore: new Map(),
+    });
+    render(
+      <MessageList channelId="ch-1" currentUserId="user-3" onLoadMore={vi.fn()} />,
+    );
+    expect(screen.getByText('alice')).toBeInTheDocument();
+    expect(screen.getByText('bob')).toBeInTheDocument();
+  });
 });

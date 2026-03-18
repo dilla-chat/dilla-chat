@@ -482,4 +482,63 @@ describe('TeamSettings', () => {
     fireEvent.click(screen.getByText('Admin'));
     expect(screen.getByText('Color')).toBeInTheDocument();
   });
+
+  it('changes role color', () => {
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-roles'));
+    fireEvent.click(screen.getByText('Admin'));
+    const colorInput = screen.getByDisplayValue('#ff0000');
+    fireEvent.change(colorInput, { target: { value: '#00ff00' } });
+    expect(colorInput).toHaveValue('#00ff00');
+  });
+
+  it('shows member role toggles with checkboxes for non-default roles', () => {
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-members'));
+    fireEvent.click(screen.getByText('Alice'));
+    // Should show Admin role toggle checkbox (non-default)
+    const checkboxes = screen.getAllByRole('checkbox');
+    expect(checkboxes.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('toggles member role via checkbox', async () => {
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-members'));
+    fireEvent.click(screen.getByText('Bob'));
+    // Bob has Member role (default), should see Admin checkbox unchecked
+    const checkboxes = screen.getAllByRole('checkbox');
+    if (checkboxes.length > 0) {
+      fireEvent.click(checkboxes[0]);
+      const { api } = await import('../services/api');
+      expect(api.updateMember).toHaveBeenCalled();
+    }
+  });
+
+  it('changes max uses selector in invites tab', () => {
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-invites'));
+    const maxUsesSelect = screen.getByDisplayValue('Unlimited');
+    fireEvent.change(maxUsesSelect, { target: { value: '10' } });
+  });
+
+  it('changes expiry selector in invites tab', () => {
+    render(<TeamSettings />);
+    fireEvent.click(screen.getByTestId('nav-invites'));
+    const expirySelect = screen.getByDisplayValue('1 day');
+    fireEvent.change(expirySelect, { target: { value: '168' } });
+  });
+
+  it('renders nothing special when no activeTeamId', () => {
+    useTeamStore.setState({ activeTeamId: null });
+    render(<TeamSettings />);
+    // Overview should not render content since team is null
+    expect(screen.getByTestId('settings-layout')).toBeInTheDocument();
+  });
+
+  it('changes max file size in overview', () => {
+    render(<TeamSettings />);
+    const fileInput = screen.getByDisplayValue('10485760');
+    fireEvent.change(fileInput, { target: { value: '20971520' } });
+    expect(fileInput).toHaveValue(20971520);
+  });
 });

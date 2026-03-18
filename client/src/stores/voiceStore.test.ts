@@ -444,8 +444,37 @@ describe('joinChannel', () => {
   it('does nothing when already connected to same channel', async () => {
     useVoiceStore.setState({ connected: true, currentChannelId: 'ch-1' });
     const { webrtcService } = await import('../services/webrtc');
+    vi.mocked(webrtcService.connect).mockClear();
     await getState().joinChannel('team-1', 'ch-1');
     expect(webrtcService.connect).not.toHaveBeenCalled();
+  });
+
+  it('connects to a new channel', async () => {
+    const { webrtcService } = await import('../services/webrtc');
+    vi.mocked(webrtcService.connect).mockClear();
+    await getState().joinChannel('team-1', 'ch-1');
+    expect(webrtcService.connect).toHaveBeenCalledWith('ch-1', 'team-1');
+    expect(getState().connected).toBe(true);
+    expect(getState().currentChannelId).toBe('ch-1');
+    expect(getState().currentTeamId).toBe('team-1');
+  });
+
+  it('disconnects from current channel before joining new one', async () => {
+    const { webrtcService } = await import('../services/webrtc');
+    vi.mocked(webrtcService.disconnect).mockClear();
+    vi.mocked(webrtcService.connect).mockClear();
+    useVoiceStore.setState({ connected: true, currentChannelId: 'ch-old', currentTeamId: 'team-1' });
+    await getState().joinChannel('team-1', 'ch-new');
+    expect(webrtcService.disconnect).toHaveBeenCalled();
+    expect(webrtcService.connect).toHaveBeenCalledWith('ch-new', 'team-1');
+  });
+
+  it('handles connect failure gracefully', async () => {
+    const { webrtcService } = await import('../services/webrtc');
+    vi.mocked(webrtcService.connect).mockRejectedValueOnce(new Error('Mic denied'));
+    await getState().joinChannel('team-1', 'ch-1');
+    expect(getState().connected).toBe(false);
+    expect(getState().connecting).toBe(false);
   });
 });
 

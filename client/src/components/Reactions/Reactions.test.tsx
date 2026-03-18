@@ -8,7 +8,12 @@ vi.mock('iconoir-react', () => ({
   Plus: () => <span data-testid="plus-icon" />,
 }));
 vi.mock('../EmojiPicker/EmojiPicker', () => ({
-  default: () => <div data-testid="emoji-picker" />,
+  default: ({ onSelect, onClose }: { onSelect: (emoji: string) => void; onClose: () => void }) => (
+    <div data-testid="emoji-picker">
+      <button data-testid="emoji-select" onClick={() => onSelect('😀')}>Select</button>
+      <button data-testid="emoji-close" onClick={onClose}>Close</button>
+    </div>
+  ),
 }));
 
 const reactions: Reaction[] = [
@@ -166,5 +171,38 @@ describe('Reactions', () => {
       />,
     );
     expect(screen.getByText('3')).toBeInTheDocument();
+  });
+
+  it('calls onAddReaction and closes picker when emoji is selected', () => {
+    const onAddReaction = vi.fn();
+    render(
+      <Reactions
+        reactions={reactions}
+        currentUserId="u1"
+        onToggleReaction={vi.fn()}
+        onAddReaction={onAddReaction}
+      />,
+    );
+    fireEvent.click(screen.getByTitle('Add Reaction'));
+    expect(screen.getByTestId('emoji-picker')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('emoji-select'));
+    expect(onAddReaction).toHaveBeenCalledWith('😀');
+    // Picker should close after selection
+    expect(screen.queryByTestId('emoji-picker')).not.toBeInTheDocument();
+  });
+
+  it('closes emoji picker via close button', () => {
+    render(
+      <Reactions
+        reactions={reactions}
+        currentUserId="u1"
+        onToggleReaction={vi.fn()}
+        onAddReaction={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByTitle('Add Reaction'));
+    expect(screen.getByTestId('emoji-picker')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('emoji-close'));
+    expect(screen.queryByTestId('emoji-picker')).not.toBeInTheDocument();
   });
 });

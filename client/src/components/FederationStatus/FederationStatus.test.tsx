@@ -202,4 +202,60 @@ describe('FederationStatus', () => {
       expect(screen.getByText('federation.lamportTimestamp')).toBeInTheDocument();
     });
   });
+
+  it('copies join command to clipboard', async () => {
+    vi.useRealTimers();
+    const writeTextMock = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText: writeTextMock } });
+
+    render(<FederationStatus teamId="team-1" />);
+    fireEvent.click(screen.getByText('federation.generateJoinToken'));
+
+    await waitFor(() => {
+      expect(screen.getByText('dilla join --token abc123')).toBeInTheDocument();
+    });
+
+    const copyBtns = screen.getAllByText('federation.copyToClipboard');
+    fireEvent.click(copyBtns[0]);
+    expect(writeTextMock).toHaveBeenCalledWith('dilla join --token abc123');
+  });
+
+  it('uses fallback copy when clipboard API fails', async () => {
+    vi.useRealTimers();
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockRejectedValue(new Error('not supported')) } });
+    document.execCommand = vi.fn();
+
+    render(<FederationStatus teamId="team-1" />);
+    fireEvent.click(screen.getByText('federation.generateJoinToken'));
+
+    await waitFor(() => {
+      expect(screen.getByText('dilla join --token abc123')).toBeInTheDocument();
+    });
+
+    const copyBtns = screen.getAllByText('federation.copyToClipboard');
+    fireEvent.click(copyBtns[0]);
+
+    await waitFor(() => {
+      expect(document.execCommand).toHaveBeenCalledWith('copy');
+    });
+  });
+
+  it('shows copied state after copying', async () => {
+    vi.useRealTimers();
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
+
+    render(<FederationStatus teamId="team-1" />);
+    fireEvent.click(screen.getByText('federation.generateJoinToken'));
+
+    await waitFor(() => {
+      expect(screen.getAllByText('federation.copyToClipboard').length).toBe(2);
+    });
+
+    const copyBtns = screen.getAllByText('federation.copyToClipboard');
+    fireEvent.click(copyBtns[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText('federation.copied')).toBeInTheDocument();
+    });
+  });
 });

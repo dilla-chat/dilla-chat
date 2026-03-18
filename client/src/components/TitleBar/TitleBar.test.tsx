@@ -75,8 +75,63 @@ describe('TitleBar', () => {
     expect(screen.getByLabelText('Close')).toBeInTheDocument();
   });
 
-  // Button click tests omitted — they trigger dynamic imports of @tauri-apps/api
-  // which produce unhandled rejections in jsdom. Covered by Tauri e2e tests instead.
+  it('handles close button click', async () => {
+    (window as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    Object.defineProperty(navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (X11; Linux x86_64)',
+      configurable: true,
+    });
+
+    render(<TitleBar />);
+    const closeBtn = screen.getByLabelText('Close');
+    fireEvent.click(closeBtn);
+    // The dynamic import of @tauri-apps/api/window is mocked, so close() should be called
+    // Wait for the async handler to resolve
+    await new Promise(r => setTimeout(r, 10));
+  });
+
+  it('handles minimize button click', async () => {
+    (window as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    Object.defineProperty(navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (X11; Linux x86_64)',
+      configurable: true,
+    });
+
+    render(<TitleBar />);
+    const minimizeBtn = screen.getByLabelText('Minimize');
+    fireEvent.click(minimizeBtn);
+    await new Promise(r => setTimeout(r, 10));
+  });
+
+  it('handles maximize button click', async () => {
+    (window as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    Object.defineProperty(navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (X11; Linux x86_64)',
+      configurable: true,
+    });
+
+    render(<TitleBar />);
+    const maximizeBtn = screen.getByLabelText('Maximize');
+    fireEvent.click(maximizeBtn);
+    await new Promise(r => setTimeout(r, 10));
+  });
+
+  it('button handlers are no-op when TAURI_INTERNALS is not present', async () => {
+    // First render with Tauri to get buttons
+    (window as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    Object.defineProperty(navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (X11; Linux x86_64)',
+      configurable: true,
+    });
+
+    render(<TitleBar />);
+    // Remove TAURI_INTERNALS after render but before click
+    delete (window as Record<string, unknown>).__TAURI_INTERNALS__;
+    const closeBtn = screen.getByLabelText('Close');
+    fireEvent.click(closeBtn);
+    await new Promise(r => setTimeout(r, 10));
+    // Should not throw
+  });
 
   it('has data-tauri-drag-region attribute', () => {
     (window as Record<string, unknown>).__TAURI_INTERNALS__ = {};

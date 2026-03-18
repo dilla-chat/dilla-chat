@@ -151,4 +151,108 @@ describe('PasskeyManager', () => {
     fireEvent.click(screen.getByText('Add Another Passkey'));
     expect(registerPasskey).not.toHaveBeenCalled();
   });
+
+  it('successfully adds a new passkey', async () => {
+    const { getCredentialInfo } = await import('../../services/keyStore');
+    const { registerPasskey } = await import('../../services/webauthn');
+
+    (getCredentialInfo as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      credentials: [{ id: 'cred-123456789012', name: 'Existing', created_at: '2025-01-01' }],
+      prfSalt: new Uint8Array(32),
+    });
+
+    (registerPasskey as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      credentialId: 'new-cred-12345',
+      credentialName: 'New Passkey',
+      prfOutput: new Uint8Array(32),
+    });
+
+    render(<PasskeyManager />);
+    await screen.findByText('Existing');
+
+    fireEvent.click(screen.getByText('Add Another Passkey'));
+    await vi.waitFor(() => {
+      expect(screen.getByText('New Passkey')).toBeInTheDocument();
+    });
+  });
+
+  it('does not add passkey when derivedKey is missing', async () => {
+    useAuthStore.setState({ derivedKey: null });
+    const { getCredentialInfo } = await import('../../services/keyStore');
+    const { registerPasskey } = await import('../../services/webauthn');
+    (registerPasskey as ReturnType<typeof vi.fn>).mockClear();
+
+    (getCredentialInfo as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      credentials: [{ id: 'cred-123456789012', name: 'Test', created_at: '2025-01-01' }],
+      prfSalt: new Uint8Array(32),
+    });
+
+    render(<PasskeyManager />);
+    await screen.findByText('Test');
+
+    fireEvent.click(screen.getByText('Add Another Passkey'));
+    expect(registerPasskey).not.toHaveBeenCalled();
+  });
+
+  it('shows error when regenerate recovery fails', async () => {
+    const { getCredentialInfo, generateRecoveryKey } = await import('../../services/keyStore');
+
+    (getCredentialInfo as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      credentials: [],
+      prfSalt: new Uint8Array(32),
+    });
+
+    (generateRecoveryKey as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      throw new Error('Generation failed');
+    });
+
+    render(<PasskeyManager />);
+    await screen.findByText('No passkeys registered');
+
+    fireEvent.click(screen.getByText('Regenerate Recovery Key'));
+    await vi.waitFor(() => {
+      expect(screen.getByText('Error: Generation failed')).toBeInTheDocument();
+    });
+  });
+
+  it('copies recovery key to clipboard', async () => {
+    const { getCredentialInfo, exportIdentityBlob, generateRecoveryKey } = await import('../../services/keyStore');
+
+    // Ensure generateRecoveryKey works (not throwing from previous test)
+    (generateRecoveryKey as ReturnType<typeof vi.fn>).mockReturnValue(new Uint8Array(32));
+
+    (getCredentialInfo as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      credentials: [],
+      prfSalt: new Uint8Array(32),
+    });
+
+    (exportIdentityBlob as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
+
+    // Mock clipboard
+    const writeTextMock = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText: writeTextMock } });
+
+    render(<PasskeyManager />);
+    await screen.findByText('No passkeys registered');
+
+    fireEvent.click(screen.getByText('Regenerate Recovery Key'));
+    await vi.waitFor(() => {
+      expect(screen.getByText('Copy to Clipboard')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Copy to Clipboard'));
+    expect(writeTextMock).toHaveBeenCalledWith('RECOVERY-KEY');
+  });
+
+  it('shows default name "Passkey" when credential has no name', async () => {
+    const { getCredentialInfo } = await import('../../services/keyStore');
+
+    (getCredentialInfo as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      credentials: [{ id: 'cred-123456789012', name: '', created_at: '2025-01-01' }],
+      prfSalt: new Uint8Array(32),
+    });
+
+    render(<PasskeyManager />);
+    await screen.findByText('Passkey');
+  });
 });

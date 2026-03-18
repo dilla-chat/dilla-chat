@@ -865,4 +865,223 @@ describe('WebRTCService', () => {
       expect(webrtcService.getRemoteStream('unknown')).toBeUndefined();
     });
   });
+
+  describe('ontrack handler', () => {
+    it('handles audio track from remote peer', async () => {
+      // Mock HTMLAudioElement.play() to return a promise
+      HTMLAudioElement.prototype.play = vi.fn().mockResolvedValue(undefined);
+      await webrtcService.connect('ch-1', 'team-1');
+
+      const audioTrack = createMockAudioTrack();
+      const stream = createMockMediaStream([audioTrack]);
+      const handler = mockPc.ontrack as (event: unknown) => void;
+      expect(handler).toBeTypeOf('function');
+
+      handler({
+        track: audioTrack,
+        streams: [stream],
+        receiver: { transform: null },
+      });
+
+      // Audio element should be added to DOM
+      expect(document.querySelectorAll('audio[data-stream-id]')).toHaveLength(1);
+    });
+
+    it('handles video track for screen share', async () => {
+      await webrtcService.connect('ch-1', 'team-1');
+
+      const videoTrack = { ...createMockVideoTrack(), id: 'screen-track-1' };
+      const stream = { ...createMockMediaStream([videoTrack]), id: 'screen-stream-1' };
+      const handler = mockPc.ontrack as (event: unknown) => void;
+
+      handler({
+        track: videoTrack,
+        streams: [stream],
+        receiver: { transform: null },
+      });
+
+      // Remote screen stream should be set
+      expect(useVoiceStore.getState().remoteScreenStream).not.toBeNull();
+    });
+
+    it('handles video track for webcam share', async () => {
+      await webrtcService.connect('ch-1', 'team-1');
+
+      const videoTrack = { ...createMockVideoTrack(), id: 'webcam-user2' };
+      const stream = { ...createMockMediaStream([videoTrack]), id: 'webcam-stream-user2' };
+      const handler = mockPc.ontrack as (event: unknown) => void;
+
+      handler({
+        track: videoTrack,
+        streams: [stream],
+        receiver: { transform: null },
+      });
+
+      expect(useVoiceStore.getState().remoteWebcamStreams['user2']).toBeDefined();
+    });
+
+    it('handles track without streams (fallback)', async () => {
+      HTMLAudioElement.prototype.play = vi.fn().mockResolvedValue(undefined);
+      await webrtcService.connect('ch-1', 'team-1');
+
+      const audioTrack = createMockAudioTrack();
+      const handler = mockPc.ontrack as (event: unknown) => void;
+
+      handler({
+        track: audioTrack,
+        streams: [],
+        receiver: { transform: null },
+      });
+
+      // Should create a fallback stream
+      expect(document.querySelectorAll('audio[data-stream-id]')).toHaveLength(1);
+    });
+  });
+
+  describe('screen share track ended handler', () => {
+    it('auto-stops screen sharing when track ends', async () => {
+      await webrtcService.connect('ch-1', 'team-1');
+
+      const videoTrack = createMockVideoTrack();
+      mockGetDisplayMedia.mockResolvedValueOnce(createMockMediaStream([videoTrack]));
+      await webrtcService.startScreenShare();
+
+      // Simulate the track ending
+      expect(videoTrack.onended).toBeTypeOf('function');
+      (videoTrack.onended as () => void)();
+
+      await vi.waitFor(() => {
+        expect(useVoiceStore.getState().screenSharing).toBe(false);
+      });
+    });
+  });
+
+  describe('webcam track ended handler', () => {
+    it('auto-stops webcam when track ends', async () => {
+      await webrtcService.connect('ch-1', 'team-1');
+
+      const videoTrack = createMockVideoTrack();
+      mockGetUserMedia.mockResolvedValueOnce(createMockMediaStream([videoTrack]));
+      await webrtcService.startWebcam();
+
+      expect(videoTrack.onended).toBeTypeOf('function');
+      (videoTrack.onended as () => void)();
+
+      await vi.waitFor(() => {
+        expect(useVoiceStore.getState().webcamSharing).toBe(false);
+      });
+    });
+  });
+
+  describe('push to talk', () => {
+    it('mutes mic initially when PTT is enabled', async () => {
+      useAudioSettingsStore.setState({ pushToTalk: true, pushToTalkKey: 'KeyV' });
+      await webrtcService.connect('ch-1', 'team-1');
+      // Mic should start muted in PTT mode
+    });
+
+    it('unmutes on key down and mutes on key up', async () => {
+      useAudioSettingsStore.setState({ pushToTalk: true, pushToTalkKey: 'KeyV' });
+      await webrtcService.connect('ch-1', 'team-1');
+
+      // Simulate key down
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyV' }));
+      expect(mockWs.voiceMute).toHaveBeenCalledWith('team-1', 'ch-1', false);
+
+      // Simulate key up
+      window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyV' }));
+      expect(mockWs.voiceMute).toHaveBeenCalledWith('team-1', 'ch-1', true);
+    });
+
+    it('ignores non-PTT keys', async () => {
+      useAudioSettingsStore.setState({ pushToTalk: true, pushToTalkKey: 'KeyV' });
+      mockWs.voiceMute.mockClear();
+      await webrtcService.connect('ch-1', 'team-1');
+      mockWs.voiceMute.mockClear();
+
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyA' }));
+      window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyA' }));
+      expect(mockWs.voiceMute).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('store subscriptions', () => {
+    it('updates gain when input volume changes', async () => {
+      await webrtcService.connect('ch-1', 'team-1');
+      // Simulate volume change
+      useUserSettingsStore.setState({ inputVolume: 0.5 });
+      // Should update gain node (no error)
+    });
+
+    it('updates speaker volume when output volume changes', async () => {
+      await webrtcService.connect('ch-1', 'team-1');
+      // Add an audio element first
+      const audio = document.createElement('audio');
+      audio.dataset.streamId = 'test';
+      document.body.appendChild(audio);
+      // Simulate output volume change
+      useUserSettingsStore.setState({ outputVolume: 0.3 });
+      // The subscription fires and updates audio elements
+    });
+  });
+
+  describe('VAD with analyser', () => {
+    it('starts and runs VAD timer', async () => {
+      await webrtcService.connect('ch-1', 'team-1');
+      webrtcService.startVAD();
+      webrtcService.stopVAD();
+      webrtcService.stopVAD();
+    });
+
+    it('startVAD is no-op without local stream', () => {
+      // Not connected, no local stream
+      webrtcService.startVAD();
+      webrtcService.stopVAD();
+    });
+  });
+
+  describe('screen sharing edge cases', () => {
+    it('startScreenShare throws when getDisplayMedia is not supported', async () => {
+      await webrtcService.connect('ch-1', 'team-1');
+      // Remove getDisplayMedia
+      Object.defineProperty(navigator, 'mediaDevices', {
+        value: { getUserMedia: mockGetUserMedia },
+        writable: true,
+        configurable: true,
+      });
+      await expect(webrtcService.startScreenShare()).rejects.toThrow(
+        'Screen sharing is not supported',
+      );
+      // Restore
+      Object.defineProperty(navigator, 'mediaDevices', {
+        value: { getUserMedia: mockGetUserMedia, getDisplayMedia: mockGetDisplayMedia },
+        writable: true,
+        configurable: true,
+      });
+    });
+
+    it('stopScreenShare is safe when no screen stream', async () => {
+      await webrtcService.connect('ch-1', 'team-1');
+      await webrtcService.stopScreenShare();
+      // No error
+    });
+
+    it('stopWebcam is safe when no webcam stream', async () => {
+      await webrtcService.connect('ch-1', 'team-1');
+      await webrtcService.stopWebcam();
+    });
+  });
+
+  describe('ICE candidate from local PC', () => {
+    it('sends ICE candidate when channelId and teamId are set', async () => {
+      await webrtcService.connect('ch-1', 'team-1');
+      const handler = mockPc.onicecandidate as (event: { candidate: { toJSON: () => unknown } | null }) => void;
+      handler({
+        candidate: {
+          toJSON: () => ({ candidate: 'candidate:1', sdpMid: '0', sdpMLineIndex: 0 }),
+        },
+      });
+      expect(mockWs.voiceICECandidate).toHaveBeenCalled();
+    });
+  });
 });

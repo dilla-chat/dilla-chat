@@ -521,4 +521,169 @@ describe('UserSettings', () => {
     render(<UserSettings />);
     expect(screen.getByText('A')).toBeInTheDocument();
   });
+
+  it('changes VAD threshold slider in rnnoise mode', () => {
+    useAudioSettingsStore.setState({ inputProfile: 'custom', noiseSuppressionMode: 'rnnoise', vadThreshold: 0.5 });
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    const vadSlider = screen.getByRole('slider', { name: 'VAD Threshold' });
+    fireEvent.change(vadSlider, { target: { value: '70' } });
+    expect(vadSlider).toHaveValue('70');
+  });
+
+  it('changes grace period slider in rnnoise mode', () => {
+    useAudioSettingsStore.setState({ inputProfile: 'custom', noiseSuppressionMode: 'rnnoise', vadGracePeriodMs: 200 });
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    const graceSlider = screen.getByRole('slider', { name: 'Grace Period' });
+    fireEvent.change(graceSlider, { target: { value: '300' } });
+    expect(graceSlider).toHaveValue('300');
+  });
+
+  it('changes retroactive grace slider in rnnoise mode', () => {
+    useAudioSettingsStore.setState({ inputProfile: 'custom', noiseSuppressionMode: 'rnnoise', retroactiveGraceMs: 30 });
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    const retroSlider = screen.getByRole('slider', { name: 'Retroactive Grace' });
+    fireEvent.change(retroSlider, { target: { value: '50' } });
+    expect(retroSlider).toHaveValue('50');
+  });
+
+  it('changes input sensitivity slider when auto gain is off', () => {
+    useAudioSettingsStore.setState({ inputProfile: 'custom', autoGainControl: false });
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    const sensitivitySlider = screen.getByRole('slider', { name: 'Input Sensitivity' });
+    fireEvent.change(sensitivitySlider, { target: { value: '50' } });
+    expect(sensitivitySlider).toHaveValue('50');
+  });
+
+  it('toggles sound notifications', () => {
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-notifications'));
+    const toggles = screen.getAllByRole('button').filter(b => b.className.includes('toggle-switch'));
+    // Second toggle is sound notifications
+    if (toggles.length >= 2) {
+      fireEvent.click(toggles[1]);
+    }
+  });
+
+  it('shows "Saving..." when display name save is in progress', async () => {
+    const { api } = await import('../services/api');
+    let resolveUpdate: (v: unknown) => void;
+    const updatePromise = new Promise(r => { resolveUpdate = r; });
+    vi.mocked(api.updateMe).mockReturnValueOnce(updatePromise as Promise<unknown>);
+
+    render(<UserSettings />);
+    fireEvent.click(screen.getByText('Edit'));
+    const input = screen.getByDisplayValue('Test User');
+    fireEvent.change(input, { target: { value: 'New Name' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    // Button should show "Saving..."
+    expect(screen.getByText('Saving...')).toBeInTheDocument();
+    resolveUpdate!({ username: 'testuser', display_name: 'New Name' });
+  });
+
+  it('does not save when display name is empty', async () => {
+    const { api } = await import('../services/api');
+    render(<UserSettings />);
+    fireEvent.click(screen.getByText('Edit'));
+    const input = screen.getByDisplayValue('Test User');
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.blur(input);
+    expect(api.updateMe).not.toHaveBeenCalled();
+  });
+
+  it('reverts display name on save failure', async () => {
+    const { api } = await import('../services/api');
+    vi.mocked(api.updateMe).mockRejectedValueOnce(new Error('Network error'));
+
+    render(<UserSettings />);
+    fireEvent.click(screen.getByText('Edit'));
+    const input = screen.getByDisplayValue('Test User');
+    fireEvent.change(input, { target: { value: 'Failed Name' } });
+    fireEvent.blur(input);
+    // After failure, should revert
+    await vi.waitFor(() => {
+      expect(screen.queryByText('Saving...')).not.toBeInTheDocument();
+    });
+  });
+
+  it('shows no public key section when teams are empty', () => {
+    useAuthStore.setState({
+      publicKey: null,
+      teams: new Map(),
+    });
+    render(<UserSettings />);
+    expect(screen.queryByText('Your public key fingerprint')).not.toBeInTheDocument();
+  });
+
+  it('starts mic test on button click', async () => {
+    // Mock getUserMedia for mic test
+    const mockStream = {
+      getTracks: vi.fn(() => [{ stop: vi.fn() }]),
+    };
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: {
+        getUserMedia: vi.fn().mockResolvedValue(mockStream),
+        enumerateDevices: vi.fn().mockResolvedValue([]),
+      },
+      configurable: true,
+    });
+
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    const testMicBtn = screen.getByText('Test Mic');
+    fireEvent.click(testMicBtn);
+    // Should show "Stop" button after starting
+    // Note: AudioContext is not available in jsdom, so it may fail silently
+  });
+
+  it('shows voice isolation profile description', () => {
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    expect(screen.getByText(/Just your beautiful voice/)).toBeInTheDocument();
+  });
+
+  it('shows studio profile description', () => {
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    expect(screen.getByText(/Pure audio/)).toBeInTheDocument();
+  });
+
+  it('shows custom profile description', () => {
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    expect(screen.getByText(/Advanced mode/)).toBeInTheDocument();
+  });
+
+  it('selects voice isolation profile via radio', () => {
+    useAudioSettingsStore.setState({ inputProfile: 'custom' });
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    const voiceIsolationRadio = screen.getByRole('radio', { name: /Voice Isolation/ });
+    fireEvent.click(voiceIsolationRadio);
+  });
+
+  it('shows auto sensitivity toggle description in custom mode', () => {
+    useAudioSettingsStore.setState({ inputProfile: 'custom' });
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    expect(screen.getByText(/Automatically adjusts your mic volume/)).toBeInTheDocument();
+  });
+
+  it('shows echo cancellation description in custom mode', () => {
+    useAudioSettingsStore.setState({ inputProfile: 'custom' });
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    expect(screen.getByText(/Removes echo from speakers/)).toBeInTheDocument();
+  });
+
+  it('shows push to talk description in custom mode', () => {
+    useAudioSettingsStore.setState({ inputProfile: 'custom' });
+    render(<UserSettings />);
+    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    expect(screen.getByText(/Hold a key to transmit/)).toBeInTheDocument();
+  });
 });

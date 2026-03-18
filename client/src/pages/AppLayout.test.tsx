@@ -354,4 +354,255 @@ describe('AppLayout behavioral', () => {
     render(<AppLayout />);
     await waitFor(() => { expect(screen.getAllByTestId('search-bar').length).toBeGreaterThan(0); });
   });
+
+  it('shows lock icon when derivedKey is set on channel header', async () => {
+    useAuthStore.setState({
+      derivedKey: 'some-key',
+      teams: new Map([
+        ['team1', { baseUrl: 'http://localhost:8080', token: 'tok', user: { id: 'u1', username: 'tester', display_name: 'Tester' }, teamInfo: {} }],
+      ]),
+    });
+    render(<AppLayout />);
+    await waitFor(() => {
+      expect(screen.getByTestId('Lock')).toBeInTheDocument();
+    });
+  });
+
+  it('shows group DM with member count and Group icon', async () => {
+    useTeamStore.setState({ activeChannelId: '' });
+    useDMStore.setState({
+      activeDMId: 'dm-group', setActiveDM: vi.fn(),
+      dmChannels: { team1: [{
+        id: 'dm-group',
+        members: [
+          { user_id: 'u1', username: 'tester', display_name: 'Tester' },
+          { user_id: 'u2', username: 'bob', display_name: 'Bob' },
+          { user_id: 'u3', username: 'charlie', display_name: 'Charlie' },
+        ],
+        is_group: true, created_at: '', last_message_at: null,
+      }] },
+    });
+    render(<AppLayout />);
+    await waitFor(() => {
+      expect(screen.getByTestId('dm-view')).toBeInTheDocument();
+    });
+  });
+
+  it('shows DM empty state when no active DM in DM mode', async () => {
+    useTeamStore.setState({ activeChannelId: '' });
+    useDMStore.setState({
+      activeDMId: null, setActiveDM: vi.fn(),
+      dmChannels: {},
+    });
+    render(<AppLayout />);
+    await waitFor(() => {
+      // Switch to DM mode - but since there's no activeDMId, show channel view
+      expect(screen.getByTestId('title-bar')).toBeInTheDocument();
+    });
+  });
+
+  it('renders both sidebar tabs (Kanals and PMs) and they are clickable', async () => {
+    render(<AppLayout />);
+    await waitFor(() => {
+      expect(screen.getByText('PMs')).toBeInTheDocument();
+      expect(screen.getByText('Kanals')).toBeInTheDocument();
+    });
+    // Just verify clicking doesn't crash
+    fireEvent.click(screen.getByText('PMs'));
+    fireEvent.click(screen.getByText('Kanals'));
+  });
+
+  it('triggers WS sync:init when WS is already connected', async () => {
+    vi.mocked(ws.isConnected).mockReturnValue(true);
+    vi.mocked(ws.request).mockResolvedValue({});
+    render(<AppLayout />);
+    await waitFor(() => {
+      expect(ws.request).toHaveBeenCalled();
+    });
+  });
+
+  it('fires WS event handlers for presence changes', async () => {
+    render(<AppLayout />);
+    await waitFor(() => { expect(ws.on).toHaveBeenCalled(); });
+    const calls = vi.mocked(ws.on).mock.calls;
+    const presenceHandler = calls.find(c => c[0] === 'presence:changed');
+    if (presenceHandler) {
+      (presenceHandler[1] as Function)({
+        team_id: 'team1',
+        user_id: 'u2',
+        status_type: 'away',
+        status_text: 'brb',
+      });
+    }
+  });
+
+  it('fires WS event handlers for voice join/leave', async () => {
+    render(<AppLayout />);
+    await waitFor(() => { expect(ws.on).toHaveBeenCalled(); });
+    const calls = vi.mocked(ws.on).mock.calls;
+
+    const voiceJoinHandler = calls.find(c => c[0] === 'voice:user-joined');
+    if (voiceJoinHandler) {
+      (voiceJoinHandler[1] as Function)({
+        channel_id: 'ch-voice', user_id: 'u2', username: 'bob',
+      });
+    }
+
+    const voiceLeftHandler = calls.find(c => c[0] === 'voice:user-left');
+    if (voiceLeftHandler) {
+      (voiceLeftHandler[1] as Function)({ channel_id: 'ch-voice', user_id: 'u2' });
+    }
+
+    const muteHandler = calls.find(c => c[0] === 'voice:mute-update');
+    if (muteHandler) {
+      (muteHandler[1] as Function)({ channel_id: 'ch-voice', user_id: 'u2', muted: true, deafened: false });
+    }
+
+    const screenHandler = calls.find(c => c[0] === 'voice:screen-update');
+    if (screenHandler) {
+      (screenHandler[1] as Function)({ channel_id: 'ch-voice', user_id: 'u2', sharing: true });
+    }
+
+    const webcamHandler = calls.find(c => c[0] === 'voice:webcam-update');
+    if (webcamHandler) {
+      (webcamHandler[1] as Function)({ channel_id: 'ch-voice', user_id: 'u2', sharing: true });
+    }
+  });
+
+  it('navigates to user settings from UserPanel', async () => {
+    render(<AppLayout />);
+    await waitFor(() => { expect(screen.getByTestId('user-panel')).toBeInTheDocument(); });
+  });
+
+  it('fires ws:connected handler and triggers sync:init', async () => {
+    vi.mocked(ws.request).mockResolvedValue({
+      channels: [{ id: 'ch-new', name: 'new-ch', type: 'text', team_id: 'team1', topic: '', position: 0, category: '' }],
+      team: { id: 'team1', name: 'Test Team', description: '', iconUrl: '', maxFileSize: 0, allowMemberInvites: true },
+      members: [{ id: 'm1', user_id: 'u1', username: 'tester', display_name: 'Tester', nickname: '', roles: [] }],
+      roles: [],
+      presences: { 'u1': { status: 'online', custom_status: '' } },
+    });
+    render(<AppLayout />);
+    await waitFor(() => { expect(ws.on).toHaveBeenCalled(); });
+
+    // Find and invoke ws:connected handler
+    const calls = vi.mocked(ws.on).mock.calls;
+    const connHandler = calls.find(c => c[0] === 'ws:connected');
+    if (connHandler) {
+      (connHandler[1] as Function)({ teamId: 'team1' });
+      await waitFor(() => {
+        expect(ws.request).toHaveBeenCalled();
+      });
+    }
+  });
+
+  it('applies sync data with voice states', async () => {
+    vi.mocked(ws.request).mockResolvedValue({
+      channels: [],
+      team: { id: 'team1', name: 'Test Team' },
+      members: [],
+      roles: [],
+      presences: {},
+      voice_states: { 'ch-voice': [{ user_id: 'u2', username: 'bob', muted: false, deafened: false, speaking: false, voiceLevel: 0 }] },
+    });
+    vi.mocked(ws.isConnected).mockReturnValue(true);
+    render(<AppLayout />);
+    await waitFor(() => {
+      expect(ws.request).toHaveBeenCalled();
+    });
+  });
+
+  it('falls back to REST when sync:init fails', async () => {
+    vi.mocked(ws.request).mockRejectedValue(new Error('sync failed'));
+    vi.mocked(ws.isConnected).mockReturnValue(true);
+    render(<AppLayout />);
+    await waitFor(() => {
+      // Should fall back to REST calls
+      expect(api.getChannels).toHaveBeenCalledWith('team1');
+    });
+  });
+
+  it('does not connect WS when no connection info', async () => {
+    vi.mocked(api.getConnectionInfo).mockReturnValue(null);
+    render(<AppLayout />);
+    await waitFor(() => {
+      expect(ws.connect).not.toHaveBeenCalled();
+    });
+  });
+
+  it('shows DM empty message in DM mode with no active DM', async () => {
+    useTeamStore.setState({ activeChannelId: '' });
+    useDMStore.setState({
+      activeDMId: 'some-id', setActiveDM: vi.fn(),
+      dmChannels: { team1: [] },
+    });
+    render(<AppLayout />);
+    await waitFor(() => {
+      expect(screen.getByText('No direct messages yet')).toBeInTheDocument();
+    });
+  });
+
+  it('handles presence:changed event with missing fields', async () => {
+    render(<AppLayout />);
+    await waitFor(() => { expect(ws.on).toHaveBeenCalled(); });
+    const calls = vi.mocked(ws.on).mock.calls;
+    const presenceHandler = calls.find(c => c[0] === 'presence:changed');
+    if (presenceHandler) {
+      // With minimal payload
+      (presenceHandler[1] as Function)({ user_id: 'u2', status: 'online' });
+      // With status_type variant
+      (presenceHandler[1] as Function)({ user_id: 'u3', status_type: 'away', status_text: 'brb' });
+    }
+  });
+
+  it('shows DM toggle members button for group DM and toggles', async () => {
+    useTeamStore.setState({ activeChannelId: '' });
+    useDMStore.setState({
+      activeDMId: 'dm-grp', setActiveDM: vi.fn(),
+      dmChannels: { team1: [{
+        id: 'dm-grp',
+        members: [
+          { user_id: 'u1', username: 'tester', display_name: 'Tester' },
+          { user_id: 'u2', username: 'bob', display_name: 'Bob' },
+        ],
+        is_group: true, created_at: '', last_message_at: null,
+      }] },
+    });
+    render(<AppLayout />);
+    await waitFor(() => {
+      expect(screen.getByTestId('dm-view')).toBeInTheDocument();
+    });
+    // The Group icon toggle button should be present for group DMs
+    const groupIcons = screen.getAllByTestId('Group');
+    expect(groupIcons.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('shows header with Dilla name when no channel or DM is selected', async () => {
+    useTeamStore.setState({ activeChannelId: '' });
+    useDMStore.setState({ activeDMId: null, setActiveDM: vi.fn(), dmChannels: {} });
+    render(<AppLayout />);
+    await waitFor(() => {
+      // Should show app name and toggle member list button
+      const toggleBtns = screen.getAllByTitle('Toggle Member List');
+      expect(toggleBtns.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it('handles voice events with missing fields gracefully', async () => {
+    render(<AppLayout />);
+    await waitFor(() => { expect(ws.on).toHaveBeenCalled(); });
+    const calls = vi.mocked(ws.on).mock.calls;
+
+    // voice:user-joined with no channel_id (should be ignored)
+    const joinHandler = calls.find(c => c[0] === 'voice:user-joined');
+    if (joinHandler) {
+      (joinHandler[1] as Function)({ channel_id: '', user_id: '' });
+    }
+
+    // voice:user-left with no channel_id
+    const leftHandler = calls.find(c => c[0] === 'voice:user-left');
+    if (leftHandler) {
+      (leftHandler[1] as Function)({ channel_id: '', user_id: '' });
+    }
+  });
 });

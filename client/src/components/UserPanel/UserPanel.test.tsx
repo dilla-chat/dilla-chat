@@ -220,4 +220,44 @@ describe('UserPanel', () => {
     render(<UserPanel username="alice" />);
     expect(screen.getByText('alice')).toBeInTheDocument();
   });
+
+  it('closes status picker on outside click', () => {
+    render(<UserPanel username="alice" />);
+    const avatar = document.querySelector('.user-panel-avatar')!;
+    fireEvent.click(avatar);
+    expect(screen.getByTestId('status-picker')).toBeInTheDocument();
+    // Simulate clicking outside (on document body)
+    fireEvent.click(document.body);
+    expect(screen.queryByTestId('status-picker')).not.toBeInTheDocument();
+  });
+
+  it('shows different presence status text for offline', () => {
+    usePresenceStore.setState({ myStatus: 'offline' });
+    render(<UserPanel username="alice" />);
+    expect(screen.getByText('presence.offline')).toBeInTheDocument();
+  });
+
+  it('shows different presence status text for away', () => {
+    usePresenceStore.setState({ myStatus: 'away' });
+    render(<UserPanel username="alice" />);
+    expect(screen.getByText('presence.away')).toBeInTheDocument();
+  });
+
+  it('shows deafen button with correct title', () => {
+    render(<UserPanel username="alice" />);
+    expect(screen.getByTitle('Deafen')).toBeInTheDocument();
+  });
+
+  it('shows Undeafen title when deafened', () => {
+    useVoiceStore.setState({ deafened: true } as never);
+    render(<UserPanel username="alice" />);
+    expect(screen.getByTitle('Undeafen')).toBeInTheDocument();
+  });
+
+  it('renders with all action buttons', () => {
+    render(<UserPanel username="alice" />);
+    // Mute, Deafen, Settings
+    const buttons = document.querySelectorAll('.user-panel-btn');
+    expect(buttons.length).toBe(3);
+  });
 });

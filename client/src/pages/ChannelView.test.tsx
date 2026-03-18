@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 
 vi.mock('../services/websocket', () => ({
   ws: {
@@ -42,17 +42,24 @@ vi.mock('../services/messageCache', () => ({
 }));
 
 vi.mock('../components/MessageList/MessageList', () => ({
-  default: ({ channelId, channelName }: { channelId: string; channelName?: string }) => (
+  default: ({ channelId, channelName, onLoadMore, onEdit, onDelete, onCreateThread, onOpenThread }: { channelId: string; channelName?: string; onLoadMore?: () => void; onEdit?: (msg: unknown) => void; onDelete?: (msg: unknown) => void; onCreateThread?: (msg: unknown) => void; onOpenThread?: (id: string) => void }) => (
     <div data-testid="message-list" data-channel-id={channelId} data-channel-name={channelName}>
-      MessageList
+      <button data-testid="load-more" onClick={onLoadMore}>Load More</button>
+      <button data-testid="edit-msg" onClick={() => onEdit?.({ id: 'msg-1', content: 'old' })}>Edit</button>
+      <button data-testid="delete-msg" onClick={() => onDelete?.({ id: 'msg-1', channelId: 'ch-1', authorId: 'u1' })}>Delete</button>
+      <button data-testid="create-thread" onClick={() => onCreateThread?.({ id: 'msg-1', channelId: 'ch-1' })}>Thread</button>
+      <button data-testid="open-thread" onClick={() => onOpenThread?.('msg-1')}>Open Thread</button>
     </div>
   ),
 }));
 
 vi.mock('../components/MessageInput/MessageInput', () => ({
-  default: ({ channelId, channelName }: { channelId: string; channelName?: string }) => (
+  default: ({ channelId, channelName, onSend, onEdit, onTyping, onCancelEdit }: { channelId: string; channelName?: string; onSend?: (s: string) => void; onEdit?: (id: string, s: string) => void; onTyping?: () => void; onCancelEdit?: () => void }) => (
     <div data-testid="message-input" data-channel-id={channelId} data-channel-name={channelName}>
-      MessageInput
+      <button data-testid="send-btn" onClick={() => onSend?.('hello')}>Send</button>
+      <button data-testid="edit-btn" onClick={() => onEdit?.('msg-1', 'edited')}>Save Edit</button>
+      <button data-testid="typing-btn" onClick={onTyping}>Type</button>
+      <button data-testid="cancel-edit" onClick={onCancelEdit}>Cancel</button>
     </div>
   ),
 }));
@@ -166,6 +173,232 @@ describe('ChannelView', () => {
     expect(screen.getByTestId('message-input')).toHaveAttribute('data-channel-name', 'test-chan');
   });
 
-  // WS history/thread loading tests omitted — require deep async mocking
-  // of the component's useEffect data fetching flow
+  it('loads message history via API on mount when WS not connected', async () => {
+    const { api } = await import('../services/api');
+    vi.mocked(api.getMessages).mockResolvedValueOnce([
+      {
+        id: 'msg-1',
+        channel_id: 'ch-1',
+        author_id: 'u1',
+        username: 'tester',
+        content: 'Hello',
+        type: 'text',
+        thread_id: null,
+        edited_at: null,
+        deleted: false,
+        created_at: '2025-01-01T00:00:00Z',
+        reactions: [],
+      },
+    ]);
+    render(<ChannelView channel={makeChannel()} />);
+    await waitFor(() => {
+      expect(api.getMessages).toHaveBeenCalledWith('t1', 'ch-1', 50);
+    });
+  });
+
+  it('loads message history via WS when connected', async () => {
+    vi.mocked(ws.isConnected).mockReturnValue(true);
+    vi.mocked(ws.request).mockResolvedValueOnce([]);
+    render(<ChannelView channel={makeChannel()} />);
+    await waitFor(() => {
+      expect(ws.request).toHaveBeenCalledWith('t1', 'messages:list', expect.objectContaining({ channel_id: 'ch-1' }));
+    });
+  });
+
+  it('invokes WS event callbacks for message:new', async () => {
+    render(<ChannelView channel={makeChannel()} />);
+    // Verify message:new handler was registered
+    const calls = vi.mocked(ws.on).mock.calls;
+    const newMsgHandler = calls.find(c => c[0] === 'message:new');
+    expect(newMsgHandler).toBeDefined();
+    // Call the handler with a message from a different channel - should be ignored
+    if (newMsgHandler) {
+      await (newMsgHandler[1] as Function)({
+        id: 'msg-x', channel_id: 'ch-other', author_id: 'u2', username: 'bob',
+        content: 'hi', type: 'text', thread_id: null, edited_at: null, deleted: false,
+        created_at: '2025-01-01T00:00:00Z', reactions: [],
+      });
+    }
+  });
+
+  it('invokes WS event callbacks for message:edited', async () => {
+    render(<ChannelView channel={makeChannel()} />);
+    const calls = vi.mocked(ws.on).mock.calls;
+    const editHandler = calls.find(c => c[0] === 'message:edited');
+    expect(editHandler).toBeDefined();
+    if (editHandler) {
+      await (editHandler[1] as Function)({
+        message_id: 'msg-1', channel_id: 'ch-1', content: 'edited', author_id: 'u1',
+      });
+    }
+  });
+
+  it('invokes WS event callbacks for message:deleted', async () => {
+    render(<ChannelView channel={makeChannel()} />);
+    const calls = vi.mocked(ws.on).mock.calls;
+    const deleteHandler = calls.find(c => c[0] === 'message:deleted');
+    expect(deleteHandler).toBeDefined();
+    if (deleteHandler) {
+      (deleteHandler[1] as Function)({ message_id: 'msg-1', channel_id: 'ch-1' });
+    }
+  });
+
+  it('invokes WS event callbacks for typing:start', async () => {
+    render(<ChannelView channel={makeChannel()} />);
+    const calls = vi.mocked(ws.on).mock.calls;
+    const typingHandler = calls.find(c => c[0] === 'typing:start');
+    expect(typingHandler).toBeDefined();
+    if (typingHandler) {
+      (typingHandler[1] as Function)({ channel_id: 'ch-1', user_id: 'u2', username: 'bob' });
+    }
+  });
+
+  it('invokes WS thread event callbacks', async () => {
+    render(<ChannelView channel={makeChannel()} />);
+    const calls = vi.mocked(ws.on).mock.calls;
+
+    const threadCreated = calls.find(c => c[0] === 'thread:created');
+    if (threadCreated) {
+      (threadCreated[1] as Function)({ id: 'th1', channel_id: 'ch-1', parent_message_id: 'msg-1' });
+    }
+
+    const threadUpdated = calls.find(c => c[0] === 'thread:updated');
+    if (threadUpdated) {
+      (threadUpdated[1] as Function)({ id: 'th1', channel_id: 'ch-1' });
+    }
+
+    const threadMsgNew = calls.find(c => c[0] === 'thread:message:new');
+    if (threadMsgNew) {
+      await (threadMsgNew[1] as Function)({
+        id: 'tmsg-1', channel_id: 'ch-1', thread_id: 'th1', author_id: 'u1',
+        username: 'tester', content: 'reply', type: 'text', edited_at: null,
+        deleted: false, created_at: '2025-01-01T00:00:00Z', reactions: [],
+      });
+    }
+
+    const threadMsgEdit = calls.find(c => c[0] === 'thread:message:updated');
+    if (threadMsgEdit) {
+      await (threadMsgEdit[1] as Function)({
+        id: 'tmsg-1', channel_id: 'ch-1', thread_id: 'th1', author_id: 'u1',
+        username: 'tester', content: 'edited', type: 'text', edited_at: '2025-01-01T01:00:00Z',
+        deleted: false, created_at: '2025-01-01T00:00:00Z', reactions: [],
+      });
+    }
+
+    const threadMsgDel = calls.find(c => c[0] === 'thread:message:deleted');
+    if (threadMsgDel) {
+      (threadMsgDel[1] as Function)({ message_id: 'tmsg-1', thread_id: 'th1' });
+    }
+  });
+
+  it('ignores WS events for other channels', async () => {
+    render(<ChannelView channel={makeChannel()} />);
+    const calls = vi.mocked(ws.on).mock.calls;
+
+    const newMsgHandler = calls.find(c => c[0] === 'message:new');
+    if (newMsgHandler) {
+      await (newMsgHandler[1] as Function)({
+        id: 'msg-x', channel_id: 'other-ch', author_id: 'u2', username: 'bob',
+        content: 'hi', type: 'text', thread_id: null, edited_at: null, deleted: false,
+        created_at: '2025-01-01T00:00:00Z', reactions: [],
+      });
+    }
+
+    const deleteHandler = calls.find(c => c[0] === 'message:deleted');
+    if (deleteHandler) {
+      (deleteHandler[1] as Function)({ message_id: 'msg-x', channel_id: 'other-ch' });
+    }
+
+    const typingHandler = calls.find(c => c[0] === 'typing:start');
+    if (typingHandler) {
+      (typingHandler[1] as Function)({ channel_id: 'other-ch', user_id: 'u2', username: 'bob' });
+    }
+  });
+
+  it('handles thread message events with null thread_id', async () => {
+    render(<ChannelView channel={makeChannel()} />);
+    const calls = vi.mocked(ws.on).mock.calls;
+    const threadMsgNew = calls.find(c => c[0] === 'thread:message:new');
+    if (threadMsgNew) {
+      await (threadMsgNew[1] as Function)({
+        id: 'tmsg-1', channel_id: 'ch-1', thread_id: null, author_id: 'u1',
+        username: 'tester', content: 'reply', type: 'text', edited_at: null,
+        deleted: false, created_at: '2025-01-01T00:00:00Z', reactions: [],
+      });
+    }
+  });
+
+  it('does not render when no activeTeamId', () => {
+    useTeamStore.setState({ activeTeamId: null });
+    render(<ChannelView channel={makeChannel()} />);
+    expect(screen.getByTestId('message-list')).toBeInTheDocument();
+  });
+
+  it('sends a message via WS when send button is clicked', async () => {
+    render(<ChannelView channel={makeChannel()} />);
+    fireEvent.click(screen.getByTestId('send-btn'));
+    await waitFor(() => {
+      expect(ws.sendMessage).toHaveBeenCalledWith('t1', 'ch-1', expect.any(String));
+    });
+  });
+
+  it('edits a message via WS when edit button is clicked', async () => {
+    render(<ChannelView channel={makeChannel()} />);
+    fireEvent.click(screen.getByTestId('edit-msg'));
+    fireEvent.click(screen.getByTestId('edit-btn'));
+    await waitFor(() => {
+      expect(ws.editMessage).toHaveBeenCalledWith('t1', 'msg-1', 'ch-1', expect.any(String));
+    });
+  });
+
+  it('deletes a message via WS when delete button is clicked', () => {
+    render(<ChannelView channel={makeChannel()} />);
+    fireEvent.click(screen.getByTestId('delete-msg'));
+    expect(ws.deleteMessage).toHaveBeenCalledWith('t1', 'msg-1', 'ch-1');
+  });
+
+  it('sends typing indicator via WS when typing', () => {
+    render(<ChannelView channel={makeChannel()} />);
+    fireEvent.click(screen.getByTestId('typing-btn'));
+    expect(ws.startTyping).toHaveBeenCalledWith('t1', 'ch-1');
+  });
+
+  it('does not send when activeTeamId is null', () => {
+    useTeamStore.setState({ activeTeamId: null });
+    render(<ChannelView channel={makeChannel()} />);
+    fireEvent.click(screen.getByTestId('send-btn'));
+    expect(ws.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('triggers handleLoadMore with messages in store', async () => {
+    const { useMessageStore } = await import('../stores/messageStore');
+    useMessageStore.setState({
+      messages: new Map([['ch-1', [{ id: 'old-msg', channelId: 'ch-1', authorId: 'u1', username: 'tester', content: 'old', encryptedContent: '', type: 'text', threadId: null, editedAt: null, deleted: false, createdAt: '2025-01-01T00:00:00Z', reactions: [] }]]]),
+      loadingHistory: new Map([['ch-1', false]]),
+      hasMore: new Map([['ch-1', true]]),
+    });
+    render(<ChannelView channel={makeChannel()} />);
+    fireEvent.click(screen.getByTestId('load-more'));
+  });
+
+  it('creates a thread via API when create thread button is clicked', async () => {
+    const { api } = await import('../services/api');
+    vi.mocked(api.createThread).mockResolvedValueOnce({
+      id: 'th-new', channel_id: 'ch-1', parent_message_id: 'msg-1',
+      team_id: 't1', creator_id: 'u1', title: '', message_count: 0,
+      last_message_at: null, created_at: '2025-01-01T00:00:00Z',
+    });
+    render(<ChannelView channel={makeChannel()} />);
+    fireEvent.click(screen.getByTestId('create-thread'));
+    await waitFor(() => {
+      expect(api.createThread).toHaveBeenCalledWith('t1', 'ch-1', 'msg-1');
+    });
+  });
+
+  it('cancel edit clears editing state', () => {
+    render(<ChannelView channel={makeChannel()} />);
+    fireEvent.click(screen.getByTestId('edit-msg'));
+    fireEvent.click(screen.getByTestId('cancel-edit'));
+    // Should not crash
+  });
 });

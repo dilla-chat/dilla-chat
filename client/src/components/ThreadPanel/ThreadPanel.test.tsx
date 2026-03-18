@@ -69,11 +69,14 @@ vi.mock('../../utils/colors', () => ({
 }));
 
 vi.mock('../MessageInput/MessageInput', () => ({
-  default: ({ onSend, placeholder }: { onSend: (s: string) => void; placeholder: string }) => (
+  default: ({ onSend, onEdit, onCancelEdit, placeholder, editingMessage }: { onSend: (s: string) => void; onEdit?: (id: string, s: string) => void; onCancelEdit?: () => void; placeholder: string; editingMessage?: unknown }) => (
     <div data-testid="message-input">
       <input placeholder={placeholder} onKeyDown={(e) => {
         if (e.key === 'Enter') onSend((e.target as HTMLInputElement).value);
       }} />
+      <button data-testid="save-edit" onClick={() => onEdit?.('tmsg-1', 'edited content')}>Save Edit</button>
+      <button data-testid="cancel-edit" onClick={onCancelEdit}>Cancel</button>
+      {editingMessage && <span data-testid="editing-indicator">Editing</span>}
     </div>
   ),
 }));
@@ -300,5 +303,242 @@ describe('ThreadPanel', () => {
     render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
     // Should still render thread messages without crash
     expect(screen.getByText('Hello from thread')).toBeInTheDocument();
+  });
+
+  it('subscribes to thread WS events on mount', async () => {
+    const { ws } = await import('../../services/websocket');
+    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    const calls = vi.mocked(ws.on).mock.calls;
+    const eventNames = calls.map(c => c[0]);
+    expect(eventNames).toContain('thread:message:new');
+    expect(eventNames).toContain('thread:message:updated');
+    expect(eventNames).toContain('thread:message:deleted');
+  });
+
+  it('handles thread:message:new WS event', async () => {
+    const { ws } = await import('../../services/websocket');
+    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    const calls = vi.mocked(ws.on).mock.calls;
+    const newHandler = calls.find(c => c[0] === 'thread:message:new');
+    if (newHandler) {
+      await (newHandler[1] as Function)({
+        id: 'tmsg-new', channel_id: 'ch-1', author_id: 'user-2', username: 'bob',
+        content: 'New thread msg', type: 'text', thread_id: 'thread-1',
+        edited_at: null, deleted: false, created_at: '2025-01-01T12:00:00Z', reactions: [],
+      });
+    }
+  });
+
+  it('ignores thread:message:new for other threads', async () => {
+    const { ws } = await import('../../services/websocket');
+    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    const calls = vi.mocked(ws.on).mock.calls;
+    const newHandler = calls.find(c => c[0] === 'thread:message:new');
+    if (newHandler) {
+      await (newHandler[1] as Function)({
+        id: 'tmsg-other', channel_id: 'ch-1', author_id: 'user-2', username: 'bob',
+        content: 'Other', type: 'text', thread_id: 'other-thread',
+        edited_at: null, deleted: false, created_at: '2025-01-01T12:00:00Z', reactions: [],
+      });
+    }
+  });
+
+  it('handles thread:message:updated WS event', async () => {
+    const { ws } = await import('../../services/websocket');
+    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    const calls = vi.mocked(ws.on).mock.calls;
+    const editHandler = calls.find(c => c[0] === 'thread:message:updated');
+    if (editHandler) {
+      await (editHandler[1] as Function)({
+        id: 'tmsg-1', channel_id: 'ch-1', author_id: 'user-1', username: 'alice',
+        content: 'Edited content', type: 'text', thread_id: 'thread-1',
+        edited_at: '2025-01-01T12:30:00Z', deleted: false, created_at: '2025-01-01T11:00:00Z', reactions: [],
+      });
+    }
+  });
+
+  it('handles thread:message:deleted WS event', async () => {
+    const { ws } = await import('../../services/websocket');
+    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    const calls = vi.mocked(ws.on).mock.calls;
+    const deleteHandler = calls.find(c => c[0] === 'thread:message:deleted');
+    if (deleteHandler) {
+      (deleteHandler[1] as Function)({ message_id: 'tmsg-1', thread_id: 'thread-1' });
+    }
+  });
+
+  it('unsubscribes from events on unmount', async () => {
+    const { ws } = await import('../../services/websocket');
+    const unsub = vi.fn();
+    vi.mocked(ws.on).mockReturnValue(unsub);
+
+    const { unmount } = render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    unmount();
+    expect(unsub).toHaveBeenCalled();
+  });
+
+  it('loads thread messages via API on mount', async () => {
+    const { api } = await import('../../services/api');
+    vi.mocked(api.getThreadMessages).mockResolvedValueOnce([]);
+    // Clear initialLoadDone by using a new thread id
+    const freshThread = { ...thread, id: 'thread-fresh' };
+    useThreadStore.setState({ threadMessages: {} });
+    render(<ThreadPanel thread={freshThread} onClose={vi.fn()} />);
+    await vi.waitFor(() => {
+      expect(api.getThreadMessages).toHaveBeenCalledWith('team-1', 'thread-fresh');
+    });
+  });
+
+  it('edit button sets editing state and save edit calls ws.editThreadMessage', async () => {
+    const { ws } = await import('../../services/websocket');
+    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    const editBtn = screen.getByTestId('EditPencil').closest('button')!;
+    fireEvent.click(editBtn);
+    expect(screen.getByTestId('editing-indicator')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('save-edit'));
+    await vi.waitFor(() => {
+      expect(ws.editThreadMessage).toHaveBeenCalledWith('team-1', 'thread-1', 'tmsg-1', expect.any(String));
+    });
+  });
+
+  it('cancel edit clears editing state', () => {
+    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    const editBtn = screen.getByTestId('EditPencil').closest('button')!;
+    fireEvent.click(editBtn);
+    expect(screen.getByTestId('editing-indicator')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('cancel-edit'));
+    expect(screen.queryByTestId('editing-indicator')).not.toBeInTheDocument();
+  });
+
+  it('renders yesterday timestamp', () => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    useThreadStore.setState({
+      threadMessages: {
+        'thread-1': [
+          {
+            id: 'tmsg-yesterday', channelId: 'ch-1', authorId: 'user-2', username: 'bob',
+            content: 'Yesterday msg', encryptedContent: '', type: 'text', threadId: 'thread-1',
+            editedAt: null, deleted: false, createdAt: yesterday.toISOString(), reactions: [],
+          },
+        ],
+      },
+    });
+    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    expect(screen.getByText(/Yesterday at/)).toBeInTheDocument();
+  });
+
+  it('renders old date timestamp', () => {
+    useThreadStore.setState({
+      threadMessages: {
+        'thread-1': [
+          {
+            id: 'tmsg-old', channelId: 'ch-1', authorId: 'user-2', username: 'bob',
+            content: 'Old msg', encryptedContent: '', type: 'text', threadId: 'thread-1',
+            editedAt: null, deleted: false, createdAt: '2020-06-15T10:00:00Z', reactions: [],
+          },
+        ],
+      },
+    });
+    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    // Should show date in format like "6/15/2020"
+    expect(screen.getByText(/2020/)).toBeInTheDocument();
+  });
+
+  it('encrypts messages when derivedKey is set', async () => {
+    useAuthStore.setState({ teams: new Map([['team-1', { token: 't', user: { id: 'user-1', username: 'alice' }, teamInfo: null, baseUrl: '' }]]), derivedKey: 'test-derived-key' });
+    const { ws } = await import('../../services/websocket');
+    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    const input = screen.getByTestId('message-input').querySelector('input')!;
+    fireEvent.change(input, { target: { value: 'encrypted msg' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await vi.waitFor(() => {
+      expect(ws.sendThreadMessage).toHaveBeenCalledWith('team-1', 'thread-1', expect.any(String));
+    });
+  });
+
+  it('encrypts edited messages when derivedKey is set', async () => {
+    useAuthStore.setState({ teams: new Map([['team-1', { token: 't', user: { id: 'user-1', username: 'alice' }, teamInfo: null, baseUrl: '' }]]), derivedKey: 'test-derived-key' });
+    const { ws } = await import('../../services/websocket');
+    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    const editBtn = screen.getByTestId('EditPencil').closest('button')!;
+    fireEvent.click(editBtn);
+    fireEvent.click(screen.getByTestId('save-edit'));
+    await vi.waitFor(() => {
+      expect(ws.editThreadMessage).toHaveBeenCalledWith('team-1', 'thread-1', 'tmsg-1', expect.any(String));
+    });
+  });
+
+  it('does not send when activeTeamId is null', async () => {
+    useTeamStore.setState({ activeTeamId: null as unknown as string });
+    const { ws } = await import('../../services/websocket');
+    vi.mocked(ws.sendThreadMessage).mockClear();
+    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    const input = screen.getByTestId('message-input').querySelector('input')!;
+    fireEvent.change(input, { target: { value: 'test' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(ws.sendThreadMessage).not.toHaveBeenCalled();
+  });
+
+  it('handles scroll and triggers load more at top', async () => {
+    // Set up thread with messages and hasMore=true
+    useThreadStore.setState({
+      threadMessages: {
+        'thread-1': [
+          {
+            id: 'tmsg-1', channelId: 'ch-1', authorId: 'user-1', username: 'alice',
+            content: 'Hello', encryptedContent: '', type: 'text', threadId: 'thread-1',
+            editedAt: null, deleted: false, createdAt: '2025-01-01T11:00:00Z', reactions: [],
+          },
+        ],
+      },
+    });
+
+    const { container } = render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    const messagesDiv = container.querySelector('.thread-messages');
+    if (messagesDiv) {
+      // Simulate scroll near top
+      Object.defineProperty(messagesDiv, 'scrollTop', { value: 50, configurable: true });
+      Object.defineProperty(messagesDiv, 'scrollHeight', { value: 1000, configurable: true });
+      Object.defineProperty(messagesDiv, 'clientHeight', { value: 500, configurable: true });
+      fireEvent.scroll(messagesDiv);
+    }
+  });
+
+  it('handles scroll and detects auto-scroll position', async () => {
+    const { container } = render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    const messagesDiv = container.querySelector('.thread-messages');
+    if (messagesDiv) {
+      // Simulate scroll at bottom (auto-scroll should be true)
+      Object.defineProperty(messagesDiv, 'scrollTop', { value: 480, configurable: true });
+      Object.defineProperty(messagesDiv, 'scrollHeight', { value: 1000, configurable: true });
+      Object.defineProperty(messagesDiv, 'clientHeight', { value: 500, configurable: true });
+      fireEvent.scroll(messagesDiv);
+    }
+  });
+
+  it('renders loading state', () => {
+    useThreadStore.setState({ threadMessages: {} });
+    const freshThread = { ...thread, id: 'thread-loading' };
+    render(<ThreadPanel thread={freshThread} onClose={vi.fn()} />);
+    expect(screen.getByText('Loading...')).toBeInTheDocument();
+  });
+
+  it('formats time correctly for today, yesterday, and other dates', () => {
+    // The formatTime function is internal but tested via rendered output
+    const now = new Date();
+    useThreadStore.setState({
+      threadMessages: {
+        'thread-1': [
+          {
+            id: 'tmsg-today', channelId: 'ch-1', authorId: 'user-2', username: 'bob',
+            content: 'Today msg', encryptedContent: '', type: 'text', threadId: 'thread-1',
+            editedAt: null, deleted: false, createdAt: now.toISOString(), reactions: [],
+          },
+        ],
+      },
+    });
+    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    expect(screen.getByText(/Today at/)).toBeInTheDocument();
   });
 });

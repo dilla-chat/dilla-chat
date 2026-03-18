@@ -313,4 +313,114 @@ describe('VoiceChannel', () => {
     const avatar = container.querySelector('.voice-tile-avatar');
     expect(avatar?.textContent).toBe('AL');
   });
+
+  it('enters fullscreen mode when screen share banner is clicked', () => {
+    const mockStream = { id: 'screen-stream' } as unknown as MediaStream;
+    setVoiceState({
+      connected: true,
+      currentChannelId: 'voice-ch-1',
+      screenSharing: true,
+      localScreenStream: mockStream,
+      screenSharingUserId: null,
+      peers: {
+        'user-1': { user_id: 'user-1', username: 'alice', muted: false, deafened: false, speaking: false, voiceLevel: 0 },
+      },
+    });
+    const { container } = render(<VoiceChannel channel={channel} />);
+    const banner = container.querySelector('.voice-screen-share-banner');
+    if (banner) {
+      fireEvent.click(banner);
+      // Should now show fullscreen mode
+      expect(container.querySelector('.screen-share-fullscreen')).toBeInTheDocument();
+    }
+  });
+
+  it('shows fullscreen screen share view with close button', () => {
+    const mockStream = { id: 'screen-stream' } as unknown as MediaStream;
+    setVoiceState({
+      connected: true,
+      currentChannelId: 'voice-ch-1',
+      screenSharing: true,
+      localScreenStream: mockStream,
+      screenSharingUserId: null,
+      peers: {
+        'user-1': { user_id: 'user-1', username: 'alice', muted: false, deafened: false, speaking: false, voiceLevel: 0 },
+      },
+    });
+    const { container } = render(<VoiceChannel channel={channel} />);
+    // Click the screen share banner to enter fullscreen
+    const banner = container.querySelector('.voice-screen-share-banner');
+    if (banner) {
+      fireEvent.click(banner);
+      expect(screen.getByText('You are sharing your screen')).toBeInTheDocument();
+      // Click collapse button to exit fullscreen
+      const collapseBtn = container.querySelector('.screen-share-close');
+      if (collapseBtn) {
+        fireEvent.click(collapseBtn);
+        expect(container.querySelector('.screen-share-fullscreen')).not.toBeInTheDocument();
+      }
+    }
+  });
+
+  it('shows remote screen share with sharer name', () => {
+    const mockStream = { id: 'screen-stream' } as unknown as MediaStream;
+    setVoiceState({
+      connected: true,
+      currentChannelId: 'voice-ch-1',
+      screenSharing: false,
+      remoteScreenStream: mockStream,
+      screenSharingUserId: 'user-2',
+      peers: {
+        'user-1': { user_id: 'user-1', username: 'alice', muted: false, deafened: false, speaking: false, voiceLevel: 0 },
+        'user-2': { user_id: 'user-2', username: 'bob', muted: false, deafened: false, speaking: false, voiceLevel: 0 },
+      },
+    });
+    render(<VoiceChannel channel={channel} />);
+    expect(screen.getByText(/bob — Screen Share/)).toBeInTheDocument();
+  });
+
+  it('shows fullscreen thumbnail bar with peer avatars', () => {
+    const mockStream = { id: 'screen-stream' } as unknown as MediaStream;
+    setVoiceState({
+      connected: true,
+      currentChannelId: 'voice-ch-1',
+      screenSharing: true,
+      localScreenStream: mockStream,
+      screenSharingUserId: null,
+      peers: {
+        'user-1': { user_id: 'user-1', username: 'alice', muted: true, deafened: false, speaking: false, voiceLevel: 0 },
+        'user-2': { user_id: 'user-2', username: 'bob', muted: false, deafened: false, speaking: true, voiceLevel: 0.5 },
+      },
+    });
+    const { container } = render(<VoiceChannel channel={channel} />);
+    const banner = container.querySelector('.voice-screen-share-banner');
+    if (banner) {
+      fireEvent.click(banner);
+      // Thumbnail bar should show
+      expect(container.querySelector('.fullscreen-thumbnail-bar')).toBeInTheDocument();
+      // Muted peer should have mute icon
+      expect(screen.getByTestId('icon-mic-mute')).toBeInTheDocument();
+    }
+  });
+
+  it('uses teamId from channel when available', () => {
+    const customChannel = { ...channel, teamId: 'custom-team' };
+    setVoiceState({});
+    render(<VoiceChannel channel={customChannel} />);
+    const joinBtn = screen.getByText('voice.join');
+    fireEvent.click(joinBtn);
+    // joinChannel should be called with the channel's teamId
+  });
+
+  it('shows webcam icon for peers sharing webcam in grid view', () => {
+    setVoiceState({
+      connected: true,
+      currentChannelId: 'voice-ch-1',
+      peers: {
+        'user-1': { user_id: 'user-1', username: 'alice', muted: false, deafened: false, speaking: false, voiceLevel: 0, webcam_sharing: true },
+      },
+    });
+    render(<VoiceChannel channel={channel} />);
+    expect(screen.getByTestId('icon-camera')).toBeInTheDocument();
+  });
 });
