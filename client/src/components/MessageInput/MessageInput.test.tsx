@@ -12,9 +12,14 @@ vi.mock('iconoir-react', () => ({
   Link: () => <span data-testid="link-icon" />,
 }));
 
-// Mock EmojiPicker
+// Mock EmojiPicker - call onSelect when a button inside is clicked
 vi.mock('../EmojiPicker/EmojiPicker', () => ({
-  default: () => <div data-testid="emoji-picker" />,
+  default: ({ onSelect, onClose }: { onSelect: (emoji: string) => void; onClose: () => void }) => (
+    <div data-testid="emoji-picker">
+      <button data-testid="emoji-select-btn" onClick={() => onSelect('\u{1F600}')}>Pick</button>
+      <button data-testid="emoji-close-btn" onClick={onClose}>Close Picker</button>
+    </div>
+  ),
 }));
 
 const defaultProps = {
@@ -461,5 +466,99 @@ describe('MessageInput', () => {
     await vi.waitFor(() => {
       expect(onSend).toHaveBeenCalledWith('', [mockAttachment]);
     });
+  });
+
+  it('selects emoji from picker and appends to textarea', async () => {
+    const user = userEvent.setup();
+    render(<MessageInput {...defaultProps} />);
+    const textarea = getTextarea();
+    await user.type(textarea, 'hello');
+
+    // Open emoji picker
+    fireEvent.click(screen.getByTitle('Emoji'));
+    expect(screen.getByTestId('emoji-picker')).toBeInTheDocument();
+
+    // Select an emoji
+    fireEvent.click(screen.getByTestId('emoji-select-btn'));
+
+    // Emoji should be appended and picker should close
+    expect(textarea).toHaveValue('hello\u{1F600}');
+    expect(screen.queryByTestId('emoji-picker')).not.toBeInTheDocument();
+  });
+
+  it('opens file input when attach file button is clicked', () => {
+    render(<MessageInput {...defaultProps} />);
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const clickSpy = vi.spyOn(fileInput, 'click');
+    fireEvent.click(screen.getByTitle('Attach File'));
+    expect(clickSpy).toHaveBeenCalled();
+    clickSpy.mockRestore();
+  });
+
+  it('shows emoji picker with onClose and onSelect callbacks', () => {
+    render(<MessageInput {...defaultProps} />);
+    fireEvent.click(screen.getByTitle('Emoji'));
+    expect(screen.getByTestId('emoji-picker')).toBeInTheDocument();
+
+    // Close via the onClose callback
+    fireEvent.click(screen.getByTestId('emoji-close-btn'));
+    expect(screen.queryByTestId('emoji-picker')).not.toBeInTheDocument();
+  });
+
+  it('shows typing indicator for one user', async () => {
+    const { useMessageStore } = await import('../../stores/messageStore');
+    useMessageStore.setState({
+      typing: new Map([['ch-1', [{ userId: 'u2', username: 'bob', timestamp: Date.now() }]]]),
+    });
+
+    render(<MessageInput {...defaultProps} />);
+    // The i18n mock returns the default value string with {{name}} interpolation or the key
+    expect(document.querySelector('.typing-indicator')).toBeInTheDocument();
+  });
+
+  it('shows typing indicator for two users', async () => {
+    const { useMessageStore } = await import('../../stores/messageStore');
+    useMessageStore.setState({
+      typing: new Map([['ch-1', [
+        { userId: 'u2', username: 'bob', timestamp: Date.now() },
+        { userId: 'u3', username: 'charlie', timestamp: Date.now() },
+      ]]]),
+    });
+
+    render(<MessageInput {...defaultProps} />);
+    expect(document.querySelector('.typing-indicator')).toBeInTheDocument();
+  });
+
+  it('shows typing indicator for several users', async () => {
+    const { useMessageStore } = await import('../../stores/messageStore');
+    useMessageStore.setState({
+      typing: new Map([['ch-1', [
+        { userId: 'u2', username: 'bob', timestamp: Date.now() },
+        { userId: 'u3', username: 'charlie', timestamp: Date.now() },
+        { userId: 'u4', username: 'dave', timestamp: Date.now() },
+      ]]]),
+    });
+
+    render(<MessageInput {...defaultProps} />);
+    expect(document.querySelector('.typing-indicator')).toBeInTheDocument();
+  });
+
+  it('clears expired typing users', async () => {
+    vi.useFakeTimers();
+    const { useMessageStore } = await import('../../stores/messageStore');
+    const clearTyping = vi.fn();
+    // Set a typing user with old timestamp (expired)
+    useMessageStore.setState({
+      typing: new Map([['ch-1', [{ userId: 'u2', username: 'bob', timestamp: Date.now() - 10000 }]]]),
+      clearTyping,
+    });
+
+    render(<MessageInput {...defaultProps} />);
+
+    // Advance past the 1s interval that checks for expired typing
+    vi.advanceTimersByTime(1100);
+
+    expect(clearTyping).toHaveBeenCalledWith('ch-1', 'u2');
+    vi.useRealTimers();
   });
 });

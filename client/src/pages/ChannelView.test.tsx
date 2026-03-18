@@ -665,4 +665,60 @@ describe('ChannelView', () => {
       });
     }
   });
+
+  it('tryEncrypt encrypts when derivedKey is set', async () => {
+    const { cryptoService } = await import('../services/crypto');
+    vi.mocked(cryptoService.encryptChannel).mockResolvedValueOnce('encrypted-text');
+    useAuthStore.setState({ derivedKey: 'test-derived-key' });
+
+    render(<ChannelView channel={makeChannel()} />);
+    fireEvent.click(screen.getByTestId('send-btn'));
+
+    await waitFor(() => {
+      expect(cryptoService.encryptChannel).toHaveBeenCalled();
+    });
+  });
+
+  it('tryEncrypt falls back to plaintext on encryption error', async () => {
+    const { cryptoService } = await import('../services/crypto');
+    vi.mocked(cryptoService.encryptChannel).mockRejectedValueOnce(new Error('encrypt fail'));
+    useAuthStore.setState({ derivedKey: 'test-derived-key' });
+
+    render(<ChannelView channel={makeChannel()} />);
+    fireEvent.click(screen.getByTestId('send-btn'));
+
+    await waitFor(() => {
+      // Should still send the message (fallback to plaintext)
+      expect(ws.sendMessage).toHaveBeenCalled();
+    });
+  });
+
+  it('handleLoadMore with REST decrypts messages using tryDecrypt', async () => {
+    vi.mocked(ws.isConnected).mockReturnValue(false);
+    const { api } = await import('../services/api');
+
+    const fiftyMsgs = Array.from({ length: 50 }, (_, i) => ({
+      id: `msg-${i}`, channel_id: 'ch-1', author_id: 'u1', username: 'tester',
+      content: 'encrypted', type: 'text', thread_id: null, edited_at: null, deleted: false,
+      created_at: '2025-01-01T00:00:00Z', reactions: [],
+    }));
+    vi.mocked(api.getMessages).mockResolvedValueOnce(fiftyMsgs); // initial load
+    vi.mocked(api.getMessages).mockResolvedValueOnce([
+      {
+        id: 'msg-older', channel_id: 'ch-1', author_id: 'u1', username: 'tester',
+        content: 'older msg', type: 'text', thread_id: null, edited_at: null, deleted: false,
+        created_at: '2024-12-31T00:00:00Z', reactions: [],
+      },
+    ]); // load more
+
+    render(<ChannelView channel={makeChannel()} />);
+    await waitFor(() => {
+      expect(api.getMessages).toHaveBeenCalledTimes(1);
+    });
+
+    fireEvent.click(screen.getByTestId('load-more'));
+    await waitFor(() => {
+      expect(api.getMessages).toHaveBeenCalledTimes(2);
+    });
+  });
 });

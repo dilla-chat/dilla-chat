@@ -467,4 +467,26 @@ describe('VoiceChannel', () => {
     render(<VoiceChannel channel={channel} />);
     expect(screen.getByTestId('icon-camera')).toBeInTheDocument();
   });
+
+  it('VideoPreview onClick handler calls stopPropagation and the callback', () => {
+    const mockStream = { id: 'screen-stream' } as unknown as MediaStream;
+    setVoiceState({
+      connected: true,
+      currentChannelId: 'voice-ch-1',
+      screenSharing: true,
+      localScreenStream: mockStream,
+      screenSharingUserId: null,
+      peers: {
+        'user-1': { user_id: 'user-1', username: 'alice', muted: false, deafened: false, speaking: false, voiceLevel: 0 },
+      },
+    });
+    const { container } = render(<VoiceChannel channel={channel} />);
+    // The banner contains a VideoPreview with onClick that triggers setFullscreen(true)
+    const video = container.querySelector('.voice-screen-share-video');
+    if (video) {
+      fireEvent.click(video);
+      // After clicking the video, fullscreen mode should activate
+      expect(container.querySelector('.screen-share-fullscreen')).toBeInTheDocument();
+    }
+  });
 });

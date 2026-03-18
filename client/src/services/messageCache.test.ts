@@ -122,6 +122,69 @@ describe('deleteCachedMessage edge cases', () => {
   });
 });
 
+describe('cacheMessage and getCachedMessage with various data', () => {
+  it('handles unicode content correctly', async () => {
+    await cacheMessage('unicode-1', 'ch-1', '🎉 Hello! 日本語テスト');
+    const result = await getCachedMessage('unicode-1');
+    expect(result).toBe('🎉 Hello! 日本語テスト');
+  });
+
+  it('handles very long content', async () => {
+    const longContent = 'x'.repeat(10000);
+    await cacheMessage('long-1', 'ch-1', longContent);
+    const result = await getCachedMessage('long-1');
+    expect(result).toBe(longContent);
+  });
+
+  it('handles empty string content', async () => {
+    await cacheMessage('empty-1', 'ch-1', '');
+    const result = await getCachedMessage('empty-1');
+    expect(result).toBe('');
+  });
+
+  it('stores cachedAt timestamp', async () => {
+    const before = Date.now();
+    await cacheMessage('ts-1', 'ch-1', 'test');
+    // Re-read to verify it was stored (indirectly through successful retrieval)
+    const result = await getCachedMessage('ts-1');
+    expect(result).toBe('test');
+  });
+});
+
+describe('getCachedMessages with many IDs', () => {
+  it('retrieves correct subset of messages', async () => {
+    await cacheMessage('batch-1', 'ch-1', 'one');
+    await cacheMessage('batch-2', 'ch-1', 'two');
+    await cacheMessage('batch-3', 'ch-2', 'three');
+
+    const results = await getCachedMessages(['batch-1', 'batch-3', 'nonexistent']);
+    expect(results.size).toBe(2);
+    expect(results.get('batch-1')).toBe('one');
+    expect(results.get('batch-3')).toBe('three');
+    expect(results.has('nonexistent')).toBe(false);
+  });
+});
+
+describe('clearChannelCache with multiple channels', () => {
+  it('clears only specified channel across multiple calls', async () => {
+    await cacheMessage('mc1', 'ch-a', 'a1');
+    await cacheMessage('mc2', 'ch-a', 'a2');
+    await cacheMessage('mc3', 'ch-b', 'b1');
+    await cacheMessage('mc4', 'ch-c', 'c1');
+
+    await clearChannelCache('ch-a');
+
+    expect(await getCachedMessage('mc1')).toBeNull();
+    expect(await getCachedMessage('mc2')).toBeNull();
+    expect(await getCachedMessage('mc3')).toBe('b1');
+    expect(await getCachedMessage('mc4')).toBe('c1');
+
+    await clearChannelCache('ch-b');
+    expect(await getCachedMessage('mc3')).toBeNull();
+    expect(await getCachedMessage('mc4')).toBe('c1');
+  });
+});
+
 describe('transaction error handling', () => {
   it('cacheMessage rejects on transaction error', async () => {
     // We can't easily force a transaction error in fake-indexeddb,

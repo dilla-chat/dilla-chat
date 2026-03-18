@@ -239,4 +239,24 @@ describe('ConnectionStatus', () => {
     const { container } = render(<ConnectionStatus />);
     expect(container.querySelector('.connection-status')).toBeInTheDocument();
   });
+
+  it('pingServer sets disconnected when isConnected returns false with active team', async () => {
+    const { ws } = await import('../../services/websocket');
+    vi.useFakeTimers();
+    // isConnected returns false -> triggers lines 55-56 in pingServer
+    vi.mocked(ws.isConnected).mockReturnValue(false);
+    useTeamStore.setState({ activeTeamId: 'team-1' });
+
+    const { container } = render(<ConnectionStatus />);
+
+    // Flush the setTimeout(pingServer, 0)
+    await vi.advanceTimersByTimeAsync(10);
+
+    const statusEl = container.querySelector('.connection-status')!;
+    fireEvent.mouseEnter(statusEl);
+    const disconnectedEls = screen.getAllByText('Disconnected');
+    expect(disconnectedEls.length).toBeGreaterThanOrEqual(1);
+
+    vi.useRealTimers();
+  });
 });

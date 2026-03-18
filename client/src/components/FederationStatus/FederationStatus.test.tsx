@@ -291,4 +291,25 @@ describe('FederationStatus', () => {
       expect(screen.getByText('federation.copied')).toBeInTheDocument();
     });
   });
+
+  it('formatLastSeen returns raw string when Date constructor throws', async () => {
+    vi.useRealTimers();
+    const { api } = await import('../../services/api');
+    // Mock toLocaleString to throw, triggering the catch block
+    const origToLocaleString = Date.prototype.toLocaleString;
+    Date.prototype.toLocaleString = () => { throw new Error('locale error'); };
+
+    (api.getFederationStatus as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      node_name: 'node-fallback',
+      peers: [{ name: 'peer-err', address: 'err:8443', status: 'connected', last_seen: 'raw-fallback-string' }],
+      lamport_ts: 1,
+    });
+
+    render(<FederationStatus teamId="team-1" />);
+    await waitFor(() => {
+      expect(screen.getByText('raw-fallback-string')).toBeInTheDocument();
+    });
+
+    Date.prototype.toLocaleString = origToLocaleString;
+  });
 });
