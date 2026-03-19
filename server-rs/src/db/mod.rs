@@ -8,6 +8,7 @@ mod attachment_queries;
 use rusqlite::Connection;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub use models::*;
 pub use queries::*;
@@ -24,35 +25,61 @@ const MIGRATIONS: &[(&str, &str)] = &[
     ("005_reactions_attachments.sql", include_str!("../../migrations/005_reactions_attachments.sql")),
 ];
 
+/// Default number of read connections in the pool.
+const DEFAULT_READ_POOL_SIZE: usize = 4;
+
+/// Database with a connection pool: multiple read connections + 1 write connection.
+/// SQLite WAL mode allows concurrent readers with a single writer.
 #[derive(Clone)]
 pub struct Database {
-    conn: Arc<Mutex<Connection>>,
+    /// Dedicated write connection (serialized via Mutex).
+    write_conn: Arc<Mutex<Connection>>,
+    /// Pool of read connections (round-robin via atomic counter).
+    read_pool: Arc<Vec<Mutex<Connection>>>,
+    /// Round-robin counter for read connection selection.
+    read_index: Arc<AtomicUsize>,
+}
+
+/// Open a SQLite connection with SQLCipher passphrase and WAL mode.
+fn open_connection(db_path: &Path, passphrase: &str) -> Result<Connection, rusqlite::Error> {
+    let conn = Connection::open(db_path)?;
+    if !passphrase.is_empty() {
+        conn.execute_batch(&format!("PRAGMA key = '{}';", passphrase.replace('\'', "''")))?;
+    }
+    conn.execute_batch("PRAGMA journal_mode = WAL;")?;
+    conn.execute_batch("PRAGMA busy_timeout = 5000;")?;
+    conn.execute_batch("SELECT 1;")?;
+    Ok(conn)
 }
 
 impl Database {
     pub fn open(data_dir: &str, passphrase: &str) -> Result<Self, rusqlite::Error> {
         let db_path = Path::new(data_dir).join("dilla.db");
-        let conn = Connection::open(&db_path)?;
 
-        // Set encryption key via PRAGMA (SQLCipher).
-        if !passphrase.is_empty() {
-            conn.execute_batch(&format!("PRAGMA key = '{}';", passphrase.replace('\'', "''")))?;
+        // Open the write connection.
+        let write_conn = open_connection(&db_path, passphrase)?;
+
+        // Open read connections.
+        let mut readers = Vec::with_capacity(DEFAULT_READ_POOL_SIZE);
+        for _ in 0..DEFAULT_READ_POOL_SIZE {
+            readers.push(Mutex::new(open_connection(&db_path, passphrase)?));
         }
 
-        // Enable WAL mode.
-        conn.execute_batch("PRAGMA journal_mode = WAL;")?;
+        tracing::info!(
+            path = %db_path.display(),
+            read_pool_size = DEFAULT_READ_POOL_SIZE,
+            "database opened with connection pool"
+        );
 
-        // Verify the database is accessible.
-        conn.execute_batch("SELECT 1;")?;
-
-        tracing::info!(path = %db_path.display(), "database opened");
         Ok(Database {
-            conn: Arc::new(Mutex::new(conn)),
+            write_conn: Arc::new(Mutex::new(write_conn)),
+            read_pool: Arc::new(readers),
+            read_index: Arc::new(AtomicUsize::new(0)),
         })
     }
 
     pub fn run_migrations(&self) -> Result<(), rusqlite::Error> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.write_conn.lock().unwrap();
 
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -94,20 +121,42 @@ impl Database {
     }
 
     pub fn has_users(&self) -> Result<bool, rusqlite::Error> {
-        let conn = self.conn.lock().unwrap();
-        let count: i32 =
-            conn.query_row("SELECT COUNT(*) FROM users", [], |row| row.get(0))?;
-        Ok(count > 0)
+        self.with_read(|conn| {
+            let count: i32 =
+                conn.query_row("SELECT COUNT(*) FROM users", [], |row| row.get(0))?;
+            Ok(count > 0)
+        })
     }
 
-    /// Execute a closure with the database connection.
-    /// All database access goes through this to serialize writes.
+    /// Execute a read-only closure with a pooled read connection.
+    /// Multiple reads can proceed concurrently (SQLite WAL mode).
+    pub fn with_read<F, T>(&self, f: F) -> Result<T, rusqlite::Error>
+    where
+        F: FnOnce(&Connection) -> Result<T, rusqlite::Error>,
+    {
+        let idx = self.read_index.fetch_add(1, Ordering::Relaxed) % self.read_pool.len();
+        let conn = self.read_pool[idx].lock().unwrap();
+        f(&conn)
+    }
+
+    /// Execute a write closure with the dedicated write connection.
+    /// Only one write can proceed at a time (SQLite limitation).
+    pub fn with_write<F, T>(&self, f: F) -> Result<T, rusqlite::Error>
+    where
+        F: FnOnce(&Connection) -> Result<T, rusqlite::Error>,
+    {
+        let conn = self.write_conn.lock().unwrap();
+        f(&conn)
+    }
+
+    /// Execute a closure with a database connection (backward compatible).
+    /// Uses the write connection to maintain compatibility with existing code
+    /// that may mix reads and writes in a single closure.
     pub fn with_conn<F, T>(&self, f: F) -> Result<T, rusqlite::Error>
     where
         F: FnOnce(&Connection) -> Result<T, rusqlite::Error>,
     {
-        let conn = self.conn.lock().unwrap();
-        f(&conn)
+        self.with_write(f)
     }
 }
 
