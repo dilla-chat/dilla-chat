@@ -20,6 +20,7 @@ use super::turn::TURNCredentialProvider;
 
 /// Events emitted by the SFU to be forwarded to clients via WebSocket.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum SFUEvent {
     ICECandidate {
         channel_id: String,
@@ -50,6 +51,7 @@ pub struct SFU {
     turn_provider: Arc<RwLock<Option<Box<dyn TURNCredentialProvider>>>>,
 }
 
+#[allow(dead_code)]
 impl SFU {
     /// Create a new SFU with Opus audio and VP8 video codecs registered.
     pub fn new() -> Self {

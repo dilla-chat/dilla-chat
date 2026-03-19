@@ -67,4 +67,43 @@ describe('useKeyboardShortcuts', () => {
     fireKeyDown({ key: 'D', ctrlKey: true, shiftKey: true });
     expect(useVoiceStore.getState().deafened).toBe(true);
   });
+
+  it('Ctrl+Shift+D does nothing when not connected', () => {
+    useVoiceStore.setState({ connected: false, deafened: false });
+    renderHook(() => useKeyboardShortcuts({}));
+    fireKeyDown({ key: 'D', ctrlKey: true, shiftKey: true });
+    expect(useVoiceStore.getState().deafened).toBe(false);
+  });
+
+  it('does not trigger mute/deafen/navigate when typing in an input', () => {
+    useVoiceStore.setState({ connected: true, muted: false, deafened: false });
+    const onNavigateChannel = vi.fn();
+    renderHook(() => useKeyboardShortcuts({ onNavigateChannel }));
+
+    // Create an input element and dispatch from it
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    input.focus();
+
+    const event = new KeyboardEvent('keydown', {
+      key: 'M',
+      ctrlKey: true,
+      shiftKey: true,
+      bubbles: true,
+    });
+    Object.defineProperty(event, 'target', { value: input });
+    window.dispatchEvent(event);
+    expect(useVoiceStore.getState().muted).toBe(false);
+
+    const navEvent = new KeyboardEvent('keydown', {
+      key: 'ArrowUp',
+      altKey: true,
+      bubbles: true,
+    });
+    Object.defineProperty(navEvent, 'target', { value: input });
+    window.dispatchEvent(navEvent);
+    expect(onNavigateChannel).not.toHaveBeenCalled();
+
+    document.body.removeChild(input);
+  });
 });

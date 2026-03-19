@@ -197,3 +197,228 @@ fn row_to_message(row: &rusqlite::Row) -> Result<Message, rusqlite::Error> {
         created_at: row.get(10)?,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::Database;
+
+    fn test_db() -> Database {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        db.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;")).unwrap();
+        db.run_migrations().unwrap();
+        db
+    }
+
+    fn make_user(id: &str, username: &str, pk: &[u8]) -> User {
+        let now = crate::db::now_str();
+        User {
+            id: id.into(), username: username.into(), display_name: username.into(),
+            public_key: pk.to_vec(), avatar_url: String::new(), status_text: String::new(),
+            status_type: "online".into(), is_admin: false,
+            created_at: now.clone(), updated_at: now,
+        }
+    }
+
+    fn make_dm_channel(id: &str, team_id: &str) -> DMChannel {
+        DMChannel {
+            id: id.into(), team_id: team_id.into(), dm_type: "dm".into(),
+            name: String::new(), created_at: crate::db::now_str(),
+        }
+    }
+
+    fn setup_users_and_team(db: &Database) {
+        let u1 = make_user("u1", "alice", &[1u8; 32]);
+        let u2 = make_user("u2", "bob", &[2u8; 32]);
+        db.with_conn(|c| crate::db::create_user(c, &u1)).unwrap();
+        db.with_conn(|c| crate::db::create_user(c, &u2)).unwrap();
+        let now = crate::db::now_str();
+        let team = Team {
+            id: "t1".into(), name: "Team".into(), description: String::new(),
+            icon_url: String::new(), created_by: "u1".into(), max_file_size: 1024,
+            allow_member_invites: true, created_at: now.clone(), updated_at: now,
+        };
+        db.with_conn(|c| crate::db::create_team(c, &team)).unwrap();
+    }
+
+    #[test]
+    fn test_create_dm_channel_and_fetch() {
+        let db = test_db();
+        setup_users_and_team(&db);
+
+        let dm = make_dm_channel("dm1", "t1");
+        db.with_conn(|c| create_dm_channel(c, &dm)).unwrap();
+
+        let fetched = db.with_conn(|c| get_dm_channel(c, "dm1")).unwrap().unwrap();
+        assert_eq!(fetched.id, "dm1");
+        assert_eq!(fetched.dm_type, "dm");
+    }
+
+    #[test]
+    fn test_add_and_get_dm_members() {
+        let db = test_db();
+        setup_users_and_team(&db);
+
+        let dm = make_dm_channel("dm1", "t1");
+        db.with_conn(|c| create_dm_channel(c, &dm)).unwrap();
+
+        let user_ids = vec!["u1".to_string(), "u2".to_string()];
+        db.with_conn(|c| add_dm_members(c, "dm1", &user_ids)).unwrap();
+
+        let members = db.with_conn(|c| get_dm_members(c, "dm1")).unwrap();
+        assert_eq!(members.len(), 2);
+    }
+
+    #[test]
+    fn test_is_dm_member() {
+        let db = test_db();
+        setup_users_and_team(&db);
+
+        let dm = make_dm_channel("dm1", "t1");
+        db.with_conn(|c| create_dm_channel(c, &dm)).unwrap();
+        db.with_conn(|c| add_dm_members(c, "dm1", &["u1".to_string()])).unwrap();
+
+        assert!(db.with_conn(|c| is_dm_member(c, "dm1", "u1")).unwrap());
+        assert!(!db.with_conn(|c| is_dm_member(c, "dm1", "u2")).unwrap());
+    }
+
+    #[test]
+    fn test_remove_dm_member() {
+        let db = test_db();
+        setup_users_and_team(&db);
+
+        let dm = make_dm_channel("dm1", "t1");
+        db.with_conn(|c| create_dm_channel(c, &dm)).unwrap();
+        db.with_conn(|c| add_dm_members(c, "dm1", &["u1".to_string(), "u2".to_string()])).unwrap();
+
+        db.with_conn(|c| remove_dm_member(c, "dm1", "u2")).unwrap();
+
+        assert!(db.with_conn(|c| is_dm_member(c, "dm1", "u1")).unwrap());
+        assert!(!db.with_conn(|c| is_dm_member(c, "dm1", "u2")).unwrap());
+    }
+
+    #[test]
+    fn test_get_dm_channel_by_members() {
+        let db = test_db();
+        setup_users_and_team(&db);
+
+        let dm = make_dm_channel("dm1", "t1");
+        db.with_conn(|c| create_dm_channel(c, &dm)).unwrap();
+        db.with_conn(|c| add_dm_members(c, "dm1", &["u1".to_string(), "u2".to_string()])).unwrap();
+
+        let found = db.with_conn(|c| get_dm_channel_by_members(c, "t1", "u1", "u2")).unwrap().unwrap();
+        assert_eq!(found.id, "dm1");
+
+        // Reverse order should also work
+        let found2 = db.with_conn(|c| get_dm_channel_by_members(c, "t1", "u2", "u1")).unwrap().unwrap();
+        assert_eq!(found2.id, "dm1");
+    }
+
+    #[test]
+    fn test_get_user_dm_channels() {
+        let db = test_db();
+        setup_users_and_team(&db);
+
+        let dm1 = make_dm_channel("dm1", "t1");
+        let dm2 = make_dm_channel("dm2", "t1");
+        db.with_conn(|c| create_dm_channel(c, &dm1)).unwrap();
+        db.with_conn(|c| create_dm_channel(c, &dm2)).unwrap();
+        db.with_conn(|c| add_dm_members(c, "dm1", &["u1".to_string()])).unwrap();
+        db.with_conn(|c| add_dm_members(c, "dm2", &["u1".to_string(), "u2".to_string()])).unwrap();
+
+        let channels = db.with_conn(|c| get_user_dm_channels(c, "t1", "u1")).unwrap();
+        assert_eq!(channels.len(), 2);
+
+        let channels_u2 = db.with_conn(|c| get_user_dm_channels(c, "t1", "u2")).unwrap();
+        assert_eq!(channels_u2.len(), 1);
+    }
+
+    #[test]
+    fn test_create_and_get_dm_messages() {
+        let db = test_db();
+        setup_users_and_team(&db);
+
+        let dm = make_dm_channel("dm1", "t1");
+        db.with_conn(|c| create_dm_channel(c, &dm)).unwrap();
+
+        let msg = Message {
+            id: "m1".into(), channel_id: String::new(), dm_channel_id: "dm1".into(),
+            author_id: "u1".into(), content: "hello dm".into(), msg_type: "text".into(),
+            thread_id: String::new(), edited_at: None, deleted: false,
+            lamport_ts: 1, created_at: "2024-01-01 00:00:00".into(),
+        };
+        db.with_conn(|c| create_dm_message(c, &msg)).unwrap();
+
+        let messages = db.with_conn(|c| get_dm_messages(c, "dm1", "", 50)).unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].content, "hello dm");
+    }
+
+    #[test]
+    fn test_get_last_dm_message() {
+        let db = test_db();
+        setup_users_and_team(&db);
+
+        let dm = make_dm_channel("dm1", "t1");
+        db.with_conn(|c| create_dm_channel(c, &dm)).unwrap();
+
+        // No messages yet
+        let last = db.with_conn(|c| get_last_dm_message(c, "dm1")).unwrap();
+        assert!(last.is_none());
+
+        for i in 0..3 {
+            let msg = Message {
+                id: format!("m{}", i), channel_id: String::new(), dm_channel_id: "dm1".into(),
+                author_id: "u1".into(), content: format!("msg {}", i), msg_type: "text".into(),
+                thread_id: String::new(), edited_at: None, deleted: false,
+                lamport_ts: i as i64, created_at: format!("2024-01-01 00:00:0{}", i),
+            };
+            db.with_conn(|c| create_dm_message(c, &msg)).unwrap();
+        }
+
+        let last = db.with_conn(|c| get_last_dm_message(c, "dm1")).unwrap().unwrap();
+        assert_eq!(last.content, "msg 2");
+    }
+
+    #[test]
+    fn test_dm_messages_pagination() {
+        let db = test_db();
+        setup_users_and_team(&db);
+
+        let dm = make_dm_channel("dm1", "t1");
+        db.with_conn(|c| create_dm_channel(c, &dm)).unwrap();
+
+        for i in 0..5 {
+            let msg = Message {
+                id: format!("m{}", i), channel_id: String::new(), dm_channel_id: "dm1".into(),
+                author_id: "u1".into(), content: format!("msg {}", i), msg_type: "text".into(),
+                thread_id: String::new(), edited_at: None, deleted: false,
+                lamport_ts: i as i64, created_at: format!("2024-01-01 00:00:0{}", i),
+            };
+            db.with_conn(|c| create_dm_message(c, &msg)).unwrap();
+        }
+
+        let msgs = db.with_conn(|c| get_dm_messages(c, "dm1", "", 2)).unwrap();
+        assert_eq!(msgs.len(), 2);
+
+        let msgs = db.with_conn(|c| get_dm_messages(c, "dm1", "2024-01-01 00:00:03", 10)).unwrap();
+        assert_eq!(msgs.len(), 3);
+    }
+
+    #[test]
+    fn test_add_dm_members_idempotent() {
+        let db = test_db();
+        setup_users_and_team(&db);
+
+        let dm = make_dm_channel("dm1", "t1");
+        db.with_conn(|c| create_dm_channel(c, &dm)).unwrap();
+
+        // Adding the same member twice should not fail (INSERT OR IGNORE)
+        db.with_conn(|c| add_dm_members(c, "dm1", &["u1".to_string()])).unwrap();
+        db.with_conn(|c| add_dm_members(c, "dm1", &["u1".to_string()])).unwrap();
+
+        let members = db.with_conn(|c| get_dm_members(c, "dm1")).unwrap();
+        assert_eq!(members.len(), 1);
+    }
+}

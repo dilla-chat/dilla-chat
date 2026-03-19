@@ -63,3 +63,111 @@ impl From<jsonwebtoken::errors::Error> for AppError {
         AppError::Unauthorized(format!("invalid token: {}", e))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- Display tests ---
+
+    #[test]
+    fn display_not_found() {
+        let e = AppError::NotFound("user 123".into());
+        assert_eq!(format!("{}", e), "not found: user 123");
+    }
+
+    #[test]
+    fn display_unauthorized() {
+        let e = AppError::Unauthorized("bad token".into());
+        assert_eq!(format!("{}", e), "unauthorized: bad token");
+    }
+
+    #[test]
+    fn display_forbidden() {
+        let e = AppError::Forbidden("no access".into());
+        assert_eq!(format!("{}", e), "forbidden: no access");
+    }
+
+    #[test]
+    fn display_bad_request() {
+        let e = AppError::BadRequest("missing field".into());
+        assert_eq!(format!("{}", e), "bad request: missing field");
+    }
+
+    #[test]
+    fn display_conflict() {
+        let e = AppError::Conflict("already exists".into());
+        assert_eq!(format!("{}", e), "conflict: already exists");
+    }
+
+    #[test]
+    fn display_internal() {
+        let e = AppError::Internal("something broke".into());
+        assert_eq!(format!("{}", e), "internal error: something broke");
+    }
+
+    // --- HTTP status code tests ---
+
+    #[test]
+    fn not_found_returns_404() {
+        let resp = AppError::NotFound("x".into()).into_response();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn unauthorized_returns_401() {
+        let resp = AppError::Unauthorized("x".into()).into_response();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn forbidden_returns_403() {
+        let resp = AppError::Forbidden("x".into()).into_response();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn bad_request_returns_400() {
+        let resp = AppError::BadRequest("x".into()).into_response();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn conflict_returns_409() {
+        let resp = AppError::Conflict("x".into()).into_response();
+        assert_eq!(resp.status(), StatusCode::CONFLICT);
+    }
+
+    #[test]
+    fn internal_returns_500() {
+        let resp = AppError::Internal("x".into()).into_response();
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    // --- From impls ---
+
+    #[test]
+    fn from_serde_error_is_bad_request() {
+        let bad_json: Result<serde_json::Value, _> = serde_json::from_str("{invalid");
+        let serde_err = bad_json.unwrap_err();
+        let app_err: AppError = serde_err.into();
+        let msg = format!("{}", app_err);
+        assert!(msg.starts_with("bad request: invalid JSON:"));
+    }
+
+    // --- Debug ---
+
+    #[test]
+    fn debug_includes_variant_name() {
+        let e = AppError::NotFound("test".into());
+        let debug = format!("{:?}", e);
+        assert!(debug.contains("NotFound"));
+    }
+
+    #[test]
+    fn debug_includes_message() {
+        let e = AppError::Internal("db crash".into());
+        let debug = format!("{:?}", e);
+        assert!(debug.contains("db crash"));
+    }
+}

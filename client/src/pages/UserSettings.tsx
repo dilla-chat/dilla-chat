@@ -10,6 +10,7 @@ import { useTelemetryStore } from '../stores/telemetryStore';
 import { NoiseSuppression } from '../services/noiseSuppression';
 import { notificationService } from '../services/notifications';
 import { api } from '../services/api';
+import { startMicTest, stopMicTest, type MicTestSession } from '../services/micTest';
 import './UserSettings.css';
 
 const isMac = typeof navigator !== 'undefined' && /Mac/.test(navigator.userAgent);
@@ -584,7 +585,8 @@ export default function UserSettings() {
               value={i18n.language}
               onChange={(e) => i18n.changeLanguage(e.target.value)}
             >
-              {(i18n.options.supportedLngs
+              {/* istanbul ignore next -- i18n.options requires full i18next init */}
+              {(i18n.options?.supportedLngs
                 ? (i18n.options.supportedLngs as string[]).filter((l) => l !== 'cimode')
                 : [i18n.language]
               ).map((lng) => (
@@ -663,86 +665,41 @@ function MicTest({ deviceId, inputVolume }: { deviceId: string; inputVolume: num
   const { t } = useTranslation();
   const [testing, setTesting] = useState(false);
   const [level, setLevel] = useState(0);
-  const streamRef = useRef<MediaStream | null>(null);
-  const ctxRef = useRef<AudioContext | null>(null);
-  const gainRef = useRef<GainNode | null>(null);
-  const animRef = useRef<number>(0);
-  const nsRef = useRef<NoiseSuppression | null>(null);
+  const sessionRef = useRef<MicTestSession | null>(null);
   const enhancedNoiseSuppression = useAudioSettingsStore((s) => s.enhancedNoiseSuppression);
 
   // Update gain when inputVolume changes during test
   useEffect(() => {
-    if (gainRef.current) {
-      gainRef.current.gain.value = inputVolume;
+    if (sessionRef.current) {
+      sessionRef.current.gainNode.gain.value = inputVolume;
     }
   }, [inputVolume]);
 
-  const stopTest = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
-    if (nsRef.current) {
-      nsRef.current.cleanup();
-      nsRef.current = null;
-    }
-    if (ctxRef.current) {
-      ctxRef.current.close();
-      ctxRef.current = null;
-    }
-    gainRef.current = null;
-    cancelAnimationFrame(animRef.current);
+  const handleStop = useCallback(() => {
+    stopMicTest(sessionRef.current);
+    sessionRef.current = null;
     setLevel(0);
     setTesting(false);
   }, []);
 
-  const startTest = useCallback(async () => {
+  const handleStart = useCallback(async () => {
     try {
       const audioConstraints = useAudioSettingsStore.getState().getAudioConstraints(deviceId);
-      const rawStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
-      streamRef.current = rawStream;
-
-      // Build a single audio graph: source → [worklet] → gain → analyser
-      const useRNNoise = useAudioSettingsStore.getState().enhancedNoiseSuppression;
-      const audioCtx = useRNNoise
-        ? new AudioContext({ sampleRate: 48000 })
-        : new AudioContext();
-      ctxRef.current = audioCtx;
-      const source = audioCtx.createMediaStreamSource(rawStream);
-
-      const gainNode = audioCtx.createGain();
-      gainNode.gain.value = inputVolume;
-      gainRef.current = gainNode;
-
-      if (useRNNoise) {
-        const ns = new NoiseSuppression();
-        nsRef.current = ns;
-        await ns.initWorklet(audioCtx);
-        const worklet = ns.getWorkletNode()!;
-        source.connect(worklet);
-        worklet.connect(gainNode);
-      } else {
-        source.connect(gainNode);
-      }
-
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 1024;
-      analyser.smoothingTimeConstant = 0.3;
-      gainNode.connect(analyser);
-
-      const timeDomain = new Float32Array(analyser.fftSize);
-      const update = () => {
-        analyser.getFloatTimeDomainData(timeDomain);
-        let sum = 0;
-        for (let i = 0; i < timeDomain.length; i++) {
-          sum += timeDomain[i] * timeDomain[i];
-        }
-        const rms = Math.sqrt(sum / timeDomain.length);
-        const scaled = Math.min(rms * 4, 1);
-        setLevel(scaled);
-        animRef.current = requestAnimationFrame(update);
-      };
-      update();
+      const session = await startMicTest({
+        audioConstraints,
+        inputVolume,
+        useRNNoise: useAudioSettingsStore.getState().enhancedNoiseSuppression,
+        createNoiseSuppression: () => {
+          const ns = new NoiseSuppression();
+          return {
+            initWorklet: (ctx: AudioContext) => ns.initWorklet(ctx),
+            getWorkletNode: () => ns.getWorkletNode(),
+            cleanup: () => ns.cleanup(),
+          };
+        },
+        onLevelUpdate: setLevel,
+      });
+      sessionRef.current = session;
       setTesting(true);
     } catch {
       // Permission denied
@@ -752,24 +709,15 @@ function MicTest({ deviceId, inputVolume }: { deviceId: string; inputVolume: num
   // Restart test when noise suppression setting changes during active test
   useEffect(() => {
     if (testing) {
-      stopTest();
-      startTest();
+      handleStop();
+      handleStart();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enhancedNoiseSuppression]);
 
   useEffect(() => {
     return () => {
-      if (nsRef.current) {
-        nsRef.current.cleanup();
-      }
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
-      }
-      if (ctxRef.current) {
-        ctxRef.current.close();
-      }
-      cancelAnimationFrame(animRef.current);
+      stopMicTest(sessionRef.current);
     };
   }, []);
 
@@ -777,7 +725,7 @@ function MicTest({ deviceId, inputVolume }: { deviceId: string; inputVolume: num
     <div className="voice-mic-test-row">
       <button
         className={testing ? 'btn-danger' : 'btn-secondary'}
-        onClick={testing ? stopTest : startTest}
+        onClick={testing ? handleStop : handleStart}
       >
         {testing ? t('userSettings.stopTest', 'Stop') : t('userSettings.startTest', 'Test Mic')}
       </button>

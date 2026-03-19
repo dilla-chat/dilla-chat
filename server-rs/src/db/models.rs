@@ -126,6 +126,7 @@ pub struct Invite {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct InviteUse {
     pub id: String,
     pub invite_id: String,
@@ -192,6 +193,7 @@ pub struct Thread {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct IdentityBlob {
     pub user_id: String,
     pub blob: String,

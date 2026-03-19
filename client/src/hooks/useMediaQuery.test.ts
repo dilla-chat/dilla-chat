@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useMediaQuery, useIsMobile } from './useMediaQuery';
+import { useMediaQuery, useIsMobile, useIsTablet } from './useMediaQuery';
 
 describe('useMediaQuery', () => {
   let listeners: Map<string, ((e: MediaQueryListEvent) => void)[]>;
@@ -87,5 +87,12 @@ describe('useIsMobile', () => {
   it('queries the correct breakpoint', () => {
     renderHook(() => useIsMobile());
     expect(window.matchMedia).toHaveBeenCalledWith('(max-width: 767px)');
+  });
+});
+
+describe('useIsTablet', () => {
+  it('queries the correct breakpoint', () => {
+    renderHook(() => useIsTablet());
+    expect(window.matchMedia).toHaveBeenCalledWith('(min-width: 768px) and (max-width: 1023px)');
   });
 });

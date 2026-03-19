@@ -546,6 +546,7 @@ pub fn assign_role_to_member(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn remove_role_from_member(
     conn: &Connection,
     member_id: &str,
@@ -801,6 +802,7 @@ pub fn get_ban(
     .optional()
 }
 
+#[allow(dead_code)]
 pub fn get_banned_users(
     conn: &Connection,
     team_id: &str,
@@ -952,4 +954,1180 @@ pub fn get_identity_blob(
         |row| row.get(0),
     )
     .optional()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::Database;
+
+    /// Create a fresh database for each test using a temp directory.
+    /// Foreign key enforcement is disabled to match production behavior
+    /// where the codebase uses empty strings for optional FK columns.
+    fn test_db() -> Database {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        db.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;")).unwrap();
+        db.run_migrations().unwrap();
+        db
+    }
+
+    fn make_user(id: &str, username: &str, public_key: &[u8]) -> User {
+        let now = crate::db::now_str();
+        User {
+            id: id.to_string(),
+            username: username.to_string(),
+            display_name: username.to_string(),
+            public_key: public_key.to_vec(),
+            avatar_url: String::new(),
+            status_text: String::new(),
+            status_type: "online".to_string(),
+            is_admin: false,
+            created_at: now.clone(),
+            updated_at: now,
+        }
+    }
+
+    fn make_team(id: &str, name: &str, created_by: &str) -> Team {
+        let now = crate::db::now_str();
+        Team {
+            id: id.to_string(),
+            name: name.to_string(),
+            description: String::new(),
+            icon_url: String::new(),
+            created_by: created_by.to_string(),
+            max_file_size: 10485760,
+            allow_member_invites: true,
+            created_at: now.clone(),
+            updated_at: now,
+        }
+    }
+
+    fn make_channel(id: &str, team_id: &str, name: &str, created_by: &str) -> Channel {
+        let now = crate::db::now_str();
+        Channel {
+            id: id.to_string(),
+            team_id: team_id.to_string(),
+            name: name.to_string(),
+            topic: String::new(),
+            channel_type: "text".to_string(),
+            position: 0,
+            category: String::new(),
+            created_by: created_by.to_string(),
+            created_at: now.clone(),
+            updated_at: now,
+        }
+    }
+
+    fn make_message(id: &str, channel_id: &str, author_id: &str, content: &str) -> Message {
+        let now = crate::db::now_str();
+        Message {
+            id: id.to_string(),
+            channel_id: channel_id.to_string(),
+            dm_channel_id: String::new(),
+            author_id: author_id.to_string(),
+            content: content.to_string(),
+            msg_type: "text".to_string(),
+            thread_id: String::new(),
+            edited_at: None,
+            deleted: false,
+            lamport_ts: 0,
+            created_at: now,
+        }
+    }
+
+    fn make_member(id: &str, team_id: &str, user_id: &str) -> Member {
+        let now = crate::db::now_str();
+        Member {
+            id: id.to_string(),
+            team_id: team_id.to_string(),
+            user_id: user_id.to_string(),
+            nickname: String::new(),
+            joined_at: now,
+            invited_by: user_id.to_string(),
+        }
+    }
+
+    // ── User tests ──────────────────────────────────────────────────────
+
+    #[test]
+    fn test_create_user_and_fetch_by_id() {
+        let db = test_db();
+        let user = make_user("u1", "alice", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+
+        let fetched = db.with_conn(|c| get_user_by_id(c, "u1")).unwrap().unwrap();
+        assert_eq!(fetched.username, "alice");
+        assert_eq!(fetched.public_key, vec![1u8; 32]);
+    }
+
+    #[test]
+    fn test_get_user_by_public_key() {
+        let db = test_db();
+        let pk = vec![42u8; 32];
+        let user = make_user("u1", "bob", &pk);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+
+        let fetched = db.with_conn(|c| get_user_by_public_key(c, &pk)).unwrap().unwrap();
+        assert_eq!(fetched.id, "u1");
+    }
+
+    #[test]
+    fn test_get_user_by_username() {
+        let db = test_db();
+        let user = make_user("u1", "charlie", &[3u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+
+        let fetched = db.with_conn(|c| get_user_by_username(c, "charlie")).unwrap().unwrap();
+        assert_eq!(fetched.id, "u1");
+
+        let none = db.with_conn(|c| get_user_by_username(c, "nonexistent")).unwrap();
+        assert!(none.is_none());
+    }
+
+    #[test]
+    fn test_get_nonexistent_user_returns_none() {
+        let db = test_db();
+        let result = db.with_conn(|c| get_user_by_id(c, "nope")).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_update_user() {
+        let db = test_db();
+        let mut user = make_user("u1", "dave", &[4u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+
+        user.display_name = "Dave the Great".to_string();
+        user.avatar_url = "https://example.com/avatar.png".to_string();
+        db.with_conn(|c| update_user(c, &user)).unwrap();
+
+        let fetched = db.with_conn(|c| get_user_by_id(c, "u1")).unwrap().unwrap();
+        assert_eq!(fetched.display_name, "Dave the Great");
+        assert_eq!(fetched.avatar_url, "https://example.com/avatar.png");
+    }
+
+    #[test]
+    fn test_update_user_status() {
+        let db = test_db();
+        let user = make_user("u1", "eve", &[5u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+
+        db.with_conn(|c| update_user_status(c, "u1", "dnd", "busy")).unwrap();
+        let fetched = db.with_conn(|c| get_user_by_id(c, "u1")).unwrap().unwrap();
+        assert_eq!(fetched.status_type, "dnd");
+        assert_eq!(fetched.status_text, "busy");
+    }
+
+    #[test]
+    fn test_has_users() {
+        let db = test_db();
+        assert!(!db.has_users().unwrap());
+
+        let user = make_user("u1", "frank", &[6u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+        assert!(db.has_users().unwrap());
+    }
+
+    #[test]
+    fn test_create_user_duplicate_username_fails() {
+        let db = test_db();
+        let user1 = make_user("u1", "same_name", &[1u8; 32]);
+        let user2 = make_user("u2", "same_name", &[2u8; 32]);
+        db.with_conn(|c| create_user(c, &user1)).unwrap();
+        let result = db.with_conn(|c| create_user(c, &user2));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_create_user_duplicate_public_key_fails() {
+        let db = test_db();
+        let pk = vec![99u8; 32];
+        let user1 = make_user("u1", "user_a", &pk);
+        let user2 = make_user("u2", "user_b", &pk);
+        db.with_conn(|c| create_user(c, &user1)).unwrap();
+        let result = db.with_conn(|c| create_user(c, &user2));
+        assert!(result.is_err());
+    }
+
+    // ── Team tests ──────────────────────────────────────────────────────
+
+    #[test]
+    fn test_create_team_and_fetch() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+
+        let team = make_team("t1", "Test Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+
+        let fetched = db.with_conn(|c| get_team(c, "t1")).unwrap().unwrap();
+        assert_eq!(fetched.name, "Test Team");
+        assert_eq!(fetched.created_by, "u1");
+    }
+
+    #[test]
+    fn test_get_nonexistent_team_returns_none() {
+        let db = test_db();
+        let result = db.with_conn(|c| get_team(c, "nope")).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_update_team() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+
+        let mut team = make_team("t1", "Original", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+
+        team.name = "Updated Name".to_string();
+        team.description = "A description".to_string();
+        team.allow_member_invites = false;
+        db.with_conn(|c| update_team(c, &team)).unwrap();
+
+        let fetched = db.with_conn(|c| get_team(c, "t1")).unwrap().unwrap();
+        assert_eq!(fetched.name, "Updated Name");
+        assert_eq!(fetched.description, "A description");
+        assert!(!fetched.allow_member_invites);
+    }
+
+    #[test]
+    fn test_get_first_team() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+
+        let result = db.with_conn(|c| get_first_team(c)).unwrap();
+        assert!(result.is_none());
+
+        let team = make_team("t1", "First", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+
+        let fetched = db.with_conn(|c| get_first_team(c)).unwrap().unwrap();
+        assert_eq!(fetched.id, "t1");
+    }
+
+    #[test]
+    fn test_get_teams_by_user() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+
+        let team = make_team("t1", "Team One", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+
+        let member = make_member("m1", "t1", "u1");
+        db.with_conn(|c| create_member(c, &member)).unwrap();
+
+        let teams = db.with_conn(|c| get_teams_by_user(c, "u1")).unwrap();
+        assert_eq!(teams.len(), 1);
+        assert_eq!(teams[0].name, "Team One");
+
+        let user2 = make_user("u2", "loner", &[2u8; 32]);
+        db.with_conn(|c| create_user(c, &user2)).unwrap();
+        let teams2 = db.with_conn(|c| get_teams_by_user(c, "u2")).unwrap();
+        assert!(teams2.is_empty());
+    }
+
+    // ── Channel tests ───────────────────────────────────────────────────
+
+    #[test]
+    fn test_create_channel_and_fetch_by_id() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+
+        let ch = make_channel("ch1", "t1", "general", "u1");
+        db.with_conn(|c| create_channel(c, &ch)).unwrap();
+
+        let fetched = db.with_conn(|c| get_channel_by_id(c, "ch1")).unwrap().unwrap();
+        assert_eq!(fetched.name, "general");
+        assert_eq!(fetched.team_id, "t1");
+    }
+
+    #[test]
+    fn test_get_channels_by_team_ordered() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+
+        let ch1 = Channel { position: 1, ..make_channel("ch1", "t1", "general", "u1") };
+        let ch2 = Channel { position: 0, ..make_channel("ch2", "t1", "random", "u1") };
+        db.with_conn(|c| create_channel(c, &ch1)).unwrap();
+        db.with_conn(|c| create_channel(c, &ch2)).unwrap();
+
+        let channels = db.with_conn(|c| get_channels_by_team(c, "t1")).unwrap();
+        assert_eq!(channels.len(), 2);
+        assert_eq!(channels[0].name, "random");
+        assert_eq!(channels[1].name, "general");
+    }
+
+    #[test]
+    fn test_update_channel() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+
+        let mut ch = make_channel("ch1", "t1", "general", "u1");
+        db.with_conn(|c| create_channel(c, &ch)).unwrap();
+
+        ch.name = "announcements".to_string();
+        ch.topic = "Important stuff".to_string();
+        db.with_conn(|c| update_channel(c, &ch)).unwrap();
+
+        let fetched = db.with_conn(|c| get_channel_by_id(c, "ch1")).unwrap().unwrap();
+        assert_eq!(fetched.name, "announcements");
+        assert_eq!(fetched.topic, "Important stuff");
+    }
+
+    #[test]
+    fn test_delete_channel() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+
+        let ch = make_channel("ch1", "t1", "general", "u1");
+        db.with_conn(|c| create_channel(c, &ch)).unwrap();
+        db.with_conn(|c| delete_channel(c, "ch1")).unwrap();
+
+        let result = db.with_conn(|c| get_channel_by_id(c, "ch1")).unwrap();
+        assert!(result.is_none());
+    }
+
+    // ── Message tests ───────────────────────────────────────────────────
+
+    #[test]
+    fn test_create_message_and_fetch_by_id() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+        let ch = make_channel("ch1", "t1", "general", "u1");
+        db.with_conn(|c| create_channel(c, &ch)).unwrap();
+
+        let msg = make_message("m1", "ch1", "u1", "Hello world");
+        db.with_conn(|c| create_message(c, &msg)).unwrap();
+
+        let fetched = db.with_conn(|c| get_message_by_id(c, "m1")).unwrap().unwrap();
+        assert_eq!(fetched.content, "Hello world");
+        assert_eq!(fetched.author_id, "u1");
+        assert!(!fetched.deleted);
+    }
+
+    #[test]
+    fn test_get_messages_by_channel_ordering() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+        let ch = make_channel("ch1", "t1", "general", "u1");
+        db.with_conn(|c| create_channel(c, &ch)).unwrap();
+
+        for i in 0..5 {
+            let msg = Message {
+                created_at: format!("2024-01-01 00:00:0{}", i),
+                ..make_message(&format!("m{}", i), "ch1", "u1", &format!("msg {}", i))
+            };
+            db.with_conn(|c| create_message(c, &msg)).unwrap();
+        }
+
+        let messages = db.with_conn(|c| get_messages_by_channel(c, "ch1", "", 50)).unwrap();
+        assert_eq!(messages.len(), 5);
+        assert_eq!(messages[0].content, "msg 0");
+        assert_eq!(messages[4].content, "msg 4");
+    }
+
+    #[test]
+    fn test_get_messages_by_channel_pagination() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+        let ch = make_channel("ch1", "t1", "general", "u1");
+        db.with_conn(|c| create_channel(c, &ch)).unwrap();
+
+        for i in 0..5 {
+            let msg = Message {
+                created_at: format!("2024-01-01 00:00:0{}", i),
+                ..make_message(&format!("m{}", i), "ch1", "u1", &format!("msg {}", i))
+            };
+            db.with_conn(|c| create_message(c, &msg)).unwrap();
+        }
+
+        let messages = db.with_conn(|c| get_messages_by_channel(c, "ch1", "", 2)).unwrap();
+        assert_eq!(messages.len(), 2);
+
+        let messages = db.with_conn(|c| get_messages_by_channel(c, "ch1", "2024-01-01 00:00:03", 10)).unwrap();
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[2].content, "msg 2");
+    }
+
+    #[test]
+    fn test_update_message_content() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+        let ch = make_channel("ch1", "t1", "general", "u1");
+        db.with_conn(|c| create_channel(c, &ch)).unwrap();
+
+        let msg = make_message("m1", "ch1", "u1", "original");
+        db.with_conn(|c| create_message(c, &msg)).unwrap();
+
+        db.with_conn(|c| update_message_content(c, "m1", "edited")).unwrap();
+
+        let fetched = db.with_conn(|c| get_message_by_id(c, "m1")).unwrap().unwrap();
+        assert_eq!(fetched.content, "edited");
+        assert!(fetched.edited_at.is_some());
+    }
+
+    #[test]
+    fn test_soft_delete_message() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+        let ch = make_channel("ch1", "t1", "general", "u1");
+        db.with_conn(|c| create_channel(c, &ch)).unwrap();
+
+        let msg = make_message("m1", "ch1", "u1", "secret");
+        db.with_conn(|c| create_message(c, &msg)).unwrap();
+
+        db.with_conn(|c| soft_delete_message(c, "m1")).unwrap();
+
+        let fetched = db.with_conn(|c| get_message_by_id(c, "m1")).unwrap().unwrap();
+        assert!(fetched.deleted);
+        assert_eq!(fetched.content, "");
+    }
+
+    // ── Member tests ────────────────────────────────────────────────────
+
+    #[test]
+    fn test_create_member_and_fetch() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+
+        let member = make_member("m1", "t1", "u1");
+        db.with_conn(|c| create_member(c, &member)).unwrap();
+
+        let fetched = db
+            .with_conn(|c| get_member_by_user_and_team(c, "u1", "t1"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(fetched.id, "m1");
+        assert_eq!(fetched.user_id, "u1");
+    }
+
+    #[test]
+    fn test_get_members_by_team() {
+        let db = test_db();
+        let u1 = make_user("u1", "alice", &[1u8; 32]);
+        let u2 = make_user("u2", "bob", &[2u8; 32]);
+        db.with_conn(|c| create_user(c, &u1)).unwrap();
+        db.with_conn(|c| create_user(c, &u2)).unwrap();
+
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+
+        let m1 = make_member("m1", "t1", "u1");
+        let m2 = make_member("m2", "t1", "u2");
+        db.with_conn(|c| create_member(c, &m1)).unwrap();
+        db.with_conn(|c| create_member(c, &m2)).unwrap();
+
+        let members = db.with_conn(|c| get_members_by_team(c, "t1")).unwrap();
+        assert_eq!(members.len(), 2);
+    }
+
+    #[test]
+    fn test_update_member_nickname() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+
+        let mut member = make_member("m1", "t1", "u1");
+        db.with_conn(|c| create_member(c, &member)).unwrap();
+
+        member.nickname = "Cool Nick".to_string();
+        db.with_conn(|c| update_member(c, &member)).unwrap();
+
+        let fetched = db
+            .with_conn(|c| get_member_by_user_and_team(c, "u1", "t1"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(fetched.nickname, "Cool Nick");
+    }
+
+    #[test]
+    fn test_delete_member() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+
+        let member = make_member("m1", "t1", "u1");
+        db.with_conn(|c| create_member(c, &member)).unwrap();
+
+        db.with_conn(|c| delete_member(c, "u1", "t1")).unwrap();
+
+        let fetched = db.with_conn(|c| get_member_by_user_and_team(c, "u1", "t1")).unwrap();
+        assert!(fetched.is_none());
+    }
+
+    // ── Role tests ──────────────────────────────────────────────────────
+
+    #[test]
+    fn test_create_role_and_fetch() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+
+        let role = Role {
+            id: "r1".to_string(),
+            team_id: "t1".to_string(),
+            name: "Moderator".to_string(),
+            color: "#FF0000".to_string(),
+            position: 1,
+            permissions: PERM_MANAGE_MESSAGES | PERM_MANAGE_MEMBERS,
+            is_default: false,
+            created_at: crate::db::now_str(),
+        };
+        db.with_conn(|c| create_role(c, &role)).unwrap();
+
+        let fetched = db.with_conn(|c| get_role_by_id(c, "r1")).unwrap().unwrap();
+        assert_eq!(fetched.name, "Moderator");
+        assert_eq!(fetched.color, "#FF0000");
+        assert_eq!(fetched.permissions, PERM_MANAGE_MESSAGES | PERM_MANAGE_MEMBERS);
+    }
+
+    #[test]
+    fn test_get_roles_by_team_ordered_by_position() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+
+        let now = crate::db::now_str();
+        let r1 = Role {
+            id: "r1".into(), team_id: "t1".into(), name: "Admin".into(),
+            color: "#FF0000".into(), position: 2, permissions: PERM_ADMIN,
+            is_default: false, created_at: now.clone(),
+        };
+        let r2 = Role {
+            id: "r2".into(), team_id: "t1".into(), name: "Member".into(),
+            color: "#00FF00".into(), position: 0, permissions: PERM_SEND_MESSAGES,
+            is_default: true, created_at: now,
+        };
+        db.with_conn(|c| create_role(c, &r1)).unwrap();
+        db.with_conn(|c| create_role(c, &r2)).unwrap();
+
+        let roles = db.with_conn(|c| get_roles_by_team(c, "t1")).unwrap();
+        assert_eq!(roles.len(), 2);
+        assert_eq!(roles[0].name, "Member");
+        assert_eq!(roles[1].name, "Admin");
+    }
+
+    #[test]
+    fn test_update_role() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+
+        let mut role = Role {
+            id: "r1".into(), team_id: "t1".into(), name: "Mod".into(),
+            color: "#000".into(), position: 0, permissions: 0,
+            is_default: false, created_at: crate::db::now_str(),
+        };
+        db.with_conn(|c| create_role(c, &role)).unwrap();
+
+        role.name = "Super Mod".to_string();
+        role.permissions = PERM_ADMIN;
+        db.with_conn(|c| update_role(c, &role)).unwrap();
+
+        let fetched = db.with_conn(|c| get_role_by_id(c, "r1")).unwrap().unwrap();
+        assert_eq!(fetched.name, "Super Mod");
+        assert_eq!(fetched.permissions, PERM_ADMIN);
+    }
+
+    #[test]
+    fn test_delete_role() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+
+        let role = Role {
+            id: "r1".into(), team_id: "t1".into(), name: "Temp".into(),
+            color: "#000".into(), position: 0, permissions: 0,
+            is_default: false, created_at: crate::db::now_str(),
+        };
+        db.with_conn(|c| create_role(c, &role)).unwrap();
+        db.with_conn(|c| delete_role(c, "r1")).unwrap();
+
+        let fetched = db.with_conn(|c| get_role_by_id(c, "r1")).unwrap();
+        assert!(fetched.is_none());
+    }
+
+    #[test]
+    fn test_get_default_role_for_team() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+
+        let role = Role {
+            id: "r1".into(), team_id: "t1".into(), name: "everyone".into(),
+            color: "#000".into(), position: 0, permissions: PERM_SEND_MESSAGES,
+            is_default: true, created_at: crate::db::now_str(),
+        };
+        db.with_conn(|c| create_role(c, &role)).unwrap();
+
+        let def = db.with_conn(|c| get_default_role_for_team(c, "t1")).unwrap().unwrap();
+        assert_eq!(def.name, "everyone");
+        assert!(def.is_default);
+    }
+
+    // ── Member role assignment tests ────────────────────────────────────
+
+    #[test]
+    fn test_assign_and_get_member_roles() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+        let member = make_member("m1", "t1", "u1");
+        db.with_conn(|c| create_member(c, &member)).unwrap();
+
+        let now = crate::db::now_str();
+        let r1 = Role {
+            id: "r1".into(), team_id: "t1".into(), name: "Mod".into(),
+            color: "#000".into(), position: 0, permissions: PERM_MANAGE_MESSAGES,
+            is_default: false, created_at: now.clone(),
+        };
+        let r2 = Role {
+            id: "r2".into(), team_id: "t1".into(), name: "Admin".into(),
+            color: "#000".into(), position: 1, permissions: PERM_ADMIN,
+            is_default: false, created_at: now,
+        };
+        db.with_conn(|c| create_role(c, &r1)).unwrap();
+        db.with_conn(|c| create_role(c, &r2)).unwrap();
+
+        db.with_conn(|c| assign_role_to_member(c, "m1", "r1")).unwrap();
+        db.with_conn(|c| assign_role_to_member(c, "m1", "r2")).unwrap();
+
+        let roles = db.with_conn(|c| get_member_roles(c, "m1")).unwrap();
+        assert_eq!(roles.len(), 2);
+    }
+
+    #[test]
+    fn test_assign_role_idempotent() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+        let member = make_member("m1", "t1", "u1");
+        db.with_conn(|c| create_member(c, &member)).unwrap();
+
+        let role = Role {
+            id: "r1".into(), team_id: "t1".into(), name: "Mod".into(),
+            color: "#000".into(), position: 0, permissions: 0,
+            is_default: false, created_at: crate::db::now_str(),
+        };
+        db.with_conn(|c| create_role(c, &role)).unwrap();
+
+        db.with_conn(|c| assign_role_to_member(c, "m1", "r1")).unwrap();
+        db.with_conn(|c| assign_role_to_member(c, "m1", "r1")).unwrap();
+
+        let roles = db.with_conn(|c| get_member_roles(c, "m1")).unwrap();
+        assert_eq!(roles.len(), 1);
+    }
+
+    #[test]
+    fn test_remove_role_from_member() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+        let member = make_member("m1", "t1", "u1");
+        db.with_conn(|c| create_member(c, &member)).unwrap();
+
+        let role = Role {
+            id: "r1".into(), team_id: "t1".into(), name: "Mod".into(),
+            color: "#000".into(), position: 0, permissions: 0,
+            is_default: false, created_at: crate::db::now_str(),
+        };
+        db.with_conn(|c| create_role(c, &role)).unwrap();
+
+        db.with_conn(|c| assign_role_to_member(c, "m1", "r1")).unwrap();
+        db.with_conn(|c| remove_role_from_member(c, "m1", "r1")).unwrap();
+
+        let roles = db.with_conn(|c| get_member_roles(c, "m1")).unwrap();
+        assert!(roles.is_empty());
+    }
+
+    #[test]
+    fn test_clear_member_roles() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+        let member = make_member("m1", "t1", "u1");
+        db.with_conn(|c| create_member(c, &member)).unwrap();
+
+        let now = crate::db::now_str();
+        for i in 0..3 {
+            let role = Role {
+                id: format!("r{}", i), team_id: "t1".into(), name: format!("Role{}", i),
+                color: "#000".into(), position: i, permissions: 0,
+                is_default: false, created_at: now.clone(),
+            };
+            db.with_conn(|c| create_role(c, &role)).unwrap();
+            db.with_conn(|c| assign_role_to_member(c, "m1", &format!("r{}", i))).unwrap();
+        }
+
+        db.with_conn(|c| clear_member_roles(c, "m1")).unwrap();
+        let roles = db.with_conn(|c| get_member_roles(c, "m1")).unwrap();
+        assert!(roles.is_empty());
+    }
+
+    // ── Permission tests ────────────────────────────────────────────────
+
+    #[test]
+    fn test_user_has_permission_admin_user() {
+        let db = test_db();
+        let mut user = make_user("u1", "admin", &[1u8; 32]);
+        user.is_admin = true;
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+
+        let user2 = make_user("u2", "creator", &[2u8; 32]);
+        db.with_conn(|c| create_user(c, &user2)).unwrap();
+        let team = make_team("t1", "Team", "u2");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+
+        let has = db.with_conn(|c| user_has_permission(c, "u1", "t1", PERM_MANAGE_CHANNELS)).unwrap();
+        assert!(has);
+    }
+
+    #[test]
+    fn test_user_has_permission_team_owner() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+
+        let has = db.with_conn(|c| user_has_permission(c, "u1", "t1", PERM_MANAGE_ROLES)).unwrap();
+        assert!(has);
+    }
+
+    #[test]
+    fn test_user_has_permission_via_role() {
+        let db = test_db();
+        let owner = make_user("u1", "owner", &[1u8; 32]);
+        let user = make_user("u2", "member", &[2u8; 32]);
+        db.with_conn(|c| create_user(c, &owner)).unwrap();
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+
+        let member = make_member("m2", "t1", "u2");
+        db.with_conn(|c| create_member(c, &member)).unwrap();
+
+        let role = Role {
+            id: "r1".into(), team_id: "t1".into(), name: "Mod".into(),
+            color: "#000".into(), position: 0, permissions: PERM_MANAGE_MESSAGES,
+            is_default: false, created_at: crate::db::now_str(),
+        };
+        db.with_conn(|c| create_role(c, &role)).unwrap();
+        db.with_conn(|c| assign_role_to_member(c, "m2", "r1")).unwrap();
+
+        let has = db.with_conn(|c| user_has_permission(c, "u2", "t1", PERM_MANAGE_MESSAGES)).unwrap();
+        assert!(has);
+
+        let no = db.with_conn(|c| user_has_permission(c, "u2", "t1", PERM_MANAGE_CHANNELS)).unwrap();
+        assert!(!no);
+    }
+
+    #[test]
+    fn test_user_has_permission_role_with_admin_perm() {
+        let db = test_db();
+        let owner = make_user("u1", "owner", &[1u8; 32]);
+        let user = make_user("u2", "member", &[2u8; 32]);
+        db.with_conn(|c| create_user(c, &owner)).unwrap();
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+
+        let member = make_member("m2", "t1", "u2");
+        db.with_conn(|c| create_member(c, &member)).unwrap();
+
+        let role = Role {
+            id: "r1".into(), team_id: "t1".into(), name: "Admin Role".into(),
+            color: "#000".into(), position: 0, permissions: PERM_ADMIN,
+            is_default: false, created_at: crate::db::now_str(),
+        };
+        db.with_conn(|c| create_role(c, &role)).unwrap();
+        db.with_conn(|c| assign_role_to_member(c, "m2", "r1")).unwrap();
+
+        let has = db.with_conn(|c| user_has_permission(c, "u2", "t1", PERM_MANAGE_TEAM)).unwrap();
+        assert!(has);
+    }
+
+    #[test]
+    fn test_user_has_no_permission_without_role() {
+        let db = test_db();
+        let owner = make_user("u1", "owner", &[1u8; 32]);
+        let user = make_user("u2", "member", &[2u8; 32]);
+        db.with_conn(|c| create_user(c, &owner)).unwrap();
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+
+        let member = make_member("m2", "t1", "u2");
+        db.with_conn(|c| create_member(c, &member)).unwrap();
+
+        let has = db.with_conn(|c| user_has_permission(c, "u2", "t1", PERM_SEND_MESSAGES)).unwrap();
+        assert!(!has);
+    }
+
+    // ── Invite tests ────────────────────────────────────────────────────
+
+    #[test]
+    fn test_create_invite_and_fetch_by_token() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+
+        let invite = Invite {
+            id: "inv1".into(), team_id: "t1".into(), created_by: "u1".into(),
+            token: "abc123".into(), max_uses: Some(10), uses: 0,
+            expires_at: None, revoked: false, created_at: crate::db::now_str(),
+        };
+        db.with_conn(|c| create_invite(c, &invite)).unwrap();
+
+        let fetched = db.with_conn(|c| get_invite_by_token(c, "abc123")).unwrap().unwrap();
+        assert_eq!(fetched.id, "inv1");
+        assert_eq!(fetched.max_uses, Some(10));
+    }
+
+    #[test]
+    fn test_invite_increment_uses() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+
+        let invite = Invite {
+            id: "inv1".into(), team_id: "t1".into(), created_by: "u1".into(),
+            token: "tok1".into(), max_uses: None, uses: 0,
+            expires_at: None, revoked: false, created_at: crate::db::now_str(),
+        };
+        db.with_conn(|c| create_invite(c, &invite)).unwrap();
+
+        db.with_conn(|c| increment_invite_uses(c, "inv1")).unwrap();
+        db.with_conn(|c| increment_invite_uses(c, "inv1")).unwrap();
+
+        let fetched = db.with_conn(|c| get_invite_by_id(c, "inv1")).unwrap().unwrap();
+        assert_eq!(fetched.uses, 2);
+    }
+
+    #[test]
+    fn test_revoke_invite() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+
+        let invite = Invite {
+            id: "inv1".into(), team_id: "t1".into(), created_by: "u1".into(),
+            token: "tok1".into(), max_uses: None, uses: 0,
+            expires_at: None, revoked: false, created_at: crate::db::now_str(),
+        };
+        db.with_conn(|c| create_invite(c, &invite)).unwrap();
+
+        db.with_conn(|c| revoke_invite(c, "inv1")).unwrap();
+
+        let fetched = db.with_conn(|c| get_invite_by_id(c, "inv1")).unwrap().unwrap();
+        assert!(fetched.revoked);
+    }
+
+    #[test]
+    fn test_get_active_invites_excludes_revoked() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+
+        let now = crate::db::now_str();
+        let inv1 = Invite {
+            id: "inv1".into(), team_id: "t1".into(), created_by: "u1".into(),
+            token: "tok1".into(), max_uses: None, uses: 0,
+            expires_at: None, revoked: false, created_at: now.clone(),
+        };
+        let inv2 = Invite {
+            id: "inv2".into(), team_id: "t1".into(), created_by: "u1".into(),
+            token: "tok2".into(), max_uses: None, uses: 0,
+            expires_at: None, revoked: true, created_at: now,
+        };
+        db.with_conn(|c| create_invite(c, &inv1)).unwrap();
+        db.with_conn(|c| create_invite(c, &inv2)).unwrap();
+
+        let active = db.with_conn(|c| get_active_invites_by_team(c, "t1")).unwrap();
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0].token, "tok1");
+    }
+
+    // ── Bootstrap token tests ───────────────────────────────────────────
+
+    #[test]
+    fn test_create_and_get_bootstrap_token() {
+        let db = test_db();
+        db.with_conn(|c| create_bootstrap_token(c, "mytoken")).unwrap();
+
+        let fetched = db.with_conn(|c| get_bootstrap_token(c, "mytoken")).unwrap().unwrap();
+        assert_eq!(fetched.token, "mytoken");
+        assert!(!fetched.used);
+    }
+
+    #[test]
+    fn test_use_bootstrap_token() {
+        let db = test_db();
+        db.with_conn(|c| create_bootstrap_token(c, "mytoken")).unwrap();
+        db.with_conn(|c| use_bootstrap_token(c, "mytoken")).unwrap();
+
+        let fetched = db.with_conn(|c| get_bootstrap_token(c, "mytoken")).unwrap().unwrap();
+        assert!(fetched.used);
+    }
+
+    #[test]
+    fn test_get_nonexistent_bootstrap_token() {
+        let db = test_db();
+        let result = db.with_conn(|c| get_bootstrap_token(c, "nope")).unwrap();
+        assert!(result.is_none());
+    }
+
+    // ── Ban tests ───────────────────────────────────────────────────────
+
+    #[test]
+    fn test_create_ban_and_fetch() {
+        let db = test_db();
+        let owner = make_user("u1", "owner", &[1u8; 32]);
+        let target = make_user("u2", "target", &[2u8; 32]);
+        db.with_conn(|c| create_user(c, &owner)).unwrap();
+        db.with_conn(|c| create_user(c, &target)).unwrap();
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+
+        let ban = Ban {
+            team_id: "t1".into(), user_id: "u2".into(), banned_by: "u1".into(),
+            reason: "spamming".into(), created_at: crate::db::now_str(),
+        };
+        db.with_conn(|c| create_ban(c, &ban)).unwrap();
+
+        let fetched = db.with_conn(|c| get_ban(c, "t1", "u2")).unwrap().unwrap();
+        assert_eq!(fetched.reason, "spamming");
+        assert_eq!(fetched.banned_by, "u1");
+    }
+
+    #[test]
+    fn test_delete_ban() {
+        let db = test_db();
+        let owner = make_user("u1", "owner", &[1u8; 32]);
+        let target = make_user("u2", "target", &[2u8; 32]);
+        db.with_conn(|c| create_user(c, &owner)).unwrap();
+        db.with_conn(|c| create_user(c, &target)).unwrap();
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+
+        let ban = Ban {
+            team_id: "t1".into(), user_id: "u2".into(), banned_by: "u1".into(),
+            reason: "".into(), created_at: crate::db::now_str(),
+        };
+        db.with_conn(|c| create_ban(c, &ban)).unwrap();
+        db.with_conn(|c| delete_ban(c, "t1", "u2")).unwrap();
+
+        let result = db.with_conn(|c| get_ban(c, "t1", "u2")).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_get_banned_users() {
+        let db = test_db();
+        let owner = make_user("u1", "owner", &[1u8; 32]);
+        let u2 = make_user("u2", "user2", &[2u8; 32]);
+        let u3 = make_user("u3", "user3", &[3u8; 32]);
+        db.with_conn(|c| create_user(c, &owner)).unwrap();
+        db.with_conn(|c| create_user(c, &u2)).unwrap();
+        db.with_conn(|c| create_user(c, &u3)).unwrap();
+        let team = make_team("t1", "Team", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+
+        let now = crate::db::now_str();
+        for uid in &["u2", "u3"] {
+            let ban = Ban {
+                team_id: "t1".into(), user_id: uid.to_string(), banned_by: "u1".into(),
+                reason: "".into(), created_at: now.clone(),
+            };
+            db.with_conn(|c| create_ban(c, &ban)).unwrap();
+        }
+
+        let bans = db.with_conn(|c| get_banned_users(c, "t1")).unwrap();
+        assert_eq!(bans.len(), 2);
+    }
+
+    // ── Prekey bundle tests ─────────────────────────────────────────────
+
+    #[test]
+    fn test_save_and_get_prekey_bundle() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+
+        let bundle = PrekeyBundle {
+            id: "pk1".into(), user_id: "u1".into(),
+            identity_key: vec![1, 2, 3], signed_prekey: vec![4, 5, 6],
+            signed_prekey_signature: vec![7, 8, 9],
+            one_time_prekeys: vec![], uploaded_at: crate::db::now_str(),
+        };
+        db.with_conn(|c| save_prekey_bundle(c, &bundle)).unwrap();
+
+        let fetched = db.with_conn(|c| get_prekey_bundle(c, "u1")).unwrap().unwrap();
+        assert_eq!(fetched.identity_key, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn test_delete_prekey_bundle() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+
+        let bundle = PrekeyBundle {
+            id: "pk1".into(), user_id: "u1".into(),
+            identity_key: vec![1], signed_prekey: vec![2],
+            signed_prekey_signature: vec![3],
+            one_time_prekeys: vec![], uploaded_at: crate::db::now_str(),
+        };
+        db.with_conn(|c| save_prekey_bundle(c, &bundle)).unwrap();
+        db.with_conn(|c| delete_prekey_bundle(c, "u1")).unwrap();
+
+        let result = db.with_conn(|c| get_prekey_bundle(c, "u1")).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_consume_one_time_prekey() {
+        let db = test_db();
+        let user = make_user("u1", "owner", &[1u8; 32]);
+        db.with_conn(|c| create_user(c, &user)).unwrap();
+
+        use base64::Engine;
+        let key1 = base64::engine::general_purpose::STANDARD.encode([10u8, 20, 30]);
+        let key2 = base64::engine::general_purpose::STANDARD.encode([40u8, 50, 60]);
+        let prekeys_json = serde_json::to_vec(&vec![key1, key2]).unwrap();
+
+        let bundle = PrekeyBundle {
+            id: "pk1".into(), user_id: "u1".into(),
+            identity_key: vec![1], signed_prekey: vec![2],
+            signed_prekey_signature: vec![3],
+            one_time_prekeys: prekeys_json, uploaded_at: crate::db::now_str(),
+        };
+        db.with_conn(|c| save_prekey_bundle(c, &bundle)).unwrap();
+
+        let consumed = db.with_conn(|c| consume_one_time_prekey(c, "u1")).unwrap().unwrap();
+        assert_eq!(consumed, vec![10u8, 20, 30]);
+
+        let consumed2 = db.with_conn(|c| consume_one_time_prekey(c, "u1")).unwrap().unwrap();
+        assert_eq!(consumed2, vec![40u8, 50, 60]);
+
+        let consumed3 = db.with_conn(|c| consume_one_time_prekey(c, "u1")).unwrap();
+        assert!(consumed3.is_none());
+    }
+
+    // ── Settings tests ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_set_and_get_setting() {
+        let db = test_db();
+        db.with_conn(|c| set_setting(c, "theme", "dark")).unwrap();
+
+        let val = db.with_conn(|c| get_setting(c, "theme")).unwrap().unwrap();
+        assert_eq!(val, "dark");
+    }
+
+    #[test]
+    fn test_get_nonexistent_setting() {
+        let db = test_db();
+        let val = db.with_conn(|c| get_setting(c, "nope")).unwrap();
+        assert!(val.is_none());
+    }
+
+    #[test]
+    fn test_set_setting_upsert() {
+        let db = test_db();
+        db.with_conn(|c| set_setting(c, "key", "val1")).unwrap();
+        db.with_conn(|c| set_setting(c, "key", "val2")).unwrap();
+
+        let val = db.with_conn(|c| get_setting(c, "key")).unwrap().unwrap();
+        assert_eq!(val, "val2");
+    }
+
+    // ── Identity blob tests ─────────────────────────────────────────────
+
+    #[test]
+    fn test_upsert_and_get_identity_blob() {
+        let db = test_db();
+        db.with_conn(|c| upsert_identity_blob(c, "u1", r#"{"data":"blob"}"#)).unwrap();
+
+        let blob = db.with_conn(|c| get_identity_blob(c, "u1")).unwrap().unwrap();
+        assert_eq!(blob, r#"{"data":"blob"}"#);
+
+        db.with_conn(|c| upsert_identity_blob(c, "u1", r#"{"data":"updated"}"#)).unwrap();
+        let blob2 = db.with_conn(|c| get_identity_blob(c, "u1")).unwrap().unwrap();
+        assert_eq!(blob2, r#"{"data":"updated"}"#);
+    }
+
+    // ── Migration tests ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_run_migrations_idempotent() {
+        let db = test_db();
+        db.run_migrations().unwrap();
+        db.run_migrations().unwrap();
+    }
 }

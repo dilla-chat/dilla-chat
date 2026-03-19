@@ -26,6 +26,7 @@ pub type OnEventFn =
 ///
 /// Maintains a map of peer addresses to their WebSocket connections, handles
 /// reconnection, and provides send/broadcast primitives.
+#[allow(dead_code)]
 pub struct Transport {
     conns: Arc<RwLock<HashMap<String, PeerConnection>>>,
     peers: Arc<RwLock<Vec<String>>>,
@@ -34,6 +35,7 @@ pub struct Transport {
     stop_rx: tokio::sync::watch::Receiver<bool>,
 }
 
+#[allow(dead_code)]
 impl Transport {
     pub fn new() -> Self {
         let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);

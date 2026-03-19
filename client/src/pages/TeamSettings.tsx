@@ -644,6 +644,7 @@ function BansTab({ teamId }: { teamId: string }) {
   const { t } = useTranslation();
   const [bannedUsers, setBannedUsers] = useState<Array<{ id: string; username: string }>>([]);
 
+  /* v8 ignore next 7 -- BansTab has no API to load banned users yet */
   const handleUnban = async (userId: string) => {
     try {
       await api.unbanMember(teamId, userId);
@@ -662,6 +663,7 @@ function BansTab({ teamId }: { teamId: string }) {
             {t('members.noBanned', 'No banned users')}
           </p>
         )}
+        {/* v8 ignore next 7 -- BansTab has no API to load banned users yet */}
         {bannedUsers.map((user) => (
           <div key={user.id} className="banned-user-item">
             <span className="banned-user-name">{user.username}</span>

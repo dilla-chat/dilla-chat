@@ -64,6 +64,7 @@ pub fn get_message_reactions(
     Ok(groups)
 }
 
+#[allow(dead_code)]
 pub fn get_user_reaction(
     conn: &Connection,
     message_id: &str,
@@ -84,4 +85,137 @@ pub fn get_user_reaction(
         },
     )
     .optional()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::Database;
+
+    fn test_db() -> Database {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        db.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;")).unwrap();
+        db.run_migrations().unwrap();
+        db
+    }
+
+    fn setup_for_reactions(db: &Database) {
+        let now = crate::db::now_str();
+        let user = User {
+            id: "u1".into(), username: "alice".into(), display_name: "Alice".into(),
+            public_key: vec![1u8; 32], avatar_url: String::new(), status_text: String::new(),
+            status_type: "online".into(), is_admin: false,
+            created_at: now.clone(), updated_at: now.clone(),
+        };
+        let user2 = User {
+            id: "u2".into(), username: "bob".into(), display_name: "Bob".into(),
+            public_key: vec![2u8; 32], avatar_url: String::new(), status_text: String::new(),
+            status_type: "online".into(), is_admin: false,
+            created_at: now.clone(), updated_at: now.clone(),
+        };
+        db.with_conn(|c| crate::db::create_user(c, &user)).unwrap();
+        db.with_conn(|c| crate::db::create_user(c, &user2)).unwrap();
+
+        let team = Team {
+            id: "t1".into(), name: "Team".into(), description: String::new(),
+            icon_url: String::new(), created_by: "u1".into(), max_file_size: 1024,
+            allow_member_invites: true, created_at: now.clone(), updated_at: now.clone(),
+        };
+        db.with_conn(|c| crate::db::create_team(c, &team)).unwrap();
+
+        let channel = Channel {
+            id: "ch1".into(), team_id: "t1".into(), name: "general".into(),
+            topic: String::new(), channel_type: "text".into(), position: 0,
+            category: String::new(), created_by: "u1".into(),
+            created_at: now.clone(), updated_at: now.clone(),
+        };
+        db.with_conn(|c| crate::db::create_channel(c, &channel)).unwrap();
+
+        let msg = Message {
+            id: "m1".into(), channel_id: "ch1".into(), dm_channel_id: String::new(),
+            author_id: "u1".into(), content: "hello".into(), msg_type: "text".into(),
+            thread_id: String::new(), edited_at: None, deleted: false,
+            lamport_ts: 0, created_at: now,
+        };
+        db.with_conn(|c| crate::db::create_message(c, &msg)).unwrap();
+    }
+
+    #[test]
+    fn test_add_reaction() {
+        let db = test_db();
+        setup_for_reactions(&db);
+
+        let reaction = db.with_conn(|c| add_reaction(c, "m1", "u1", "thumbsup")).unwrap();
+        assert_eq!(reaction.emoji, "thumbsup");
+        assert_eq!(reaction.message_id, "m1");
+    }
+
+    #[test]
+    fn test_get_message_reactions_grouped() {
+        let db = test_db();
+        setup_for_reactions(&db);
+
+        db.with_conn(|c| add_reaction(c, "m1", "u1", "thumbsup")).unwrap();
+        db.with_conn(|c| add_reaction(c, "m1", "u2", "thumbsup")).unwrap();
+        db.with_conn(|c| add_reaction(c, "m1", "u1", "heart")).unwrap();
+
+        let groups = db.with_conn(|c| get_message_reactions(c, "m1")).unwrap();
+        assert_eq!(groups.len(), 2);
+
+        let thumbsup = groups.iter().find(|g| g.emoji == "thumbsup").unwrap();
+        assert_eq!(thumbsup.count, 2);
+        assert_eq!(thumbsup.users.len(), 2);
+
+        let heart = groups.iter().find(|g| g.emoji == "heart").unwrap();
+        assert_eq!(heart.count, 1);
+    }
+
+    #[test]
+    fn test_remove_reaction() {
+        let db = test_db();
+        setup_for_reactions(&db);
+
+        db.with_conn(|c| add_reaction(c, "m1", "u1", "thumbsup")).unwrap();
+        db.with_conn(|c| remove_reaction(c, "m1", "u1", "thumbsup")).unwrap();
+
+        let groups = db.with_conn(|c| get_message_reactions(c, "m1")).unwrap();
+        assert!(groups.is_empty());
+    }
+
+    #[test]
+    fn test_get_user_reaction() {
+        let db = test_db();
+        setup_for_reactions(&db);
+
+        db.with_conn(|c| add_reaction(c, "m1", "u1", "thumbsup")).unwrap();
+
+        let found = db.with_conn(|c| get_user_reaction(c, "m1", "u1", "thumbsup")).unwrap();
+        assert!(found.is_some());
+
+        let not_found = db.with_conn(|c| get_user_reaction(c, "m1", "u1", "heart")).unwrap();
+        assert!(not_found.is_none());
+    }
+
+    #[test]
+    fn test_add_reaction_idempotent() {
+        let db = test_db();
+        setup_for_reactions(&db);
+
+        db.with_conn(|c| add_reaction(c, "m1", "u1", "thumbsup")).unwrap();
+        db.with_conn(|c| add_reaction(c, "m1", "u1", "thumbsup")).unwrap();
+
+        let groups = db.with_conn(|c| get_message_reactions(c, "m1")).unwrap();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].count, 1);
+    }
+
+    #[test]
+    fn test_no_reactions_returns_empty() {
+        let db = test_db();
+        setup_for_reactions(&db);
+
+        let groups = db.with_conn(|c| get_message_reactions(c, "m1")).unwrap();
+        assert!(groups.is_empty());
+    }
 }

@@ -15,6 +15,7 @@ pub struct VoicePeer {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[allow(dead_code)]
 pub struct VoiceRoom {
     pub channel_id: String,
     pub team_id: String,
@@ -27,6 +28,7 @@ pub struct RoomManager {
     channel_teams: Arc<RwLock<HashMap<String, String>>>,
 }
 
+#[allow(dead_code)]
 impl RoomManager {
     pub fn new() -> Self {
         RoomManager {

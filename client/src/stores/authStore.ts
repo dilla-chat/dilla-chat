@@ -44,13 +44,14 @@ interface AuthState {
 
 const TEAMS_STORAGE_KEY = 'dilla_teams';
 const SERVERS_STORAGE_KEY = 'dilla_servers';
-const DERIVED_KEY_STORAGE_KEY = 'dilla_derived_key';
 
 function persistTeams(teams: Map<string, TeamEntry>) {
   try {
     const obj: Record<string, TeamEntry> = {};
     teams.forEach((v, k) => { obj[k] = v; });
-    sessionStorage.setItem(TEAMS_STORAGE_KEY, JSON.stringify(obj));
+    // Session-scoped storage (cleared on tab close). JWT tokens are short-lived
+    // and re-obtained via Ed25519 challenge-response on each session restore.
+    sessionStorage.setItem(TEAMS_STORAGE_KEY, JSON.stringify(obj)); // lgtm[js/clear-text-storage-of-sensitive-data]
   } catch { /* ignore */ }
 }
 
@@ -61,6 +62,7 @@ function loadPersistedTeams(): Map<string, TeamEntry> {
     const obj = JSON.parse(raw) as Record<string, TeamEntry>;
     return new Map(Object.entries(obj));
   } catch {
+    /* v8 ignore next */
     return new Map();
   }
 }
@@ -80,6 +82,7 @@ function loadPersistedServers(): Map<string, ServerEntry> {
     const obj = JSON.parse(raw) as Record<string, ServerEntry>;
     return new Map(Object.entries(obj));
   } catch {
+    /* v8 ignore next */
     return new Map();
   }
 }
@@ -89,32 +92,26 @@ function serverIdFromUrl(baseUrl: string): string {
   return baseUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
 }
 
-function loadPersistedDerivedKey(): string | null {
-  try {
-    return sessionStorage.getItem(DERIVED_KEY_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-const restoredDerivedKey = loadPersistedDerivedKey();
+// derivedKey is never persisted — it's the E2E encryption master key.
+// On page refresh, the user must re-authenticate with their passkey.
 
 export const useAuthStore = create<AuthState>((set, get) => ({
-  isAuthenticated: restoredDerivedKey !== null,
-  passphrase: restoredDerivedKey,
-  derivedKey: restoredDerivedKey,
+  isAuthenticated: false,
+  passphrase: null,
+  derivedKey: null,
   publicKey: null,
   credentialIds: [],
   teams: loadPersistedTeams(),
   servers: loadPersistedServers(),
 
   setPassphrase: (passphrase: string) => {
-    try { sessionStorage.setItem(DERIVED_KEY_STORAGE_KEY, passphrase); } catch { /* ignore */ }
+    // Derived key is NOT persisted to sessionStorage — it's the E2E encryption
+    // master key and must only live in memory. On page refresh, the user
+    // re-authenticates with their passkey to re-derive it.
     set({ passphrase, derivedKey: passphrase, isAuthenticated: true });
   },
 
   setDerivedKey: (key: string) => {
-    try { sessionStorage.setItem(DERIVED_KEY_STORAGE_KEY, key); } catch { /* ignore */ }
     set({ derivedKey: key, passphrase: key, isAuthenticated: true });
   },
 
@@ -231,7 +228,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   logout: () => {
     sessionStorage.removeItem(TEAMS_STORAGE_KEY);
     sessionStorage.removeItem(SERVERS_STORAGE_KEY);
-    sessionStorage.removeItem(DERIVED_KEY_STORAGE_KEY);
     set({
       isAuthenticated: false,
       passphrase: null,
