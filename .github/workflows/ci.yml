@@ -2,30 +2,21 @@ name: CI
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    branches:
-      - main
+    branches: [main]
 
 permissions:
   contents: read
 
 jobs:
-  # Test and build the client
+  # ── Client: test, lint, build ──────────────────────────────────────────────
   client-checks:
     runs-on: ubuntu-latest
-    outputs:
-      test_failed: ${{ steps.test.outcome == 'failure' }}
-      lint_failed: ${{ steps.lint.outcome == 'failure' }}
-      build_failed: ${{ steps.build.outcome == 'failure' }}
-      test_output: ${{ steps.test.outputs.output }}
-      lint_output: ${{ steps.lint.outputs.output }}
-      build_output: ${{ steps.build.outputs.output }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
@@ -35,229 +26,110 @@ jobs:
         run: cd client && npm ci
 
       - name: Test client
-        id: test
-        continue-on-error: true
-        run: |
-          cd client
-          set -o pipefail
-          npm test 2>&1 | tee /tmp/test-output.txt
-          echo "output<<EOF" >> $GITHUB_OUTPUT
-          cat /tmp/test-output.txt >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+        run: cd client && npm test
 
       - name: Lint client
-        id: lint
-        continue-on-error: true
-        run: |
-          cd client
-          set -o pipefail
-          npm run lint 2>&1 | tee /tmp/lint-output.txt
-          echo "output<<EOF" >> $GITHUB_OUTPUT
-          cat /tmp/lint-output.txt >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+        run: cd client && npm run lint
 
       - name: Build client
-        id: build
-        continue-on-error: true
-        run: |
-          cd client
-          set -o pipefail
-          npm run build 2>&1 | tee /tmp/build-output.txt
-          echo "output<<EOF" >> $GITHUB_OUTPUT
-          cat /tmp/build-output.txt >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+        run: cd client && npm run build
 
-  # Build the Rust server
+      - name: Upload client dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-dist
+          path: client/dist/
+          retention-days: 7
+
+  # ── Server: test, build, upload artifact ───────────────────────────────────
   server-checks:
     runs-on: ubuntu-latest
-    outputs:
-      build_failed: ${{ steps.build.outcome == 'failure' }}
-      build_output: ${{ steps.build.outputs.output }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache cargo registry and build
-        uses: actions/cache@v5
+      - name: Cache cargo
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             server-rs/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('server-rs/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
+          restore-keys: ${{ runner.os }}-cargo-
 
-      - name: Build server
-        id: build
-        continue-on-error: true
+      - name: Test server
+        working-directory: server-rs
+        run: cargo test
+
+      - name: Build server (release)
         working-directory: server-rs
         run: |
-          set -o pipefail
-          cargo build 2>&1 | tee /tmp/build-output.txt
-          echo "output<<EOF" >> $GITHUB_OUTPUT
-          cat /tmp/build-output.txt >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          mkdir -p dist && touch dist/index.html
+          cargo build --release
 
-  # Create issues for failures
-  create-issues:
-    needs: [client-checks, server-checks]
-    if: always() && (needs.client-checks.outputs.lint_failed == 'true' || needs.client-checks.outputs.build_failed == 'true' || needs.server-checks.outputs.build_failed == 'true')
-    runs-on: ubuntu-latest
-    permissions:
-      issues: write
+      - name: Upload server binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: dilla-server-linux-amd64
+          path: server-rs/target/release/dilla-server
+          retention-days: 7
+
+  # ── Desktop: build Tauri app artifacts ─────────────────────────────────────
+  desktop-build:
+    needs: client-checks
+    if: github.event_name == 'push' || github.event.pull_request.draft == false
+    strategy:
+      matrix:
+        include:
+          - platform: linux
+            os: ubuntu-22.04
+            args: ''
+          - platform: macos-arm64
+            os: macos-latest
+            args: --target aarch64-apple-darwin
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
-      - name: Create issue for client lint failure
-        if: needs.client-checks.outputs.lint_failed == 'true'
-        uses: actions/github-script@v8
-        env:
-          LINT_OUTPUT: ${{ needs.client-checks.outputs.lint_output }}
+      - uses: actions/setup-node@v4
         with:
-          script: |
-            const output = process.env.LINT_OUTPUT;
-            const title = '[Auto-fix] Client lint errors detected';
-            const body = `## Client Lint Failures
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
 
-            The following lint errors were detected in the client code:
-
-            \`\`\`
-            ${output}
-            \`\`\`
-
-            **Triggered by**: ${{ github.event_name }} on ${{ github.ref }}
-            **Commit**: ${{ github.sha }}
-            **Workflow**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-            This issue will be automatically fixed by the auto-fix workflow.
-            `;
-
-            // Check if similar issue already exists
-            const issues = await github.rest.issues.listForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'open',
-              labels: 'auto-fix,lint'
-            });
-
-            const existingIssue = issues.data.find(issue => issue.title === title);
-
-            if (existingIssue) {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: existingIssue.number,
-                body: `New lint failure detected:\n\n${body}`
-              });
-            } else {
-              await github.rest.issues.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                title: title,
-                body: body,
-                labels: ['auto-fix', 'lint', 'client']
-              });
-            }
-
-      - name: Create issue for client build failure
-        if: needs.client-checks.outputs.build_failed == 'true'
-        uses: actions/github-script@v8
-        env:
-          BUILD_OUTPUT: ${{ needs.client-checks.outputs.build_output }}
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-          script: |
-            const output = process.env.BUILD_OUTPUT;
-            const title = '[Auto-fix] Client build failure';
-            const body = `## Client Build Failure
+          targets: ${{ matrix.platform == 'macos-arm64' && 'aarch64-apple-darwin' || '' }}
 
-            The client build failed with the following error:
+      - name: Install Linux dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
-            \`\`\`
-            ${output}
-            \`\`\`
+      - name: Install dependencies
+        run: cd client && npm ci
 
-            **Triggered by**: ${{ github.event_name }} on ${{ github.ref }}
-            **Commit**: ${{ github.sha }}
-            **Workflow**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-            This issue will be automatically fixed by the auto-fix workflow.
-            `;
-
-            const issues = await github.rest.issues.listForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'open',
-              labels: 'auto-fix,build'
-            });
-
-            const existingIssue = issues.data.find(issue => issue.title === title);
-
-            if (existingIssue) {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: existingIssue.number,
-                body: `New build failure detected:\n\n${body}`
-              });
-            } else {
-              await github.rest.issues.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                title: title,
-                body: body,
-                labels: ['auto-fix', 'build', 'client']
-              });
-            }
-
-      - name: Create issue for server build failure
-        if: needs.server-checks.outputs.build_failed == 'true'
-        uses: actions/github-script@v8
+      - name: Build desktop app
+        uses: tauri-apps/tauri-action@v0
         env:
-          BUILD_OUTPUT: ${{ needs.server-checks.outputs.build_output }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          script: |
-            const output = process.env.BUILD_OUTPUT;
-            const title = '[Auto-fix] Server build failure';
-            const body = `## Server Build Failure
+          projectPath: client
+          tauriScript: npx tauri
+          args: ${{ matrix.args }}
 
-            The Rust server build failed with the following error:
-
-            \`\`\`
-            ${output}
-            \`\`\`
-
-            **Triggered by**: ${{ github.event_name }} on ${{ github.ref }}
-            **Commit**: ${{ github.sha }}
-            **Workflow**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-            This issue will be automatically fixed by the auto-fix workflow.
-            `;
-
-            const issues = await github.rest.issues.listForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'open',
-              labels: 'auto-fix,build'
-            });
-
-            const existingIssue = issues.data.find(issue => issue.title === title);
-
-            if (existingIssue) {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: existingIssue.number,
-                body: `New build failure detected:\n\n${body}`
-              });
-            } else {
-              await github.rest.issues.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                title: title,
-                body: body,
-                labels: ['auto-fix', 'build', 'server']
-              });
-            }
+      - name: Upload desktop artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dilla-desktop-${{ matrix.platform }}
+          path: |
+            client/src-tauri/target/**/release/bundle/**/*.dmg
+            client/src-tauri/target/**/release/bundle/**/*.AppImage
+            client/src-tauri/target/**/release/bundle/**/*.deb
+          retention-days: 7
