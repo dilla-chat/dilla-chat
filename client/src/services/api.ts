@@ -1,3 +1,5 @@
+import type { User } from '../stores/authStore';
+
 export interface VoicePeer {
   user_id: string;
   username: string;
@@ -142,7 +144,7 @@ class ApiService {
     challengeId: string,
     publicKey: string,
     signature: string,
-  ): Promise<{ token: string; user: unknown }> {
+  ): Promise<{ token: string; user: User }> {
     const conn = this.getConnection(teamId);
     return this.request(conn.baseUrl, '/api/v1/auth/verify', {
       method: 'POST',
@@ -160,7 +162,7 @@ class ApiService {
     displayName: string,
     publicKey: string,
     inviteToken: string,
-  ): Promise<{ user: unknown; token: string }> {
+  ): Promise<{ user: User; token: string }> {
     const conn = this.getConnection(teamId);
     return this.request(conn.baseUrl, '/api/v1/auth/register', {
       method: 'POST',
@@ -180,7 +182,7 @@ class ApiService {
     publicKey: string,
     bootstrapToken: string,
     teamName?: string,
-  ): Promise<{ user: unknown; token: string; team: unknown }> {
+  ): Promise<{ user: User; token: string; team: Record<string, unknown> }> {
     const conn = this.getConnection(teamId);
     return this.request(conn.baseUrl, '/api/v1/auth/bootstrap', {
       method: 'POST',
@@ -253,9 +255,9 @@ class ApiService {
   }
 
   // Team
-  async listTeams(baseUrl: string, token: string): Promise<unknown[]> {
+  async listTeams(baseUrl: string, token: string): Promise<Record<string, unknown>[]> {
     const data = await this.request(baseUrl, '/api/v1/teams', { method: 'GET' }, token);
-    return this.unwrapArray(data, 'teams');
+    return this.unwrapArray(data, 'teams') as Record<string, unknown>[];
   }
 
   async createTeam(baseUrl: string, token: string, name: string, description?: string): Promise<unknown> {

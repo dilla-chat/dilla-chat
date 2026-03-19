@@ -16,7 +16,7 @@ export async function refreshServerTokens(
   let successCount = 0;
 
   for (const [teamId, entry] of teams) {
-    const baseUrl = (entry as { baseUrl?: string }).baseUrl;
+    const baseUrl = entry.baseUrl;
     if (!baseUrl) continue;
 
     try {
@@ -42,13 +42,13 @@ export async function refreshServerTokens(
   const blob = await exportIdentityBlob();
   if (blob) {
     for (const [teamId, entry] of useAuthStore.getState().teams) {
-      const baseUrl = (entry as { baseUrl?: string }).baseUrl;
-      const freshEntry = useAuthStore.getState().teams.get(teamId) as { token?: string } | undefined;
+      const baseUrl = entry.baseUrl;
+      const freshEntry = useAuthStore.getState().teams.get(teamId);
       const token = freshEntry?.token;
       if (!baseUrl || !token) continue;
 
       const allServers = [...useAuthStore.getState().teams.values()]
-        .map(e => (e as { baseUrl?: string }).baseUrl)
+        .map(e => e.baseUrl)
         .filter(Boolean) as string[];
 
       try {
@@ -90,11 +90,11 @@ export async function tryReconnectToCurrentServer(pubKey: string): Promise<boole
 
     const { addTeam: storeAddTeam } = useAuthStore.getState();
     for (const team of serverTeams) {
-      const t = team as { id?: string };
-      if (!t.id) continue;
-      api.addTeam(t.id, baseUrl);
-      api.setToken(t.id, result.token);
-      storeAddTeam(t.id, result.token, result.user, team, baseUrl);
+      const teamId = team.id as string | undefined;
+      if (!teamId) continue;
+      api.addTeam(teamId, baseUrl);
+      api.setToken(teamId, result.token);
+      storeAddTeam(teamId, result.token, result.user, team, baseUrl);
     }
 
     return useAuthStore.getState().teams.size > 0;

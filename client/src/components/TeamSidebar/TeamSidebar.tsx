@@ -36,8 +36,8 @@ export default function TeamSidebar() {
     const entry = teams.get(teamId);
     if (!entry) return null;
     const freshTeam = teamMap?.get(teamId);
-    const authInfo = entry.teamInfo as { name?: string } | null;
-    const name = freshTeam?.name ?? authInfo?.name ?? teamId;
+    const authInfo = entry.teamInfo;
+    const name = freshTeam?.name ?? (authInfo?.name as string | undefined) ?? teamId;
     const initial = name.charAt(0).toUpperCase();
     const isActive = teamId === activeTeamId;
     return (

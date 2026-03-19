@@ -1,9 +1,17 @@
 import { create } from 'zustand';
 
+export interface User {
+  id: string;
+  username: string;
+  display_name?: string;
+  public_key?: string;
+  is_admin?: boolean;
+}
+
 export interface TeamEntry {
   token: string;
-  user: unknown;
-  teamInfo: unknown;
+  user: User | null;
+  teamInfo: Record<string, unknown> | null;
   baseUrl: string;
   serverId?: string;
 }
@@ -31,12 +39,12 @@ interface AuthState {
   setDerivedKey: (key: string) => void;
   setPublicKey: (key: string) => void;
   setCredentialIds: (ids: string[]) => void;
-  addTeam: (teamId: string, token: string, user: unknown, teamInfo: unknown, baseUrl?: string) => void;
+  addTeam: (teamId: string, token: string, user: User | null, teamInfo: Record<string, unknown> | null, baseUrl?: string) => void;
   removeTeam: (teamId: string) => void;
   /** Get or create a server entry by baseUrl */
   getOrCreateServer: (baseUrl: string, username?: string) => string;
   /** Update the user object within a team entry */
-  updateTeamUser: (teamId: string, userUpdates: Record<string, unknown>) => void;
+  updateTeamUser: (teamId: string, userUpdates: Partial<User>) => void;
   /** Update server token (propagates to all teams on that server) */
   setServerToken: (serverId: string, token: string) => void;
   logout: () => void;
@@ -119,7 +127,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   setCredentialIds: (ids: string[]) => set({ credentialIds: ids }),
 
-  addTeam: (teamId: string, token: string, user: unknown, teamInfo: unknown, baseUrl?: string) =>
+  addTeam: (teamId: string, token: string, user: User | null, teamInfo: Record<string, unknown> | null, baseUrl?: string) =>
     set((state) => {
       const teams = new Map(state.teams);
       const servers = new Map(state.servers);
@@ -193,12 +201,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     return serverId;
   },
 
-  updateTeamUser: (teamId: string, userUpdates: Record<string, unknown>) =>
+  updateTeamUser: (teamId: string, userUpdates: Partial<User>) =>
     set((state) => {
       const teams = new Map(state.teams);
       const entry = teams.get(teamId);
-      if (!entry) return {};
-      teams.set(teamId, { ...entry, user: { ...(entry.user as Record<string, unknown>), ...userUpdates } });
+      if (!entry || !entry.user) return {};
+      teams.set(teamId, { ...entry, user: { ...entry.user, ...userUpdates } });
       persistTeams(teams);
       return { teams };
     }),

@@ -34,7 +34,7 @@ export default function UserPanel({
   const currentUserId = (() => {
     if (!activeTeamId) return '';
     const entry = teams.get(activeTeamId);
-    return (entry?.user as { id?: string } | null)?.id ?? '';
+    return entry?.user?.id ?? '';
   })();
   const initials = (displayName ?? username)
     .split(' ')

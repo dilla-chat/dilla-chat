@@ -34,7 +34,7 @@ export default function MemberList() {
   const teamPresences = useMemo(() => activeTeamId ? (presences[activeTeamId] ?? {}) : {}, [activeTeamId, presences]);
 
   const currentTeamEntry = activeTeamId ? teams.get(activeTeamId) : null;
-  const currentUserId = (currentTeamEntry?.user as { id?: string } | null)?.id ?? '';
+  const currentUserId = currentTeamEntry?.user?.id ?? '';
 
   const getStatus = useCallback(
     (userId: string) => teamPresences[userId]?.status ?? 'offline',

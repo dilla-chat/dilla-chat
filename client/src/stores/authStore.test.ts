@@ -30,7 +30,7 @@ describe('setDerivedKey', () => {
 
 describe('addTeam', () => {
   it('creates team and auto-creates server entry', () => {
-    getState().addTeam('team-1', 'token-abc', { id: 'u1' }, { name: 'T1' }, 'https://example.com');
+    getState().addTeam('team-1', 'token-abc', { id: 'u1', username: 'alice' }, { name: 'T1' }, 'https://example.com');
 
     expect(getState().teams.has('team-1')).toBe(true);
     const team = getState().teams.get('team-1')!;
@@ -44,7 +44,7 @@ describe('addTeam', () => {
   });
 
   it('persists both teams and servers to sessionStorage', () => {
-    getState().addTeam('team-1', 'tok', {}, {}, 'https://test.io');
+    getState().addTeam('team-1', 'tok', null, {}, 'https://test.io');
     expect(sessionStorage.getItem('dilla_teams')).toBeTruthy();
     expect(sessionStorage.getItem('dilla_servers')).toBeTruthy();
   });
@@ -52,7 +52,7 @@ describe('addTeam', () => {
 
 describe('removeTeam', () => {
   it('removes team and cleans up empty server', () => {
-    getState().addTeam('team-1', 'tok', {}, {}, 'https://example.com');
+    getState().addTeam('team-1', 'tok', null, {}, 'https://example.com');
     getState().removeTeam('team-1');
 
     expect(getState().teams.has('team-1')).toBe(false);
@@ -61,7 +61,7 @@ describe('removeTeam', () => {
 
   it('keeps server if other teams remain', () => {
     getState().addTeam('team-1', 'tok1', {}, {}, 'https://example.com');
-    getState().addTeam('team-2', 'tok2', {}, {}, 'https://example.com');
+    getState().addTeam('team-2', 'tok2', null, {}, 'https://example.com');
     getState().removeTeam('team-1');
 
     expect(getState().servers.has('example.com')).toBe(true);
@@ -91,8 +91,8 @@ describe('getOrCreateServer', () => {
 
 describe('setServerToken', () => {
   it('propagates token to all teams on server', () => {
-    getState().addTeam('team-1', 'old', {}, {}, 'https://example.com');
-    getState().addTeam('team-2', 'old', {}, {}, 'https://example.com');
+    getState().addTeam('team-1', 'old', null, {}, 'https://example.com');
+    getState().addTeam('team-2', 'old', null, {}, 'https://example.com');
     getState().setServerToken('example.com', 'new-token');
 
     expect(getState().teams.get('team-1')!.token).toBe('new-token');
@@ -103,20 +103,20 @@ describe('setServerToken', () => {
 
 describe('updateTeamUser', () => {
   it('merges user object', () => {
-    getState().addTeam('team-1', 'tok', { id: 'u1', name: 'Alice' }, {}, 'https://e.com');
-    getState().updateTeamUser('team-1', { name: 'Alice Updated', avatar: 'new.png' });
+    getState().addTeam('team-1', 'tok', { id: 'u1', username: 'alice', display_name: 'Alice' }, {}, 'https://e.com');
+    getState().updateTeamUser('team-1', { display_name: 'Alice Updated' });
 
-    const user = getState().teams.get('team-1')!.user as Record<string, unknown>;
-    expect(user.name).toBe('Alice Updated');
-    expect(user.avatar).toBe('new.png');
+    const user = getState().teams.get('team-1')!.user!;
+    expect(user.display_name).toBe('Alice Updated');
     expect(user.id).toBe('u1');
+    expect(user.username).toBe('alice');
   });
 });
 
 describe('logout', () => {
   it('clears all state and sessionStorage', () => {
     getState().setDerivedKey('key');
-    getState().addTeam('team-1', 'tok', {}, {}, 'https://e.com');
+    getState().addTeam('team-1', 'tok', null, {}, 'https://e.com');
 
     getState().logout();
 
@@ -156,7 +156,7 @@ describe('setCredentialIds', () => {
 
 describe('addTeam without baseUrl', () => {
   it('creates team entry with empty baseUrl', () => {
-    getState().addTeam('team-no-url', 'tok', {}, {});
+    getState().addTeam('team-no-url', 'tok', null, {});
     expect(getState().teams.has('team-no-url')).toBe(true);
     expect(getState().teams.get('team-no-url')!.baseUrl).toBe('');
   });
@@ -170,7 +170,7 @@ describe('removeTeam with non-existent team', () => {
 
 describe('updateTeamUser with non-existent team', () => {
   it('does nothing', () => {
-    getState().updateTeamUser('non-existent', { name: 'test' });
+    getState().updateTeamUser('non-existent', { username: 'test' });
     expect(getState().teams.size).toBe(0);
   });
 });
@@ -184,7 +184,7 @@ describe('setServerToken with non-existent server', () => {
 
 describe('removeTeam without serverId', () => {
   it('handles team without serverId', () => {
-    getState().addTeam('team-ns', 'tok', {}, {});
+    getState().addTeam('team-ns', 'tok', null, {});
     getState().removeTeam('team-ns');
     expect(getState().teams.has('team-ns')).toBe(false);
   });
@@ -192,7 +192,7 @@ describe('removeTeam without serverId', () => {
 
 describe('session storage persistence', () => {
   it('persists teams to sessionStorage on addTeam', () => {
-    getState().addTeam('team-persist', 'tok', { id: 'u1' }, {}, 'https://example.com');
+    getState().addTeam('team-persist', 'tok', { id: 'u1', username: 'alice' }, {}, 'https://example.com');
     const stored = sessionStorage.getItem('dilla_teams');
     expect(stored).toBeTruthy();
     const parsed = JSON.parse(stored!);
@@ -201,7 +201,7 @@ describe('session storage persistence', () => {
   });
 
   it('persists servers to sessionStorage on addTeam with baseUrl', () => {
-    getState().addTeam('team-srv', 'tok', {}, {}, 'https://server.example.com');
+    getState().addTeam('team-srv', 'tok', null, {}, 'https://server.example.com');
     const stored = sessionStorage.getItem('dilla_servers');
     expect(stored).toBeTruthy();
     const parsed = JSON.parse(stored!);
@@ -210,7 +210,7 @@ describe('session storage persistence', () => {
   });
 
   it('addTeam and removeTeam update persistence', () => {
-    getState().addTeam('t-loaded', 'jwt', { id: 'u2' }, { name: 'Test' }, 'https://loaded.com');
+    getState().addTeam('t-loaded', 'jwt', { id: 'u2', username: 'bob' }, { name: 'Test' }, 'https://loaded.com');
     expect(getState().teams.has('t-loaded')).toBe(true);
     getState().removeTeam('t-loaded');
     expect(getState().teams.has('t-loaded')).toBe(false);

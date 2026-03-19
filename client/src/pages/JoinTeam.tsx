@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { CloudCheck, CloudXmark, CloudSync } from 'iconoir-react';
-import { useAuthStore } from '../stores/authStore';
+import { useAuthStore, type User } from '../stores/authStore';
 import { api } from '../services/api';
 import { cryptoService } from '../services/crypto';
 import { exportIdentityBlob, hasIdentity } from '../services/keyStore';
@@ -118,9 +118,8 @@ export default function JoinTeam() {
       const tempId = normalizedUrl;
       api.addTeam(tempId, normalizedUrl);
 
-      const result = await api.register(tempId, username, displayName || username, publicKey, inviteToken) as { user: unknown; token: string; team?: { id?: string } | null };
-      const team = result.team as { id?: string } | null;
-      const realTeamId = team?.id || tempId;
+      const result = await api.register(tempId, username, displayName || username, publicKey, inviteToken) as { user: User; token: string; team?: Record<string, unknown> | null };
+      const realTeamId = (result.team?.id as string) || tempId;
 
       if (realTeamId !== tempId) {
         api.removeTeam(tempId);
@@ -128,7 +127,7 @@ export default function JoinTeam() {
       }
       api.setToken(realTeamId, result.token);
 
-      addTeam(realTeamId, result.token, result.user, team ?? teamInfo, normalizedUrl);
+      addTeam(realTeamId, result.token, result.user, (result.team ?? teamInfo ?? {}) as Record<string, unknown>, normalizedUrl);
 
       // Upload prekey bundle for E2E encryption (non-blocking)
       if (derivedKey) {

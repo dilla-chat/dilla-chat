@@ -90,7 +90,7 @@ export default function ThreadPanel({ thread, onClose }: Props) {
   const initialLoadDone = useRef<Set<string>>(new Set());
 
   const teamEntry = activeTeamId ? teams.get(activeTeamId) : null;
-  const currentUser = teamEntry?.user as { id?: string; username?: string } | null;
+  const currentUser = teamEntry?.user ?? null;
   const currentUserId = currentUser?.id ?? '';
 
   const msgs = useMemo(() => threadMessages[thread.id] ?? [], [threadMessages, thread.id]);

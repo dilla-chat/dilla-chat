@@ -90,8 +90,7 @@ export default function SetupAdmin() {
       );
 
       // Extract real team ID from server response
-      const team = result.team as { id?: string } | null;
-      const realTeamId = team?.id || tempId;
+      const realTeamId = (result.team?.id as string) || tempId;
 
       // Re-register with real team ID if different
       if (realTeamId !== tempId) {

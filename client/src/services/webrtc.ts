@@ -48,7 +48,7 @@ class WebRTCService {
 
     // Get local user ID
     const authEntry = useAuthStore.getState().teams.get(teamId);
-    this.localUserId = (authEntry?.user as { id?: string } | null)?.id ?? null;
+    this.localUserId = authEntry?.user?.id ?? null;
 
     // Get user media with audio processing settings
     try {

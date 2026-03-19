@@ -124,7 +124,7 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
 
       // Immediately add self as a peer so the user sees themselves right away.
       const authEntry = useAuthStore.getState().teams.get(teamId);
-      const user = authEntry?.user as { id?: string; username?: string } | null;
+      const user = authEntry?.user ?? null;
       console.log('[Voice] joinChannel: authEntry user =', JSON.stringify(user), 'teamId =', teamId);
       console.log('[Voice] joinChannel: current peers =', JSON.stringify(get().peers));
       if (user?.id) {

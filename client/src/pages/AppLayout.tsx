@@ -92,7 +92,7 @@ export default function AppLayout() {
 
   // Get current user info from auth store
   const currentTeamEntry = activeTeamId ? teams.get(activeTeamId) : null;
-  const currentUser = currentTeamEntry?.user as { id?: string; username?: string; display_name?: string } | null;
+  const currentUser = currentTeamEntry?.user ?? null;
   const currentUserId = currentUser?.id ?? '';
   const username = currentUser?.username ?? 'User';
   const displayName = currentUser?.display_name;

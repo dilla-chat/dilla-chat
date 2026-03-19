@@ -57,12 +57,12 @@ export default function UserSettings() {
 
   // User info from first team entry
   const userInfo = useMemo(() => {
-    const first = teams.values().next().value as { user?: { username?: string; display_name?: string }; baseUrl?: string; token?: string | null } | undefined;
+    const first = teams.values().next().value;
     return {
-      username: (first?.user as { username?: string })?.username ?? 'user',
-      displayName: (first?.user as { display_name?: string })?.display_name ?? '',
+      username: first?.user?.username ?? 'user',
+      displayName: first?.user?.display_name ?? '',
       baseUrl: first?.baseUrl ?? '',
-      token: (first as { token?: string | null })?.token ?? null,
+      token: first?.token ?? null,
     };
   }, [teams]);
 

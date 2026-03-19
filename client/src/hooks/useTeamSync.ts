@@ -39,7 +39,7 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
     apiRestored.current = true;
     console.log(`[AppLayout] Restoring API connections for ${teams.size} teams`);
     teams.forEach((entry, teamId) => {
-      const baseUrl = (entry as { baseUrl?: string }).baseUrl;
+      const baseUrl = entry.baseUrl;
       if (baseUrl) {
         api.addTeam(teamId, baseUrl);
         if (entry.token) api.setToken(teamId, entry.token);
@@ -108,7 +108,7 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
       }
       setPresences(teamId, presMap);
       // Sync own status
-      const myUserId = (teams.get(teamId)?.user as { id?: string } | null)?.id;
+      const myUserId = teams.get(teamId)?.user?.id;
       if (myUserId && presMap[myUserId]) {
         setMyStatus(presMap[myUserId].status);
         setMyCustomStatus(presMap[myUserId].custom_status || '');
@@ -146,7 +146,7 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
 
     api.getPresences(teamId).then((data) => {
       setPresences(teamId, data);
-      const myUserId = (teams.get(teamId)?.user as { id?: string } | null)?.id;
+      const myUserId = teams.get(teamId)?.user?.id;
       if (myUserId && data[myUserId]) {
         setMyStatus(data[myUserId].status);
         setMyCustomStatus(data[myUserId].custom_status || '');

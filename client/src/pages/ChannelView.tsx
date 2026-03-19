@@ -130,7 +130,7 @@ export default function ChannelView({ channel }: Props) {
   const threadsLoadDone = useRef<Set<string>>(new Set());
 
   const teamEntry = activeTeamId ? teams.get(activeTeamId) : null;
-  const currentUser = teamEntry?.user as { id?: string; username?: string } | null;
+  const currentUser = teamEntry?.user ?? null;
   const currentUserId = currentUser?.id ?? '';
 
 

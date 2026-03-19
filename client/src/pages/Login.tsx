@@ -125,7 +125,7 @@ export default function Login() {
       let serverUrl = localStorage.getItem('dilla_auth_server') || '';
       if (!serverUrl) {
         for (const [, entry] of teams) {
-          const url = (entry as { baseUrl?: string }).baseUrl;
+          const url = entry.baseUrl;
           if (url) { serverUrl = url; break; }
         }
       }
