@@ -11,7 +11,7 @@ vi.mock('iconoir-react', () => ({
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, defaultValueOrOpts?: string | Record<string, unknown>, opts?: Record<string, unknown>) => {
+    t: (key: string, defaultValueOrOpts?: string | Record<string, unknown>, _opts?: Record<string, unknown>) => {
       if (typeof defaultValueOrOpts === 'string') return defaultValueOrOpts;
       return key;
     },

@@ -60,15 +60,16 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('server-rs/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
+      - name: Create dist placeholder for rust-embed
+        run: mkdir -p server-rs/dist && touch server-rs/dist/index.html
+
       - name: Test server
         working-directory: server-rs
         run: cargo test
 
       - name: Build server (release)
         working-directory: server-rs
-        run: |
-          mkdir -p dist && touch dist/index.html
-          cargo build --release
+        run: cargo build --release
 
       - name: Upload server binary
         uses: actions/upload-artifact@v4

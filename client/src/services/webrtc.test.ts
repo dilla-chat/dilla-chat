@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useVoiceStore } from '../stores/voiceStore';
 import { useAuthStore } from '../stores/authStore';
@@ -7,7 +8,7 @@ import { useAudioSettingsStore } from '../stores/audioSettingsStore';
 // ─── Track WS listeners for test emission ───────────────────────────────────
 // vi.hoisted ensures these are available when vi.mock factories run (hoisted to top)
 const { wsListeners, mockWs } = vi.hoisted(() => {
-  const wsListeners = new Map<string, Set<Function>>();
+  const wsListeners = new Map<string, Set<(...args: unknown[]) => void>>();
   const mockWs = {
     voiceJoin: vi.fn(),
     voiceLeave: vi.fn(),
@@ -20,7 +21,7 @@ const { wsListeners, mockWs } = vi.hoisted(() => {
     voiceWebcamStart: vi.fn(),
     voiceWebcamStop: vi.fn(),
     voiceKeyDistribute: vi.fn(),
-    on: vi.fn((event: string, handler: Function) => {
+    on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
       if (!wsListeners.has(event)) wsListeners.set(event, new Set());
       wsListeners.get(event)!.add(handler);
       return () => {

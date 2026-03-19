@@ -87,7 +87,7 @@ describe('startMicTest', () => {
     });
 
     // Mock requestAnimationFrame
-    vi.stubGlobal('requestAnimationFrame', vi.fn((cb: () => void) => {
+    vi.stubGlobal('requestAnimationFrame', vi.fn((_cb: () => void) => {
       // Don't call cb to avoid infinite loop — just return an ID
       return 42;
     }));

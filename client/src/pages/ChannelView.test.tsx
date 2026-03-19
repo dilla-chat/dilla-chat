@@ -213,7 +213,7 @@ describe('ChannelView', () => {
     expect(newMsgHandler).toBeDefined();
     // Call the handler with a message from a different channel - should be ignored
     if (newMsgHandler) {
-      await (newMsgHandler[1] as Function)({
+      await (newMsgHandler[1] as (...args: unknown[]) => void)({
         id: 'msg-x', channel_id: 'ch-other', author_id: 'u2', username: 'bob',
         content: 'hi', type: 'text', thread_id: null, edited_at: null, deleted: false,
         created_at: '2025-01-01T00:00:00Z', reactions: [],
@@ -227,7 +227,7 @@ describe('ChannelView', () => {
     const editHandler = calls.find(c => c[0] === 'message:edited');
     expect(editHandler).toBeDefined();
     if (editHandler) {
-      await (editHandler[1] as Function)({
+      await (editHandler[1] as (...args: unknown[]) => void)({
         message_id: 'msg-1', channel_id: 'ch-1', content: 'edited', author_id: 'u1',
       });
     }
@@ -239,7 +239,7 @@ describe('ChannelView', () => {
     const deleteHandler = calls.find(c => c[0] === 'message:deleted');
     expect(deleteHandler).toBeDefined();
     if (deleteHandler) {
-      (deleteHandler[1] as Function)({ message_id: 'msg-1', channel_id: 'ch-1' });
+      (deleteHandler[1] as (...args: unknown[]) => void)({ message_id: 'msg-1', channel_id: 'ch-1' });
     }
   });
 
@@ -249,7 +249,7 @@ describe('ChannelView', () => {
     const typingHandler = calls.find(c => c[0] === 'typing:start');
     expect(typingHandler).toBeDefined();
     if (typingHandler) {
-      (typingHandler[1] as Function)({ channel_id: 'ch-1', user_id: 'u2', username: 'bob' });
+      (typingHandler[1] as (...args: unknown[]) => void)({ channel_id: 'ch-1', user_id: 'u2', username: 'bob' });
     }
   });
 
@@ -259,17 +259,17 @@ describe('ChannelView', () => {
 
     const threadCreated = calls.find(c => c[0] === 'thread:created');
     if (threadCreated) {
-      (threadCreated[1] as Function)({ id: 'th1', channel_id: 'ch-1', parent_message_id: 'msg-1' });
+      (threadCreated[1] as (...args: unknown[]) => void)({ id: 'th1', channel_id: 'ch-1', parent_message_id: 'msg-1' });
     }
 
     const threadUpdated = calls.find(c => c[0] === 'thread:updated');
     if (threadUpdated) {
-      (threadUpdated[1] as Function)({ id: 'th1', channel_id: 'ch-1' });
+      (threadUpdated[1] as (...args: unknown[]) => void)({ id: 'th1', channel_id: 'ch-1' });
     }
 
     const threadMsgNew = calls.find(c => c[0] === 'thread:message:new');
     if (threadMsgNew) {
-      await (threadMsgNew[1] as Function)({
+      await (threadMsgNew[1] as (...args: unknown[]) => void)({
         id: 'tmsg-1', channel_id: 'ch-1', thread_id: 'th1', author_id: 'u1',
         username: 'tester', content: 'reply', type: 'text', edited_at: null,
         deleted: false, created_at: '2025-01-01T00:00:00Z', reactions: [],
@@ -278,7 +278,7 @@ describe('ChannelView', () => {
 
     const threadMsgEdit = calls.find(c => c[0] === 'thread:message:updated');
     if (threadMsgEdit) {
-      await (threadMsgEdit[1] as Function)({
+      await (threadMsgEdit[1] as (...args: unknown[]) => void)({
         id: 'tmsg-1', channel_id: 'ch-1', thread_id: 'th1', author_id: 'u1',
         username: 'tester', content: 'edited', type: 'text', edited_at: '2025-01-01T01:00:00Z',
         deleted: false, created_at: '2025-01-01T00:00:00Z', reactions: [],
@@ -287,7 +287,7 @@ describe('ChannelView', () => {
 
     const threadMsgDel = calls.find(c => c[0] === 'thread:message:deleted');
     if (threadMsgDel) {
-      (threadMsgDel[1] as Function)({ message_id: 'tmsg-1', thread_id: 'th1' });
+      (threadMsgDel[1] as (...args: unknown[]) => void)({ message_id: 'tmsg-1', thread_id: 'th1' });
     }
   });
 
@@ -297,7 +297,7 @@ describe('ChannelView', () => {
 
     const newMsgHandler = calls.find(c => c[0] === 'message:new');
     if (newMsgHandler) {
-      await (newMsgHandler[1] as Function)({
+      await (newMsgHandler[1] as (...args: unknown[]) => void)({
         id: 'msg-x', channel_id: 'other-ch', author_id: 'u2', username: 'bob',
         content: 'hi', type: 'text', thread_id: null, edited_at: null, deleted: false,
         created_at: '2025-01-01T00:00:00Z', reactions: [],
@@ -306,12 +306,12 @@ describe('ChannelView', () => {
 
     const deleteHandler = calls.find(c => c[0] === 'message:deleted');
     if (deleteHandler) {
-      (deleteHandler[1] as Function)({ message_id: 'msg-x', channel_id: 'other-ch' });
+      (deleteHandler[1] as (...args: unknown[]) => void)({ message_id: 'msg-x', channel_id: 'other-ch' });
     }
 
     const typingHandler = calls.find(c => c[0] === 'typing:start');
     if (typingHandler) {
-      (typingHandler[1] as Function)({ channel_id: 'other-ch', user_id: 'u2', username: 'bob' });
+      (typingHandler[1] as (...args: unknown[]) => void)({ channel_id: 'other-ch', user_id: 'u2', username: 'bob' });
     }
   });
 
@@ -320,7 +320,7 @@ describe('ChannelView', () => {
     const calls = vi.mocked(ws.on).mock.calls;
     const threadMsgNew = calls.find(c => c[0] === 'thread:message:new');
     if (threadMsgNew) {
-      await (threadMsgNew[1] as Function)({
+      await (threadMsgNew[1] as (...args: unknown[]) => void)({
         id: 'tmsg-1', channel_id: 'ch-1', thread_id: null, author_id: 'u1',
         username: 'tester', content: 'reply', type: 'text', edited_at: null,
         deleted: false, created_at: '2025-01-01T00:00:00Z', reactions: [],
@@ -514,7 +514,7 @@ describe('ChannelView', () => {
     const calls = vi.mocked(ws.on).mock.calls;
     const newMsgHandler = calls.find(c => c[0] === 'message:new');
     if (newMsgHandler) {
-      await (newMsgHandler[1] as Function)({
+      await (newMsgHandler[1] as (...args: unknown[]) => void)({
         id: 'msg-new', channel_id: 'ch-1', author_id: 'u2', username: 'bob',
         content: 'hello!', type: 'text', thread_id: null, edited_at: null, deleted: false,
         created_at: '2025-01-01T00:00:00Z', reactions: [],
@@ -531,7 +531,7 @@ describe('ChannelView', () => {
     const calls = vi.mocked(ws.on).mock.calls;
     const threadMsgNew = calls.find(c => c[0] === 'thread:message:new');
     if (threadMsgNew) {
-      await (threadMsgNew[1] as Function)({
+      await (threadMsgNew[1] as (...args: unknown[]) => void)({
         id: 'tmsg-2', channel_id: 'ch-1', thread_id: 'th1', author_id: 'u1',
         username: 'tester', content: 'reply2', type: 'text', edited_at: null,
         deleted: false, created_at: '2025-01-02T00:00:00Z', reactions: [],
@@ -565,7 +565,7 @@ describe('ChannelView', () => {
     const calls = vi.mocked(ws.on).mock.calls;
     const threadMsgEdit = calls.find(c => c[0] === 'thread:message:updated');
     if (threadMsgEdit) {
-      await (threadMsgEdit[1] as Function)({
+      await (threadMsgEdit[1] as (...args: unknown[]) => void)({
         id: 'tmsg-1', channel_id: 'ch-1', thread_id: null, author_id: 'u1',
         username: 'tester', content: 'edited', type: 'text', edited_at: '2025-01-01T01:00:00Z',
         deleted: false, created_at: '2025-01-01T00:00:00Z', reactions: [],
@@ -578,7 +578,7 @@ describe('ChannelView', () => {
     const calls = vi.mocked(ws.on).mock.calls;
     const threadMsgDel = calls.find(c => c[0] === 'thread:message:deleted');
     if (threadMsgDel) {
-      (threadMsgDel[1] as Function)({ message_id: 'tmsg-1', thread_id: null });
+      (threadMsgDel[1] as (...args: unknown[]) => void)({ message_id: 'tmsg-1', thread_id: null });
     }
   });
 
@@ -588,12 +588,12 @@ describe('ChannelView', () => {
 
     const threadCreated = calls.find(c => c[0] === 'thread:created');
     if (threadCreated) {
-      (threadCreated[1] as Function)({ id: 'th-other', channel_id: 'other-ch', parent_message_id: 'msg-x' });
+      (threadCreated[1] as (...args: unknown[]) => void)({ id: 'th-other', channel_id: 'other-ch', parent_message_id: 'msg-x' });
     }
 
     const threadUpdated = calls.find(c => c[0] === 'thread:updated');
     if (threadUpdated) {
-      (threadUpdated[1] as Function)({ id: 'th-other', channel_id: 'other-ch' });
+      (threadUpdated[1] as (...args: unknown[]) => void)({ id: 'th-other', channel_id: 'other-ch' });
     }
   });
 
@@ -602,7 +602,7 @@ describe('ChannelView', () => {
     const calls = vi.mocked(ws.on).mock.calls;
     const editHandler = calls.find(c => c[0] === 'message:edited');
     if (editHandler) {
-      await (editHandler[1] as Function)({
+      await (editHandler[1] as (...args: unknown[]) => void)({
         message_id: 'msg-x', channel_id: 'other-ch', content: 'edited', author_id: 'u1',
       });
     }
@@ -658,7 +658,7 @@ describe('ChannelView', () => {
     const calls = vi.mocked(ws.on).mock.calls;
     const newMsgHandler = calls.find(c => c[0] === 'message:new');
     if (newMsgHandler) {
-      await (newMsgHandler[1] as Function)({
+      await (newMsgHandler[1] as (...args: unknown[]) => void)({
         id: 'msg-no-user', channel_id: 'ch-1', author_id: 'u2', username: '',
         content: 'hi', type: 'text', thread_id: null, edited_at: null, deleted: false,
         created_at: '2025-01-01T00:00:00Z', reactions: [],

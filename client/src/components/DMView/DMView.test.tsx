@@ -186,7 +186,7 @@ describe('DMView', () => {
     const calls = vi.mocked(ws.on).mock.calls;
     const newMsgHandler = calls.find(c => c[0] === 'dm:message:new');
     if (newMsgHandler) {
-      await (newMsgHandler[1] as Function)({
+      await (newMsgHandler[1] as (...args: unknown[]) => void)({
         id: 'dm-msg-2', dm_id: 'dm-1', channel_id: 'dm-1', author_id: 'user-2',
         username: 'bob', content: 'Hi!', type: 'text', thread_id: null,
         edited_at: null, deleted: false, created_at: '2025-01-01T01:00:00Z', reactions: [],
@@ -200,7 +200,7 @@ describe('DMView', () => {
     const calls = vi.mocked(ws.on).mock.calls;
     const newMsgHandler = calls.find(c => c[0] === 'dm:message:new');
     if (newMsgHandler) {
-      await (newMsgHandler[1] as Function)({
+      await (newMsgHandler[1] as (...args: unknown[]) => void)({
         id: 'dm-msg-x', dm_id: 'other-dm', channel_id: 'other-dm', author_id: 'user-3',
         username: 'charlie', content: 'Nope', type: 'text', thread_id: null,
         edited_at: null, deleted: false, created_at: '2025-01-01T01:00:00Z', reactions: [],
@@ -214,7 +214,7 @@ describe('DMView', () => {
     const calls = vi.mocked(ws.on).mock.calls;
     const editHandler = calls.find(c => c[0] === 'dm:message:updated');
     if (editHandler) {
-      await (editHandler[1] as Function)({
+      await (editHandler[1] as (...args: unknown[]) => void)({
         dm_id: 'dm-1', message_id: 'dm-msg-1', content: 'edited', author_id: 'user-2', username: 'bob',
       });
     }
@@ -226,7 +226,7 @@ describe('DMView', () => {
     const calls = vi.mocked(ws.on).mock.calls;
     const deleteHandler = calls.find(c => c[0] === 'dm:message:deleted');
     if (deleteHandler) {
-      (deleteHandler[1] as Function)({ dm_id: 'dm-1', message_id: 'dm-msg-1' });
+      (deleteHandler[1] as (...args: unknown[]) => void)({ dm_id: 'dm-1', message_id: 'dm-msg-1' });
     }
   });
 
@@ -236,7 +236,7 @@ describe('DMView', () => {
     const calls = vi.mocked(ws.on).mock.calls;
     const typingHandler = calls.find(c => c[0] === 'dm:typing:indicator');
     if (typingHandler) {
-      (typingHandler[1] as Function)({ dm_id: 'dm-1', user_id: 'user-2', username: 'bob' });
+      (typingHandler[1] as (...args: unknown[]) => void)({ dm_id: 'dm-1', user_id: 'user-2', username: 'bob' });
     }
   });
 
@@ -455,7 +455,7 @@ describe('DMView', () => {
     const calls = vi.mocked(ws.on).mock.calls;
     const editHandler = calls.find(c => c[0] === 'dm:message:updated');
     if (editHandler) {
-      await (editHandler[1] as Function)({
+      await (editHandler[1] as (...args: unknown[]) => void)({
         dm_id: 'other-dm', message_id: 'msg-x', content: 'edited', author_id: 'user-3', username: 'charlie',
       });
     }
@@ -467,7 +467,7 @@ describe('DMView', () => {
     const calls = vi.mocked(ws.on).mock.calls;
     const deleteHandler = calls.find(c => c[0] === 'dm:message:deleted');
     if (deleteHandler) {
-      (deleteHandler[1] as Function)({ dm_id: 'other-dm', message_id: 'msg-x' });
+      (deleteHandler[1] as (...args: unknown[]) => void)({ dm_id: 'other-dm', message_id: 'msg-x' });
     }
   });
 
@@ -477,7 +477,7 @@ describe('DMView', () => {
     const calls = vi.mocked(ws.on).mock.calls;
     const typingHandler = calls.find(c => c[0] === 'dm:typing:indicator');
     if (typingHandler) {
-      (typingHandler[1] as Function)({ dm_id: 'other-dm', user_id: 'user-3', username: 'charlie' });
+      (typingHandler[1] as (...args: unknown[]) => void)({ dm_id: 'other-dm', user_id: 'user-3', username: 'charlie' });
     }
   });
 

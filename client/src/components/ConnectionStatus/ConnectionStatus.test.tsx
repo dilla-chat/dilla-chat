@@ -164,8 +164,8 @@ describe('ConnectionStatus', () => {
 
   it('updates state on ws:connected event', async () => {
     const { ws } = await import('../../services/websocket');
-    let connectedHandler: Function = () => {};
-    vi.mocked(ws.on).mockImplementation((event: string, handler: Function) => {
+    let connectedHandler: (...args: unknown[]) => void = () => {};
+    vi.mocked(ws.on).mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
       if (event === 'ws:connected') connectedHandler = handler;
       return vi.fn();
     });
@@ -183,8 +183,8 @@ describe('ConnectionStatus', () => {
 
   it('updates state on ws:disconnected event', async () => {
     const { ws } = await import('../../services/websocket');
-    let disconnectedHandler: Function = () => {};
-    vi.mocked(ws.on).mockImplementation((event: string, handler: Function) => {
+    let disconnectedHandler: (...args: unknown[]) => void = () => {};
+    vi.mocked(ws.on).mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
       if (event === 'ws:disconnected') disconnectedHandler = handler;
       return vi.fn();
     });
