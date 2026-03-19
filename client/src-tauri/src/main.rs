@@ -11,7 +11,7 @@ fn greet(name: &str) -> String {
 
 // ─── Voice: RNNoise Noise Suppression ─────────────────────────────────────────
 
-static DENOISE_STATE: Mutex<Option<Box<nnnoiseless::DenoiseState<'static>>>> = Mutex::new(None);
+static DENOISE_STATE: Mutex<Option<Box<nnnoiseless::DenoiseState>>> = Mutex::new(None);
 
 #[tauri::command]
 fn denoise_frame(samples: Vec<f32>) -> Vec<f32> {
@@ -19,7 +19,7 @@ fn denoise_frame(samples: Vec<f32>) -> Vec<f32> {
         return samples;
     }
     let mut state_guard = DENOISE_STATE.lock().unwrap();
-    let state = state_guard.get_or_insert_with(|| Box::new(nnnoiseless::DenoiseState::new()));
+    let state = state_guard.get_or_insert_with(nnnoiseless::DenoiseState::new);
     let mut output = vec![0.0f32; 480];
     state.process_frame(&mut output, &samples);
     output

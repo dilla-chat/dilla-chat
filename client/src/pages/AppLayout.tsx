@@ -63,6 +63,7 @@ export default function AppLayout() {
   // Keep viewMode in sync: selecting a DM switches to DM mode, selecting a channel switches back.
   useEffect(() => {
     if (activeDMId && viewMode !== 'dms') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional cascading update to keep view mode in sync
       setViewMode('dms');
       setActiveChannel('');
     }
@@ -70,6 +71,7 @@ export default function AppLayout() {
 
   useEffect(() => {
     if (activeChannelId && viewMode !== 'channels') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional cascading update to keep view mode in sync
       setViewMode('channels');
       setActiveDM(null);
     }
@@ -78,6 +80,7 @@ export default function AppLayout() {
   // Auto-switch to chat tab on mobile when a channel or DM is selected
   useEffect(() => {
     if (isMobile && (activeChannelId || activeDMId)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: mobile tab must follow active selection
       setMobileTab('chat');
     }
   }, [isMobile, activeChannelId, activeDMId]);

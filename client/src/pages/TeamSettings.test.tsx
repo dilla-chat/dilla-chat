@@ -32,7 +32,7 @@ vi.mock('../components/FederationStatus/FederationStatus', () => ({
 }));
 
 vi.mock('../components/SettingsLayout/SettingsLayout', () => ({
-  default: ({ children, sections, activeId, onSelect, onClose }: {
+  default: ({ children, sections, activeId: _activeId, onSelect, onClose }: {
     children: React.ReactNode;
     sections: Array<{ label?: string; items: Array<{ id: string; label: string }> }>;
     activeId: string;

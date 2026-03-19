@@ -53,7 +53,7 @@ vi.mock('../hooks/useMediaQuery', () => ({
 }));
 
 vi.mock('../components/MobileTabBar/MobileTabBar', () => ({
-  default: ({ activeTab, onTabChange }: { activeTab: string; onTabChange: (tab: string) => void }) => (
+  default: ({ activeTab: _activeTab, onTabChange }: { activeTab: string; onTabChange: (tab: string) => void }) => (
     <div data-testid="mobile-tab-bar">
       <button data-testid="tab-chat" onClick={() => onTabChange('chat')}>chat</button>
       <button data-testid="tab-channels" onClick={() => onTabChange('channels')}>channels</button>
@@ -493,7 +493,7 @@ describe('AppLayout behavioral', () => {
     const calls = vi.mocked(ws.on).mock.calls;
     const presenceHandler = calls.find(c => c[0] === 'presence:changed');
     if (presenceHandler) {
-      (presenceHandler[1] as Function)({
+      (presenceHandler[1] as (...args: unknown[]) => void)({
         team_id: 'team1',
         user_id: 'u2',
         status_type: 'away',
@@ -509,29 +509,29 @@ describe('AppLayout behavioral', () => {
 
     const voiceJoinHandler = calls.find(c => c[0] === 'voice:user-joined');
     if (voiceJoinHandler) {
-      (voiceJoinHandler[1] as Function)({
+      (voiceJoinHandler[1] as (...args: unknown[]) => void)({
         channel_id: 'ch-voice', user_id: 'u2', username: 'bob',
       });
     }
 
     const voiceLeftHandler = calls.find(c => c[0] === 'voice:user-left');
     if (voiceLeftHandler) {
-      (voiceLeftHandler[1] as Function)({ channel_id: 'ch-voice', user_id: 'u2' });
+      (voiceLeftHandler[1] as (...args: unknown[]) => void)({ channel_id: 'ch-voice', user_id: 'u2' });
     }
 
     const muteHandler = calls.find(c => c[0] === 'voice:mute-update');
     if (muteHandler) {
-      (muteHandler[1] as Function)({ channel_id: 'ch-voice', user_id: 'u2', muted: true, deafened: false });
+      (muteHandler[1] as (...args: unknown[]) => void)({ channel_id: 'ch-voice', user_id: 'u2', muted: true, deafened: false });
     }
 
     const screenHandler = calls.find(c => c[0] === 'voice:screen-update');
     if (screenHandler) {
-      (screenHandler[1] as Function)({ channel_id: 'ch-voice', user_id: 'u2', sharing: true });
+      (screenHandler[1] as (...args: unknown[]) => void)({ channel_id: 'ch-voice', user_id: 'u2', sharing: true });
     }
 
     const webcamHandler = calls.find(c => c[0] === 'voice:webcam-update');
     if (webcamHandler) {
-      (webcamHandler[1] as Function)({ channel_id: 'ch-voice', user_id: 'u2', sharing: true });
+      (webcamHandler[1] as (...args: unknown[]) => void)({ channel_id: 'ch-voice', user_id: 'u2', sharing: true });
     }
   });
 
@@ -555,7 +555,7 @@ describe('AppLayout behavioral', () => {
     const calls = vi.mocked(ws.on).mock.calls;
     const connHandler = calls.find(c => c[0] === 'ws:connected');
     if (connHandler) {
-      (connHandler[1] as Function)({ teamId: 'team1' });
+      (connHandler[1] as (...args: unknown[]) => void)({ teamId: 'team1' });
       await waitFor(() => {
         expect(ws.request).toHaveBeenCalled();
       });
@@ -615,9 +615,9 @@ describe('AppLayout behavioral', () => {
     const presenceHandler = calls.find(c => c[0] === 'presence:changed');
     if (presenceHandler) {
       // With minimal payload
-      (presenceHandler[1] as Function)({ user_id: 'u2', status: 'online' });
+      (presenceHandler[1] as (...args: unknown[]) => void)({ user_id: 'u2', status: 'online' });
       // With status_type variant
-      (presenceHandler[1] as Function)({ user_id: 'u3', status_type: 'away', status_text: 'brb' });
+      (presenceHandler[1] as (...args: unknown[]) => void)({ user_id: 'u3', status_type: 'away', status_text: 'brb' });
     }
   });
 
@@ -662,13 +662,13 @@ describe('AppLayout behavioral', () => {
     // voice:user-joined with no channel_id (should be ignored)
     const joinHandler = calls.find(c => c[0] === 'voice:user-joined');
     if (joinHandler) {
-      (joinHandler[1] as Function)({ channel_id: '', user_id: '' });
+      (joinHandler[1] as (...args: unknown[]) => void)({ channel_id: '', user_id: '' });
     }
 
     // voice:user-left with no channel_id
     const leftHandler = calls.find(c => c[0] === 'voice:user-left');
     if (leftHandler) {
-      (leftHandler[1] as Function)({ channel_id: '', user_id: '' });
+      (leftHandler[1] as (...args: unknown[]) => void)({ channel_id: '', user_id: '' });
     }
   });
 

@@ -281,7 +281,7 @@ describe('loadPersistedDerivedKey catch block', () => {
       return originalGetItem(key);
     });
     // Store should still be functional
-    expect(getState().derivedKey).toBeDefined;
+    expect(getState().derivedKey).toBeDefined();
     vi.restoreAllMocks();
   });
 });
