@@ -101,6 +101,7 @@ pub async fn create(
                 permissions: body.permissions,
                 is_default: false,
                 created_at: db::now_str(),
+                updated_at: String::new(),
             };
             db::create_role(conn, &role)?;
             Ok(role)

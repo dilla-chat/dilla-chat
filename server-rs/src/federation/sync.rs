@@ -147,7 +147,9 @@ impl SyncManager {
 
     /// Handle an incoming state sync response by merging the data into the local DB.
     ///
-    /// Uses "create if not exists" semantics — existing records are not overwritten.
+    /// Uses last-writer-wins conflict resolution: if a remote record has a newer
+    /// `updated_at` (or `edited_at` for messages), the local record is overwritten.
+    /// New records are inserted. The entire merge runs in a single transaction.
     pub async fn handle_state_sync_response(&self, data: StateSyncData) -> Result<(), String> {
         let db = self.db.clone();
 
@@ -158,60 +160,118 @@ impl SyncManager {
 
         tokio::task::spawn_blocking(move || {
             db.with_conn(|conn| {
-                // Merge channels.
-                for channel in &data.channels {
-                    let existing = db::get_channel_by_id(conn, &channel.id)?;
-                    if existing.is_none() {
-                        db::create_channel(conn, channel)?;
-                        tracing::debug!(
-                            channel_id = %channel.id,
-                            name = %channel.name,
-                            "synced channel from peer"
-                        );
+                conn.execute_batch("BEGIN")?;
+
+                let result = (|| {
+                    // Merge channels (last-writer-wins on updated_at).
+                    for channel in &data.channels {
+                        if let Some(existing) = db::get_channel_by_id(conn, &channel.id)? {
+                            if channel.updated_at > existing.updated_at {
+                                db::update_channel_from_sync(conn, channel)?;
+                                tracing::debug!(
+                                    channel_id = %channel.id,
+                                    name = %channel.name,
+                                    "updated channel from peer (newer)"
+                                );
+                            }
+                        } else {
+                            db::create_channel(conn, channel)?;
+                            tracing::debug!(
+                                channel_id = %channel.id,
+                                name = %channel.name,
+                                "synced channel from peer"
+                            );
+                        }
+                    }
+
+                    // Merge roles (last-writer-wins on updated_at).
+                    for role in &data.roles {
+                        if let Some(existing) = db::get_role_by_id(conn, &role.id)? {
+                            if role.updated_at > existing.updated_at {
+                                db::update_role_from_sync(conn, role)?;
+                                tracing::debug!(
+                                    role_id = %role.id,
+                                    name = %role.name,
+                                    "updated role from peer (newer)"
+                                );
+                            }
+                        } else {
+                            db::create_role(conn, role)?;
+                            tracing::debug!(
+                                role_id = %role.id,
+                                name = %role.name,
+                                "synced role from peer"
+                            );
+                        }
+                    }
+
+                    // Merge members (last-writer-wins on updated_at).
+                    for member in &data.members {
+                        if let Some(existing) =
+                            db::get_member_by_user_and_team(conn, &member.user_id, &member.team_id)?
+                        {
+                            if member.updated_at > existing.updated_at {
+                                db::update_member_from_sync(conn, member)?;
+                                tracing::debug!(
+                                    member_id = %member.id,
+                                    user_id = %member.user_id,
+                                    "updated member from peer (newer)"
+                                );
+                            }
+                        } else {
+                            db::create_member(conn, member)?;
+                            tracing::debug!(
+                                member_id = %member.id,
+                                user_id = %member.user_id,
+                                "synced member from peer"
+                            );
+                        }
+                    }
+
+                    // Merge messages (last-writer-wins on edited_at; handle soft-deletes).
+                    for message in &data.messages {
+                        if let Some(existing) = db::get_message_by_id(conn, &message.id)? {
+                            // Determine if the remote version is newer.
+                            let remote_ts = message.edited_at.as_deref().unwrap_or("");
+                            let local_ts = existing.edited_at.as_deref().unwrap_or("");
+                            let should_update = if message.deleted && !existing.deleted {
+                                // Remote deleted, local not — accept deletion if remote is newer or same.
+                                remote_ts >= local_ts
+                            } else {
+                                remote_ts > local_ts
+                            };
+                            if should_update {
+                                db::update_message_from_sync(conn, message)?;
+                                tracing::debug!(
+                                    message_id = %message.id,
+                                    channel_id = %message.channel_id,
+                                    deleted = message.deleted,
+                                    "updated message from peer (newer)"
+                                );
+                            }
+                        } else {
+                            db::create_message(conn, message)?;
+                            tracing::debug!(
+                                message_id = %message.id,
+                                channel_id = %message.channel_id,
+                                "synced message from peer"
+                            );
+                        }
+                    }
+
+                    Ok::<(), rusqlite::Error>(())
+                })();
+
+                match result {
+                    Ok(()) => {
+                        conn.execute_batch("COMMIT")?;
+                        Ok(())
+                    }
+                    Err(e) => {
+                        let _ = conn.execute_batch("ROLLBACK");
+                        Err(e)
                     }
                 }
-
-                // Merge roles.
-                for role in &data.roles {
-                    let existing = db::get_role_by_id(conn, &role.id)?;
-                    if existing.is_none() {
-                        db::create_role(conn, role)?;
-                        tracing::debug!(
-                            role_id = %role.id,
-                            name = %role.name,
-                            "synced role from peer"
-                        );
-                    }
-                }
-
-                // Merge members.
-                for member in &data.members {
-                    let existing =
-                        db::get_member_by_user_and_team(conn, &member.user_id, &member.team_id)?;
-                    if existing.is_none() {
-                        db::create_member(conn, member)?;
-                        tracing::debug!(
-                            member_id = %member.id,
-                            user_id = %member.user_id,
-                            "synced member from peer"
-                        );
-                    }
-                }
-
-                // Merge messages.
-                for message in &data.messages {
-                    let existing = db::get_message_by_id(conn, &message.id)?;
-                    if existing.is_none() {
-                        db::create_message(conn, message)?;
-                        tracing::debug!(
-                            message_id = %message.id,
-                            channel_id = %message.channel_id,
-                            "synced message from peer"
-                        );
-                    }
-                }
-
-                Ok(())
             })
         })
         .await
@@ -401,6 +461,7 @@ mod tests {
                 nickname: String::new(),
                 joined_at: now.clone(),
                 invited_by: String::new(),
+                updated_at: now.clone(),
             }],
             roles: vec![db::Role {
                 id: "r1".into(),
@@ -411,6 +472,7 @@ mod tests {
                 permissions: 0,
                 is_default: true,
                 created_at: now.clone(),
+                updated_at: now.clone(),
             }],
         };
 
@@ -499,6 +561,7 @@ mod tests {
                 nickname: String::new(),
                 joined_at: now.clone(),
                 invited_by: String::new(),
+                updated_at: now.clone(),
             }],
             roles: vec![db::Role {
                 id: db::new_id(),
@@ -509,6 +572,7 @@ mod tests {
                 permissions: 0,
                 is_default: false,
                 created_at: now.clone(),
+                updated_at: now.clone(),
             }],
         };
 
@@ -644,5 +708,355 @@ mod tests {
         let transport = Arc::new(Transport::new());
         let mgr = SyncManager::new(db, transport, "my-node".into());
         assert_eq!(mgr.node_name, "my-node");
+    }
+
+    // ── Conflict resolution (last-writer-wins) tests ────────────────
+
+    /// Helper: create a team + user in the given database, returning (team_id, user_id).
+    fn setup_team_and_user(db: &Database) -> (String, String) {
+        let now = db::now_str();
+        let team_id = db::new_id();
+        let user_id = db::new_id();
+        db.with_conn(|conn| {
+            db::create_user(conn, &db::User {
+                id: user_id.clone(),
+                username: format!("user-{}", &user_id[..8]),
+                display_name: "Test User".into(),
+                public_key: user_id.as_bytes().to_vec(),
+                avatar_url: String::new(),
+                status_text: String::new(),
+                status_type: "online".into(),
+                is_admin: false,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+            })?;
+            db::create_team(conn, &db::Team {
+                id: team_id.clone(),
+                name: "Test Team".into(),
+                description: String::new(),
+                icon_url: String::new(),
+                created_by: user_id.clone(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+            })
+        })
+        .unwrap();
+        (team_id, user_id)
+    }
+
+    #[tokio::test]
+    async fn test_sync_merge_updates_existing_channel_when_newer() {
+        let db = test_db();
+        let transport = Arc::new(Transport::new());
+        let mgr = SyncManager::new(db.clone(), transport, "test-node".into());
+        let (team_id, user_id) = setup_team_and_user(&db);
+
+        let channel_id = db::new_id();
+        let old_time = "2025-01-01 00:00:00".to_string();
+        let new_time = "2025-06-01 00:00:00".to_string();
+
+        // Insert local channel with old timestamp.
+        db.with_conn(|conn| {
+            db::create_channel(conn, &db::Channel {
+                id: channel_id.clone(),
+                team_id: team_id.clone(),
+                name: "old-name".into(),
+                topic: "old-topic".into(),
+                channel_type: "text".into(),
+                position: 0,
+                category: String::new(),
+                created_by: user_id.clone(),
+                created_at: old_time.clone(),
+                updated_at: old_time.clone(),
+            })
+        })
+        .unwrap();
+
+        // Sync a newer version from a peer.
+        let sync_data = StateSyncData {
+            channels: vec![db::Channel {
+                id: channel_id.clone(),
+                team_id: team_id.clone(),
+                name: "new-name".into(),
+                topic: "new-topic".into(),
+                channel_type: "text".into(),
+                position: 1,
+                category: "announcements".into(),
+                created_by: user_id.clone(),
+                created_at: old_time.clone(),
+                updated_at: new_time.clone(),
+            }],
+            messages: Vec::new(),
+            members: Vec::new(),
+            roles: Vec::new(),
+        };
+
+        mgr.handle_state_sync_response(sync_data).await.unwrap();
+
+        // Verify the channel was updated.
+        db.with_conn(|conn| {
+            let ch = db::get_channel_by_id(conn, &channel_id)?.unwrap();
+            assert_eq!(ch.name, "new-name");
+            assert_eq!(ch.topic, "new-topic");
+            assert_eq!(ch.position, 1);
+            assert_eq!(ch.category, "announcements");
+            assert_eq!(ch.updated_at, new_time);
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_sync_merge_keeps_local_channel_when_newer() {
+        let db = test_db();
+        let transport = Arc::new(Transport::new());
+        let mgr = SyncManager::new(db.clone(), transport, "test-node".into());
+        let (team_id, user_id) = setup_team_and_user(&db);
+
+        let channel_id = db::new_id();
+        let old_time = "2025-01-01 00:00:00".to_string();
+        let new_time = "2025-06-01 00:00:00".to_string();
+
+        // Insert local channel with NEWER timestamp.
+        db.with_conn(|conn| {
+            db::create_channel(conn, &db::Channel {
+                id: channel_id.clone(),
+                team_id: team_id.clone(),
+                name: "local-name".into(),
+                topic: "local-topic".into(),
+                channel_type: "text".into(),
+                position: 0,
+                category: String::new(),
+                created_by: user_id.clone(),
+                created_at: old_time.clone(),
+                updated_at: new_time.clone(),
+            })
+        })
+        .unwrap();
+
+        // Sync an older version from a peer.
+        let sync_data = StateSyncData {
+            channels: vec![db::Channel {
+                id: channel_id.clone(),
+                team_id: team_id.clone(),
+                name: "remote-name".into(),
+                topic: "remote-topic".into(),
+                channel_type: "text".into(),
+                position: 5,
+                category: String::new(),
+                created_by: user_id.clone(),
+                created_at: old_time.clone(),
+                updated_at: old_time.clone(),
+            }],
+            messages: Vec::new(),
+            members: Vec::new(),
+            roles: Vec::new(),
+        };
+
+        mgr.handle_state_sync_response(sync_data).await.unwrap();
+
+        // Verify local channel was NOT overwritten.
+        db.with_conn(|conn| {
+            let ch = db::get_channel_by_id(conn, &channel_id)?.unwrap();
+            assert_eq!(ch.name, "local-name");
+            assert_eq!(ch.topic, "local-topic");
+            assert_eq!(ch.position, 0);
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_sync_merge_updates_existing_role_when_newer() {
+        let db = test_db();
+        let transport = Arc::new(Transport::new());
+        let mgr = SyncManager::new(db.clone(), transport, "test-node".into());
+        let (team_id, _user_id) = setup_team_and_user(&db);
+
+        let role_id = db::new_id();
+        let old_time = "2025-01-01 00:00:00".to_string();
+        let new_time = "2025-06-01 00:00:00".to_string();
+
+        // Insert local role with old timestamp.
+        db.with_conn(|conn| {
+            db::create_role(conn, &db::Role {
+                id: role_id.clone(),
+                team_id: team_id.clone(),
+                name: "old-role".into(),
+                color: "#000000".into(),
+                position: 0,
+                permissions: 0,
+                is_default: false,
+                created_at: old_time.clone(),
+                updated_at: old_time.clone(),
+            })
+        })
+        .unwrap();
+
+        // Sync a newer version.
+        let sync_data = StateSyncData {
+            channels: Vec::new(),
+            messages: Vec::new(),
+            members: Vec::new(),
+            roles: vec![db::Role {
+                id: role_id.clone(),
+                team_id: team_id.clone(),
+                name: "new-role".into(),
+                color: "#FF0000".into(),
+                position: 5,
+                permissions: 255,
+                is_default: false,
+                created_at: old_time.clone(),
+                updated_at: new_time.clone(),
+            }],
+        };
+
+        mgr.handle_state_sync_response(sync_data).await.unwrap();
+
+        // Verify role was updated.
+        db.with_conn(|conn| {
+            let role = db::get_role_by_id(conn, &role_id)?.unwrap();
+            assert_eq!(role.name, "new-role");
+            assert_eq!(role.color, "#FF0000");
+            assert_eq!(role.position, 5);
+            assert_eq!(role.permissions, 255);
+            assert_eq!(role.updated_at, new_time);
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_sync_merge_in_transaction() {
+        let db = test_db();
+        let transport = Arc::new(Transport::new());
+        let mgr = SyncManager::new(db.clone(), transport, "test-node".into());
+        let (team_id, user_id) = setup_team_and_user(&db);
+
+        let ch1_id = db::new_id();
+        let ch2_id = db::new_id();
+        let now = db::now_str();
+
+        // Sync two channels at once — both should appear atomically.
+        let sync_data = StateSyncData {
+            channels: vec![
+                db::Channel {
+                    id: ch1_id.clone(),
+                    team_id: team_id.clone(),
+                    name: "channel-1".into(),
+                    topic: String::new(),
+                    channel_type: "text".into(),
+                    position: 0,
+                    category: String::new(),
+                    created_by: user_id.clone(),
+                    created_at: now.clone(),
+                    updated_at: now.clone(),
+                },
+                db::Channel {
+                    id: ch2_id.clone(),
+                    team_id: team_id.clone(),
+                    name: "channel-2".into(),
+                    topic: String::new(),
+                    channel_type: "text".into(),
+                    position: 1,
+                    category: String::new(),
+                    created_by: user_id.clone(),
+                    created_at: now.clone(),
+                    updated_at: now.clone(),
+                },
+            ],
+            messages: Vec::new(),
+            members: Vec::new(),
+            roles: Vec::new(),
+        };
+
+        mgr.handle_state_sync_response(sync_data).await.unwrap();
+
+        // Both channels should exist.
+        db.with_conn(|conn| {
+            let channels = db::get_channels_by_team(conn, &team_id)?;
+            assert_eq!(channels.len(), 2);
+            let names: Vec<&str> = channels.iter().map(|c| c.name.as_str()).collect();
+            assert!(names.contains(&"channel-1"));
+            assert!(names.contains(&"channel-2"));
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_sync_merge_handles_deleted_messages() {
+        let db = test_db();
+        let transport = Arc::new(Transport::new());
+        let mgr = SyncManager::new(db.clone(), transport, "test-node".into());
+        let (team_id, user_id) = setup_team_and_user(&db);
+
+        let channel_id = db::new_id();
+        let message_id = db::new_id();
+        let now = "2025-01-01 00:00:00".to_string();
+        let edit_time = "2025-06-01 00:00:00".to_string();
+
+        // Create channel and message locally.
+        db.with_conn(|conn| {
+            db::create_channel(conn, &db::Channel {
+                id: channel_id.clone(),
+                team_id: team_id.clone(),
+                name: "general".into(),
+                topic: String::new(),
+                channel_type: "text".into(),
+                position: 0,
+                category: String::new(),
+                created_by: user_id.clone(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+            })?;
+            db::create_message(conn, &db::Message {
+                id: message_id.clone(),
+                channel_id: channel_id.clone(),
+                dm_channel_id: String::new(),
+                author_id: user_id.clone(),
+                content: "original content".into(),
+                msg_type: "text".into(),
+                thread_id: String::new(),
+                edited_at: None,
+                deleted: false,
+                lamport_ts: 1,
+                created_at: now.clone(),
+            })
+        })
+        .unwrap();
+
+        // Sync a deleted version of the same message from a peer.
+        let sync_data = StateSyncData {
+            channels: Vec::new(),
+            messages: vec![db::Message {
+                id: message_id.clone(),
+                channel_id: channel_id.clone(),
+                dm_channel_id: String::new(),
+                author_id: user_id.clone(),
+                content: String::new(),
+                msg_type: "text".into(),
+                thread_id: String::new(),
+                edited_at: Some(edit_time.clone()),
+                deleted: true,
+                lamport_ts: 1,
+                created_at: now.clone(),
+            }],
+            members: Vec::new(),
+            roles: Vec::new(),
+        };
+
+        mgr.handle_state_sync_response(sync_data).await.unwrap();
+
+        // Verify message is now soft-deleted.
+        db.with_conn(|conn| {
+            let msg = db::get_message_by_id(conn, &message_id)?.unwrap();
+            assert!(msg.deleted);
+            assert!(msg.content.is_empty());
+            Ok(())
+        })
+        .unwrap();
     }
 }

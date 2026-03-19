@@ -426,6 +426,7 @@ mod tests {
                 nickname: String::new(),
                 joined_at: now.clone(),
                 invited_by: String::new(),
+                updated_at: String::new(),
             })?;
             // Create admin role with all permissions.
             let role_id = db::new_id();
@@ -445,6 +446,7 @@ mod tests {
                     | db::PERM_MANAGE_TEAM,
                 is_default: true,
                 created_at: now.clone(),
+                updated_at: String::new(),
             })?;
             // Assign role to member.
             let member = db::get_member_by_user_and_team(conn, &user_id, &team_id)?.unwrap();
@@ -1355,6 +1357,7 @@ mod tests {
                 nickname: String::new(),
                 joined_at: now,
                 invited_by: user_id.clone(),
+                updated_at: String::new(),
             })
         })
         .unwrap();
