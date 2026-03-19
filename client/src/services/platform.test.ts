@@ -31,3 +31,29 @@ describe('getOriginServerUrl', () => {
     expect(getOriginServerUrl()).toBeNull();
   });
 });
+
+describe('getDataDir', () => {
+  beforeEach(() => {
+    delete (window as Record<string, unknown>).__TAURI_INTERNALS__;
+  });
+
+  afterEach(() => {
+    delete (window as Record<string, unknown>).__TAURI_INTERNALS__;
+  });
+
+  it('returns indexeddb in browser mode', async () => {
+    // getDataDir is already imported at module level, use the direct import
+    const { getDataDir } = await import('./platform');
+    delete (window as Record<string, unknown>).__TAURI_INTERNALS__;
+    const dir = await getDataDir();
+    expect(dir).toBe('indexeddb');
+  });
+
+  it('returns fallback path when in Tauri mode', async () => {
+    (window as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    const { getDataDir } = await import('./platform');
+    const dir = await getDataDir();
+    // Tauri import will fail in test env, so falls back to './dilla-data'
+    expect(dir).toBe('./dilla-data');
+  });
+});

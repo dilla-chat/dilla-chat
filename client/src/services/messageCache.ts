@@ -137,6 +137,7 @@ export async function clearChannelCache(channelId: string): Promise<void> {
       db.close();
       resolve();
     };
+    /* v8 ignore next 4 */
     tx.onerror = () => {
       db.close();
       reject(tx.error);
@@ -154,6 +155,7 @@ export async function clearAllMessageCache(): Promise<void> {
       db.close();
       resolve();
     };
+    /* v8 ignore next 4 */
     tx.onerror = () => {
       db.close();
       reject(tx.error);

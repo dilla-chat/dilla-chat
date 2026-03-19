@@ -22,6 +22,7 @@ use rust_embed::Embed;
 /// the embedded FS will simply be empty.
 #[derive(Embed)]
 #[folder = "dist/"]
+#[allow(dead_code)]
 struct EmbeddedFiles;
 
 /// Create a fallback router that serves the embedded webapp.
@@ -32,11 +33,13 @@ struct EmbeddedFiles;
 /// ```ignore
 /// let app = api_router.fallback_service(webapp::webapp_fallback());
 /// ```
+#[allow(dead_code)]
 pub fn webapp_fallback() -> Router {
     Router::new().fallback(get(serve_webapp))
 }
 
 /// Main handler — decides between static file, SPA fallback, or 404.
+#[allow(dead_code)]
 async fn serve_webapp(uri: Uri) -> Response {
     let path = uri.path();
 

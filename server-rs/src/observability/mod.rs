@@ -53,11 +53,13 @@ pub fn init_logging(config: &Config) {
 /// Holds optional OTel tracer and meter providers.
 /// When OTel is disabled, both fields are `None` and global providers are
 /// noops — zero overhead.
+#[allow(dead_code)]
 pub struct OtelProviders {
     pub tracer_provider: Option<TracerProvider>,
     pub meter_provider: Option<SdkMeterProvider>,
 }
 
+#[allow(dead_code)]
 impl OtelProviders {
     /// Flush and shut down all providers. Call on graceful shutdown.
     pub fn shutdown(&self) {
@@ -79,6 +81,7 @@ impl OtelProviders {
 /// Returns empty (noop) providers when `config.otel_enabled` is false.
 /// Uses OTLP/HTTP exporter pointed at `config.otel_http_endpoint` (falls back
 /// to `config.otel_endpoint`).
+#[allow(dead_code)]
 pub fn init_otel(config: &Config) -> Result<OtelProviders, Box<dyn std::error::Error>> {
     use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
 
@@ -187,6 +190,7 @@ pub fn init_otel(config: &Config) -> Result<OtelProviders, Box<dyn std::error::E
 /// Pre-created metric instruments for the entire server.
 /// When OTel is disabled the global meter is a noop — all calls are zero-cost.
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct Metrics {
     // HTTP
     pub http_request_duration: opentelemetry::metrics::Histogram<f64>,
@@ -210,6 +214,7 @@ pub struct Metrics {
     pub voice_participants: opentelemetry::metrics::UpDownCounter<i64>,
 }
 
+#[allow(dead_code)]
 impl Metrics {
     /// Create all instruments from the global meter provider.
     pub fn new() -> Self {
@@ -294,6 +299,7 @@ impl Metrics {
 
 /// Replace UUID path segments with `{id}` to prevent high-cardinality metric
 /// labels. Matches the standard 8-4-4-4-12 hex pattern.
+#[allow(dead_code)]
 pub fn sanitize_route(path: &str) -> String {
     use std::sync::LazyLock;
     static UUID_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
@@ -322,6 +328,7 @@ pub fn sanitize_route(path: &str) -> String {
 ///     .route("/api/v1/health", get(health))
 ///     .layer(axum::middleware::from_fn_with_state(metrics, http_middleware));
 /// ```
+#[allow(dead_code)]
 pub async fn http_middleware(
     axum::extract::State(metrics): axum::extract::State<Arc<Metrics>>,
     request: Request,
@@ -388,12 +395,14 @@ pub async fn http_middleware(
 }
 
 /// Extract OTel context from HTTP request headers using the global propagator.
+#[allow(dead_code)]
 fn extract_context_from_request(request: &Request) -> OtelContext {
     let extractor = HeaderExtractor(request.headers());
     global::get_text_map_propagator(|propagator| propagator.extract(&extractor))
 }
 
 /// Adapter to let the OTel propagator read from `axum::http::HeaderMap`.
+#[allow(dead_code)]
 struct HeaderExtractor<'a>(&'a header::HeaderMap);
 
 impl opentelemetry::propagation::Extractor for HeaderExtractor<'_> {

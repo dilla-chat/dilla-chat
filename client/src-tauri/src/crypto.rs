@@ -8,7 +8,7 @@ use hkdf::Hkdf;
 use hmac::{Hmac, Mac};
 use hmac::digest::KeyInit as HmacKeyInit;
 use rand::rngs::OsRng;
-use rand::RngCore;
+use rand::{Rng, RngCore};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use std::collections::HashMap;
@@ -818,6 +818,7 @@ impl CryptoManager {
         self.group_sessions.get_mut(channel_id).unwrap()
     }
 
+    /// Save encrypted sessions to disk. Format: [16-byte salt][encrypted data]
     pub fn save_sessions(&self, path: &PathBuf, passphrase: &str) -> Result<(), String> {
         let serialized = CryptoManagerSerialized {
             prekey_secrets: self.prekey_secrets.clone(),
@@ -826,17 +827,28 @@ impl CryptoManager {
         };
         let json =
             serde_json::to_vec(&serialized).map_err(|e| format!("Serialize error: {e}"))?;
+
+        // Generate random salt for key derivation
+        let salt = generate_random_salt();
+
         let encrypted = aes_gcm_encrypt(
-            &passphrase_to_key(passphrase)?,
+            &passphrase_to_key(passphrase, &salt)?,
             &json,
         )?;
+
+        // Prepend salt to encrypted data
+        let mut output = Vec::with_capacity(16 + encrypted.len());
+        output.extend_from_slice(&salt);
+        output.extend_from_slice(&encrypted);
+
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
-        fs::write(path, encrypted).map_err(|e| e.to_string())?;
+        fs::write(path, output).map_err(|e| e.to_string())?;
         Ok(())
     }
 
+    /// Load encrypted sessions from disk. Format: [16-byte salt][encrypted data]
     pub fn load_sessions(
         path: &PathBuf,
         passphrase: &str,
@@ -846,7 +858,12 @@ impl CryptoManager {
             return Ok(Self::new(identity_key));
         }
         let data = fs::read(path).map_err(|e| format!("Read error: {e}"))?;
-        let json = aes_gcm_decrypt(&passphrase_to_key(passphrase)?, &data)?;
+        if data.len() < 16 {
+            return Err("Session file too short".into());
+        }
+
+        let (salt, encrypted) = data.split_at(16);
+        let json = aes_gcm_decrypt(&passphrase_to_key(passphrase, salt)?, encrypted)?;
         let serialized: CryptoManagerSerialized =
             serde_json::from_slice(&json).map_err(|e| format!("Deserialize error: {e}"))?;
         Ok(Self {
@@ -858,17 +875,25 @@ impl CryptoManager {
     }
 }
 
-/// Derive encryption key from passphrase using Argon2id (brute-force resistant)
-fn passphrase_to_key(passphrase: &str) -> Result<[u8; 32], String> {
+/// Generate a cryptographically random 16-byte salt for KDF operations.
+fn generate_random_salt() -> [u8; 16] {
+    OsRng.gen()
+}
+
+/// Derive encryption key from passphrase using Argon2id with caller-provided salt.
+/// The salt MUST be randomly generated per encryption (see save_sessions).
+fn passphrase_to_key(passphrase: &str, salt: &[u8]) -> Result<[u8; 32], String> {
     use argon2::{Argon2, Algorithm, Version, Params};
-    let salt = b"DillaSessionsV2!"; // 16-byte fixed salt (sessions are per-device)
     let params = Params::new(19456, 2, 1, Some(32))
         .map_err(|e| format!("Argon2 params error: {e}"))?;
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
-    let mut key = [0u8; 32];
+    let mut buf = vec![0u8; 32];
     argon2
-        .hash_password_into(passphrase.as_bytes(), salt, &mut key)
+        .hash_password_into(passphrase.as_bytes(), salt, &mut buf)
         .map_err(|e| format!("Argon2 error: {e}"))?;
+    let mut key = [0u8; 32];
+    key.copy_from_slice(&buf);
+    buf.fill(0); // zeroize heap buffer
     Ok(key)
 }
 

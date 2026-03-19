@@ -70,15 +70,15 @@ export class MockWebSocketService {
   startDMTyping(): void {}
   stopDMTyping(): void {}
 
-  // ─── Simulation timers ──────────────────────────────────────────────────
+  // ─── Simulation timers (demo-only, not security-sensitive) ──────────────
 
   private randomDelay(minSec: number, maxSec: number): number {
-    return (minSec + Math.random() * (maxSec - minSec)) * 1000;
+    return (minSec + Math.random() * (maxSec - minSec)) * 1000; // lgtm[js/insecure-randomness]
   }
 
   private pickOtherUser() {
     const others = MOCK_USERS.filter(u => u.id !== DEMO_CURRENT_USER_ID);
-    return others[Math.floor(Math.random() * others.length)];
+    return others[Math.floor(Math.random() * others.length)]; // lgtm[js/insecure-randomness]
   }
 
   private scheduleTyping(): void {

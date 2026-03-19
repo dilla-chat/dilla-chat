@@ -72,6 +72,7 @@ pub struct PeerInfo {
 
 /// Configuration for a federation mesh node.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct MeshConfig {
     pub node_name: String,
     pub bind_addr: String,
@@ -92,6 +93,7 @@ pub struct MeshConfig {
 /// This is a port of the Go MeshNode that used Hashicorp Memberlist. Instead of
 /// a SWIM gossip layer, it uses WebSocket transport for peer-to-peer communication.
 /// The SWIM gossip integration can be added as a hook point via the transport layer.
+#[allow(dead_code)]
 pub struct MeshNode {
     pub node_name: String,
     config: MeshConfig,
@@ -103,6 +105,7 @@ pub struct MeshNode {
     peers: Arc<RwLock<HashMap<String, PeerInfo>>>,
 }
 
+#[allow(dead_code)]
 impl MeshNode {
     /// Create a new MeshNode with the given configuration, database, and hub references.
     pub fn new(config: MeshConfig, db: Database, hub: Arc<Hub>) -> Self {
@@ -697,5 +700,278 @@ impl MeshNode {
             .map_err(|e| format!("parse state sync data: {}", e))?;
 
         self.sync_mgr.handle_state_sync_response(data).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── Event type constants ─────────────────────────────────────────
+
+    #[test]
+    fn event_type_constants_are_correct() {
+        assert_eq!(FED_EVENT_MESSAGE_NEW, "message:new");
+        assert_eq!(FED_EVENT_MESSAGE_EDIT, "message:edit");
+        assert_eq!(FED_EVENT_MESSAGE_DELETE, "message:delete");
+        assert_eq!(FED_EVENT_PRESENCE_CHANGED, "presence:changed");
+        assert_eq!(FED_EVENT_VOICE_USER_JOINED, "voice:user:joined");
+        assert_eq!(FED_EVENT_VOICE_USER_LEFT, "voice:user:left");
+        assert_eq!(FED_EVENT_STATE_SYNC_REQ, "state:sync:req");
+        assert_eq!(FED_EVENT_STATE_SYNC_RESP, "state:sync:resp");
+        assert_eq!(FED_EVENT_MEMBER_JOINED, "member:joined");
+        assert_eq!(FED_EVENT_MEMBER_LEFT, "member:left");
+    }
+
+    // ── FederationEvent serialization ────────────────────────────────
+
+    #[test]
+    fn federation_event_serializes_correctly() {
+        let event = FederationEvent {
+            event_type: FED_EVENT_MESSAGE_NEW.to_string(),
+            node_name: "node-1".into(),
+            timestamp: 42,
+            payload: serde_json::json!({"message_id": "m1"}),
+        };
+
+        let json = serde_json::to_value(&event).unwrap();
+        assert_eq!(json["type"], "message:new"); // Renamed via serde
+        assert_eq!(json["node_name"], "node-1");
+        assert_eq!(json["timestamp"], 42);
+        assert_eq!(json["payload"]["message_id"], "m1");
+    }
+
+    #[test]
+    fn federation_event_deserializes_correctly() {
+        let json_str = r#"{
+            "type": "message:edit",
+            "node_name": "node-2",
+            "timestamp": 99,
+            "payload": {"content": "updated"}
+        }"#;
+
+        let event: FederationEvent = serde_json::from_str(json_str).unwrap();
+        assert_eq!(event.event_type, "message:edit");
+        assert_eq!(event.node_name, "node-2");
+        assert_eq!(event.timestamp, 99);
+        assert_eq!(event.payload["content"], "updated");
+    }
+
+    #[test]
+    fn federation_event_roundtrip() {
+        let event = FederationEvent {
+            event_type: FED_EVENT_PRESENCE_CHANGED.to_string(),
+            node_name: "test".into(),
+            timestamp: 1000,
+            payload: serde_json::json!({"user_id": "u1", "status_type": "online"}),
+        };
+
+        let serialized = serde_json::to_string(&event).unwrap();
+        let deserialized: FederationEvent = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(deserialized.event_type, event.event_type);
+        assert_eq!(deserialized.node_name, event.node_name);
+        assert_eq!(deserialized.timestamp, event.timestamp);
+        assert_eq!(deserialized.payload, event.payload);
+    }
+
+    #[test]
+    fn federation_event_with_null_payload() {
+        let event = FederationEvent {
+            event_type: FED_EVENT_STATE_SYNC_REQ.to_string(),
+            node_name: "node".into(),
+            timestamp: 0,
+            payload: serde_json::Value::Null,
+        };
+
+        let json = serde_json::to_string(&event).unwrap();
+        let parsed: FederationEvent = serde_json::from_str(&json).unwrap();
+        assert!(parsed.payload.is_null());
+    }
+
+    // ── ReplicationMessage serialization ─────────────────────────────
+
+    #[test]
+    fn replication_message_serializes() {
+        let msg = ReplicationMessage {
+            message_id: "m1".into(),
+            channel_id: "ch1".into(),
+            author_id: "u1".into(),
+            username: "alice".into(),
+            content: "hello".into(),
+            msg_type: "text".into(),
+            thread_id: String::new(),
+            lamport_ts: 5,
+            created_at: "2024-01-01 00:00:00".into(),
+        };
+
+        let json = serde_json::to_value(&msg).unwrap();
+        assert_eq!(json["message_id"], "m1");
+        assert_eq!(json["channel_id"], "ch1");
+        assert_eq!(json["author_id"], "u1");
+        assert_eq!(json["username"], "alice");
+        assert_eq!(json["content"], "hello");
+        assert_eq!(json["type"], "text"); // Renamed via serde
+        assert_eq!(json["lamport_ts"], 5);
+    }
+
+    #[test]
+    fn replication_message_deserializes_with_defaults() {
+        let json_str = r#"{
+            "message_id": "m2",
+            "channel_id": "ch2",
+            "author_id": "u2",
+            "username": "bob",
+            "content": "hi",
+            "type": "text",
+            "lamport_ts": 10,
+            "created_at": "2024-01-01"
+        }"#;
+
+        let msg: ReplicationMessage = serde_json::from_str(json_str).unwrap();
+        assert_eq!(msg.message_id, "m2");
+        assert_eq!(msg.thread_id, ""); // Default
+    }
+
+    // ── PeerInfo serialization ───────────────────────────────────────
+
+    #[test]
+    fn peer_info_serializes() {
+        let peer = PeerInfo {
+            address: "ws://192.168.1.10:8081".into(),
+            status: "connected".into(),
+            node_name: "node-1".into(),
+            last_seen: "2024-01-01 12:00:00".into(),
+        };
+
+        let json = serde_json::to_value(&peer).unwrap();
+        assert_eq!(json["address"], "ws://192.168.1.10:8081");
+        assert_eq!(json["status"], "connected");
+        assert_eq!(json["node_name"], "node-1");
+    }
+
+    #[test]
+    fn peer_info_clone() {
+        let peer = PeerInfo {
+            address: "ws://a:8081".into(),
+            status: "connected".into(),
+            node_name: "n1".into(),
+            last_seen: "now".into(),
+        };
+        let cloned = peer.clone();
+        assert_eq!(peer.address, cloned.address);
+        assert_eq!(peer.status, cloned.status);
+    }
+
+    // ── MeshConfig construction ──────────────────────────────────────
+
+    #[test]
+    fn mesh_config_construction() {
+        let config = MeshConfig {
+            node_name: "my-node".into(),
+            bind_addr: "0.0.0.0".into(),
+            bind_port: 8081,
+            advertise_addr: "192.168.1.10".into(),
+            advertise_port: 8081,
+            peers: vec!["ws://peer1:8081".into(), "ws://peer2:8081".into()],
+            tls_cert: String::new(),
+            tls_key: String::new(),
+            join_secret: "secret".into(),
+        };
+
+        assert_eq!(config.node_name, "my-node");
+        assert_eq!(config.bind_port, 8081);
+        assert_eq!(config.peers.len(), 2);
+        assert_eq!(config.join_secret, "secret");
+    }
+
+    #[test]
+    fn mesh_config_clone() {
+        let config = MeshConfig {
+            node_name: "n1".into(),
+            bind_addr: "0.0.0.0".into(),
+            bind_port: 8081,
+            advertise_addr: String::new(),
+            advertise_port: 0,
+            peers: vec![],
+            tls_cert: String::new(),
+            tls_key: String::new(),
+            join_secret: String::new(),
+        };
+        let cloned = config.clone();
+        assert_eq!(config.node_name, cloned.node_name);
+    }
+
+    #[test]
+    fn mesh_config_with_empty_peers() {
+        let config = MeshConfig {
+            node_name: "solo".into(),
+            bind_addr: "0.0.0.0".into(),
+            bind_port: 8080,
+            advertise_addr: String::new(),
+            advertise_port: 0,
+            peers: vec![],
+            tls_cert: String::new(),
+            tls_key: String::new(),
+            join_secret: String::new(),
+        };
+        assert!(config.peers.is_empty());
+    }
+
+    // ── MeshNode construction ────────────────────────────────────────
+
+    #[test]
+    fn mesh_node_construction() {
+        let db = {
+            let tmp = tempfile::tempdir().unwrap();
+            let db = db::Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+            db.run_migrations().unwrap();
+            db
+        };
+        let hub = Arc::new(crate::ws::Hub::new(db.clone()));
+
+        let config = MeshConfig {
+            node_name: "test-node".into(),
+            bind_addr: "0.0.0.0".into(),
+            bind_port: 8081,
+            advertise_addr: String::new(),
+            advertise_port: 0,
+            peers: vec![],
+            tls_cert: String::new(),
+            tls_key: String::new(),
+            join_secret: "secret".into(),
+        };
+
+        let node = MeshNode::new(config, db, hub);
+        assert_eq!(node.node_name, "test-node");
+    }
+
+    #[test]
+    fn mesh_node_sync_and_join_managers_accessible() {
+        let db = {
+            let tmp = tempfile::tempdir().unwrap();
+            let db = db::Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+            db.run_migrations().unwrap();
+            db
+        };
+        let hub = Arc::new(crate::ws::Hub::new(db.clone()));
+
+        let config = MeshConfig {
+            node_name: "node".into(),
+            bind_addr: "0.0.0.0".into(),
+            bind_port: 8081,
+            advertise_addr: String::new(),
+            advertise_port: 0,
+            peers: vec![],
+            tls_cert: String::new(),
+            tls_key: String::new(),
+            join_secret: "s".into(),
+        };
+
+        let node = MeshNode::new(config, db, hub);
+
+        // Verify we can access the sync and join managers.
+        assert_eq!(node.sync_manager().current(), 0);
+        assert_eq!(node.sync_manager().tick(), 1);
     }
 }

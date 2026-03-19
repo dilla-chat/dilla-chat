@@ -50,6 +50,7 @@ pub async fn get_peers(
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 pub struct CreateJoinTokenRequest {
     // No additional fields needed; creator is extracted from auth.
 }

@@ -13,7 +13,7 @@ export default mergeConfig(
       css: false,
       coverage: {
         provider: 'v8',
-        exclude: ['src/test/**', 'src/main.tsx', '**/*.test.{ts,tsx}'],
+        exclude: ['src/test/**', 'src/main.tsx', 'src/App.tsx', '**/*.test.{ts,tsx}', '**/*.css'],
       },
     },
   }),

@@ -70,3 +70,6 @@ tokio-tungstenite = { version = "0.24", features = ["connect"] }
 
 # HTTP client (for TURN API calls)
 reqwest = { version = "0.12", features = ["json"] }
+
+[dev-dependencies]
+tempfile = "3"

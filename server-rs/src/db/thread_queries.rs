@@ -162,3 +162,224 @@ fn row_to_message(row: &rusqlite::Row) -> Result<Message, rusqlite::Error> {
         created_at: row.get(10)?,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::Database;
+
+    fn test_db() -> Database {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        db.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;")).unwrap();
+        db.run_migrations().unwrap();
+        db
+    }
+
+    /// Sets up a user, team, channel, and parent message for thread tests.
+    fn setup_for_threads(db: &Database) {
+        let now = crate::db::now_str();
+        let user = User {
+            id: "u1".into(), username: "alice".into(), display_name: "Alice".into(),
+            public_key: vec![1u8; 32], avatar_url: String::new(), status_text: String::new(),
+            status_type: "online".into(), is_admin: false,
+            created_at: now.clone(), updated_at: now.clone(),
+        };
+        db.with_conn(|c| crate::db::create_user(c, &user)).unwrap();
+
+        let team = Team {
+            id: "t1".into(), name: "Team".into(), description: String::new(),
+            icon_url: String::new(), created_by: "u1".into(), max_file_size: 1024,
+            allow_member_invites: true, created_at: now.clone(), updated_at: now.clone(),
+        };
+        db.with_conn(|c| crate::db::create_team(c, &team)).unwrap();
+
+        let channel = Channel {
+            id: "ch1".into(), team_id: "t1".into(), name: "general".into(),
+            topic: String::new(), channel_type: "text".into(), position: 0,
+            category: String::new(), created_by: "u1".into(),
+            created_at: now.clone(), updated_at: now.clone(),
+        };
+        db.with_conn(|c| crate::db::create_channel(c, &channel)).unwrap();
+
+        // Parent message for threads
+        let msg = Message {
+            id: "pm1".into(), channel_id: "ch1".into(), dm_channel_id: String::new(),
+            author_id: "u1".into(), content: "parent".into(), msg_type: "text".into(),
+            thread_id: String::new(), edited_at: None, deleted: false,
+            lamport_ts: 0, created_at: now,
+        };
+        db.with_conn(|c| crate::db::create_message(c, &msg)).unwrap();
+    }
+
+    #[test]
+    fn test_create_thread_and_fetch() {
+        let db = test_db();
+        setup_for_threads(&db);
+
+        let thread = Thread {
+            id: "thr1".into(), channel_id: "ch1".into(), parent_message_id: "pm1".into(),
+            team_id: "t1".into(), creator_id: "u1".into(), title: "Discussion".into(),
+            message_count: 0, last_message_at: None, created_at: crate::db::now_str(),
+        };
+        db.with_conn(|c| create_thread(c, &thread)).unwrap();
+
+        let fetched = db.with_conn(|c| get_thread(c, "thr1")).unwrap().unwrap();
+        assert_eq!(fetched.title, "Discussion");
+        assert_eq!(fetched.channel_id, "ch1");
+        assert_eq!(fetched.message_count, 0);
+    }
+
+    #[test]
+    fn test_get_thread_by_parent_message() {
+        let db = test_db();
+        setup_for_threads(&db);
+
+        let thread = Thread {
+            id: "thr1".into(), channel_id: "ch1".into(), parent_message_id: "pm1".into(),
+            team_id: "t1".into(), creator_id: "u1".into(), title: "Thread".into(),
+            message_count: 0, last_message_at: None, created_at: crate::db::now_str(),
+        };
+        db.with_conn(|c| create_thread(c, &thread)).unwrap();
+
+        let fetched = db.with_conn(|c| get_thread_by_parent_message(c, "pm1")).unwrap().unwrap();
+        assert_eq!(fetched.id, "thr1");
+    }
+
+    #[test]
+    fn test_get_channel_threads() {
+        let db = test_db();
+        setup_for_threads(&db);
+
+        // Create a second parent message
+        let now = crate::db::now_str();
+        let msg2 = Message {
+            id: "pm2".into(), channel_id: "ch1".into(), dm_channel_id: String::new(),
+            author_id: "u1".into(), content: "parent2".into(), msg_type: "text".into(),
+            thread_id: String::new(), edited_at: None, deleted: false,
+            lamport_ts: 1, created_at: now.clone(),
+        };
+        db.with_conn(|c| crate::db::create_message(c, &msg2)).unwrap();
+
+        let t1 = Thread {
+            id: "thr1".into(), channel_id: "ch1".into(), parent_message_id: "pm1".into(),
+            team_id: "t1".into(), creator_id: "u1".into(), title: "T1".into(),
+            message_count: 0, last_message_at: None, created_at: now.clone(),
+        };
+        let t2 = Thread {
+            id: "thr2".into(), channel_id: "ch1".into(), parent_message_id: "pm2".into(),
+            team_id: "t1".into(), creator_id: "u1".into(), title: "T2".into(),
+            message_count: 0, last_message_at: None, created_at: now,
+        };
+        db.with_conn(|c| create_thread(c, &t1)).unwrap();
+        db.with_conn(|c| create_thread(c, &t2)).unwrap();
+
+        let threads = db.with_conn(|c| get_channel_threads(c, "ch1")).unwrap();
+        assert_eq!(threads.len(), 2);
+    }
+
+    #[test]
+    fn test_update_thread() {
+        let db = test_db();
+        setup_for_threads(&db);
+
+        let mut thread = Thread {
+            id: "thr1".into(), channel_id: "ch1".into(), parent_message_id: "pm1".into(),
+            team_id: "t1".into(), creator_id: "u1".into(), title: "Old".into(),
+            message_count: 0, last_message_at: None, created_at: crate::db::now_str(),
+        };
+        db.with_conn(|c| create_thread(c, &thread)).unwrap();
+
+        thread.title = "New Title".to_string();
+        thread.message_count = 5;
+        thread.last_message_at = Some(crate::db::now_str());
+        db.with_conn(|c| update_thread(c, &thread)).unwrap();
+
+        let fetched = db.with_conn(|c| get_thread(c, "thr1")).unwrap().unwrap();
+        assert_eq!(fetched.title, "New Title");
+        assert_eq!(fetched.message_count, 5);
+        assert!(fetched.last_message_at.is_some());
+    }
+
+    #[test]
+    fn test_create_thread_message_increments_count() {
+        let db = test_db();
+        setup_for_threads(&db);
+
+        let thread = Thread {
+            id: "thr1".into(), channel_id: "ch1".into(), parent_message_id: "pm1".into(),
+            team_id: "t1".into(), creator_id: "u1".into(), title: "Thread".into(),
+            message_count: 0, last_message_at: None, created_at: crate::db::now_str(),
+        };
+        db.with_conn(|c| create_thread(c, &thread)).unwrap();
+
+        let reply = Message {
+            id: "reply1".into(), channel_id: "ch1".into(), dm_channel_id: String::new(),
+            author_id: "u1".into(), content: "reply".into(), msg_type: "text".into(),
+            thread_id: "thr1".into(), edited_at: None, deleted: false,
+            lamport_ts: 1, created_at: crate::db::now_str(),
+        };
+        db.with_conn(|c| create_thread_message(c, &reply)).unwrap();
+
+        let fetched = db.with_conn(|c| get_thread(c, "thr1")).unwrap().unwrap();
+        assert_eq!(fetched.message_count, 1);
+        assert!(fetched.last_message_at.is_some());
+    }
+
+    #[test]
+    fn test_get_thread_messages() {
+        let db = test_db();
+        setup_for_threads(&db);
+
+        let thread = Thread {
+            id: "thr1".into(), channel_id: "ch1".into(), parent_message_id: "pm1".into(),
+            team_id: "t1".into(), creator_id: "u1".into(), title: "Thread".into(),
+            message_count: 0, last_message_at: None, created_at: crate::db::now_str(),
+        };
+        db.with_conn(|c| create_thread(c, &thread)).unwrap();
+
+        for i in 0..3 {
+            let reply = Message {
+                id: format!("r{}", i), channel_id: "ch1".into(), dm_channel_id: String::new(),
+                author_id: "u1".into(), content: format!("reply {}", i), msg_type: "text".into(),
+                thread_id: "thr1".into(), edited_at: None, deleted: false,
+                lamport_ts: i as i64, created_at: format!("2024-01-01 00:00:0{}", i),
+            };
+            db.with_conn(|c| create_thread_message(c, &reply)).unwrap();
+        }
+
+        let messages = db.with_conn(|c| get_thread_messages(c, "thr1", "", 50)).unwrap();
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[0].content, "reply 0");
+        assert_eq!(messages[2].content, "reply 2");
+    }
+
+    #[test]
+    fn test_delete_thread_removes_messages() {
+        let db = test_db();
+        setup_for_threads(&db);
+
+        let thread = Thread {
+            id: "thr1".into(), channel_id: "ch1".into(), parent_message_id: "pm1".into(),
+            team_id: "t1".into(), creator_id: "u1".into(), title: "Thread".into(),
+            message_count: 0, last_message_at: None, created_at: crate::db::now_str(),
+        };
+        db.with_conn(|c| create_thread(c, &thread)).unwrap();
+
+        let reply = Message {
+            id: "r1".into(), channel_id: "ch1".into(), dm_channel_id: String::new(),
+            author_id: "u1".into(), content: "reply".into(), msg_type: "text".into(),
+            thread_id: "thr1".into(), edited_at: None, deleted: false,
+            lamport_ts: 1, created_at: crate::db::now_str(),
+        };
+        db.with_conn(|c| create_thread_message(c, &reply)).unwrap();
+
+        db.with_conn(|c| delete_thread(c, "thr1")).unwrap();
+
+        let thread = db.with_conn(|c| get_thread(c, "thr1")).unwrap();
+        assert!(thread.is_none());
+
+        let messages = db.with_conn(|c| get_thread_messages(c, "thr1", "", 50)).unwrap();
+        assert!(messages.is_empty());
+    }
+}

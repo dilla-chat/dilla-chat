@@ -7,6 +7,7 @@ use tokio::sync::{mpsc, RwLock};
 pub type ClientSender = mpsc::UnboundedSender<Vec<u8>>;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct ClientHandle {
     pub id: String,
     pub user_id: String,
@@ -294,5 +295,624 @@ impl Hub {
 
     pub fn typing_throttle(&self) -> &Arc<RwLock<HashMap<String, i64>>> {
         &self.typing_throttle
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::Database;
+    use std::sync::Arc;
+    use tokio::sync::mpsc;
+    use tokio::time::{timeout, Duration};
+
+    /// Create a fresh Hub backed by a temporary SQLite database.
+    fn test_hub() -> Arc<Hub> {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        db.run_migrations().unwrap();
+        // Leak the tempdir so it isn't deleted while the hub is alive.
+        std::mem::forget(tmp);
+        Arc::new(Hub::new(db))
+    }
+
+    /// Spawn the hub dispatch loop and return the handle.
+    fn spawn_hub(hub: &Arc<Hub>) -> tokio::task::JoinHandle<()> {
+        let hub = Arc::clone(hub);
+        tokio::spawn(async move { hub.run().await })
+    }
+
+    /// Create a ClientHandle with an unbounded sender, returning both the handle and the receiver.
+    fn make_client(
+        id: &str,
+        user_id: &str,
+        username: &str,
+        team_id: &str,
+    ) -> (ClientHandle, mpsc::UnboundedReceiver<Vec<u8>>) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let handle = ClientHandle {
+            id: id.to_string(),
+            user_id: user_id.to_string(),
+            username: username.to_string(),
+            team_id: team_id.to_string(),
+            sender: tx,
+        };
+        (handle, rx)
+    }
+
+    /// Small helper — give the hub loop time to process pending messages.
+    async fn settle() {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+
+    // ── register ──────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn register_adds_client_to_clients_map() {
+        let hub = test_hub();
+        let _handle = spawn_hub(&hub);
+
+        let (client, _rx) = make_client("c1", "u1", "alice", "t1");
+        hub.register(client).await;
+        settle().await;
+
+        let clients = hub.clients.read().await;
+        assert!(clients.contains_key("c1"), "client should be registered");
+        assert_eq!(clients.get("c1").unwrap().user_id, "u1");
+    }
+
+    #[tokio::test]
+    async fn register_adds_client_to_user_index() {
+        let hub = test_hub();
+        let _handle = spawn_hub(&hub);
+
+        let (client, _rx) = make_client("c1", "u1", "alice", "t1");
+        hub.register(client).await;
+        settle().await;
+
+        let idx = hub.user_index.read().await;
+        let ids = idx.get("u1").expect("user_index should contain u1");
+        assert!(ids.contains(&"c1".to_string()));
+    }
+
+    #[tokio::test]
+    async fn register_multiple_clients_same_user() {
+        let hub = test_hub();
+        let _handle = spawn_hub(&hub);
+
+        let (c1, _rx1) = make_client("c1", "u1", "alice", "t1");
+        let (c2, _rx2) = make_client("c2", "u1", "alice", "t1");
+        hub.register(c1).await;
+        hub.register(c2).await;
+        settle().await;
+
+        let idx = hub.user_index.read().await;
+        let ids = idx.get("u1").unwrap();
+        assert_eq!(ids.len(), 2);
+        assert!(ids.contains(&"c1".to_string()));
+        assert!(ids.contains(&"c2".to_string()));
+    }
+
+    // ── unregister ────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn unregister_removes_client_from_clients_map() {
+        let hub = test_hub();
+        let _handle = spawn_hub(&hub);
+
+        let (client, _rx) = make_client("c1", "u1", "alice", "t1");
+        hub.register(client).await;
+        settle().await;
+
+        hub.unregister("c1").await;
+        settle().await;
+
+        let clients = hub.clients.read().await;
+        assert!(!clients.contains_key("c1"), "client should be removed");
+    }
+
+    #[tokio::test]
+    async fn unregister_removes_client_from_user_index() {
+        let hub = test_hub();
+        let _handle = spawn_hub(&hub);
+
+        let (client, _rx) = make_client("c1", "u1", "alice", "t1");
+        hub.register(client).await;
+        settle().await;
+
+        hub.unregister("c1").await;
+        settle().await;
+
+        let idx = hub.user_index.read().await;
+        // Last client for user — entry should be fully removed.
+        assert!(!idx.contains_key("u1"));
+    }
+
+    #[tokio::test]
+    async fn unregister_one_of_two_clients_keeps_user_in_index() {
+        let hub = test_hub();
+        let _handle = spawn_hub(&hub);
+
+        let (c1, _rx1) = make_client("c1", "u1", "alice", "t1");
+        let (c2, _rx2) = make_client("c2", "u1", "alice", "t1");
+        hub.register(c1).await;
+        hub.register(c2).await;
+        settle().await;
+
+        hub.unregister("c1").await;
+        settle().await;
+
+        let idx = hub.user_index.read().await;
+        let ids = idx.get("u1").expect("user should still be in index");
+        assert_eq!(ids.len(), 1);
+        assert!(ids.contains(&"c2".to_string()));
+    }
+
+    #[tokio::test]
+    async fn unregister_removes_client_from_all_channels() {
+        let hub = test_hub();
+        let _handle = spawn_hub(&hub);
+
+        let (client, _rx) = make_client("c1", "u1", "alice", "t1");
+        hub.register(client).await;
+        settle().await;
+
+        hub.subscribe("c1", "chan-a").await;
+        hub.subscribe("c1", "chan-b").await;
+        settle().await;
+
+        hub.unregister("c1").await;
+        settle().await;
+
+        let channels = hub.channels.read().await;
+        for (_, subscribers) in channels.iter() {
+            assert!(
+                !subscribers.contains("c1"),
+                "client should be removed from all channels"
+            );
+        }
+    }
+
+    // ── subscribe / unsubscribe ───────────────────────────────────────────
+
+    #[tokio::test]
+    async fn subscribe_adds_client_to_channel() {
+        let hub = test_hub();
+        let _handle = spawn_hub(&hub);
+
+        let (client, _rx) = make_client("c1", "u1", "alice", "t1");
+        hub.register(client).await;
+        settle().await;
+
+        hub.subscribe("c1", "chan-a").await;
+        settle().await;
+
+        let channels = hub.channels.read().await;
+        let subs = channels.get("chan-a").expect("channel should exist");
+        assert!(subs.contains("c1"));
+    }
+
+    #[tokio::test]
+    async fn subscribe_multiple_clients_to_channel() {
+        let hub = test_hub();
+        let _handle = spawn_hub(&hub);
+
+        let (c1, _rx1) = make_client("c1", "u1", "alice", "t1");
+        let (c2, _rx2) = make_client("c2", "u2", "bob", "t1");
+        hub.register(c1).await;
+        hub.register(c2).await;
+        settle().await;
+
+        hub.subscribe("c1", "chan-a").await;
+        hub.subscribe("c2", "chan-a").await;
+        settle().await;
+
+        let channels = hub.channels.read().await;
+        let subs = channels.get("chan-a").unwrap();
+        assert_eq!(subs.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn unsubscribe_removes_client_from_channel() {
+        let hub = test_hub();
+        let _handle = spawn_hub(&hub);
+
+        let (client, _rx) = make_client("c1", "u1", "alice", "t1");
+        hub.register(client).await;
+        settle().await;
+
+        hub.subscribe("c1", "chan-a").await;
+        settle().await;
+
+        hub.unsubscribe("c1", "chan-a").await;
+        settle().await;
+
+        let channels = hub.channels.read().await;
+        if let Some(subs) = channels.get("chan-a") {
+            assert!(!subs.contains("c1"), "client should be unsubscribed");
+        }
+    }
+
+    #[tokio::test]
+    async fn unsubscribe_nonexistent_channel_does_not_panic() {
+        let hub = test_hub();
+        let _handle = spawn_hub(&hub);
+
+        // Should not panic even if the channel doesn't exist.
+        hub.unsubscribe("c1", "no-such-channel").await;
+        settle().await;
+    }
+
+    // ── broadcast_to_channel ──────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn broadcast_to_channel_delivers_to_all_subscribers() {
+        let hub = test_hub();
+        let _handle = spawn_hub(&hub);
+
+        let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
+        let (c2, mut rx2) = make_client("c2", "u2", "bob", "t1");
+        hub.register(c1).await;
+        hub.register(c2).await;
+        settle().await;
+
+        hub.subscribe("c1", "chan-a").await;
+        hub.subscribe("c2", "chan-a").await;
+        settle().await;
+
+        let payload = b"hello channel".to_vec();
+        hub.broadcast_to_channel("chan-a", payload.clone(), None)
+            .await;
+        settle().await;
+
+        let msg1 = timeout(Duration::from_millis(100), rx1.recv())
+            .await
+            .expect("should receive within timeout")
+            .expect("channel should not be closed");
+        let msg2 = timeout(Duration::from_millis(100), rx2.recv())
+            .await
+            .expect("should receive within timeout")
+            .expect("channel should not be closed");
+
+        assert_eq!(msg1, b"hello channel");
+        assert_eq!(msg2, b"hello channel");
+    }
+
+    #[tokio::test]
+    async fn broadcast_to_channel_excludes_specified_client() {
+        let hub = test_hub();
+        let _handle = spawn_hub(&hub);
+
+        let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
+        let (c2, mut rx2) = make_client("c2", "u2", "bob", "t1");
+        hub.register(c1).await;
+        hub.register(c2).await;
+        settle().await;
+
+        hub.subscribe("c1", "chan-a").await;
+        hub.subscribe("c2", "chan-a").await;
+        settle().await;
+
+        hub.broadcast_to_channel(
+            "chan-a",
+            b"secret".to_vec(),
+            Some("c1".to_string()),
+        )
+        .await;
+        settle().await;
+
+        // c2 should receive.
+        let msg = timeout(Duration::from_millis(100), rx2.recv())
+            .await
+            .expect("c2 should receive")
+            .expect("channel open");
+        assert_eq!(msg, b"secret");
+
+        // c1 should NOT receive.
+        let result = timeout(Duration::from_millis(100), rx1.recv()).await;
+        assert!(result.is_err(), "c1 should not receive the message (excluded)");
+    }
+
+    #[tokio::test]
+    async fn broadcast_to_nonexistent_channel_does_not_panic() {
+        let hub = test_hub();
+        let _handle = spawn_hub(&hub);
+
+        hub.broadcast_to_channel("ghost-channel", b"data".to_vec(), None)
+            .await;
+        settle().await;
+        // No panic = pass.
+    }
+
+    #[tokio::test]
+    async fn broadcast_skips_non_subscriber() {
+        let hub = test_hub();
+        let _handle = spawn_hub(&hub);
+
+        let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
+        let (c2, mut rx2) = make_client("c2", "u2", "bob", "t1");
+        hub.register(c1).await;
+        hub.register(c2).await;
+        settle().await;
+
+        // Only c1 subscribes.
+        hub.subscribe("c1", "chan-a").await;
+        settle().await;
+
+        hub.broadcast_to_channel("chan-a", b"only-c1".to_vec(), None)
+            .await;
+        settle().await;
+
+        let msg = timeout(Duration::from_millis(100), rx1.recv())
+            .await
+            .expect("c1 should receive")
+            .unwrap();
+        assert_eq!(msg, b"only-c1");
+
+        // c2 should NOT receive anything.
+        let result = timeout(Duration::from_millis(100), rx2.recv()).await;
+        assert!(result.is_err(), "c2 is not subscribed, should not receive");
+    }
+
+    // ── send_to_user ──────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn send_to_user_delivers_to_all_clients_of_that_user() {
+        let hub = test_hub();
+        let _handle = spawn_hub(&hub);
+
+        let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
+        let (c2, mut rx2) = make_client("c2", "u1", "alice", "t1");
+        hub.register(c1).await;
+        hub.register(c2).await;
+        settle().await;
+
+        hub.send_to_user("u1", b"dm-data".to_vec()).await;
+        settle().await;
+
+        let m1 = timeout(Duration::from_millis(100), rx1.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        let m2 = timeout(Duration::from_millis(100), rx2.recv())
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(m1, b"dm-data");
+        assert_eq!(m2, b"dm-data");
+    }
+
+    #[tokio::test]
+    async fn send_to_user_does_not_deliver_to_other_users() {
+        let hub = test_hub();
+        let _handle = spawn_hub(&hub);
+
+        let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
+        let (c2, mut rx2) = make_client("c2", "u2", "bob", "t1");
+        hub.register(c1).await;
+        hub.register(c2).await;
+        settle().await;
+
+        hub.send_to_user("u1", b"private".to_vec()).await;
+        settle().await;
+
+        let m1 = timeout(Duration::from_millis(100), rx1.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(m1, b"private");
+
+        let result = timeout(Duration::from_millis(100), rx2.recv()).await;
+        assert!(result.is_err(), "u2 should not receive u1's direct message");
+    }
+
+    #[tokio::test]
+    async fn send_to_nonexistent_user_does_not_panic() {
+        let hub = test_hub();
+        let _handle = spawn_hub(&hub);
+
+        hub.send_to_user("no-such-user", b"hello".to_vec()).await;
+        settle().await;
+    }
+
+    // ── broadcast_to_all ──────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn broadcast_to_all_delivers_to_every_client() {
+        let hub = test_hub();
+        let _handle = spawn_hub(&hub);
+
+        let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
+        let (c2, mut rx2) = make_client("c2", "u2", "bob", "t1");
+        hub.register(c1).await;
+        hub.register(c2).await;
+        settle().await;
+
+        hub.broadcast_to_all(b"global".to_vec()).await;
+        settle().await;
+
+        let m1 = timeout(Duration::from_millis(100), rx1.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        let m2 = timeout(Duration::from_millis(100), rx2.recv())
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(m1, b"global");
+        assert_eq!(m2, b"global");
+    }
+
+    // ── typing_throttle ───────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn typing_throttle_returns_shared_map() {
+        let hub = test_hub();
+
+        // Insert a value and verify it persists.
+        {
+            let mut throttle = hub.typing_throttle().write().await;
+            throttle.insert("u1:chan-a".to_string(), 12345);
+        }
+
+        let throttle = hub.typing_throttle().read().await;
+        assert_eq!(throttle.get("u1:chan-a"), Some(&12345));
+    }
+
+    // ── callbacks ─────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn on_client_connect_callback_fires_on_register() {
+        let hub = test_hub();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+
+        *hub.on_client_connect.write().await = Some(Box::new(move |user_id: &str| {
+            let _ = tx.send(user_id.to_string());
+        }));
+
+        let _handle = spawn_hub(&hub);
+
+        let (client, _rx) = make_client("c1", "u1", "alice", "t1");
+        hub.register(client).await;
+        settle().await;
+
+        let uid = timeout(Duration::from_millis(100), rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(uid, "u1");
+    }
+
+    #[tokio::test]
+    async fn on_client_disconnect_fires_when_last_client_removed() {
+        let hub = test_hub();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+
+        *hub.on_client_disconnect.write().await = Some(Box::new(move |user_id: &str| {
+            let _ = tx.send(user_id.to_string());
+        }));
+
+        let _handle = spawn_hub(&hub);
+
+        let (c1, _rx1) = make_client("c1", "u1", "alice", "t1");
+        let (c2, _rx2) = make_client("c2", "u1", "alice", "t1");
+        hub.register(c1).await;
+        hub.register(c2).await;
+        settle().await;
+
+        // Remove first client — should NOT fire disconnect (user still has c2).
+        hub.unregister("c1").await;
+        settle().await;
+
+        let result = timeout(Duration::from_millis(50), rx.recv()).await;
+        assert!(result.is_err(), "disconnect should not fire while user has active connections");
+
+        // Remove last client — SHOULD fire disconnect.
+        hub.unregister("c2").await;
+        settle().await;
+
+        let uid = timeout(Duration::from_millis(100), rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(uid, "u1");
+    }
+
+    // ── subscribe after unregister ────────────────────────────────────────
+
+    #[tokio::test]
+    async fn subscribe_client_to_multiple_channels() {
+        let hub = test_hub();
+        let _handle = spawn_hub(&hub);
+
+        let (client, _rx) = make_client("c1", "u1", "alice", "t1");
+        hub.register(client).await;
+        settle().await;
+
+        hub.subscribe("c1", "chan-a").await;
+        hub.subscribe("c1", "chan-b").await;
+        hub.subscribe("c1", "chan-c").await;
+        settle().await;
+
+        let channels = hub.channels.read().await;
+        assert!(channels.get("chan-a").unwrap().contains("c1"));
+        assert!(channels.get("chan-b").unwrap().contains("c1"));
+        assert!(channels.get("chan-c").unwrap().contains("c1"));
+    }
+
+    #[tokio::test]
+    async fn idempotent_subscribe() {
+        let hub = test_hub();
+        let _handle = spawn_hub(&hub);
+
+        let (client, _rx) = make_client("c1", "u1", "alice", "t1");
+        hub.register(client).await;
+        settle().await;
+
+        hub.subscribe("c1", "chan-a").await;
+        hub.subscribe("c1", "chan-a").await;
+        settle().await;
+
+        let channels = hub.channels.read().await;
+        // HashSet ensures no duplicates.
+        assert_eq!(channels.get("chan-a").unwrap().len(), 1);
+    }
+
+    // ── end-to-end scenario ───────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn full_lifecycle_register_subscribe_broadcast_unsubscribe_unregister() {
+        let hub = test_hub();
+        let _handle = spawn_hub(&hub);
+
+        let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
+        let (c2, mut rx2) = make_client("c2", "u2", "bob", "t1");
+        hub.register(c1).await;
+        hub.register(c2).await;
+        settle().await;
+
+        // Both join a channel.
+        hub.subscribe("c1", "general").await;
+        hub.subscribe("c2", "general").await;
+        settle().await;
+
+        // Broadcast — both should receive.
+        hub.broadcast_to_channel("general", b"msg1".to_vec(), None)
+            .await;
+        settle().await;
+        assert_eq!(
+            timeout(Duration::from_millis(100), rx1.recv()).await.unwrap().unwrap(),
+            b"msg1"
+        );
+        assert_eq!(
+            timeout(Duration::from_millis(100), rx2.recv()).await.unwrap().unwrap(),
+            b"msg1"
+        );
+
+        // c1 leaves the channel.
+        hub.unsubscribe("c1", "general").await;
+        settle().await;
+
+        // Broadcast again — only c2 should receive.
+        hub.broadcast_to_channel("general", b"msg2".to_vec(), None)
+            .await;
+        settle().await;
+        assert_eq!(
+            timeout(Duration::from_millis(100), rx2.recv()).await.unwrap().unwrap(),
+            b"msg2"
+        );
+        let result = timeout(Duration::from_millis(100), rx1.recv()).await;
+        assert!(result.is_err(), "c1 unsubscribed, should not receive msg2");
+
+        // Unregister c2 — should be removed from channel too.
+        hub.unregister("c2").await;
+        settle().await;
+
+        let channels = hub.channels.read().await;
+        if let Some(subs) = channels.get("general") {
+            assert!(!subs.contains("c2"));
+        }
     }
 }
