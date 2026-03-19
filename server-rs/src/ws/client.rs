@@ -73,9 +73,7 @@ pub async fn handle_ws_connection(
                     }
 
                     // Notify activity.
-                    if let Some(cb) = hub_read.on_client_activity.read().await.as_ref() {
-                        cb(&uid);
-                    }
+                    hub_read.emit_event(super::hub::HubEvent::ClientActivity { user_id: uid.clone() });
 
                     if let Ok(event) = serde_json::from_str::<Event>(&text) {
                         handle_event(&hub_read, &cid_read, &uid, &uname, &tid, event).await;
@@ -138,9 +136,11 @@ async fn handle_event(
         }
         EVENT_PRESENCE_UPDATE => {
             if let Ok(p) = serde_json::from_value::<PresenceUpdatePayload>(event.payload) {
-                if let Some(cb) = hub.on_presence_update.read().await.as_ref() {
-                    cb(user_id, &p.status_type, &p.status_text);
-                }
+                hub.emit_event(super::hub::HubEvent::PresenceUpdate {
+                    user_id: user_id.to_string(),
+                    status: p.status_type.clone(),
+                    custom_status: p.status_text.clone(),
+                });
             }
         }
         EVENT_PING => {

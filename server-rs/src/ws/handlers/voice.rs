@@ -70,9 +70,11 @@ pub(in crate::ws) async fn handle_voice_join(
             }
         }
 
-        if let Some(cb) = hub.on_voice_join.read().await.as_ref() {
-            cb(&p.channel_id, user_id, username);
-        }
+        hub.emit_event(crate::ws::hub::HubEvent::VoiceJoined {
+            channel_id: p.channel_id.clone(),
+            user_id: user_id.to_string(),
+            team_id: team_id.to_string(),
+        });
     }
 }
 
@@ -105,9 +107,10 @@ pub(in crate::ws) async fn handle_voice_leave(
 
     hub.unsubscribe(client_id, &p.channel_id).await;
 
-    if let Some(cb) = hub.on_voice_leave.read().await.as_ref() {
-        cb(&p.channel_id, user_id);
-    }
+    hub.emit_event(crate::ws::hub::HubEvent::VoiceLeft {
+        channel_id: p.channel_id.clone(),
+        user_id: user_id.to_string(),
+    });
 }
 
 pub(in crate::ws) async fn handle_voice_answer(hub: &Hub, user_id: &str, p: VoiceAnswerPayload) {

@@ -2,7 +2,21 @@ use crate::db::Database;
 use crate::voice::RoomManager;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{broadcast, mpsc, RwLock};
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub enum HubEvent {
+    ClientConnected { user_id: String },
+    ClientDisconnected { user_id: String },
+    ClientActivity { user_id: String },
+    PresenceUpdate { user_id: String, status: String, custom_status: String },
+    MessageSent { message: crate::db::Message, team_id: String },
+    MessageEdited { message_id: String, channel_id: String, content: String },
+    MessageDeleted { message_id: String, channel_id: String },
+    VoiceJoined { channel_id: String, user_id: String, team_id: String },
+    VoiceLeft { channel_id: String, user_id: String },
+}
 
 pub type ClientSender = mpsc::UnboundedSender<Vec<u8>>;
 
@@ -71,21 +85,7 @@ pub struct Hub {
     broadcast_all_tx: mpsc::Sender<Vec<u8>>,
     broadcast_all_rx: tokio::sync::Mutex<mpsc::Receiver<Vec<u8>>>,
 
-    // Callbacks (set by main).
-    pub on_message_send:
-        RwLock<Option<Box<dyn Fn(&crate::db::Message, &str) + Send + Sync>>>,
-    pub on_message_edit:
-        RwLock<Option<Box<dyn Fn(&str, &str, &str) + Send + Sync>>>,
-    pub on_message_delete:
-        RwLock<Option<Box<dyn Fn(&str, &str) + Send + Sync>>>,
-    pub on_client_connect: RwLock<Option<Box<dyn Fn(&str) + Send + Sync>>>,
-    pub on_client_disconnect: RwLock<Option<Box<dyn Fn(&str) + Send + Sync>>>,
-    pub on_client_activity: RwLock<Option<Box<dyn Fn(&str) + Send + Sync>>>,
-    pub on_presence_update:
-        RwLock<Option<Box<dyn Fn(&str, &str, &str) + Send + Sync>>>,
-    pub on_voice_join:
-        RwLock<Option<Box<dyn Fn(&str, &str, &str) + Send + Sync>>>,
-    pub on_voice_leave: RwLock<Option<Box<dyn Fn(&str, &str) + Send + Sync>>>,
+    event_tx: broadcast::Sender<HubEvent>,
 }
 
 impl Hub {
@@ -97,6 +97,7 @@ impl Hub {
         let (broadcast_tx, broadcast_rx) = mpsc::channel(256);
         let (direct_tx, direct_rx) = mpsc::channel(256);
         let (broadcast_all_tx, broadcast_all_rx) = mpsc::channel(256);
+        let (event_tx, _) = broadcast::channel(256);
 
         Hub {
             db,
@@ -120,15 +121,7 @@ impl Hub {
             direct_rx: tokio::sync::Mutex::new(direct_rx),
             broadcast_all_tx,
             broadcast_all_rx: tokio::sync::Mutex::new(broadcast_all_rx),
-            on_message_send: RwLock::new(None),
-            on_message_edit: RwLock::new(None),
-            on_message_delete: RwLock::new(None),
-            on_client_connect: RwLock::new(None),
-            on_client_disconnect: RwLock::new(None),
-            on_client_activity: RwLock::new(None),
-            on_presence_update: RwLock::new(None),
-            on_voice_join: RwLock::new(None),
-            on_voice_leave: RwLock::new(None),
+            event_tx,
         }
     }
 
@@ -153,9 +146,7 @@ impl Hub {
                         .or_default()
                         .push(client_id);
 
-                    if let Some(cb) = self.on_client_connect.read().await.as_ref() {
-                        cb(&user_id);
-                    }
+                    self.emit_event(HubEvent::ClientConnected { user_id });
                 }
                 Some(client_id) = unregister_rx.recv() => {
                     let mut clients = self.clients.write().await;
@@ -171,9 +162,7 @@ impl Hub {
                                 // Last connection for this user — notify disconnect.
                                 drop(idx);
                                 drop(clients);
-                                if let Some(cb) = self.on_client_disconnect.read().await.as_ref() {
-                                    cb(&user_id);
-                                }
+                                self.emit_event(HubEvent::ClientDisconnected { user_id });
                             }
                         }
 
@@ -295,6 +284,14 @@ impl Hub {
 
     pub fn typing_throttle(&self) -> &Arc<RwLock<HashMap<String, i64>>> {
         &self.typing_throttle
+    }
+
+    pub fn emit_event(&self, event: HubEvent) {
+        let _ = self.event_tx.send(event);
+    }
+
+    pub fn event_tx(&self) -> broadcast::Sender<HubEvent> {
+        self.event_tx.clone()
     }
 }
 
@@ -761,16 +758,12 @@ mod tests {
         assert_eq!(throttle.get("u1:chan-a"), Some(&12345));
     }
 
-    // ── callbacks ─────────────────────────────────────────────────────────
+    // ── hub events ──────────────────────────────────────────────────────
 
     #[tokio::test]
-    async fn on_client_connect_callback_fires_on_register() {
+    async fn client_connected_event_fires_on_register() {
         let hub = test_hub();
-        let (tx, mut rx) = mpsc::unbounded_channel();
-
-        *hub.on_client_connect.write().await = Some(Box::new(move |user_id: &str| {
-            let _ = tx.send(user_id.to_string());
-        }));
+        let mut event_rx = hub.event_tx().subscribe();
 
         let _handle = spawn_hub(&hub);
 
@@ -778,21 +771,20 @@ mod tests {
         hub.register(client).await;
         settle().await;
 
-        let uid = timeout(Duration::from_millis(100), rx.recv())
+        let evt = timeout(Duration::from_millis(100), event_rx.recv())
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(uid, "u1");
+        match evt {
+            super::HubEvent::ClientConnected { user_id } => assert_eq!(user_id, "u1"),
+            other => panic!("expected ClientConnected, got {:?}", other),
+        }
     }
 
     #[tokio::test]
-    async fn on_client_disconnect_fires_when_last_client_removed() {
+    async fn client_disconnected_event_fires_when_last_client_removed() {
         let hub = test_hub();
-        let (tx, mut rx) = mpsc::unbounded_channel();
-
-        *hub.on_client_disconnect.write().await = Some(Box::new(move |user_id: &str| {
-            let _ = tx.send(user_id.to_string());
-        }));
+        let mut event_rx = hub.event_tx().subscribe();
 
         let _handle = spawn_hub(&hub);
 
@@ -802,22 +794,29 @@ mod tests {
         hub.register(c2).await;
         settle().await;
 
+        // Drain connect events.
+        let _ = timeout(Duration::from_millis(50), event_rx.recv()).await;
+        let _ = timeout(Duration::from_millis(50), event_rx.recv()).await;
+
         // Remove first client — should NOT fire disconnect (user still has c2).
         hub.unregister("c1").await;
         settle().await;
 
-        let result = timeout(Duration::from_millis(50), rx.recv()).await;
+        let result = timeout(Duration::from_millis(50), event_rx.recv()).await;
         assert!(result.is_err(), "disconnect should not fire while user has active connections");
 
         // Remove last client — SHOULD fire disconnect.
         hub.unregister("c2").await;
         settle().await;
 
-        let uid = timeout(Duration::from_millis(100), rx.recv())
+        let evt = timeout(Duration::from_millis(100), event_rx.recv())
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(uid, "u1");
+        match evt {
+            super::HubEvent::ClientDisconnected { user_id } => assert_eq!(user_id, "u1"),
+            other => panic!("expected ClientDisconnected, got {:?}", other),
+        }
     }
 
     // ── subscribe after unregister ────────────────────────────────────────

@@ -157,46 +157,42 @@ async fn main() {
     presence_mgr.start_idle_checker(std::time::Duration::from_secs(30));
     let presence_mgr = Arc::new(presence_mgr);
 
-    // Wire hub callbacks to presence manager.
-    let pm = presence_mgr.clone();
-    *hub.on_client_connect.write().await = Some(Box::new(move |user_id| {
-        let pm = pm.clone();
-        let uid = user_id.to_string();
-        tokio::spawn(async move { pm.set_online(&uid).await });
-    }));
-
-    let pm = presence_mgr.clone();
-    *hub.on_client_disconnect.write().await = Some(Box::new(move |user_id| {
-        let pm = pm.clone();
-        let uid = user_id.to_string();
-        tokio::spawn(async move { pm.set_offline(&uid).await });
-    }));
-
-    let pm = presence_mgr.clone();
-    *hub.on_client_activity.write().await = Some(Box::new(move |user_id| {
-        let pm = pm.clone();
-        let uid = user_id.to_string();
-        tokio::spawn(async move { pm.update_activity(&uid).await });
-    }));
-
-    let pm = presence_mgr.clone();
-    let db_pres = database.clone();
-    *hub.on_presence_update.write().await =
-        Some(Box::new(move |user_id, status_type, custom_status| {
-            let pm = pm.clone();
-            let uid = user_id.to_string();
-            let st = status_type.to_string();
-            let cs = custom_status.to_string();
-            let db = db_pres.clone();
-            tokio::spawn(async move {
-                pm.update_presence(&uid, presence::Status::from_str(&st), &cs)
-                    .await;
-                let _ = tokio::task::spawn_blocking(move || {
-                    db.with_conn(|conn| db::update_user_status(conn, &uid, &st, &cs))
-                })
-                .await;
-            });
-        }));
+    // Subscribe to hub events and handle presence updates.
+    {
+        let pm = presence_mgr.clone();
+        let db_evt = database.clone();
+        let mut event_rx = hub.event_tx().subscribe();
+        tokio::spawn(async move {
+            while let Ok(event) = event_rx.recv().await {
+                match event {
+                    ws::hub::HubEvent::ClientConnected { user_id } => {
+                        pm.set_online(&user_id).await;
+                    }
+                    ws::hub::HubEvent::ClientDisconnected { user_id } => {
+                        pm.set_offline(&user_id).await;
+                    }
+                    ws::hub::HubEvent::ClientActivity { user_id } => {
+                        pm.update_activity(&user_id).await;
+                    }
+                    ws::hub::HubEvent::PresenceUpdate { user_id, status, custom_status } => {
+                        pm.update_presence(&user_id, presence::Status::from_str(&status), &custom_status)
+                            .await;
+                        let db = db_evt.clone();
+                        let uid = user_id.clone();
+                        let st = status.clone();
+                        let cs = custom_status.clone();
+                        let _ = tokio::task::spawn_blocking(move || {
+                            db.with_conn(|conn| db::update_user_status(conn, &uid, &st, &cs))
+                        })
+                        .await;
+                    }
+                    // MessageSent, MessageEdited, MessageDeleted, VoiceJoined, VoiceLeft
+                    // are available for federation subscribers to consume.
+                    _ => {}
+                }
+            }
+        });
+    }
 
     // Start federation mesh node (if peers or federation port configured).
     let mesh = if !cfg.peers.is_empty() || !cfg.node_name.is_empty() {

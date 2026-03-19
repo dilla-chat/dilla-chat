@@ -99,9 +99,10 @@ pub(in crate::ws) async fn handle_message_send(
         }
     }
 
-    if let Some(cb) = hub.on_message_send.read().await.as_ref() {
-        cb(&msg, username);
-    }
+    hub.emit_event(crate::ws::hub::HubEvent::MessageSent {
+        message: msg,
+        team_id: team_id.to_string(),
+    });
 }
 
 pub(in crate::ws) async fn handle_message_edit(hub: &Hub, user_id: &str, payload: serde_json::Value) {
@@ -143,9 +144,11 @@ pub(in crate::ws) async fn handle_message_edit(hub: &Hub, user_id: &str, payload
         }
     }
 
-    if let Some(cb) = hub.on_message_edit.read().await.as_ref() {
-        cb(&p.message_id, &p.channel_id, &p.content);
-    }
+    hub.emit_event(crate::ws::hub::HubEvent::MessageEdited {
+        message_id: p.message_id.clone(),
+        channel_id: p.channel_id.clone(),
+        content: p.content.clone(),
+    });
 }
 
 pub(in crate::ws) async fn handle_message_delete(hub: &Hub, user_id: &str, payload: serde_json::Value) {
@@ -186,9 +189,10 @@ pub(in crate::ws) async fn handle_message_delete(hub: &Hub, user_id: &str, paylo
         }
     }
 
-    if let Some(cb) = hub.on_message_delete.read().await.as_ref() {
-        cb(&p.message_id, &p.channel_id);
-    }
+    hub.emit_event(crate::ws::hub::HubEvent::MessageDeleted {
+        message_id: p.message_id.clone(),
+        channel_id: p.channel_id.clone(),
+    });
 }
 
 pub(in crate::ws) async fn handle_typing(
