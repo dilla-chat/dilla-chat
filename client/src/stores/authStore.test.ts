@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAuthStore } from './authStore';
+import type { User } from './authStore';
 
 function getState() {
   return useAuthStore.getState();
@@ -47,6 +48,18 @@ describe('addTeam', () => {
     getState().addTeam('team-1', 'tok', null, {}, 'https://test.io');
     expect(sessionStorage.getItem('dilla_teams')).toBeTruthy();
     expect(sessionStorage.getItem('dilla_servers')).toBeTruthy();
+  });
+
+  it('handles empty user object without user data', () => {
+    getState().addTeam('team-1', 'tok1', {} as User, {}, 'https://example.com');
+
+    expect(getState().teams.has('team-1')).toBe(true);
+    const team = getState().teams.get('team-1')!;
+    expect(team.token).toBe('tok1');
+    expect(team.baseUrl).toBe('https://example.com');
+    // When user object is empty, no user details should be populated
+    expect(team.user?.id).toBeUndefined();
+    expect(team.user?.username).toBeUndefined();
   });
 });
 
@@ -280,8 +293,8 @@ describe('loadPersistedDerivedKey catch block', () => {
       if (key === 'dilla_derived_key') throw new Error('Storage error');
       return originalGetItem(key);
     });
-    // Store should still be functional
-    expect(getState().derivedKey).toBeDefined();
+    // Store should still be functional and treat the missing derived key as null
+    expect(getState().derivedKey).toBeNull();
     vi.restoreAllMocks();
   });
 });

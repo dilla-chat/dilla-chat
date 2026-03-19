@@ -15,6 +15,9 @@ static DENOISE_STATE: Mutex<Option<Box<nnnoiseless::DenoiseState>>> = Mutex::new
 
 #[tauri::command]
 fn denoise_frame(samples: Vec<f32>) -> Vec<f32> {
+    // RNNoise operates on fixed-size frames of 480 samples (10 ms at 48 kHz).
+    // If the input length is not 480, no denoising is performed and the input
+    // is returned unchanged to avoid dropping or padding audio data.
     if samples.len() != 480 {
         return samples;
     }
