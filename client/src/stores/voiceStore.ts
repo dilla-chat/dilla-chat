@@ -316,7 +316,7 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
       screenSharing: false,
       screenSharingUserId: null,
       remoteScreenStream: null,
-        localScreenStream: null,
+      localScreenStream: null,
       webcamSharing: false,
       localWebcamStream: null,
       remoteWebcamStreams: {},

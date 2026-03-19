@@ -6,6 +6,8 @@ import { useAuthStore } from '../../stores/authStore';
 import { useMessageStore } from '../../stores/messageStore';
 import type { DMChannel } from '../../stores/dmStore';
 
+const MESSAGE_PAGE_SIZE = 50;
+
 // Mock dependencies
 vi.mock('../../services/websocket', () => ({
   ws: {
@@ -602,7 +604,7 @@ describe('DMView', () => {
     vi.mocked(cryptoService.decryptDM).mockResolvedValue('decrypted-old');
 
     // First call (initial load) returns 50 messages to set hasMore=true
-    const fiftyMsgs = Array.from({ length: 50 }, (_, i) => ({
+    const fiftyMsgs = Array.from({ length: MESSAGE_PAGE_SIZE }, (_, i) => ({
       id: `msg-${i}`, channel_id: 'dm-1', dm_id: 'dm-1', author_id: 'user-2',
       username: 'bob', content: `enc-${i}`, type: 'text', thread_id: null,
       edited_at: null, deleted: false, created_at: `2025-01-01T00:${String(i).padStart(2, '0')}:00Z`, reactions: [],

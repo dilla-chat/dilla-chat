@@ -1137,24 +1137,26 @@ describe('AppLayout behavioral', () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('network error'));
 
-    useAuthStore.setState({
-      derivedKey: 'test-derived-key',
-      teams: new Map([
-        ['team1', { baseUrl: 'http://localhost:8080', token: 'tok', user: { id: 'u1', username: 'tester', display_name: 'Tester' }, teamInfo: {} }],
-      ]),
-    });
-    // Make sync:init succeed so dataLoaded is set
-    vi.mocked(ws.isConnected).mockReturnValue(true);
-    vi.mocked(ws.request).mockResolvedValue({ channels: [], team: { id: 'team1', name: 'T' }, members: [], roles: [], presences: {} });
+    try {
+      useAuthStore.setState({
+        derivedKey: 'test-derived-key',
+        teams: new Map([
+          ['team1', { baseUrl: 'http://localhost:8080', token: 'tok', user: { id: 'u1', username: 'tester', display_name: 'Tester' }, teamInfo: {} }],
+        ]),
+      });
+      // Make sync:init succeed so dataLoaded is set
+      vi.mocked(ws.isConnected).mockReturnValue(true);
+      vi.mocked(ws.request).mockResolvedValue({ channels: [], team: { id: 'team1', name: 'T' }, members: [], roles: [], presences: {} });
 
-    render(<AppLayout />);
-    await waitFor(() => { expect(ws.request).toHaveBeenCalled(); });
-    // Wait for blob upload attempt
-    await waitFor(() => {
-      expect(globalThis.fetch).toHaveBeenCalled();
-    }, { timeout: 2000 });
-
-    globalThis.fetch = originalFetch;
+      render(<AppLayout />);
+      await waitFor(() => { expect(ws.request).toHaveBeenCalled(); });
+      // Wait for blob upload attempt
+      await waitFor(() => {
+        expect(globalThis.fetch).toHaveBeenCalled();
+      }, { timeout: 2000 });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it('toggles showMembers in empty state header (no channel, no DM)', async () => {
