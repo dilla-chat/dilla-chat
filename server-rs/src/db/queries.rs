@@ -260,8 +260,13 @@ fn row_to_channel(row: &rusqlite::Row) -> Result<Channel, rusqlite::Error> {
 // ── Member queries ──────────────────────────────────────────────────────────
 
 pub fn create_member(conn: &Connection, member: &Member) -> Result<(), rusqlite::Error> {
+    let updated = if member.updated_at.is_empty() {
+        member.joined_at.clone()
+    } else {
+        member.updated_at.clone()
+    };
     conn.execute(
-        "INSERT INTO members (id, team_id, user_id, nickname, joined_at, invited_by) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        "INSERT INTO members (id, team_id, user_id, nickname, joined_at, invited_by, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![
             member.id,
             member.team_id,
@@ -269,6 +274,7 @@ pub fn create_member(conn: &Connection, member: &Member) -> Result<(), rusqlite:
             member.nickname,
             member.joined_at,
             member.invited_by,
+            updated,
         ],
     )?;
     Ok(())
@@ -279,7 +285,7 @@ pub fn get_members_by_team(
     team_id: &str,
 ) -> Result<Vec<(Member, User)>, rusqlite::Error> {
     let mut stmt = conn.prepare(
-        "SELECT m.id, m.team_id, m.user_id, m.nickname, m.joined_at, m.invited_by,
+        "SELECT m.id, m.team_id, m.user_id, m.nickname, m.joined_at, m.invited_by, m.updated_at,
                 u.id, u.username, u.display_name, u.public_key, u.avatar_url, u.status_text, u.status_type, u.is_admin, u.created_at, u.updated_at
          FROM members m
          JOIN users u ON u.id = m.user_id
@@ -293,18 +299,19 @@ pub fn get_members_by_team(
             nickname: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
             joined_at: row.get(4)?,
             invited_by: row.get::<_, Option<String>>(5)?.unwrap_or_default(),
+            updated_at: row.get::<_, Option<String>>(6)?.unwrap_or_default(),
         };
         let user = User {
-            id: row.get(6)?,
-            username: row.get(7)?,
-            display_name: row.get(8)?,
-            public_key: row.get(9)?,
-            avatar_url: row.get::<_, Option<String>>(10)?.unwrap_or_default(),
-            status_text: row.get::<_, Option<String>>(11)?.unwrap_or_default(),
-            status_type: row.get::<_, Option<String>>(12)?.unwrap_or("online".into()),
-            is_admin: row.get::<_, i32>(13)? != 0,
-            created_at: row.get(14)?,
-            updated_at: row.get(15)?,
+            id: row.get(7)?,
+            username: row.get(8)?,
+            display_name: row.get(9)?,
+            public_key: row.get(10)?,
+            avatar_url: row.get::<_, Option<String>>(11)?.unwrap_or_default(),
+            status_text: row.get::<_, Option<String>>(12)?.unwrap_or_default(),
+            status_type: row.get::<_, Option<String>>(13)?.unwrap_or("online".into()),
+            is_admin: row.get::<_, i32>(14)? != 0,
+            created_at: row.get(15)?,
+            updated_at: row.get(16)?,
         };
         Ok((member, user))
     })?;
@@ -317,7 +324,7 @@ pub fn get_member_by_user_and_team(
     team_id: &str,
 ) -> Result<Option<Member>, rusqlite::Error> {
     conn.query_row(
-        "SELECT id, team_id, user_id, nickname, joined_at, invited_by FROM members WHERE user_id = ?1 AND team_id = ?2",
+        "SELECT id, team_id, user_id, nickname, joined_at, invited_by, updated_at FROM members WHERE user_id = ?1 AND team_id = ?2",
         params![user_id, team_id],
         |row| {
             Ok(Member {
@@ -327,6 +334,7 @@ pub fn get_member_by_user_and_team(
                 nickname: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
                 joined_at: row.get(4)?,
                 invited_by: row.get::<_, Option<String>>(5)?.unwrap_or_default(),
+                updated_at: row.get::<_, Option<String>>(6)?.unwrap_or_default(),
             })
         },
     )
@@ -335,8 +343,8 @@ pub fn get_member_by_user_and_team(
 
 pub fn update_member(conn: &Connection, member: &Member) -> Result<(), rusqlite::Error> {
     conn.execute(
-        "UPDATE members SET nickname = ?1 WHERE id = ?2",
-        params![member.nickname, member.id],
+        "UPDATE members SET nickname = ?1, updated_at = ?2 WHERE id = ?3",
+        params![member.nickname, now_str(), member.id],
     )?;
     Ok(())
 }
@@ -455,9 +463,14 @@ fn row_to_message(row: &rusqlite::Row) -> Result<Message, rusqlite::Error> {
 // ── Role queries ────────────────────────────────────────────────────────────
 
 pub fn create_role(conn: &Connection, role: &Role) -> Result<(), rusqlite::Error> {
+    let updated = if role.updated_at.is_empty() {
+        now_str()
+    } else {
+        role.updated_at.clone()
+    };
     conn.execute(
-        "INSERT INTO roles (id, team_id, name, color, position, permissions, is_default, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        "INSERT INTO roles (id, team_id, name, color, position, permissions, is_default, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         params![
             role.id,
             role.team_id,
@@ -467,6 +480,7 @@ pub fn create_role(conn: &Connection, role: &Role) -> Result<(), rusqlite::Error
             role.permissions,
             role.is_default as i32,
             role.created_at,
+            updated,
         ],
     )?;
     Ok(())
@@ -477,7 +491,7 @@ pub fn get_roles_by_team(
     team_id: &str,
 ) -> Result<Vec<Role>, rusqlite::Error> {
     let mut stmt = conn.prepare(
-        "SELECT id, team_id, name, color, position, permissions, is_default, created_at
+        "SELECT id, team_id, name, color, position, permissions, is_default, created_at, updated_at
          FROM roles WHERE team_id = ?1 ORDER BY position ASC",
     )?;
     let rows = stmt.query_map([team_id], |row| row_to_role(row))?;
@@ -486,7 +500,7 @@ pub fn get_roles_by_team(
 
 pub fn get_role_by_id(conn: &Connection, id: &str) -> Result<Option<Role>, rusqlite::Error> {
     conn.query_row(
-        "SELECT id, team_id, name, color, position, permissions, is_default, created_at FROM roles WHERE id = ?1",
+        "SELECT id, team_id, name, color, position, permissions, is_default, created_at, updated_at FROM roles WHERE id = ?1",
         [id],
         |row| row_to_role(row),
     )
@@ -495,8 +509,8 @@ pub fn get_role_by_id(conn: &Connection, id: &str) -> Result<Option<Role>, rusql
 
 pub fn update_role(conn: &Connection, role: &Role) -> Result<(), rusqlite::Error> {
     conn.execute(
-        "UPDATE roles SET name = ?1, color = ?2, position = ?3, permissions = ?4 WHERE id = ?5",
-        params![role.name, role.color, role.position, role.permissions, role.id],
+        "UPDATE roles SET name = ?1, color = ?2, position = ?3, permissions = ?4, updated_at = ?5 WHERE id = ?6",
+        params![role.name, role.color, role.position, role.permissions, now_str(), role.id],
     )?;
     Ok(())
 }
@@ -512,7 +526,7 @@ pub fn get_default_role_for_team(
     team_id: &str,
 ) -> Result<Option<Role>, rusqlite::Error> {
     conn.query_row(
-        "SELECT id, team_id, name, color, position, permissions, is_default, created_at FROM roles WHERE team_id = ?1 AND is_default = 1",
+        "SELECT id, team_id, name, color, position, permissions, is_default, created_at, updated_at FROM roles WHERE team_id = ?1 AND is_default = 1",
         [team_id],
         |row| row_to_role(row),
     )
@@ -529,7 +543,42 @@ fn row_to_role(row: &rusqlite::Row) -> Result<Role, rusqlite::Error> {
         permissions: row.get(5)?,
         is_default: row.get::<_, i32>(6)? != 0,
         created_at: row.get(7)?,
+        updated_at: row.get::<_, Option<String>>(8)?.unwrap_or_default(),
     })
+}
+
+// ── Federation sync update queries ──────────────────────────────────────────
+
+pub fn update_channel_from_sync(conn: &Connection, ch: &Channel) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "UPDATE channels SET name = ?1, topic = ?2, category = ?3, position = ?4, updated_at = ?5 WHERE id = ?6",
+        params![ch.name, ch.topic, ch.category, ch.position, ch.updated_at, ch.id],
+    )?;
+    Ok(())
+}
+
+pub fn update_role_from_sync(conn: &Connection, role: &Role) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "UPDATE roles SET name = ?1, color = ?2, position = ?3, permissions = ?4, updated_at = ?5 WHERE id = ?6",
+        params![role.name, role.color, role.position, role.permissions, role.updated_at, role.id],
+    )?;
+    Ok(())
+}
+
+pub fn update_member_from_sync(conn: &Connection, member: &Member) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "UPDATE members SET nickname = ?1, updated_at = ?2 WHERE id = ?3",
+        params![member.nickname, member.updated_at, member.id],
+    )?;
+    Ok(())
+}
+
+pub fn update_message_from_sync(conn: &Connection, msg: &Message) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "UPDATE messages SET content = ?1, edited_at = ?2, deleted = ?3 WHERE id = ?4",
+        params![msg.content, msg.edited_at, msg.deleted as i32, msg.id],
+    )?;
+    Ok(())
 }
 
 // ── Member Role queries ─────────────────────────────────────────────────────
@@ -572,7 +621,7 @@ pub fn get_member_roles(
     member_id: &str,
 ) -> Result<Vec<Role>, rusqlite::Error> {
     let mut stmt = conn.prepare(
-        "SELECT r.id, r.team_id, r.name, r.color, r.position, r.permissions, r.is_default, r.created_at
+        "SELECT r.id, r.team_id, r.name, r.color, r.position, r.permissions, r.is_default, r.created_at, r.updated_at
          FROM roles r
          JOIN member_roles mr ON mr.role_id = r.id
          WHERE mr.member_id = ?1
@@ -1043,8 +1092,9 @@ mod tests {
             team_id: team_id.to_string(),
             user_id: user_id.to_string(),
             nickname: String::new(),
-            joined_at: now,
+            joined_at: now.clone(),
             invited_by: user_id.to_string(),
+            updated_at: now,
         }
     }
 
@@ -1513,6 +1563,7 @@ mod tests {
             permissions: PERM_MANAGE_MESSAGES | PERM_MANAGE_MEMBERS,
             is_default: false,
             created_at: crate::db::now_str(),
+            updated_at: String::new(),
         };
         db.with_conn(|c| create_role(c, &role)).unwrap();
 
@@ -1534,12 +1585,12 @@ mod tests {
         let r1 = Role {
             id: "r1".into(), team_id: "t1".into(), name: "Admin".into(),
             color: "#FF0000".into(), position: 2, permissions: PERM_ADMIN,
-            is_default: false, created_at: now.clone(),
+            is_default: false, created_at: now.clone(), updated_at: String::new(),
         };
         let r2 = Role {
             id: "r2".into(), team_id: "t1".into(), name: "Member".into(),
             color: "#00FF00".into(), position: 0, permissions: PERM_SEND_MESSAGES,
-            is_default: true, created_at: now,
+            is_default: true, created_at: now, updated_at: String::new(),
         };
         db.with_conn(|c| create_role(c, &r1)).unwrap();
         db.with_conn(|c| create_role(c, &r2)).unwrap();
@@ -1561,7 +1612,7 @@ mod tests {
         let mut role = Role {
             id: "r1".into(), team_id: "t1".into(), name: "Mod".into(),
             color: "#000".into(), position: 0, permissions: 0,
-            is_default: false, created_at: crate::db::now_str(),
+            is_default: false, created_at: crate::db::now_str(), updated_at: String::new(),
         };
         db.with_conn(|c| create_role(c, &role)).unwrap();
 
@@ -1585,7 +1636,7 @@ mod tests {
         let role = Role {
             id: "r1".into(), team_id: "t1".into(), name: "Temp".into(),
             color: "#000".into(), position: 0, permissions: 0,
-            is_default: false, created_at: crate::db::now_str(),
+            is_default: false, created_at: crate::db::now_str(), updated_at: String::new(),
         };
         db.with_conn(|c| create_role(c, &role)).unwrap();
         db.with_conn(|c| delete_role(c, "r1")).unwrap();
@@ -1605,7 +1656,7 @@ mod tests {
         let role = Role {
             id: "r1".into(), team_id: "t1".into(), name: "everyone".into(),
             color: "#000".into(), position: 0, permissions: PERM_SEND_MESSAGES,
-            is_default: true, created_at: crate::db::now_str(),
+            is_default: true, created_at: crate::db::now_str(), updated_at: String::new(),
         };
         db.with_conn(|c| create_role(c, &role)).unwrap();
 
@@ -1630,12 +1681,12 @@ mod tests {
         let r1 = Role {
             id: "r1".into(), team_id: "t1".into(), name: "Mod".into(),
             color: "#000".into(), position: 0, permissions: PERM_MANAGE_MESSAGES,
-            is_default: false, created_at: now.clone(),
+            is_default: false, created_at: now.clone(), updated_at: String::new(),
         };
         let r2 = Role {
             id: "r2".into(), team_id: "t1".into(), name: "Admin".into(),
             color: "#000".into(), position: 1, permissions: PERM_ADMIN,
-            is_default: false, created_at: now,
+            is_default: false, created_at: now, updated_at: String::new(),
         };
         db.with_conn(|c| create_role(c, &r1)).unwrap();
         db.with_conn(|c| create_role(c, &r2)).unwrap();
@@ -1660,7 +1711,7 @@ mod tests {
         let role = Role {
             id: "r1".into(), team_id: "t1".into(), name: "Mod".into(),
             color: "#000".into(), position: 0, permissions: 0,
-            is_default: false, created_at: crate::db::now_str(),
+            is_default: false, created_at: crate::db::now_str(), updated_at: String::new(),
         };
         db.with_conn(|c| create_role(c, &role)).unwrap();
 
@@ -1684,7 +1735,7 @@ mod tests {
         let role = Role {
             id: "r1".into(), team_id: "t1".into(), name: "Mod".into(),
             color: "#000".into(), position: 0, permissions: 0,
-            is_default: false, created_at: crate::db::now_str(),
+            is_default: false, created_at: crate::db::now_str(), updated_at: String::new(),
         };
         db.with_conn(|c| create_role(c, &role)).unwrap();
 
@@ -1710,7 +1761,7 @@ mod tests {
             let role = Role {
                 id: format!("r{}", i), team_id: "t1".into(), name: format!("Role{}", i),
                 color: "#000".into(), position: i, permissions: 0,
-                is_default: false, created_at: now.clone(),
+                is_default: false, created_at: now.clone(), updated_at: String::new(),
             };
             db.with_conn(|c| create_role(c, &role)).unwrap();
             db.with_conn(|c| assign_role_to_member(c, "m1", &format!("r{}", i))).unwrap();
@@ -1767,7 +1818,7 @@ mod tests {
         let role = Role {
             id: "r1".into(), team_id: "t1".into(), name: "Mod".into(),
             color: "#000".into(), position: 0, permissions: PERM_MANAGE_MESSAGES,
-            is_default: false, created_at: crate::db::now_str(),
+            is_default: false, created_at: crate::db::now_str(), updated_at: String::new(),
         };
         db.with_conn(|c| create_role(c, &role)).unwrap();
         db.with_conn(|c| assign_role_to_member(c, "m2", "r1")).unwrap();
@@ -1795,7 +1846,7 @@ mod tests {
         let role = Role {
             id: "r1".into(), team_id: "t1".into(), name: "Admin Role".into(),
             color: "#000".into(), position: 0, permissions: PERM_ADMIN,
-            is_default: false, created_at: crate::db::now_str(),
+            is_default: false, created_at: crate::db::now_str(), updated_at: String::new(),
         };
         db.with_conn(|c| create_role(c, &role)).unwrap();
         db.with_conn(|c| assign_role_to_member(c, "m2", "r1")).unwrap();

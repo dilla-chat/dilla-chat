@@ -38,6 +38,8 @@ pub struct Role {
     pub permissions: i64,
     pub is_default: bool,
     pub created_at: String,
+    #[serde(default)]
+    pub updated_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,6 +50,8 @@ pub struct Member {
     pub nickname: String,
     pub joined_at: String,
     pub invited_by: String,
+    #[serde(default)]
+    pub updated_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -23,6 +23,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
     ("003_dm_enhancements.sql", include_str!("../../migrations/003_dm_enhancements.sql")),
     ("004_threads.sql", include_str!("../../migrations/004_threads.sql")),
     ("005_reactions_attachments.sql", include_str!("../../migrations/005_reactions_attachments.sql")),
+    ("006_federation_sync.sql", include_str!("../../migrations/006_federation_sync.sql")),
 ];
 
 /// Default number of read connections in the pool.

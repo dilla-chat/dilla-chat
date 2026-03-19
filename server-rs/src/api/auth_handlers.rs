@@ -201,6 +201,7 @@ pub async fn register(
                 nickname: String::new(),
                 joined_at: now.clone(),
                 invited_by: invite.created_by.clone(),
+                updated_at: String::new(),
             };
             db::create_member(conn, &member)?;
 
@@ -343,6 +344,7 @@ pub async fn bootstrap(
                 nickname: String::new(),
                 joined_at: now.clone(),
                 invited_by: String::new(),
+                updated_at: String::new(),
             };
             db::create_member(conn, &member)?;
 
@@ -356,6 +358,7 @@ pub async fn bootstrap(
                 permissions: db::PERM_SEND_MESSAGES | db::PERM_CREATE_INVITES,
                 is_default: true,
                 created_at: now.clone(),
+                updated_at: String::new(),
             };
             db::create_role(conn, &role)?;
 
