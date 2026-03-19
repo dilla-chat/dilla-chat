@@ -373,7 +373,7 @@ mod tests {
 
     fn test_app_state() -> (AppState, tempfile::TempDir) {
         let (db, tmp) = test_db();
-        let auth = Arc::new(AuthService::new(db.clone()));
+        let auth = Arc::new(AuthService::new(db.clone(), ""));
         let hub = Arc::new(Hub::new(db.clone()));
         let presence = Arc::new(PresenceManager::new());
         let config = Arc::new(test_config());

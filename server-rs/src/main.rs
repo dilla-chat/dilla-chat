@@ -59,7 +59,7 @@ async fn main() {
     }
 
     // Create auth service.
-    let auth_svc = Arc::new(AuthService::new(database.clone()));
+    let auth_svc = Arc::new(AuthService::new(database.clone(), &cfg.db_passphrase));
 
     // Check for first start (no users).
     match database.has_users() {

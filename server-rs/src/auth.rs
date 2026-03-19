@@ -6,14 +6,21 @@ use axum::{
     middleware::Next,
     response::Response,
 };
-use base64::Engine;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use hkdf::Hkdf;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
+use sha2::Sha256;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
+
+/// Access token expiry: 1 hour.
+const ACCESS_TOKEN_EXPIRY_SECS: i64 = 3600;
+
+/// Refresh token expiry: 7 days.
+const REFRESH_TOKEN_EXPIRY_SECS: i64 = 7 * 24 * 3600;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Claims {
@@ -22,9 +29,35 @@ struct Claims {
     exp: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct RefreshClaims {
+    sub: String,
+    iat: i64,
+    exp: i64,
+    token_type: String, // "refresh"
+}
+
 struct Challenge {
     nonce: Vec<u8>,
     created_at: Instant,
+}
+
+/// Derive the JWT signing secret from the DB passphrase using HKDF-SHA256.
+/// If no passphrase is set (insecure mode), generate a random ephemeral secret
+/// that is NOT persisted (lost on restart).
+fn derive_jwt_secret(db_passphrase: &str) -> Vec<u8> {
+    if db_passphrase.is_empty() {
+        // Insecure mode: ephemeral random secret (lost on restart)
+        let mut raw = vec![0u8; 32];
+        rand::thread_rng().fill_bytes(&mut raw);
+        return raw;
+    }
+    // Derive from passphrase using HKDF-SHA256
+    let hk = Hkdf::<Sha256>::new(None, db_passphrase.as_bytes());
+    let mut secret = vec![0u8; 32];
+    hk.expand(b"dilla-jwt-signing-key-v1", &mut secret)
+        .unwrap();
+    secret
 }
 
 #[derive(Clone)]
@@ -35,28 +68,8 @@ pub struct AuthService {
 }
 
 impl AuthService {
-    pub fn new(database: Database) -> Self {
-        // Load or generate JWT secret.
-        let secret = database
-            .with_conn(|conn| db::get_setting(conn, "jwt_secret"))
-            .ok()
-            .flatten();
-
-        let jwt_secret = if let Some(s) = secret {
-            base64::engine::general_purpose::STANDARD
-                .decode(&s)
-                .unwrap_or_else(|_| {
-                    let mut raw = vec![0u8; 32];
-                    rand::thread_rng().fill_bytes(&mut raw);
-                    raw
-                })
-        } else {
-            let mut raw = vec![0u8; 32];
-            rand::thread_rng().fill_bytes(&mut raw);
-            let encoded = base64::engine::general_purpose::STANDARD.encode(&raw);
-            let _ = database.with_conn(|conn| db::set_setting(conn, "jwt_secret", &encoded));
-            raw
-        };
+    pub fn new(database: Database, db_passphrase: &str) -> Self {
+        let jwt_secret = derive_jwt_secret(db_passphrase);
 
         let svc = AuthService {
             db: database,
@@ -132,7 +145,7 @@ impl AuthService {
         let claims = Claims {
             sub: user_id.to_string(),
             iat: now,
-            exp: now + 7 * 24 * 3600,
+            exp: now + ACCESS_TOKEN_EXPIRY_SECS,
         };
         encode(
             &Header::default(),
@@ -146,6 +159,8 @@ impl AuthService {
         let mut validation = Validation::default();
         validation.algorithms = vec![jsonwebtoken::Algorithm::HS256];
 
+        // First try to decode and check it's not a refresh token.
+        // We decode without requiring specific fields first to peek at token_type.
         let data = decode::<Claims>(
             token,
             &DecodingKey::from_secret(&self.jwt_secret),
@@ -153,7 +168,68 @@ impl AuthService {
         )
         .map_err(|e| AppError::Unauthorized(format!("invalid token: {}", e)))?;
 
+        // Reject refresh tokens used as access tokens by trying to decode as RefreshClaims.
+        let mut no_exp_validation = Validation::default();
+        no_exp_validation.algorithms = vec![jsonwebtoken::Algorithm::HS256];
+        no_exp_validation.validate_exp = false;
+        if let Ok(refresh_data) = decode::<RefreshClaims>(
+            token,
+            &DecodingKey::from_secret(&self.jwt_secret),
+            &no_exp_validation,
+        ) {
+            if refresh_data.claims.token_type == "refresh" {
+                return Err(AppError::Unauthorized(
+                    "refresh token cannot be used as access token".into(),
+                ));
+            }
+        }
+
         Ok(data.claims.sub)
+    }
+
+    /// Generate a refresh token for the given user.
+    pub fn generate_refresh_token(&self, user_id: &str) -> Result<String, AppError> {
+        let now = chrono::Utc::now().timestamp();
+        let claims = RefreshClaims {
+            sub: user_id.to_string(),
+            iat: now,
+            exp: now + REFRESH_TOKEN_EXPIRY_SECS,
+            token_type: "refresh".to_string(),
+        };
+        encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(&self.jwt_secret),
+        )
+        .map_err(|e| AppError::Internal(format!("jwt encode refresh: {}", e)))
+    }
+
+    /// Validate a refresh token and return the user_id.
+    /// Rejects access tokens (those without token_type == "refresh").
+    pub fn validate_refresh_token(&self, token: &str) -> Result<String, AppError> {
+        let mut validation = Validation::default();
+        validation.algorithms = vec![jsonwebtoken::Algorithm::HS256];
+
+        let data = decode::<RefreshClaims>(
+            token,
+            &DecodingKey::from_secret(&self.jwt_secret),
+            &validation,
+        )
+        .map_err(|e| AppError::Unauthorized(format!("invalid refresh token: {}", e)))?;
+
+        if data.claims.token_type != "refresh" {
+            return Err(AppError::Unauthorized(
+                "token is not a refresh token".into(),
+            ));
+        }
+
+        Ok(data.claims.sub)
+    }
+
+    /// Validate a refresh token and issue a new access token.
+    pub fn refresh_access_token(&self, refresh_token: &str) -> Result<String, AppError> {
+        let user_id = self.validate_refresh_token(refresh_token)?;
+        self.generate_jwt(&user_id)
     }
 
     pub fn generate_bootstrap_token(&self) -> Result<String, AppError> {
@@ -211,7 +287,8 @@ mod tests {
     fn test_db() -> Database {
         let tmp = tempfile::tempdir().unwrap();
         let db = Database::open(tmp.path().to_str().unwrap(), "").unwrap();
-        db.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;")).unwrap();
+        db.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;"))
+            .unwrap();
         db.run_migrations().unwrap();
         db
     }
@@ -225,6 +302,17 @@ mod tests {
         AuthService {
             db,
             jwt_secret: raw,
+            challenges: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    /// Create an AuthService using derive_jwt_secret with a passphrase.
+    fn test_auth_service_with_passphrase(passphrase: &str) -> AuthService {
+        let db = test_db();
+        let jwt_secret = derive_jwt_secret(passphrase);
+        AuthService {
+            db,
+            jwt_secret,
             challenges: Arc::new(RwLock::new(HashMap::new())),
         }
     }
@@ -400,7 +488,7 @@ mod tests {
     }
 
     #[test]
-    fn test_jwt_contains_correct_expiry() {
+    fn test_jwt_contains_1_hour_expiry() {
         let auth = test_auth_service();
         let token = auth.generate_jwt("user-1").unwrap();
 
@@ -415,9 +503,142 @@ mod tests {
         )
         .unwrap();
 
-        // Expiry should be ~7 days from now
+        // Expiry should be 1 hour from iat
+        let diff = data.claims.exp - data.claims.iat;
+        assert_eq!(diff, 3600);
+    }
+
+    // ── Refresh token tests ─────────────────────────────────────────────
+
+    #[test]
+    fn test_generate_and_validate_refresh_token() {
+        let auth = test_auth_service();
+        let refresh = auth.generate_refresh_token("user-456").unwrap();
+
+        let user_id = auth.validate_refresh_token(&refresh).unwrap();
+        assert_eq!(user_id, "user-456");
+    }
+
+    #[test]
+    fn test_refresh_token_has_7_day_expiry() {
+        let auth = test_auth_service();
+        let refresh = auth.generate_refresh_token("user-1").unwrap();
+
+        let mut validation = jsonwebtoken::Validation::default();
+        validation.insecure_disable_signature_validation();
+        validation.validate_exp = false;
+        let data = jsonwebtoken::decode::<RefreshClaims>(
+            &refresh,
+            &jsonwebtoken::DecodingKey::from_secret(&[]),
+            &validation,
+        )
+        .unwrap();
+
         let diff = data.claims.exp - data.claims.iat;
         assert_eq!(diff, 7 * 24 * 3600);
+        assert_eq!(data.claims.token_type, "refresh");
+    }
+
+    #[test]
+    fn test_refresh_token_cannot_be_used_as_access_token() {
+        let auth = test_auth_service();
+        let refresh = auth.generate_refresh_token("user-1").unwrap();
+
+        let result = auth.validate_jwt(&refresh);
+        assert!(result.is_err());
+        assert!(
+            format!("{:?}", result.unwrap_err()).contains("refresh token cannot be used as access")
+        );
+    }
+
+    #[test]
+    fn test_access_token_cannot_be_used_as_refresh_token() {
+        let auth = test_auth_service();
+        let access = auth.generate_jwt("user-1").unwrap();
+
+        let result = auth.validate_refresh_token(&access);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_refresh_access_token() {
+        let auth = test_auth_service();
+        let refresh = auth.generate_refresh_token("user-789").unwrap();
+
+        let new_access = auth.refresh_access_token(&refresh).unwrap();
+        let user_id = auth.validate_jwt(&new_access).unwrap();
+        assert_eq!(user_id, "user-789");
+    }
+
+    #[test]
+    fn test_refresh_access_token_rejects_access_token() {
+        let auth = test_auth_service();
+        let access = auth.generate_jwt("user-1").unwrap();
+
+        let result = auth.refresh_access_token(&access);
+        assert!(result.is_err());
+    }
+
+    // ── HKDF secret derivation tests ────────────────────────────────────
+
+    #[test]
+    fn test_derive_jwt_secret_with_passphrase_is_deterministic() {
+        let s1 = derive_jwt_secret("my-secret-passphrase");
+        let s2 = derive_jwt_secret("my-secret-passphrase");
+        assert_eq!(s1, s2);
+        assert_eq!(s1.len(), 32);
+    }
+
+    #[test]
+    fn test_derive_jwt_secret_different_passphrases_differ() {
+        let s1 = derive_jwt_secret("passphrase-a");
+        let s2 = derive_jwt_secret("passphrase-b");
+        assert_ne!(s1, s2);
+    }
+
+    #[test]
+    fn test_derive_jwt_secret_empty_passphrase_is_random() {
+        let s1 = derive_jwt_secret("");
+        let s2 = derive_jwt_secret("");
+        // Ephemeral random secrets should differ (with overwhelming probability)
+        assert_ne!(s1, s2);
+        assert_eq!(s1.len(), 32);
+    }
+
+    #[test]
+    fn test_passphrase_derived_secret_produces_valid_tokens() {
+        let auth = test_auth_service_with_passphrase("test-passphrase");
+        let token = auth.generate_jwt("user-1").unwrap();
+        let user_id = auth.validate_jwt(&token).unwrap();
+        assert_eq!(user_id, "user-1");
+    }
+
+    #[test]
+    fn test_same_passphrase_validates_across_instances() {
+        let auth1 = test_auth_service_with_passphrase("shared-secret");
+        let auth2 = test_auth_service_with_passphrase("shared-secret");
+
+        let token = auth1.generate_jwt("user-1").unwrap();
+        let user_id = auth2.validate_jwt(&token).unwrap();
+        assert_eq!(user_id, "user-1");
+    }
+
+    // ── AuthService::new derives JWT secret from passphrase ─────────────
+
+    #[tokio::test]
+    async fn test_auth_service_new_with_passphrase_is_deterministic() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().to_str().unwrap();
+
+        let db1 = Database::open(path, "test-pass").unwrap();
+        db1.run_migrations().unwrap();
+        let auth1 = AuthService::new(db1.clone(), "test-pass");
+        let token = auth1.generate_jwt("test-user").unwrap();
+
+        // Create a new AuthService with the same passphrase - should derive same secret
+        let auth2 = AuthService::new(db1, "test-pass");
+        let user_id = auth2.validate_jwt(&token).unwrap();
+        assert_eq!(user_id, "test-user");
     }
 
     // ── Bootstrap token tests ───────────────────────────────────────────
@@ -483,24 +704,6 @@ mod tests {
         let map = auth.challenges.read().unwrap();
         assert!(!map.contains_key("expired"));
         assert!(map.contains_key("fresh"));
-    }
-
-    // ── AuthService::new persists JWT secret ────────────────────────────
-
-    #[tokio::test]
-    async fn test_auth_service_persists_jwt_secret() {
-        let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().to_str().unwrap();
-
-        let db1 = Database::open(path, "").unwrap();
-        db1.run_migrations().unwrap();
-        let auth1 = AuthService::new(db1.clone());
-        let token = auth1.generate_jwt("test-user").unwrap();
-
-        // Create a new AuthService with the same DB - it should load the same secret
-        let auth2 = AuthService::new(db1);
-        let user_id = auth2.validate_jwt(&token).unwrap();
-        assert_eq!(user_id, "test-user");
     }
 
     // ── AuthService db() accessor ───────────────────────────────────────

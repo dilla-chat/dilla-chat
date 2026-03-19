@@ -95,9 +95,11 @@ pub async fn verify(
     })?;
 
     let token = state.auth.generate_jwt(&user.id)?;
+    let refresh_token = state.auth.generate_refresh_token(&user.id)?;
 
     Ok(Json(json!({
         "token": token,
+        "refresh_token": refresh_token,
         "user": user,
     })))
 }
@@ -236,9 +238,11 @@ pub async fn register(
     };
 
     let token = state.auth.generate_jwt(&user.id)?;
+    let refresh_token = state.auth.generate_refresh_token(&user.id)?;
 
     Ok(Json(json!({
         "token": token,
+        "refresh_token": refresh_token,
         "user": user,
         "team_id": team_id,
     })))
@@ -394,9 +398,11 @@ pub async fn bootstrap(
     };
 
     let token = state.auth.generate_jwt(&user.id)?;
+    let refresh_token = state.auth.generate_refresh_token(&user.id)?;
 
     Ok(Json(json!({
         "token": token,
+        "refresh_token": refresh_token,
         "user": user,
         "team_id": team_id,
     })))
