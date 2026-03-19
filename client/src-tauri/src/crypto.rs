@@ -829,8 +829,7 @@ impl CryptoManager {
             serde_json::to_vec(&serialized).map_err(|e| format!("Serialize error: {e}"))?;
 
         // Generate random salt for key derivation
-        let mut salt = [0u8; 16];
-        OsRng.fill_bytes(&mut salt);
+        let salt = generate_random_salt();
 
         let encrypted = aes_gcm_encrypt(
             &passphrase_to_key(passphrase, &salt)?,
@@ -874,6 +873,13 @@ impl CryptoManager {
             identity_key: Some(identity_key),
         })
     }
+}
+
+/// Generate a cryptographically random 16-byte salt for KDF operations.
+fn generate_random_salt() -> [u8; 16] {
+    let mut salt = [0u8; 16];
+    OsRng.fill_bytes(&mut salt);
+    salt
 }
 
 /// Derive encryption key from passphrase using Argon2id with caller-provided salt.
