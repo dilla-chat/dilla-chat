@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Hashtag, ChatBubble, Group, SoundHigh, Lock, Settings } from 'iconoir-react';
@@ -23,21 +23,18 @@ import { useTeamStore } from '../stores/teamStore';
 import { useAuthStore } from '../stores/authStore';
 import { useDMStore, type DMChannel } from '../stores/dmStore';
 import { useThreadStore } from '../stores/threadStore';
-import { usePresenceStore, type UserPresence } from '../stores/presenceStore';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { useIsMobile } from '../hooks/useMediaQuery';
-import { api, type VoicePeer } from '../services/api';
-import { ws } from '../services/websocket';
-import { initCrypto } from '../services/crypto';
-import { unlockWithPrf } from '../services/keyStore';
-import { fromBase64 } from '../services/cryptoCore';
-import { useVoiceStore } from '../stores/voiceStore';
+import { useTeamSync } from '../hooks/useTeamSync';
+import { useCryptoRestore } from '../hooks/useCryptoRestore';
+import { useIdentityBackup } from '../hooks/useIdentityBackup';
+import { usePresenceEvents } from '../hooks/usePresenceEvents';
 import './AppLayout.css';
 
 export default function AppLayout() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { activeTeamId, activeChannelId, channels, setActiveChannel, setActiveTeam, teams: teamMap } = useTeamStore();
+  const { activeTeamId, activeChannelId, channels, setActiveChannel, teams: teamMap } = useTeamStore();
   const { teams, derivedKey } = useAuthStore();
   const { activeDMId, setActiveDM, dmChannels } = useDMStore();
   const { activeThreadId, threadPanelOpen, threads, setActiveThread, setThreadPanelOpen } = useThreadStore();
@@ -45,7 +42,6 @@ export default function AppLayout() {
   const [mobileTab, setMobileTab] = useState<MobileTab>('chat');
   const [showMembers, setShowMembers] = useState(true);
   const [showDMMembers, setShowDMMembers] = useState(false);
-  const [authChecked, setAuthChecked] = useState(false);
 
   // Redirect to join/setup if no teams
   useEffect(() => {
@@ -54,67 +50,12 @@ export default function AppLayout() {
     }
   }, [teams, navigate]);
 
-  // Restore API connections from persisted teams on mount
-  const apiRestored = useRef(false);
-  const authErrorFired = useRef(false);
-  useEffect(() => {
-    api.setAuthErrorHandler(() => {
-      if (authErrorFired.current) return;
-      authErrorFired.current = true;
-      console.warn('Auth token expired — redirecting to login');
-      navigate('/login');
-    });
-  }, [navigate]);
+  // --- Extracted hooks ---
+  const { authChecked, dataLoaded } = useTeamSync(activeTeamId);
+  useCryptoRestore();
+  useIdentityBackup(activeTeamId, dataLoaded);
+  usePresenceEvents(activeTeamId);
 
-  useEffect(() => {
-    if (apiRestored.current) return;
-    apiRestored.current = true;
-    console.log(`[AppLayout] Restoring API connections for ${teams.size} teams`);
-    teams.forEach((entry, teamId) => {
-      const baseUrl = (entry as { baseUrl?: string }).baseUrl;
-      if (baseUrl) {
-        api.addTeam(teamId, baseUrl);
-        if (entry.token) api.setToken(teamId, entry.token);
-        console.log(`[AppLayout] API restored: ${teamId} → ${baseUrl} (has token: ${!!entry.token})`);
-      }
-    });
-
-    // Validate token is still accepted by the server
-    const firstTeamId = teams.keys().next().value;
-    if (firstTeamId) {
-      api.getTeam(firstTeamId)
-        .then(() => setAuthChecked(true))
-        .catch(() => setAuthChecked(true)); // 401 → authErrorHandler fires redirect
-    } else {
-      setAuthChecked(true);
-    }
-  }, [teams]);
-
-  // Re-initialize CryptoManager on mount when derivedKey was restored from sessionStorage
-  const cryptoRestored = useRef(false);
-  useEffect(() => {
-    if (cryptoRestored.current || !derivedKey) return;
-    cryptoRestored.current = true;
-
-    (async () => {
-      try {
-        const prfKey = fromBase64(derivedKey);
-        const identity = await unlockWithPrf(prfKey);
-        await initCrypto(identity, derivedKey);
-        console.log('[AppLayout] CryptoManager re-initialized from persisted derivedKey');
-      } catch (e) {
-        console.warn('[AppLayout] Failed to re-init crypto:', e);
-      }
-    })();
-  }, [derivedKey]);
-
-  // Auto-select first team if none active
-  useEffect(() => {
-    if (!activeTeamId && teams.size > 0) {
-      const firstTeamId = teams.keys().next().value;
-      if (firstTeamId) setActiveTeam(firstTeamId);
-    }
-  }, [activeTeamId, teams, setActiveTeam]);
   const [createChannelCategory, setCreateChannelCategory] = useState<string | undefined>(undefined);
   const [showCreateChannel, setShowCreateChannel] = useState(false);
   const [viewMode, setViewMode] = useState<'channels' | 'dms'>('channels');
@@ -148,261 +89,6 @@ export default function AppLayout() {
   const handleChannelResize = useCallback((delta: number) => {
     setChannelWidth(prev => Math.min(Math.max(prev + delta, 180), 340));
   }, []);
-
-  const { setTeam, setChannels, setMembers, setRoles } = useTeamStore();
-  const { setPresences, updatePresence, setMyStatus, setMyCustomStatus } = usePresenceStore();
-  const dataLoaded = useRef<Set<string>>(new Set());
-
-  // Helper: normalize members from server snake_case to client camelCase
-  const normalizeMembers = (data: Record<string, unknown>[]) =>
-    data.map((m) => ({
-      id: m.id as string,
-      userId: (m.userId ?? m.user_id) as string,
-      username: m.username as string,
-      displayName: (m.displayName ?? m.display_name ?? '') as string,
-      nickname: (m.nickname ?? '') as string,
-      roles: (m.roles ?? []) as import('../stores/teamStore').Role[],
-      statusType: (m.statusType ?? m.status_type ?? '') as string,
-    }));
-
-  // Helper: apply sync data to stores
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const applySyncData = (teamId: string, data: any) => {
-    if (data.channels) {
-      const channels = (data.channels as Record<string, unknown>[]).map((ch) => ({
-        ...ch,
-        teamId: ch.teamId ?? ch.team_id ?? teamId,
-      })) as import('../stores/teamStore').Channel[];
-      setChannels(teamId, channels);
-    }
-    if (data.team) setTeam(data.team as import('../stores/teamStore').Team);
-    if (data.members) setMembers(teamId, normalizeMembers(data.members as Record<string, unknown>[]));
-    if (data.roles) setRoles(teamId, data.roles as import('../stores/teamStore').Role[]);
-    if (data.presences) {
-      // Presences from sync:init come as a map of userId -> presence objects
-      const presMap: Record<string, UserPresence> = {};
-      const raw = data.presences;
-      if (raw && typeof raw === 'object') {
-        for (const [userId, p] of Object.entries(raw as Record<string, Record<string, unknown>>)) {
-          presMap[userId] = {
-            user_id: userId,
-            status: (p.status ?? p.status_type ?? 'offline') as UserPresence['status'],
-            custom_status: (p.custom_status ?? '') as string,
-            last_active: (p.last_active ?? '') as string,
-          };
-        }
-      }
-      setPresences(teamId, presMap);
-      // Sync own status
-      const myUserId = (teams.get(teamId)?.user as { id?: string } | null)?.id;
-      if (myUserId && presMap[myUserId]) {
-        setMyStatus(presMap[myUserId].status);
-        setMyCustomStatus(presMap[myUserId].custom_status || '');
-      }
-    }
-    if (data.voice_states && typeof data.voice_states === 'object') {
-      useVoiceStore.getState().setVoiceOccupants(data.voice_states as Record<string, VoicePeer[]>);
-    }
-    console.log(`[AppLayout] sync:init applied for team ${teamId}`);
-  };
-
-  // Fallback: load data via REST if WS sync fails
-  const loadDataViaREST = (teamId: string) => {
-    console.log(`[AppLayout] Falling back to REST data load for ${teamId}`);
-    api.getChannels(teamId).then((data) => {
-      const channels = (data as Record<string, unknown>[]).map((ch) => ({
-        ...ch,
-        teamId: ch.teamId ?? ch.team_id ?? teamId,
-      })) as import('../stores/teamStore').Channel[];
-      setChannels(teamId, channels);
-    }).catch((err) => console.error('Failed to fetch channels:', err));
-
-    api.getTeam(teamId).then((data) => {
-      const team = data as import('../stores/teamStore').Team;
-      if (team && team.id) setTeam(team);
-    }).catch((err) => console.error('Failed to fetch team:', err));
-
-    api.getMembers(teamId).then((data) => {
-      setMembers(teamId, normalizeMembers(data as Record<string, unknown>[]));
-    }).catch((err) => console.error('Failed to fetch members:', err));
-
-    api.getRoles(teamId).then((data) => {
-      setRoles(teamId, data as import('../stores/teamStore').Role[]);
-    }).catch((err) => console.error('Failed to fetch roles:', err));
-
-    api.getPresences(teamId).then((data) => {
-      setPresences(teamId, data);
-      const myUserId = (teams.get(teamId)?.user as { id?: string } | null)?.id;
-      if (myUserId && data[myUserId]) {
-        setMyStatus(data[myUserId].status);
-        setMyCustomStatus(data[myUserId].custom_status || '');
-      }
-    }).catch((err) => console.error('Failed to fetch presences:', err));
-  };
-
-  // Handle ws:connected — request sync:init to load all team data
-  useEffect(() => {
-    if (!activeTeamId) return;
-    const teamId = activeTeamId;
-
-    const doSyncInit = () => {
-      console.log(`[AppLayout] WS connected for team ${teamId}, requesting sync:init`);
-      ws.request(teamId, 'sync:init').then((data: unknown) => {
-        dataLoaded.current.add(teamId);
-        applySyncData(teamId, data as Record<string, unknown>);
-      }).catch((err: Error) => {
-        console.warn('[AppLayout] sync:init failed, falling back to REST:', err.message);
-        if (!dataLoaded.current.has(teamId)) {
-          dataLoaded.current.add(teamId);
-          loadDataViaREST(teamId);
-        }
-      });
-    };
-
-    const unsub = ws.on('ws:connected', (payload: { teamId?: string }) => {
-      if (payload?.teamId !== teamId) return;
-      doSyncInit();
-    });
-
-    // If WS is already connected (e.g. after HMR), trigger sync immediately
-    if (ws.isConnected(teamId) && !dataLoaded.current.has(teamId)) {
-      doSyncInit();
-    }
-
-    return () => { unsub(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- WS event handlers intentionally capture latest closures; adding applySyncData/loadDataViaREST would cause reconnection loops
-  }, [activeTeamId]);
-
-  // Connect WebSocket when team becomes active
-  const wsConnected = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    if (!activeTeamId) return;
-    if (wsConnected.current.has(activeTeamId)) return;
-
-    const connInfo = api.getConnectionInfo(activeTeamId);
-    if (!connInfo?.token) return;
-
-    const wsUrl = connInfo.baseUrl
-      .replace(/^http:/, 'ws:')
-      .replace(/^https:/, 'wss:')
-      + '/ws';
-
-    console.log(`[AppLayout] Connecting WebSocket for team ${activeTeamId} → ${wsUrl}`);
-    ws.connect(activeTeamId, wsUrl, connInfo.token);
-    wsConnected.current.add(activeTeamId);
-  }, [activeTeamId]);
-
-  // Upload identity blob once per session for cross-device recovery
-  const blobUploaded = useRef(false);
-  useEffect(() => {
-    if (blobUploaded.current || !activeTeamId || !derivedKey) return;
-    if (!dataLoaded.current.has(activeTeamId)) return;
-    blobUploaded.current = true;
-
-    (async () => {
-      try {
-        const { exportIdentityBlob } = await import('../services/keyStore');
-        const blob = await exportIdentityBlob();
-        if (!blob) return;
-        const allServers: string[] = [];
-        teams.forEach((entry) => {
-          if (entry.baseUrl) allServers.push(entry.baseUrl);
-        });
-        for (const [teamId, entry] of teams) {
-          const { baseUrl, token } = entry;
-          if (!baseUrl || !token) continue;
-          const jwt = api.getConnectionInfo(teamId)?.token || token;
-          try {
-            await fetch(`${baseUrl}/api/v1/identity/blob`, {
-              method: 'PUT',
-              headers: { 'Authorization': `Bearer ${jwt}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ blob, servers: allServers }),
-            });
-            console.log(`[AppLayout] Identity blob uploaded to ${baseUrl}`);
-          } catch (e) {
-            console.warn(`[AppLayout] Blob upload to ${baseUrl} failed:`, e);
-          }
-        }
-      } catch (e) {
-        console.warn('[AppLayout] Blob upload skipped:', e);
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- blob upload runs once per session; teams is read inside the async closure
-  }, [activeTeamId, derivedKey, dataLoaded.current.size]);
-
-  // Subscribe to presence WebSocket events
-  useEffect(() => {
-    const unsubPresence = ws.on('presence:changed', (payload: Record<string, string>) => {
-      const teamId = payload.team_id ?? activeTeamId;
-      if (teamId && payload.user_id) {
-        // Normalize server's status_type → status
-        const normalized: UserPresence = {
-          user_id: payload.user_id,
-          status: (payload.status_type || payload.status || 'offline') as UserPresence['status'],
-          custom_status: payload.status_text ?? payload.custom_status ?? '',
-          last_active: payload.last_active ?? '',
-        };
-        updatePresence(teamId, normalized);
-      }
-    });
-
-    // Global voice presence: track who's in voice channels across the team
-    const unsubVoiceJoin = ws.on('voice:user-joined', (payload: { channel_id: string; user_id: string; username: string; muted?: boolean; deafened?: boolean; screen_sharing?: boolean; webcam_sharing?: boolean }) => {
-      if (payload.channel_id && payload.user_id) {
-        useVoiceStore.getState().addVoiceOccupant(payload.channel_id, {
-          user_id: payload.user_id,
-          username: payload.username,
-          muted: payload.muted ?? false,
-          deafened: payload.deafened ?? false,
-          speaking: false,
-          voiceLevel: 0,
-          screen_sharing: payload.screen_sharing ?? false,
-          webcam_sharing: payload.webcam_sharing ?? false,
-        });
-      }
-    });
-
-    const unsubVoiceLeft = ws.on('voice:user-left', (payload: { channel_id: string; user_id: string }) => {
-      if (payload.channel_id && payload.user_id) {
-        useVoiceStore.getState().removeVoiceOccupant(payload.channel_id, payload.user_id);
-      }
-    });
-
-    // Global voice state updates: keep sidebar occupants in sync
-    const unsubMuteUpdate = ws.on('voice:mute-update', (payload: { channel_id: string; user_id: string; muted: boolean; deafened: boolean }) => {
-      if (payload.channel_id && payload.user_id) {
-        useVoiceStore.getState().updateVoiceOccupant(payload.channel_id, payload.user_id, {
-          muted: payload.muted,
-          deafened: payload.deafened,
-        });
-      }
-    });
-
-    const unsubScreenUpdate = ws.on('voice:screen-update', (payload: { channel_id: string; user_id: string; sharing: boolean }) => {
-      if (payload.channel_id && payload.user_id) {
-        useVoiceStore.getState().updateVoiceOccupant(payload.channel_id, payload.user_id, {
-          screen_sharing: payload.sharing,
-        });
-      }
-    });
-
-    const unsubWebcamUpdate = ws.on('voice:webcam-update', (payload: { channel_id: string; user_id: string; sharing: boolean }) => {
-      if (payload.channel_id && payload.user_id) {
-        useVoiceStore.getState().updateVoiceOccupant(payload.channel_id, payload.user_id, {
-          webcam_sharing: payload.sharing,
-        });
-      }
-    });
-
-    return () => {
-      unsubPresence();
-      unsubVoiceJoin();
-      unsubVoiceLeft();
-      unsubMuteUpdate();
-      unsubScreenUpdate();
-      unsubWebcamUpdate();
-    };
-  }, [activeTeamId, updatePresence]);
 
   // Get current user info from auth store
   const currentTeamEntry = activeTeamId ? teams.get(activeTeamId) : null;
