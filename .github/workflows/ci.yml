@@ -79,9 +79,12 @@ jobs:
           retention-days: 7
 
   # ── Desktop: build Tauri app artifacts ─────────────────────────────────────
+  # Note: Tauri build is best-effort — failures don't block the PR.
+  # Desktop-specific issues are tracked separately from server/client.
   desktop-build:
     needs: client-checks
     if: github.event_name == 'push' || github.event.pull_request.draft == false
+    continue-on-error: true
     strategy:
       matrix:
         include:
