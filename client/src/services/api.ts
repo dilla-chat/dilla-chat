@@ -257,7 +257,7 @@ class ApiService {
   // Team
   async listTeams(baseUrl: string, token: string): Promise<Record<string, unknown>[]> {
     const data = await this.request(baseUrl, '/api/v1/teams', { method: 'GET' }, token);
-    return this.unwrapArray(data, 'teams');
+    return this.unwrapArray(data, 'teams') as Record<string, unknown>[];
   }
 
   async createTeam(baseUrl: string, token: string, name: string, description?: string): Promise<unknown> {

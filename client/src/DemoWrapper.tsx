@@ -43,7 +43,7 @@ export default function DemoWrapper() {
       DEMO_TEAM_ID,
       'demo-token',
       { id: DEMO_CURRENT_USER_ID, username: 'alice', display_name: 'Alice' },
-      MOCK_TEAM,
+      MOCK_TEAM as unknown as Record<string, unknown>,
     );
 
     setTeam(MOCK_TEAM);

@@ -11,7 +11,7 @@ export interface User {
 export interface TeamEntry {
   token: string;
   user: User | null;
-  teamInfo: Record<string, unknown>;
+  teamInfo: Record<string, unknown> | null;
   baseUrl: string;
   serverId?: string;
 }
@@ -39,7 +39,7 @@ interface AuthState {
   setDerivedKey: (key: string) => void;
   setPublicKey: (key: string) => void;
   setCredentialIds: (ids: string[]) => void;
-  addTeam: (teamId: string, token: string, user: User | null, teamInfo: Record<string, unknown>, baseUrl?: string) => void;
+  addTeam: (teamId: string, token: string, user: User | null, teamInfo: Record<string, unknown> | null, baseUrl?: string) => void;
   removeTeam: (teamId: string) => void;
   /** Get or create a server entry by baseUrl */
   getOrCreateServer: (baseUrl: string, username?: string) => string;
@@ -127,7 +127,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   setCredentialIds: (ids: string[]) => set({ credentialIds: ids }),
 
-  addTeam: (teamId: string, token: string, user: User | null, teamInfo: Record<string, unknown>, baseUrl?: string) =>
+  addTeam: (teamId: string, token: string, user: User | null, teamInfo: Record<string, unknown> | null, baseUrl?: string) =>
     set((state) => {
       const teams = new Map(state.teams);
       const servers = new Map(state.servers);
