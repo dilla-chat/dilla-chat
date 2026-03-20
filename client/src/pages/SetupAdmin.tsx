@@ -60,8 +60,10 @@ export default function SetupAdmin() {
     if (!serverAddress || !bootstrapToken || !username) return;
 
     // Get public key from store or IndexedDB
-    let pubKey = publicKey;
-    if (!pubKey) {
+    let pubKey: string;
+    if (publicKey) {
+      pubKey = publicKey;
+    } else {
       const stored = await getStoredPublicKey();
       if (!stored) {
         setError('No identity found. Please create an identity first.');

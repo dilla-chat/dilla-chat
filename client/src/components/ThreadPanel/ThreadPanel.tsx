@@ -118,14 +118,18 @@ export default function ThreadPanel({ thread, onClose }: Props) {
           raw.map(async (msg) => {
             const cached = await getCachedMessage(msg.id);
             if (cached !== null) return { ...serverToMessage(msg), content: cached };
-            let content = msg.content;
+            let content: string;
             if (derivedKey) {
               try {
                 content = await cryptoService.decryptMessage(
                   msg.author_id, msg.content, false, thread.channel_id, derivedKey,
                 );
                 await cacheMessage(msg.id, thread.channel_id, content);
-              } catch { /* use raw */ }
+              } catch {
+                content = msg.content;
+              }
+            } else {
+              content = msg.content;
             }
             return { ...serverToMessage(msg), content };
           }),
@@ -147,14 +151,20 @@ export default function ThreadPanel({ thread, onClose }: Props) {
     const unsubNew = ws.on('thread:message:new', async (payload: ServerMessage) => {
       if (payload.thread_id !== thread.id) return;
       const cached = await getCachedMessage(payload.id);
-      let content = cached ?? payload.content;
-      if (cached === null && derivedKey) {
+      let content: string;
+      if (cached !== null) {
+        content = cached;
+      } else if (derivedKey) {
         try {
           content = await cryptoService.decryptMessage(
             payload.author_id, payload.content, false, thread.channel_id, derivedKey,
           );
           await cacheMessage(payload.id, thread.channel_id, content);
-        } catch { /* use raw content */ }
+        } catch {
+          content = payload.content;
+        }
+      } else {
+        content = payload.content;
       }
       addThreadMessage(thread.id, { ...serverToMessage(payload), content });
     });
@@ -162,14 +172,18 @@ export default function ThreadPanel({ thread, onClose }: Props) {
     const unsubEdit = ws.on('thread:message:updated', async (payload: ServerMessage) => {
       if (payload.thread_id !== thread.id) return;
       await deleteCachedMessage(payload.id);
-      let content = payload.content;
+      let content: string;
       if (derivedKey) {
         try {
           content = await cryptoService.decryptMessage(
             payload.author_id, payload.content, false, thread.channel_id, derivedKey,
           );
           await cacheMessage(payload.id, thread.channel_id, content);
-        } catch { /* use raw content */ }
+        } catch {
+          content = payload.content;
+        }
+      } else {
+        content = payload.content;
       }
       updateThreadMessage(thread.id, { ...serverToMessage(payload), content });
     });
@@ -245,13 +259,17 @@ export default function ThreadPanel({ thread, onClose }: Props) {
   const handleSend = useCallback(
     async (content: string) => {
       if (!activeTeamId) return;
-      let encrypted = content;
+      let encrypted: string;
       if (derivedKey) {
         try {
           encrypted = await cryptoService.encryptMessage(
             thread.channel_id, content, false, thread.channel_id, derivedKey,
           );
-        } catch { /* fall through with plaintext */ }
+        } catch {
+          encrypted = content;
+        }
+      } else {
+        encrypted = content;
       }
       ws.sendThreadMessage(activeTeamId, thread.id, encrypted);
     },
@@ -261,13 +279,17 @@ export default function ThreadPanel({ thread, onClose }: Props) {
   const handleEdit = useCallback(
     async (messageId: string, content: string) => {
       if (!activeTeamId) return;
-      let encrypted = content;
+      let encrypted: string;
       if (derivedKey) {
         try {
           encrypted = await cryptoService.encryptMessage(
             thread.channel_id, content, false, thread.channel_id, derivedKey,
           );
-        } catch { /* fall through */ }
+        } catch {
+          encrypted = content;
+        }
+      } else {
+        encrypted = content;
       }
       ws.editThreadMessage(activeTeamId, thread.id, messageId, encrypted);
       setEditingMessage(null);

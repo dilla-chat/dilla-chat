@@ -33,7 +33,7 @@ async function getRpConfig(): Promise<{ rpId: string; rpName: string }> {
 }
 
 /** Fetch RP config from a specific server URL */
-export async function getRpConfigFromServer(serverUrl: string): Promise<{ rpId: string; rpName: string }> {
+async function getRpConfigFromServer(serverUrl: string): Promise<{ rpId: string; rpName: string }> {
   try {
     const resp = await fetch(`${serverUrl}/api/v1/config`, { signal: AbortSignal.timeout(5000) });
     if (resp.ok) {
@@ -57,7 +57,7 @@ export interface PasskeyRegistrationResult {
   prfSupported: boolean;
 }
 
-export interface PasskeyAuthResult {
+interface PasskeyAuthResult {
   prfOutput: ArrayBuffer | null; // 32-byte PRF-derived secret, null if PRF unavailable
 }
 

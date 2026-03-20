@@ -19,11 +19,8 @@ class NotificationService {
         const mod = '@tauri-apps/api/notification';
         const { isPermissionGranted, requestPermission, sendNotification } =
           await import(/* @vite-ignore */ mod);
-        let permitted = await isPermissionGranted();
-        if (!permitted) {
-          const result = await requestPermission();
-          permitted = result === 'granted';
-        }
+        const permitted = await isPermissionGranted()
+          || (await requestPermission()) === 'granted';
         if (permitted) {
           sendNotification({ title, body, icon: options?.icon });
           return;

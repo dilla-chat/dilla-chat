@@ -161,11 +161,9 @@ export default function Login() {
       setPublicKey(pubKeyB64);
       await refreshServerTokens(pubKeyB64);
       if (cancelRef.cancelled) return;
-      let hasTeams = useAuthStore.getState().teams.size > 0;
-      if (!hasTeams) {
-        hasTeams = await tryReconnectToCurrentServer(pubKeyB64);
-        if (cancelRef.cancelled) return;
-      }
+      const hasTeams = useAuthStore.getState().teams.size > 0
+        || await tryReconnectToCurrentServer(pubKeyB64);
+      if (cancelRef.cancelled) return;
       navigate(hasTeams ? '/app' : '/join');
     } catch (e) {
       if (cancelRef.cancelled) return;
@@ -203,10 +201,8 @@ export default function Login() {
       setDerivedKey(recoveryKeyB64);
       setPublicKey(pubKeyB64);
       await refreshServerTokens(pubKeyB64);
-      let hasTeams = useAuthStore.getState().teams.size > 0;
-      if (!hasTeams) {
-        hasTeams = await tryReconnectToCurrentServer(pubKeyB64);
-      }
+      const hasTeams = useAuthStore.getState().teams.size > 0
+        || await tryReconnectToCurrentServer(pubKeyB64);
       navigate(hasTeams ? '/app' : '/join');
     } catch {
       setError(t('login.invalidRecoveryKey'));
@@ -240,10 +236,8 @@ export default function Login() {
       setDerivedKey(passphraseKeyB64);
       setPublicKey(pubKeyB64);
       await refreshServerTokens(pubKeyB64);
-      let hasTeams = useAuthStore.getState().teams.size > 0;
-      if (!hasTeams) {
-        hasTeams = await tryReconnectToCurrentServer(pubKeyB64);
-      }
+      const hasTeams = useAuthStore.getState().teams.size > 0
+        || await tryReconnectToCurrentServer(pubKeyB64);
       navigate(hasTeams ? '/app' : '/join');
     } catch {
       setError(t('login.wrongPassphrase'));

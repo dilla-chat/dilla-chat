@@ -194,7 +194,7 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
     set((state) => {
       const newDeafened = !state.deafened;
       // Deafen also mutes mic
-      return { deafened: newDeafened, muted: newDeafened ? true : state.muted };
+      return { deafened: newDeafened, muted: newDeafened || state.muted };
     });
   },
 

@@ -85,13 +85,17 @@ async function tryEncrypt(
 }
 
 function serverToMessage(msg: ServerMessage, decryptedContent: string, teamMembers?: Member[]): Message {
-  let username = msg.username;
-  if (!username && teamMembers) {
+  let username: string;
+  if (msg.username) {
+    username = msg.username;
+  } else if (teamMembers) {
     const member = teamMembers.find((m) =>
       (m.userId || (m as unknown as Record<string, string>).user_id) === msg.author_id ||
       m.id === msg.author_id
     );
     username = member?.username ?? member?.displayName ?? (member as unknown as Record<string, string>)?.display_name ?? 'Unknown';
+  } else {
+    username = 'Unknown';
   }
   return {
     id: msg.id,

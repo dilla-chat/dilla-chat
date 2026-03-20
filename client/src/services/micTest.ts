@@ -60,7 +60,7 @@ export async function startMicTest(options: MicTestOptions): Promise<MicTestSess
 
   const timeDomainData = new Float32Array(analyser.fftSize);
 
-  let animFrameId = 0;
+  let animFrameId: number;
   const update = () => {
     analyser.getFloatTimeDomainData(timeDomainData);
     let sum = 0;
