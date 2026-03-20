@@ -3,7 +3,7 @@ name: Deploy website
 on:
   push:
     branches: [main]
-    paths: ['docs/**', 'branding/**']
+    paths: ['docs/**', 'branding/**', 'downloads/**']
 
 permissions:
   pages: write
