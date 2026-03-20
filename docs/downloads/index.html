@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Downloads — Dilla</title>
+  <meta name="description" content="Download Dilla server binaries, desktop apps, and Docker images.">
+  <link rel="icon" href="../brand/icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=JetBrains+Mono:wght@400&family=DM+Sans:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #121c26;
+      --bg-secondary: #0c1218;
+      --bg-floating: #1a2a38;
+      --text-normal: #e8edf2;
+      --text-secondary: #8fa3b8;
+      --text-muted: #7a8e9e;
+      --text-link: #3ba8ba;
+      --brand-500: #2e8b9a;
+      --bg-accent: #e8b84b;
+      --divider: rgba(143, 163, 184, 0.12);
+      --font-display: 'DM Serif Display', Georgia, serif;
+      --font-ui: 'DM Sans', system-ui, sans-serif;
+      --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: var(--bg-primary);
+      color: var(--text-normal);
+      font-family: var(--font-ui);
+      line-height: 1.6;
+    }
+    a { color: var(--text-link); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .header {
+      padding: 2rem 2rem 1rem;
+      border-bottom: 1px solid var(--divider);
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    .header img { height: 32px; }
+    .header h1 { font-family: var(--font-display); font-size: 1.5rem; font-weight: 400; }
+    .header nav { margin-left: auto; display: flex; gap: 1.5rem; }
+    .header nav a { color: var(--text-secondary); font-size: 0.9rem; }
+
+    .container { max-width: 900px; margin: 0 auto; padding: 2rem; }
+
+    .section-title {
+      font-family: var(--font-display);
+      font-size: 1.3rem;
+      font-weight: 400;
+      margin: 2.5rem 0 1rem;
+      color: var(--text-normal);
+    }
+    .section-desc {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      margin-bottom: 1rem;
+    }
+
+    .release-card {
+      background: var(--bg-floating);
+      border: 1px solid var(--divider);
+      border-radius: 8px;
+      padding: 1.25rem;
+      margin-bottom: 1rem;
+    }
+    .release-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+    .release-tag {
+      font-family: var(--font-mono);
+      font-size: 1rem;
+      color: var(--bg-accent);
+      font-weight: 600;
+    }
+    .release-date {
+      color: var(--text-muted);
+      font-size: 0.8rem;
+    }
+    .release-label {
+      font-size: 0.7rem;
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .release-label.latest {
+      background: var(--brand-500);
+      color: white;
+    }
+    .release-label.prerelease {
+      background: var(--bg-accent);
+      color: #121c26;
+    }
+    .assets-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 0.5rem;
+    }
+    .asset-link {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 0.75rem;
+      background: var(--bg-secondary);
+      border-radius: 6px;
+      color: var(--text-normal);
+      font-size: 0.85rem;
+      transition: background 0.15s;
+    }
+    .asset-link:hover { background: var(--bg-primary); text-decoration: none; }
+    .asset-icon { font-size: 1.1rem; }
+    .asset-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .asset-size { color: var(--text-muted); font-size: 0.75rem; font-family: var(--font-mono); }
+
+    .pr-card {
+      background: var(--bg-floating);
+      border: 1px solid var(--divider);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    .pr-number { font-family: var(--font-mono); color: var(--text-muted); font-size: 0.85rem; min-width: 50px; }
+    .pr-title { flex: 1; font-size: 0.9rem; }
+    .pr-artifacts { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .pr-artifact-btn {
+      font-size: 0.75rem;
+      padding: 0.25rem 0.6rem;
+      background: var(--bg-secondary);
+      border-radius: 4px;
+      color: var(--text-link);
+    }
+    .pr-artifact-btn:hover { text-decoration: none; background: var(--bg-primary); }
+
+    .docker-section code {
+      font-family: var(--font-mono);
+      background: var(--bg-secondary);
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.85rem;
+    }
+
+    .loading { color: var(--text-muted); font-style: italic; }
+    .empty { color: var(--text-muted); }
+
+    .docker-commands {
+      background: var(--bg-secondary);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      line-height: 2;
+      overflow-x: auto;
+    }
+    .docker-commands .comment { color: var(--text-muted); }
+    .docker-commands .cmd { color: var(--text-normal); }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <a href="/"><img src="../brand/logo.svg" alt="Dilla"></a>
+    <h1>Downloads</h1>
+    <nav>
+      <a href="/">Home</a>
+      <a href="https://github.com/dilla-chat/dilla-chat">GitHub</a>
+    </nav>
+  </div>
+
+  <div class="container">
+    <!-- Docker -->
+    <h2 class="section-title">Docker</h2>
+    <p class="section-desc">The fastest way to run Dilla. Images are published to GitHub Container Registry.</p>
+    <div class="docker-commands">
+      <div class="comment"># Latest stable release</div>
+      <div class="cmd">docker pull ghcr.io/dilla-chat/dilla-chat:latest</div>
+      <br>
+      <div class="comment"># Latest dev build (from main branch)</div>
+      <div class="cmd">docker pull ghcr.io/dilla-chat/dilla-chat:dev</div>
+      <br>
+      <div class="comment"># Run</div>
+      <div class="cmd">docker run -p 8080:8080 -v dilla-data:/app/data ghcr.io/dilla-chat/dilla-chat:latest</div>
+    </div>
+
+    <!-- Releases -->
+    <h2 class="section-title">Releases</h2>
+    <p class="section-desc">Stable releases with server binaries, desktop apps, and checksums.</p>
+    <div id="releases"><p class="loading">Loading releases...</p></div>
+
+    <!-- PR Builds -->
+    <h2 class="section-title">PR Builds</h2>
+    <p class="section-desc">Pre-release artifacts from pull requests. Download from the Actions tab for each PR.</p>
+    <div id="pr-builds"><p class="loading">Loading recent PRs...</p></div>
+  </div>
+
+  <script>
+    const REPO = 'dilla-chat/dilla-chat';
+    const API = 'https://api.github.com';
+
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    function formatDate(iso) {
+      return new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    }
+
+    function assetIcon(name) {
+      if (name.endsWith('.dmg')) return '🍎';
+      if (name.endsWith('.AppImage') || name.endsWith('.deb')) return '🐧';
+      if (name.endsWith('.msi') || name.endsWith('.exe')) return '🪟';
+      if (name.includes('linux')) return '🐧';
+      if (name.includes('darwin') || name.includes('macos')) return '🍎';
+      if (name.includes('windows')) return '🪟';
+      if (name.endsWith('.txt')) return '📋';
+      return '📦';
+    }
+
+    async function loadReleases() {
+      const el = document.getElementById('releases');
+      try {
+        const res = await fetch(`${API}/repos/${REPO}/releases?per_page=10`);
+        const releases = await res.json();
+        if (!releases.length) {
+          el.innerHTML = '<p class="empty">No releases yet. Check back after the first git tag (v*).</p>';
+          return;
+        }
+        el.innerHTML = releases.map((r, i) => `
+          <div class="release-card">
+            <div class="release-header">
+              <span class="release-tag">${r.tag_name}</span>
+              ${i === 0 ? '<span class="release-label latest">Latest</span>' : ''}
+              ${r.prerelease ? '<span class="release-label prerelease">Pre-release</span>' : ''}
+              <span class="release-date">${formatDate(r.published_at)}</span>
+            </div>
+            <div class="assets-grid">
+              ${r.assets.map(a => `
+                <a class="asset-link" href="${a.browser_download_url}">
+                  <span class="asset-icon">${assetIcon(a.name)}</span>
+                  <span class="asset-name">${a.name}</span>
+                  <span class="asset-size">${formatSize(a.size)}</span>
+                </a>
+              `).join('')}
+            </div>
+          </div>
+        `).join('');
+      } catch (e) {
+        el.innerHTML = '<p class="empty">Failed to load releases. <a href="https://github.com/' + REPO + '/releases">View on GitHub</a></p>';
+      }
+    }
+
+    async function loadPRBuilds() {
+      const el = document.getElementById('pr-builds');
+      try {
+        const res = await fetch(`${API}/repos/${REPO}/pulls?state=all&sort=updated&direction=desc&per_page=15`);
+        const prs = await res.json();
+        // Filter to PRs that have CI runs (merged or open)
+        const recent = prs.filter(pr => pr.state === 'open' || pr.merged_at).slice(0, 10);
+        if (!recent.length) {
+          el.innerHTML = '<p class="empty">No recent PRs with builds.</p>';
+          return;
+        }
+        el.innerHTML = recent.map(pr => `
+          <div class="pr-card">
+            <span class="pr-number">#${pr.number}</span>
+            <span class="pr-title"><a href="${pr.html_url}">${pr.title}</a></span>
+            <div class="pr-artifacts">
+              <a class="pr-artifact-btn" href="https://github.com/${REPO}/actions?query=branch%3A${encodeURIComponent(pr.head.ref)}">Artifacts →</a>
+            </div>
+          </div>
+        `).join('');
+      } catch (e) {
+        el.innerHTML = '<p class="empty">Failed to load PRs. <a href="https://github.com/' + REPO + '/pulls">View on GitHub</a></p>';
+      }
+    }
+
+    loadReleases();
+    loadPRBuilds();
+  </script>
+</body>
+</html>

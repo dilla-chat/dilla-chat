@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Assign issue to Claude Code agent
-        uses: actions/github-script@v8
+        uses: actions/github-script@v7
         with:
           script: |
             const issue_number = context.issue.number;
