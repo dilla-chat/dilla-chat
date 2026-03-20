@@ -23,8 +23,8 @@ jobs:
       - name: Install dependencies
         run: cd client && npm ci
 
-      - name: Test client
-        run: cd client && npm test
+      - name: Test client with coverage
+        run: cd client && npx vitest run --coverage
 
       - name: Lint client
         run: cd client && npm run lint
@@ -38,6 +38,14 @@ jobs:
           name: client-dist
           path: client/dist/
           retention-days: 7
+
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.javascript.lcov.reportPaths=client/coverage/lcov.info
 
   # ── Server: test, build, upload artifact ───────────────────────────────────
   server-checks:
