@@ -49,7 +49,7 @@ fn derive_jwt_secret(db_passphrase: &str) -> Vec<u8> {
     if db_passphrase.is_empty() {
         // Insecure mode: ephemeral random secret (lost on restart)
         let mut raw = vec![0u8; 32];
-        rand::thread_rng().fill_bytes(&mut raw);
+        rand::rng().fill_bytes(&mut raw);
         return raw;
     }
     // Derive from passphrase using HKDF-SHA256
@@ -92,10 +92,10 @@ impl AuthService {
 
     pub fn generate_challenge(&self) -> Result<(Vec<u8>, String), AppError> {
         let mut nonce = vec![0u8; 32];
-        rand::thread_rng().fill_bytes(&mut nonce);
+        rand::rng().fill_bytes(&mut nonce);
 
         let mut id_bytes = vec![0u8; 16];
-        rand::thread_rng().fill_bytes(&mut id_bytes);
+        rand::rng().fill_bytes(&mut id_bytes);
         let challenge_id = hex::encode(&id_bytes);
 
         self.challenges.write().unwrap().insert(
@@ -234,7 +234,7 @@ impl AuthService {
 
     pub fn generate_bootstrap_token(&self) -> Result<String, AppError> {
         let mut bytes = vec![0u8; 32];
-        rand::thread_rng().fill_bytes(&mut bytes);
+        rand::rng().fill_bytes(&mut bytes);
         let token = hex::encode(&bytes);
         self.db
             .with_conn(|conn| db::create_bootstrap_token(conn, &token))
@@ -244,7 +244,7 @@ impl AuthService {
 
     pub fn generate_invite_token(&self) -> String {
         let mut bytes = vec![0u8; 16];
-        rand::thread_rng().fill_bytes(&mut bytes);
+        rand::rng().fill_bytes(&mut bytes);
         hex::encode(&bytes)
     }
 
@@ -298,7 +298,7 @@ mod tests {
     fn test_auth_service() -> AuthService {
         let db = test_db();
         let mut raw = vec![0u8; 32];
-        rand::thread_rng().fill_bytes(&mut raw);
+        rand::rng().fill_bytes(&mut raw);
         AuthService {
             db,
             jwt_secret: raw,
@@ -346,7 +346,11 @@ mod tests {
         let (nonce, challenge_id) = auth.generate_challenge().unwrap();
 
         // Generate a keypair and sign the nonce
-        let signing_key = SigningKey::generate(&mut rand::thread_rng());
+        let signing_key = {
+                let mut key_bytes = [0u8; 32];
+                rand::rng().fill_bytes(&mut key_bytes);
+                SigningKey::from_bytes(&key_bytes)
+            };
         let verifying_key = signing_key.verifying_key();
         let signature = signing_key.sign(&nonce);
 
@@ -365,7 +369,11 @@ mod tests {
         let auth = test_auth_service();
         let (_nonce, challenge_id) = auth.generate_challenge().unwrap();
 
-        let signing_key = SigningKey::generate(&mut rand::thread_rng());
+        let signing_key = {
+                let mut key_bytes = [0u8; 32];
+                rand::rng().fill_bytes(&mut key_bytes);
+                SigningKey::from_bytes(&key_bytes)
+            };
         let verifying_key = signing_key.verifying_key();
         // Sign wrong data
         let wrong_sig = signing_key.sign(b"wrong data");
@@ -384,7 +392,11 @@ mod tests {
     fn test_verify_challenge_nonexistent_id() {
         let auth = test_auth_service();
 
-        let signing_key = SigningKey::generate(&mut rand::thread_rng());
+        let signing_key = {
+                let mut key_bytes = [0u8; 32];
+                rand::rng().fill_bytes(&mut key_bytes);
+                SigningKey::from_bytes(&key_bytes)
+            };
         let verifying_key = signing_key.verifying_key();
         let sig = signing_key.sign(b"data");
 
@@ -401,7 +413,11 @@ mod tests {
         let auth = test_auth_service();
         let (nonce, challenge_id) = auth.generate_challenge().unwrap();
 
-        let signing_key = SigningKey::generate(&mut rand::thread_rng());
+        let signing_key = {
+                let mut key_bytes = [0u8; 32];
+                rand::rng().fill_bytes(&mut key_bytes);
+                SigningKey::from_bytes(&key_bytes)
+            };
         let verifying_key = signing_key.verifying_key();
         let signature = signing_key.sign(&nonce);
 
@@ -493,15 +509,7 @@ mod tests {
         let token = auth.generate_jwt("user-1").unwrap();
 
         // Decode without validation to inspect claims
-        let mut validation = jsonwebtoken::Validation::default();
-        validation.insecure_disable_signature_validation();
-        validation.validate_exp = false;
-        let data = jsonwebtoken::decode::<Claims>(
-            &token,
-            &jsonwebtoken::DecodingKey::from_secret(&[]),
-            &validation,
-        )
-        .unwrap();
+        let data = jsonwebtoken::dangerous::insecure_decode::<Claims>(&token).unwrap();
 
         // Expiry should be 1 hour from iat
         let diff = data.claims.exp - data.claims.iat;
@@ -524,15 +532,7 @@ mod tests {
         let auth = test_auth_service();
         let refresh = auth.generate_refresh_token("user-1").unwrap();
 
-        let mut validation = jsonwebtoken::Validation::default();
-        validation.insecure_disable_signature_validation();
-        validation.validate_exp = false;
-        let data = jsonwebtoken::decode::<RefreshClaims>(
-            &refresh,
-            &jsonwebtoken::DecodingKey::from_secret(&[]),
-            &validation,
-        )
-        .unwrap();
+        let data = jsonwebtoken::dangerous::insecure_decode::<RefreshClaims>(&refresh).unwrap();
 
         let diff = data.claims.exp - data.claims.iat;
         assert_eq!(diff, 7 * 24 * 3600);

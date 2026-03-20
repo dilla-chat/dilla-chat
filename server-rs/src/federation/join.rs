@@ -51,7 +51,7 @@ impl JoinManager {
         let secret = if join_secret.is_empty() {
             // Generate a random 32-byte secret.
             let mut bytes = vec![0u8; 32];
-            rand::thread_rng().fill_bytes(&mut bytes);
+            rand::rng().fill_bytes(&mut bytes);
             bytes
         } else {
             join_secret.as_bytes().to_vec()
