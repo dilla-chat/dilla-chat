@@ -36,7 +36,6 @@ function playTone(frequency: number, duration: number, type: OscillatorType = 's
 export function playJoinSound() {
   if (!useUserSettingsStore.getState().soundNotifications) return;
   try {
-    getAudioContext();
     playTone(440, 0.12, 'sine', 0.12);
     setTimeout(() => {
       playTone(554, 0.15, 'sine', 0.12);
@@ -50,7 +49,6 @@ export function playJoinSound() {
 export function playLeaveSound() {
   if (!useUserSettingsStore.getState().soundNotifications) return;
   try {
-    getAudioContext();
     playTone(440, 0.12, 'sine', 0.1);
     setTimeout(() => {
       playTone(330, 0.18, 'sine', 0.1);

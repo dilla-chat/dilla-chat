@@ -49,7 +49,7 @@ export default function Login() {
   const [loginPassphrase, setLoginPassphrase] = useState('');
 
   // Delegate to extracted service functions (fully unit-tested in authReconnect.test.ts)
-  async function refreshServerTokens(pubKey: string, _derivedKeyB64: string) {
+  async function refreshServerTokens(pubKey: string) {
     await doRefreshServerTokens(teams, pubKey);
   }
 
@@ -159,7 +159,7 @@ export default function Login() {
 
       setDerivedKey(derivedKeyB64);
       setPublicKey(pubKeyB64);
-      await refreshServerTokens(pubKeyB64, derivedKeyB64);
+      await refreshServerTokens(pubKeyB64);
       if (cancelRef.cancelled) return;
       let hasTeams = useAuthStore.getState().teams.size > 0;
       if (!hasTeams) {
@@ -171,10 +171,8 @@ export default function Login() {
       if (cancelRef.cancelled) return;
       console.error('[Login] Passkey unlock failed:', e);
       const errMsg = String(e);
-      if (errMsg.includes('No passkeys found') || errMsg.includes('cancelled')) {
-        setError(errMsg);
-      } else {
-        setError(errMsg);
+      setError(errMsg);
+      if (!errMsg.includes('No passkeys found') && !errMsg.includes('cancelled')) {
         setMode('recovery');
       }
     } finally {
@@ -204,7 +202,7 @@ export default function Login() {
 
       setDerivedKey(recoveryKeyB64);
       setPublicKey(pubKeyB64);
-      await refreshServerTokens(pubKeyB64, recoveryKeyB64);
+      await refreshServerTokens(pubKeyB64);
       let hasTeams = useAuthStore.getState().teams.size > 0;
       if (!hasTeams) {
         hasTeams = await tryReconnectToCurrentServer(pubKeyB64);
@@ -241,7 +239,7 @@ export default function Login() {
       const pubKeyB64 = btoa(String.fromCharCode(...identity.publicKeyBytes));
       setDerivedKey(passphraseKeyB64);
       setPublicKey(pubKeyB64);
-      await refreshServerTokens(pubKeyB64, passphraseKeyB64);
+      await refreshServerTokens(pubKeyB64);
       let hasTeams = useAuthStore.getState().teams.size > 0;
       if (!hasTeams) {
         hasTeams = await tryReconnectToCurrentServer(pubKeyB64);

@@ -279,7 +279,9 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
       if (!existing) return s;
       const filtered = existing.filter((p) => p.user_id !== userId);
       if (filtered.length === 0) {
-        const { [channelId]: _, ...rest } = s.voiceOccupants;
+        const rest = Object.fromEntries(
+          Object.entries(s.voiceOccupants).filter(([key]) => key !== channelId),
+        );
         return { voiceOccupants: rest };
       }
       return { voiceOccupants: { ...s.voiceOccupants, [channelId]: filtered } };

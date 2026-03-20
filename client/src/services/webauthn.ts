@@ -62,14 +62,6 @@ export interface PasskeyAuthResult {
 }
 
 /**
- * Check if the current environment supports WebAuthn with PRF extension.
- * This is an optimistic check — actual PRF support is verified during registration.
- */
-export async function isPRFSupported(): Promise<boolean> {
-  return !!window.PublicKeyCredential;
-}
-
-/**
  * Build the PRF extension input using both the app salt and a user-specific salt.
  */
 function buildPRFExtension(userSalt: Uint8Array): Record<string, unknown> {
@@ -230,32 +222,6 @@ export function prfOutputToBase64(prfOutput: ArrayBuffer): string {
     binary += String.fromCharCode(bytes[i]);
   }
   return btoa(binary);
-}
-
-/**
- * Encode a recovery key (32 bytes) to a human-readable base32 string.
- * Uses Crockford's base32 for readability (no I/L/O confusion).
- */
-export function encodeRecoveryKey(key: Uint8Array): string {
-  const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
-  let bits = 0;
-  let value = 0;
-  let result = '';
-
-  for (let i = 0; i < key.length; i++) {
-    value = (value << 8) | key[i];
-    bits += 8;
-    while (bits >= 5) {
-      result += ALPHABET[(value >>> (bits - 5)) & 31];
-      bits -= 5;
-    }
-  }
-  if (bits > 0) {
-    result += ALPHABET[(value << (5 - bits)) & 31];
-  }
-
-  // Group into 4-char blocks for readability
-  return result.match(/.{1,4}/g)?.join('-') ?? result;
 }
 
 /**

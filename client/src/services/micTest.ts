@@ -72,7 +72,7 @@ export async function startMicTest(options: MicTestOptions): Promise<MicTestSess
     options.onLevelUpdate(scaled);
     animFrameId = requestAnimationFrame(update);
   };
-  update();
+  animFrameId = requestAnimationFrame(update);
 
   return { stream, audioContext, analyser, gainNode, animFrameId, noiseSuppression, timeDomainData };
 }

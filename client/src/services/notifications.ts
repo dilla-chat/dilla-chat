@@ -25,12 +25,12 @@ class NotificationService {
           permitted = result === 'granted';
         }
         if (permitted) {
-        sendNotification({ title, body, icon: options?.icon });
-        return;
+          sendNotification({ title, body, icon: options?.icon });
+          return;
+        }
+      } catch {
+        // Tauri not available, fall through to browser API
       }
-    } catch {
-      // Tauri not available, fall through to browser API
-    }
     }
 
     // Browser Notification API fallback
