@@ -50,7 +50,7 @@ pub struct LoginResult {
 }
 
 fn generate_nonce() -> String {
-    let bytes: [u8; 32] = rand::thread_rng().gen();
+    let bytes: [u8; 32] = rand::rng().gen();
     base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, bytes)
 }
 

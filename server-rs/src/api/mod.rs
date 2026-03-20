@@ -318,6 +318,7 @@ mod tests {
     use crate::db::{self, Database};
     use crate::presence::PresenceManager;
     use ed25519_dalek::{Signer, SigningKey};
+    use rand::RngCore;
     use base64::Engine;
     use tower::ServiceExt;
 
@@ -598,7 +599,11 @@ mod tests {
         let (state, _tmp) = test_app_state();
         let app = test_router(state);
 
-        let signing_key = SigningKey::generate(&mut rand::thread_rng());
+        let signing_key = {
+                let mut key_bytes = [0u8; 32];
+                rand::rng().fill_bytes(&mut key_bytes);
+                SigningKey::from_bytes(&key_bytes)
+            };
         let pk = signing_key.verifying_key();
         let pk_b64 = base64::engine::general_purpose::STANDARD.encode(pk.as_bytes());
 
@@ -675,7 +680,11 @@ mod tests {
         let auth = state.auth.clone();
         let app = test_router(state);
 
-        let signing_key = SigningKey::generate(&mut rand::thread_rng());
+        let signing_key = {
+                let mut key_bytes = [0u8; 32];
+                rand::rng().fill_bytes(&mut key_bytes);
+                SigningKey::from_bytes(&key_bytes)
+            };
         let pk = signing_key.verifying_key();
         let pk_b64 = base64::engine::general_purpose::STANDARD.encode(pk.as_bytes());
 
@@ -711,7 +720,11 @@ mod tests {
         let auth = state.auth.clone();
         let app = test_router(state.clone());
 
-        let signing_key = SigningKey::generate(&mut rand::thread_rng());
+        let signing_key = {
+                let mut key_bytes = [0u8; 32];
+                rand::rng().fill_bytes(&mut key_bytes);
+                SigningKey::from_bytes(&key_bytes)
+            };
         let pk = signing_key.verifying_key();
         let pk_b64 = base64::engine::general_purpose::STANDARD.encode(pk.as_bytes());
 
@@ -757,7 +770,11 @@ mod tests {
         let auth = state.auth.clone();
         let app = test_router(state);
 
-        let signing_key = SigningKey::generate(&mut rand::thread_rng());
+        let signing_key = {
+                let mut key_bytes = [0u8; 32];
+                rand::rng().fill_bytes(&mut key_bytes);
+                SigningKey::from_bytes(&key_bytes)
+            };
         let pk = signing_key.verifying_key();
         let pk_b64 = base64::engine::general_purpose::STANDARD.encode(pk.as_bytes());
 

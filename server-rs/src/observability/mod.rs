@@ -21,7 +21,7 @@ use opentelemetry::{
 };
 use opentelemetry_sdk::{
     metrics::{PeriodicReader, SdkMeterProvider},
-    trace::TracerProvider,
+    trace::SdkTracerProvider,
     Resource,
 };
 use std::sync::Arc;
@@ -55,7 +55,7 @@ pub fn init_logging(config: &Config) {
 /// noops — zero overhead.
 #[allow(dead_code)]
 pub struct OtelProviders {
-    pub tracer_provider: Option<TracerProvider>,
+    pub tracer_provider: Option<SdkTracerProvider>,
     pub meter_provider: Option<SdkMeterProvider>,
 }
 
@@ -99,10 +99,12 @@ pub fn init_otel(config: &Config) -> Result<OtelProviders, Box<dyn std::error::E
         config.otel_service_name.clone()
     };
 
-    let resource = Resource::new(vec![
-        KeyValue::new("service.name", service_name.clone()),
-        KeyValue::new("service.version", env!("CARGO_PKG_VERSION").to_string()),
-    ]);
+    let resource = Resource::builder()
+        .with_attributes(vec![
+            KeyValue::new("service.name", service_name.clone()),
+            KeyValue::new("service.version", env!("CARGO_PKG_VERSION").to_string()),
+        ])
+        .build();
 
     let endpoint = if !config.otel_http_endpoint.is_empty() {
         config.otel_http_endpoint.clone()
@@ -136,8 +138,8 @@ pub fn init_otel(config: &Config) -> Result<OtelProviders, Box<dyn std::error::E
 
     let trace_exporter = trace_builder.build()?;
 
-    let tracer_provider = TracerProvider::builder()
-        .with_batch_exporter(trace_exporter, opentelemetry_sdk::runtime::Tokio)
+    let tracer_provider = SdkTracerProvider::builder()
+        .with_batch_exporter(trace_exporter)
         .with_resource(resource.clone())
         .build();
 
@@ -159,7 +161,7 @@ pub fn init_otel(config: &Config) -> Result<OtelProviders, Box<dyn std::error::E
 
     let metric_exporter = metric_builder.build()?;
 
-    let reader = PeriodicReader::builder(metric_exporter, opentelemetry_sdk::runtime::Tokio)
+    let reader = PeriodicReader::builder(metric_exporter)
         .build();
 
     let meter_provider = SdkMeterProvider::builder()
