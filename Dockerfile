@@ -21,7 +21,9 @@ FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=server-builder /build/server-rs/target/release/dilla-server /usr/local/bin/dilla-server
 RUN mkdir -p /app/data
+RUN useradd -r -s /bin/false dilla && chown dilla:dilla /app/data
 VOLUME /app/data
 ENV DILLA_DATA_DIR=/app/data
 EXPOSE 8080
+USER dilla
 ENTRYPOINT ["dilla-server"]
