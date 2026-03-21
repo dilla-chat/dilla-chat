@@ -1,0 +1,59 @@
+name: SonarCloud
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  sonarcloud:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      # ── Node + Client coverage ────────────────────────────────────────────
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install client dependencies
+        run: cd client && npm ci
+
+      - name: Run client tests with coverage
+        run: cd client && npx vitest run --coverage
+
+      # ── Rust + Clippy report ──────────────────────────────────────────────
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          components: clippy
+
+      - name: Cache cargo
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            server-rs/target
+          key: ${{ runner.os }}-cargo-sonar-${{ hashFiles('server-rs/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-sonar-
+
+      - name: Create dist placeholder for rust-embed
+        run: mkdir -p server-rs/dist && touch server-rs/dist/index.html
+
+      - name: Generate Clippy report
+        working-directory: server-rs
+        run: cargo clippy --message-format=json > clippy-report.json 2>&1 || true
+
+      # ── SonarCloud scan ───────────────────────────────────────────────────
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarqube-scan-action@aa494459d7c39c106cc77b166de8b4250a32bb97 # v5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
