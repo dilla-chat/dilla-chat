@@ -126,12 +126,9 @@ describe('UserProfile', () => {
     expect(popover.style.left).toBe('0px');
   });
 
-  it('stops event propagation on click', () => {
+  it('renders as a dialog element', () => {
     const { container } = render(<UserProfile member={baseMember} x={0} y={0} onClose={vi.fn()} />);
-    const popover = container.querySelector('.user-profile-popover')!;
-    const event = new MouseEvent('click', { bubbles: true });
-    const stopProp = vi.spyOn(event, 'stopPropagation');
-    popover.dispatchEvent(event);
-    expect(stopProp).toHaveBeenCalled();
+    const popover = container.querySelector('dialog.user-profile-popover');
+    expect(popover).toBeInTheDocument();
   });
 });

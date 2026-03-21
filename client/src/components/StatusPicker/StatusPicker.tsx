@@ -50,7 +50,7 @@ export default function StatusPicker({
   };
 
   return (
-    <div className="status-picker" role="dialog" onClick={(e) => e.stopPropagation()}>
+    <dialog className="status-picker" open>
       <div className="status-picker-header">{t('presence.setStatus')}</div>
 
       <div className="status-picker-options">
@@ -93,6 +93,6 @@ export default function StatusPicker({
           </button>
         </div>
       </div>
-    </div>
+    </dialog>
   );
 }

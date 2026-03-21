@@ -648,7 +648,7 @@ export function encodeRecoveryKey(key: Uint8Array): string {
 
 /** Decode a Crockford base32 recovery key back to bytes */
 export function decodeRecoveryKey(encoded: string): Uint8Array {
-  const clean = encoded.replace(/[-\s]/g, '').toUpperCase()
+  const clean = encoded.replaceAll('-', '').replaceAll(/\s/g, '').toUpperCase()
     .replaceAll('O', '0').replaceAll('I', '1').replaceAll('L', '1');
   let bits = '';
   for (const char of clean) {

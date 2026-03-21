@@ -31,6 +31,28 @@ interface SyncStoreSetters {
   getMyUserId: (teamId: string) => string | undefined;
 }
 
+/** Parse and apply presence data to stores */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function applyPresences(teamId: string, raw: any, setters: SyncStoreSetters) {
+  const presMap: Record<string, UserPresence> = {};
+  if (raw && typeof raw === 'object') {
+    for (const [userId, p] of Object.entries(raw as Record<string, Record<string, unknown>>)) {
+      presMap[userId] = {
+        user_id: userId,
+        status: (p.status ?? p.status_type ?? 'offline') as UserPresence['status'],
+        custom_status: (p.custom_status ?? '') as string,
+        last_active: (p.last_active ?? '') as string,
+      };
+    }
+  }
+  setters.setPresences(teamId, presMap);
+  const myUserId = setters.getMyUserId(teamId);
+  if (myUserId && presMap[myUserId]) {
+    setters.setMyStatus(presMap[myUserId].status);
+    setters.setMyCustomStatus(presMap[myUserId].custom_status || '');
+  }
+}
+
 /** Apply sync:init data to stores */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function applySyncData(teamId: string, data: any, setters: SyncStoreSetters) {
@@ -45,24 +67,7 @@ function applySyncData(teamId: string, data: any, setters: SyncStoreSetters) {
   if (data.members) setters.setMembers(teamId, normalizeMembers(data.members as Record<string, unknown>[]));
   if (data.roles) setters.setRoles(teamId, data.roles as Role[]);
   if (data.presences) {
-    const presMap: Record<string, UserPresence> = {};
-    const raw = data.presences;
-    if (raw && typeof raw === 'object') {
-      for (const [userId, p] of Object.entries(raw as Record<string, Record<string, unknown>>)) {
-        presMap[userId] = {
-          user_id: userId,
-          status: (p.status ?? p.status_type ?? 'offline') as UserPresence['status'],
-          custom_status: (p.custom_status ?? '') as string,
-          last_active: (p.last_active ?? '') as string,
-        };
-      }
-    }
-    setters.setPresences(teamId, presMap);
-    const myUserId = setters.getMyUserId(teamId);
-    if (myUserId && presMap[myUserId]) {
-      setters.setMyStatus(presMap[myUserId].status);
-      setters.setMyCustomStatus(presMap[myUserId].custom_status || '');
-    }
+    applyPresences(teamId, data.presences, setters);
   }
   if (data.voice_states && typeof data.voice_states === 'object') {
     useVoiceStore.getState().setVoiceOccupants(data.voice_states as Record<string, VoicePeer[]>);

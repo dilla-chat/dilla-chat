@@ -1,4 +1,4 @@
-.user-profile-popover {
+dialog.user-profile-popover {
   position: fixed;
   background: var(--glass-bg-floating);
   -webkit-backdrop-filter: blur(var(--glass-blur-heavy));
@@ -10,6 +10,9 @@
   z-index: 1000;
   overflow: hidden;
   color: var(--text-primary);
+  max-width: none;
+  max-height: none;
+  padding: 0;
 }
 
 .user-profile-banner {

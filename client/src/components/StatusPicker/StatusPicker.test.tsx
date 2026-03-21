@@ -92,12 +92,9 @@ describe('StatusPicker', () => {
     expect(props.onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('stops propagation on click to prevent closing parent', () => {
+  it('renders as a dialog element', () => {
     const { container } = renderPicker();
-    const picker = container.querySelector('.status-picker')!;
-    const event = new MouseEvent('click', { bubbles: true });
-    const stopProp = vi.spyOn(event, 'stopPropagation');
-    picker.dispatchEvent(event);
-    expect(stopProp).toHaveBeenCalled();
+    const picker = container.querySelector('dialog.status-picker');
+    expect(picker).toBeInTheDocument();
   });
 });
