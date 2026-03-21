@@ -15,7 +15,7 @@ export default function TitleBar() {
   const [platform, setPlatform] = useState<Platform>('linux');
 
   useEffect(() => {
-    const tauriAvailable = typeof globalThis.window !== 'undefined' && '__TAURI_INTERNALS__' in globalThis;
+    const tauriAvailable = globalThis.window !== undefined && '__TAURI_INTERNALS__' in globalThis;
     setIsTauri(tauriAvailable);
     setPlatform(detectPlatform());
   }, []);

@@ -6,11 +6,11 @@ vi.mock('@opentelemetry/sdk-trace-web', () => ({
     register() { /* noop */ }
     shutdown() { return Promise.resolve(); }
   },
-  BatchSpanProcessor: class {},
+  BatchSpanProcessor: vi.fn(),
 }));
 
 vi.mock('@opentelemetry/exporter-trace-otlp-http', () => ({
-  OTLPTraceExporter: class {},
+  OTLPTraceExporter: vi.fn(),
 }));
 
 vi.mock('@opentelemetry/resources', () => ({

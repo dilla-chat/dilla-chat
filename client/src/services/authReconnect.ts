@@ -72,7 +72,7 @@ export async function refreshServerTokens(
  */
 export async function tryReconnectToCurrentServer(pubKey: string): Promise<boolean> {
   const keys = getIdentityKeys();
-  const baseUrl = typeof globalThis.window === 'undefined' ? '' : globalThis.location.origin;
+  const baseUrl = globalThis.window === undefined ? '' : globalThis.location.origin;
   const tempId = '__reconnect__';
 
   try {

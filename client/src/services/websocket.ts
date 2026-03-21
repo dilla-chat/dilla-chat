@@ -23,7 +23,7 @@ export class WebSocketService {
   constructor() {
     // Track user activity in the browser
     const markActive = () => { this.lastUserActivity = Date.now(); };
-    if (typeof globalThis.window !== 'undefined') {
+    if (globalThis.window !== undefined) {
       globalThis.addEventListener('mousemove', markActive, { passive: true });
       globalThis.addEventListener('keydown', markActive, { passive: true });
       globalThis.addEventListener('scroll', markActive, { passive: true, capture: true });

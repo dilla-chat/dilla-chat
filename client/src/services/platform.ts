@@ -4,7 +4,7 @@
 
 /** Returns true when running inside a Tauri desktop shell */
 export function isTauri(): boolean {
-  return typeof globalThis.window !== 'undefined' && '__TAURI_INTERNALS__' in globalThis;
+  return globalThis.window !== undefined && '__TAURI_INTERNALS__' in globalThis;
 }
 
 /**

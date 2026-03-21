@@ -254,7 +254,7 @@
     el.classList.add('active');
     // Re-trigger animation
     el.classList.remove('fade-in');
-    el.offsetWidth; // Force reflow to re-trigger animation
+    const _reflow = el.offsetWidth; // Force reflow to re-trigger animation
     el.classList.add('fade-in');
   }
 

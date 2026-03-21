@@ -92,9 +92,9 @@ export default function VoiceChannel({ channel }: Readonly<Props>) {
             if (focusedWebcam) {
               return (
                 <button className="fullscreen-focused-webcam" onClick={() => setFocusedWebcam(null)} type="button">
-                  {getWebcamStream(focusedWebcam) && (
-                    <VideoPreview stream={getWebcamStream(focusedWebcam) as MediaStream} className="fullscreen-focused-video" />
-                  )}
+                  {(() => { const s = getWebcamStream(focusedWebcam); return s ? (
+                    <VideoPreview stream={s} className="fullscreen-focused-video" />
+                  ) : null; })()}
                   <div className="fullscreen-focused-name">
                     {peers[focusedWebcam]?.username ?? 'Unknown'}
                     <span className="fullscreen-focused-hint">{t('voice.clickToGoBack', 'Click to go back')}</span>
@@ -122,8 +122,8 @@ export default function VoiceChannel({ channel }: Readonly<Props>) {
                     style={hasWebcam ? { cursor: 'pointer' } : undefined}
                     type="button"
                   >
-                    {hasWebcam ? (
-                      <VideoPreview stream={webcamStream as MediaStream} className="fullscreen-thumbnail-video" />
+                    {hasWebcam && webcamStream ? (
+                      <VideoPreview stream={webcamStream} className="fullscreen-thumbnail-video" />
                     ) : (
                       <div className="fullscreen-thumbnail-avatar">
                         {peer.username.slice(0, 1).toUpperCase()}

@@ -14,7 +14,7 @@ class NotificationService {
     if (document.hasFocus()) return;
 
     // Try Tauri notification API first (only in Tauri shell)
-    if (typeof globalThis.window !== 'undefined' && '__TAURI_INTERNALS__' in globalThis) {
+    if (globalThis.window !== undefined && '__TAURI_INTERNALS__' in globalThis) {
       try {
         const mod = '@tauri-apps/api/notification';
         const { isPermissionGranted, requestPermission, sendNotification } =
