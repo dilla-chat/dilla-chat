@@ -7,7 +7,6 @@ import { useAuthStore } from '../stores/authStore';
 import { useAudioSettingsStore, type InputProfile, type NoiseSuppressionMode } from '../stores/audioSettingsStore';
 import { useUserSettingsStore } from '../stores/userSettingsStore';
 import { useTelemetryStore } from '../stores/telemetryStore';
-import { NoiseSuppression } from '../services/noiseSuppression';
 import { notificationService } from '../services/notifications';
 import { api } from '../services/api';
 import { startMicTest, stopMicTest, type MicTestSession } from '../services/micTest';
@@ -28,10 +27,8 @@ export default function UserSettings() {
   const {
     echoCancellation, autoGainControl,
     inputProfile, noiseSuppressionMode, pushToTalk, pushToTalkKey,
-    vadThreshold, vadGracePeriodMs, retroactiveGraceMs,
     setEchoCancellation, setAutoGainControl,
     setInputProfile, setNoiseSuppressionMode, setPushToTalk, setPushToTalkKey,
-    setVadThreshold, setVadGracePeriodMs, setRetroactiveGraceMs,
   } = useAudioSettingsStore();
   const {
     selectedInputDevice, selectedOutputDevice, inputThreshold,
@@ -362,76 +359,8 @@ export default function UserSettings() {
                 >
                   <option value="none">{t('userSettings.nsNone', 'None')}</option>
                   <option value="browser">{t('userSettings.nsBrowser', 'Browser')}</option>
-                  <option value="rnnoise">{t('userSettings.nsRNNoise', 'RNNoise')}</option>
                 </select>
               </div>
-
-              {/* RNNoise VAD settings — only shown when noise suppression is rnnoise */}
-              {noiseSuppressionMode === 'rnnoise' && (
-                <div className="voice-rnnoise-settings">
-                  <div className="settings-field">
-                    <label>{t('userSettings.vadThreshold', 'VAD Threshold')}</label>
-                    <div className="settings-toggle-description">
-                      {t('userSettings.vadThresholdDesc', 'How confident Dilla must be that you\'re speaking before passing audio')}
-                    </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="95"
-                      value={Math.round(vadThreshold * 100)}
-                      onChange={(e) => setVadThreshold(Number(e.target.value) / 100)}
-                      className="voice-volume-slider"
-                      aria-label={t('userSettings.vadThreshold', 'VAD Threshold')}
-                      aria-valuemin={0}
-                      aria-valuemax={95}
-                      aria-valuenow={Math.round(vadThreshold * 100)}
-                    />
-                    <span className="voice-volume-label">{Math.round(vadThreshold * 100)}%</span>
-                  </div>
-
-                  <div className="settings-field">
-                    <label>{t('userSettings.vadGracePeriod', 'Grace Period')}</label>
-                    <div className="settings-toggle-description">
-                      {t('userSettings.vadGracePeriodDesc', 'How long to keep your mic open after you stop speaking')}
-                    </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="500"
-                      step="10"
-                      value={vadGracePeriodMs}
-                      onChange={(e) => setVadGracePeriodMs(Number(e.target.value))}
-                      className="voice-volume-slider"
-                      aria-label={t('userSettings.vadGracePeriod', 'Grace Period')}
-                      aria-valuemin={0}
-                      aria-valuemax={500}
-                      aria-valuenow={vadGracePeriodMs}
-                    />
-                    <span className="voice-volume-label">{vadGracePeriodMs} ms</span>
-                  </div>
-
-                  <div className="settings-field">
-                    <label>{t('userSettings.retroactiveGrace', 'Retroactive Grace')}</label>
-                    <div className="settings-toggle-description">
-                      {t('userSettings.retroactiveGraceDesc', 'Recovers the very start of words that begin during silence')}
-                    </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      step="10"
-                      value={retroactiveGraceMs}
-                      onChange={(e) => setRetroactiveGraceMs(Number(e.target.value))}
-                      className="voice-volume-slider"
-                      aria-label={t('userSettings.retroactiveGrace', 'Retroactive Grace')}
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                      aria-valuenow={retroactiveGraceMs}
-                    />
-                    <span className="voice-volume-label">{retroactiveGraceMs} ms</span>
-                  </div>
-                </div>
-              )}
 
               {/* Echo Cancellation toggle */}
               <div className="settings-toggle">
@@ -655,7 +584,6 @@ function MicTest({ deviceId, inputVolume }: Readonly<{ deviceId: string; inputVo
   const [testing, setTesting] = useState(false);
   const [level, setLevel] = useState(0);
   const sessionRef = useRef<MicTestSession | null>(null);
-  const enhancedNoiseSuppression = useAudioSettingsStore((s) => s.enhancedNoiseSuppression);
 
   // Update gain when inputVolume changes during test
   useEffect(() => {
@@ -677,15 +605,6 @@ function MicTest({ deviceId, inputVolume }: Readonly<{ deviceId: string; inputVo
       const session = await startMicTest({
         audioConstraints,
         inputVolume,
-        useRNNoise: useAudioSettingsStore.getState().enhancedNoiseSuppression,
-        createNoiseSuppression: () => {
-          const ns = new NoiseSuppression();
-          return {
-            initWorklet: (ctx: AudioContext) => ns.initWorklet(ctx),
-            getWorkletNode: () => ns.getWorkletNode(),
-            cleanup: () => ns.cleanup(),
-          };
-        },
         onLevelUpdate: setLevel,
       });
       sessionRef.current = session;
@@ -694,15 +613,6 @@ function MicTest({ deviceId, inputVolume }: Readonly<{ deviceId: string; inputVo
       // Permission denied
     }
   }, [deviceId, inputVolume]);
-
-  // Restart test when noise suppression setting changes during active test
-  useEffect(() => {
-    if (testing) {
-      handleStop();
-      handleStart();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enhancedNoiseSuppression]);
 
   useEffect(() => {
     return () => {
@@ -718,9 +628,13 @@ function MicTest({ deviceId, inputVolume }: Readonly<{ deviceId: string; inputVo
       >
         {testing ? t('userSettings.stopTest', 'Stop') : t('userSettings.startTest', 'Test Mic')}
       </button>
-      <div className="voice-level-bar" role="meter" aria-label={t('userSettings.micLevel', 'Microphone level')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(level * 100)}>
-        <div className="voice-level-fill" style={{ width: `${level * 100}%` }} />
-      </div>
+      <meter
+        className="voice-level-bar"
+        aria-label={t('userSettings.micLevel', 'Microphone level')}
+        min={0}
+        max={100}
+        value={Math.round(level * 100)}
+      />
     </div>
   );
 }

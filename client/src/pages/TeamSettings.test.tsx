@@ -601,7 +601,7 @@ describe('TeamSettings', () => {
   it('shows "Saving..." while overview save is in progress', async () => {
     const { api } = await import('../services/api');
     let resolveSave: (v: unknown) => void;
-    vi.mocked(api.updateTeam).mockReturnValueOnce(new Promise(r => { resolveSave = r; }) as Promise<unknown>);
+    vi.mocked(api.updateTeam).mockReturnValueOnce(new Promise<unknown>(r => { resolveSave = r; }));
     renderTeamSettings();
     fireEvent.click(screen.getByText('Save Changes'));
     expect(screen.getByText('Saving...')).toBeInTheDocument();
@@ -611,7 +611,7 @@ describe('TeamSettings', () => {
   it('shows "Creating..." while invite is being created', async () => {
     const { api } = await import('../services/api');
     let resolveCreate: (v: unknown) => void;
-    vi.mocked(api.createInvite).mockReturnValueOnce(new Promise(r => { resolveCreate = r; }) as Promise<unknown>);
+    vi.mocked(api.createInvite).mockReturnValueOnce(new Promise<unknown>(r => { resolveCreate = r; }));
     navigateToTab('invites');
     fireEvent.click(screen.getByText('Create Invite'));
     expect(screen.getByText('Creating...')).toBeInTheDocument();

@@ -13,6 +13,12 @@
 
 set -euo pipefail
 
+# Constants
+LABEL_AUTOFIX="auto-fix"
+AUTHOR_CLAUDE="Claude"
+SEPARATOR_HEAVY="━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+SEPARATOR_LIGHT="================================================================"
+
 # Default values
 STATE="open"
 FORMAT="text"
@@ -60,9 +66,9 @@ get_autofix_issues() {
   gh issue list \
     --repo "$REPO" \
     --state "$state" \
-    --label "auto-fix" \
+    --label "$LABEL_AUTOFIX" \
     --json number,title,state,labels,createdAt,closedAt,url \
-    --jq '.[] | select(.labels | any(.name == "auto-fix"))'
+    --jq ".[] | select(.labels | any(.name == \"$LABEL_AUTOFIX\"))"
   return 0
 }
 
@@ -72,7 +78,7 @@ get_claude_prs() {
   gh pr list \
     --repo "$REPO" \
     --state "$state" \
-    --author "Claude" \
+    --author "$AUTHOR_CLAUDE" \
     --json number,title,state,url,mergedAt,closedAt,body \
     --jq '.[]'
   return 0
@@ -111,60 +117,60 @@ if [[ "$FORMAT" == "json" ]]; then
   echo "}"
 else
   # Text output
-  echo "================================================================"
-  echo "Issues Built/Fixed by Claude"
-  echo "================================================================"
+  echo "$SEPARATOR_LIGHT"
+  echo "Issues Built/Fixed by $AUTHOR_CLAUDE"
+  echo "$SEPARATOR_LIGHT"
   echo ""
 
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "Auto-Fix Issues (created by GitHub Actions, labeled 'auto-fix')"
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "$SEPARATOR_HEAVY"
+  echo "Auto-Fix Issues (created by GitHub Actions, labeled '$LABEL_AUTOFIX')"
+  echo "$SEPARATOR_HEAVY"
   echo ""
 
   if [[ "$STATE" == "all" ]]; then
-    issues=$(gh issue list --repo "$REPO" --state all --label "auto-fix" --json number,title,state,labels,url --jq '.[] | "  #\(.number) [\(.state | ascii_upcase)] \(.title)\n         Labels: \(.labels | map(.name) | join(", "))\n         URL: \(.url)\n"')
+    issues=$(gh issue list --repo "$REPO" --state all --label "$LABEL_AUTOFIX" --json number,title,state,labels,url --jq '.[] | "  #\(.number) [\(.state | ascii_upcase)] \(.title)\n         Labels: \(.labels | map(.name) | join(", "))\n         URL: \(.url)\n"')
   else
-    issues=$(gh issue list --repo "$REPO" --state "$STATE" --label "auto-fix" --json number,title,state,labels,url --jq '.[] | "  #\(.number) [\(.state | ascii_upcase)] \(.title)\n         Labels: \(.labels | map(.name) | join(", "))\n         URL: \(.url)\n"')
+    issues=$(gh issue list --repo "$REPO" --state "$STATE" --label "$LABEL_AUTOFIX" --json number,title,state,labels,url --jq '.[] | "  #\(.number) [\(.state | ascii_upcase)] \(.title)\n         Labels: \(.labels | map(.name) | join(", "))\n         URL: \(.url)\n"')
   fi
 
   if [[ -z "$issues" ]]; then
-    echo "  No auto-fix issues found."
+    echo "  No $LABEL_AUTOFIX issues found."
   else
     echo "$issues"
   fi
 
   echo ""
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "Pull Requests by Claude"
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "$SEPARATOR_HEAVY"
+  echo "Pull Requests by $AUTHOR_CLAUDE"
+  echo "$SEPARATOR_HEAVY"
   echo ""
 
   if [[ "$STATE" == "all" ]]; then
-    prs=$(gh pr list --repo "$REPO" --state all --author "Claude" --json number,title,state,url,body)
+    prs=$(gh pr list --repo "$REPO" --state all --author "$AUTHOR_CLAUDE" --json number,title,state,url,body)
   else
-    prs=$(gh pr list --repo "$REPO" --state "$STATE" --author "Claude" --json number,title,state,url,body)
+    prs=$(gh pr list --repo "$REPO" --state "$STATE" --author "$AUTHOR_CLAUDE" --json number,title,state,url,body)
   fi
 
   if [[ $(echo "$prs" | jq 'length') -eq 0 ]]; then
-    echo "  No PRs by Claude found."
+    echo "  No PRs by $AUTHOR_CLAUDE found."
   else
     echo "$prs" | jq -r '.[] | "  #\(.number) [\(.state | ascii_upcase)] \(.title)\n         URL: \(.url)\n" + (if (.body | test("(?:Closes?|Fixes?|Resolves?) #\\d+")) then "         Fixes: " + ([.body | scan("(?:Closes?|Fixes?|Resolves?) #(\\d+)") | "#\(.[0])"]) | join(", ") + "\n" else "" end)'
   fi
 
   echo ""
-  echo "================================================================"
+  echo "$SEPARATOR_LIGHT"
   echo "Summary"
-  echo "================================================================"
+  echo "$SEPARATOR_LIGHT"
 
   if [[ "$STATE" == "all" ]]; then
-    autofix_count=$(gh issue list --repo "$REPO" --state all --label "auto-fix" --json number --jq 'length')
-    claude_pr_count=$(gh pr list --repo "$REPO" --state all --author "Claude" --json number --jq 'length')
+    autofix_count=$(gh issue list --repo "$REPO" --state all --label "$LABEL_AUTOFIX" --json number --jq 'length')
+    claude_pr_count=$(gh pr list --repo "$REPO" --state all --author "$AUTHOR_CLAUDE" --json number --jq 'length')
   else
-    autofix_count=$(gh issue list --repo "$REPO" --state "$STATE" --label "auto-fix" --json number --jq 'length')
-    claude_pr_count=$(gh pr list --repo "$REPO" --state "$STATE" --author "Claude" --json number --jq 'length')
+    autofix_count=$(gh issue list --repo "$REPO" --state "$STATE" --label "$LABEL_AUTOFIX" --json number --jq 'length')
+    claude_pr_count=$(gh pr list --repo "$REPO" --state "$STATE" --author "$AUTHOR_CLAUDE" --json number --jq 'length')
   fi
 
-  echo "  Auto-fix issues: $autofix_count"
-  echo "  Claude PRs: $claude_pr_count"
+  echo "  $LABEL_AUTOFIX issues: $autofix_count"
+  echo "  $AUTHOR_CLAUDE PRs: $claude_pr_count"
   echo ""
 fi

@@ -222,13 +222,27 @@
 .voice-level-bar {
   flex: 1;
   height: 8px;
-  background: var(--input-bg);
+  border: none;
   border-radius: 4px;
   overflow: hidden;
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--input-bg);
 }
 
-.voice-level-fill {
-  height: 100%;
+.voice-level-bar::-webkit-meter-bar {
+  background: var(--input-bg);
+  border-radius: 4px;
+  border: none;
+}
+
+.voice-level-bar::-webkit-meter-optimum-value {
+  background: var(--status-online);
+  border-radius: 4px;
+  transition: width 0.06s linear;
+}
+
+.voice-level-bar::-moz-meter-bar {
   background: var(--status-online);
   border-radius: 4px;
   transition: width 0.06s linear;
@@ -290,19 +304,6 @@
 /* ─── Custom Settings Container ─── */
 .voice-custom-settings {
   padding: 8px 0;
-}
-
-/* ─── RNNoise VAD Settings ─── */
-.voice-rnnoise-settings {
-  padding: 4px 0 8px;
-}
-
-.voice-rnnoise-settings .settings-field {
-  margin-bottom: 12px;
-}
-
-.voice-rnnoise-settings .settings-toggle-description {
-  margin-bottom: 4px;
 }
 
 /* ─── PTT Key Capture Button ─── */

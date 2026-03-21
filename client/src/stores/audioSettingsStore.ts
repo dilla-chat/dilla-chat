@@ -2,13 +2,12 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 export type InputProfile = 'voice-isolation' | 'studio' | 'custom';
-export type NoiseSuppressionMode = 'none' | 'browser' | 'rnnoise';
+export type NoiseSuppressionMode = 'none' | 'browser';
 
 interface AudioSettingsStore {
   echoCancellation: boolean;
   noiseSuppression: boolean;
   autoGainControl: boolean;
-  enhancedNoiseSuppression: boolean;
   inputProfile: InputProfile;
   noiseSuppressionMode: NoiseSuppressionMode;
   pushToTalk: boolean;
@@ -20,7 +19,6 @@ interface AudioSettingsStore {
   setEchoCancellation: (v: boolean) => void;
   setNoiseSuppression: (v: boolean) => void;
   setAutoGainControl: (v: boolean) => void;
-  setEnhancedNoiseSuppression: (v: boolean) => void;
   setInputProfile: (v: InputProfile) => void;
   setNoiseSuppressionMode: (v: NoiseSuppressionMode) => void;
   setPushToTalk: (v: boolean) => void;
@@ -37,11 +35,10 @@ export const useAudioSettingsStore = create<AudioSettingsStore>()(
   persist(
     (set, get) => ({
       echoCancellation: true,
-      noiseSuppression: false,
+      noiseSuppression: true,
       autoGainControl: true,
-      enhancedNoiseSuppression: true,
       inputProfile: 'voice-isolation',
-      noiseSuppressionMode: 'rnnoise',
+      noiseSuppressionMode: 'browser',
       pushToTalk: false,
       pushToTalkKey: 'KeyV',
       vadThreshold: 0.5,
@@ -51,20 +48,16 @@ export const useAudioSettingsStore = create<AudioSettingsStore>()(
       setEchoCancellation: (v) => set({ echoCancellation: v }),
       setNoiseSuppression: (v) => set({ noiseSuppression: v }),
       setAutoGainControl: (v) => set({ autoGainControl: v }),
-      setEnhancedNoiseSuppression: (v) => set({ enhancedNoiseSuppression: v }),
-
       setInputProfile: (v) => {
         const updates: Partial<AudioSettingsStore> = { inputProfile: v };
         if (v === 'voice-isolation') {
-          updates.noiseSuppressionMode = 'rnnoise';
-          updates.noiseSuppression = false;
-          updates.enhancedNoiseSuppression = true;
+          updates.noiseSuppressionMode = 'browser';
+          updates.noiseSuppression = true;
           updates.echoCancellation = true;
           updates.autoGainControl = true;
         } else if (v === 'studio') {
           updates.noiseSuppressionMode = 'none';
           updates.noiseSuppression = false;
-          updates.enhancedNoiseSuppression = false;
           updates.echoCancellation = false;
           updates.autoGainControl = false;
         }
@@ -76,13 +69,8 @@ export const useAudioSettingsStore = create<AudioSettingsStore>()(
         const updates: Partial<AudioSettingsStore> = { noiseSuppressionMode: v };
         if (v === 'none') {
           updates.noiseSuppression = false;
-          updates.enhancedNoiseSuppression = false;
         } else if (v === 'browser') {
           updates.noiseSuppression = true;
-          updates.enhancedNoiseSuppression = false;
-        } else if (v === 'rnnoise') {
-          updates.noiseSuppression = false;
-          updates.enhancedNoiseSuppression = true;
         }
         set(updates);
       },

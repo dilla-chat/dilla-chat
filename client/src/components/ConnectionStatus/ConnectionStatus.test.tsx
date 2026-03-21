@@ -108,7 +108,9 @@ describe('ConnectionStatus', () => {
       expect(container.querySelector('.connection-status--excellent')).toBeInTheDocument();
     });
 
-    fireEvent.mouseEnter(container.querySelector('.connection-status')!);
+    const statusEl = container.querySelector('.connection-status');
+    expect(statusEl).toBeInTheDocument();
+    fireEvent.mouseEnter(statusEl!);
     expect(screen.getByText('Excellent')).toBeInTheDocument();
   });
 

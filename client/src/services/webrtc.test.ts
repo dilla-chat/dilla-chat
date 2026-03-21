@@ -46,16 +46,6 @@ vi.mock('./api', () => ({
   },
 }));
 
-vi.mock('./noiseSuppression', () => ({
-  noiseSuppression: {
-    setEnabled: vi.fn(),
-    initWorklet: vi.fn().mockResolvedValue(undefined),
-    getWorkletNode: vi.fn(() => ({ connect: vi.fn() })),
-    waitForReady: vi.fn().mockResolvedValue(undefined),
-    cleanup: vi.fn(),
-  },
-}));
-
 vi.mock('./sounds', () => ({
   playJoinSound: vi.fn(),
   playLeaveSound: vi.fn(),
@@ -216,7 +206,6 @@ function setupStores() {
     echoCancellation: true,
     noiseSuppression: false,
     autoGainControl: true,
-    enhancedNoiseSuppression: false,
     pushToTalk: false,
     pushToTalkKey: 'KeyV',
   });
@@ -349,20 +338,6 @@ describe('WebRTCService', () => {
       expect(registeredEvents).toContain('voice:user-joined');
       expect(registeredEvents).toContain('voice:user-left');
       expect(registeredEvents).toContain('voice:state');
-    });
-
-    it('connects with RNNoise enabled', async () => {
-      useAudioSettingsStore.setState({ enhancedNoiseSuppression: true });
-      await webrtcService.connect('ch-1', 'team-1');
-
-      const { noiseSuppression } = await import('./noiseSuppression');
-      expect(noiseSuppression.setEnabled).toHaveBeenCalledWith(true);
-      expect(noiseSuppression.initWorklet).toHaveBeenCalled();
-      expect(noiseSuppression.getWorkletNode).toHaveBeenCalled();
-      expect(noiseSuppression.waitForReady).toHaveBeenCalled();
-
-      // Reset
-      useAudioSettingsStore.setState({ enhancedNoiseSuppression: false });
     });
 
     it('filters TURN servers and sets relay policy when TURN available', async () => {

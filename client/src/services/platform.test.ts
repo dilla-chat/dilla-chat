@@ -23,7 +23,7 @@ describe('getOriginServerUrl', () => {
   });
 
   it('returns window.location.origin in browser mode', () => {
-    expect(getOriginServerUrl()).toBe(window.location.origin);
+    expect(getOriginServerUrl()).toBe(globalThis.location.origin);
   });
 
   it('returns null in Tauri mode', () => {

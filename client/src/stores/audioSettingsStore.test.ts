@@ -8,11 +8,10 @@ function getState() {
 beforeEach(() => {
   useAudioSettingsStore.setState({
     echoCancellation: true,
-    noiseSuppression: false,
+    noiseSuppression: true,
     autoGainControl: true,
-    enhancedNoiseSuppression: true,
     inputProfile: 'voice-isolation',
-    noiseSuppressionMode: 'rnnoise',
+    noiseSuppressionMode: 'browser',
     pushToTalk: false,
     pushToTalkKey: 'KeyV',
     vadThreshold: 0.5,
@@ -24,11 +23,10 @@ beforeEach(() => {
 describe('default values', () => {
   it('has correct defaults', () => {
     expect(getState().echoCancellation).toBe(true);
-    expect(getState().noiseSuppression).toBe(false);
+    expect(getState().noiseSuppression).toBe(true);
     expect(getState().autoGainControl).toBe(true);
-    expect(getState().enhancedNoiseSuppression).toBe(true);
     expect(getState().inputProfile).toBe('voice-isolation');
-    expect(getState().noiseSuppressionMode).toBe('rnnoise');
+    expect(getState().noiseSuppressionMode).toBe('browser');
     expect(getState().pushToTalk).toBe(false);
     expect(getState().pushToTalkKey).toBe('KeyV');
     expect(getState().vadThreshold).toBe(0.5);
@@ -38,12 +36,11 @@ describe('default values', () => {
 });
 
 describe('setInputProfile', () => {
-  it('voice-isolation sets rnnoise and processing on', () => {
+  it('voice-isolation sets browser noise suppression and processing on', () => {
     getState().setInputProfile('studio'); // change first
     getState().setInputProfile('voice-isolation');
-    expect(getState().noiseSuppressionMode).toBe('rnnoise');
-    expect(getState().noiseSuppression).toBe(false);
-    expect(getState().enhancedNoiseSuppression).toBe(true);
+    expect(getState().noiseSuppressionMode).toBe('browser');
+    expect(getState().noiseSuppression).toBe(true);
     expect(getState().echoCancellation).toBe(true);
     expect(getState().autoGainControl).toBe(true);
   });
@@ -52,7 +49,6 @@ describe('setInputProfile', () => {
     getState().setInputProfile('studio');
     expect(getState().noiseSuppressionMode).toBe('none');
     expect(getState().noiseSuppression).toBe(false);
-    expect(getState().enhancedNoiseSuppression).toBe(false);
     expect(getState().echoCancellation).toBe(false);
     expect(getState().autoGainControl).toBe(false);
   });
@@ -70,7 +66,7 @@ describe('setInputProfile', () => {
     getState().setInputProfile('studio');
     getState().setInputProfile('voice-isolation');
     expect(getState().echoCancellation).toBe(true);
-    expect(getState().enhancedNoiseSuppression).toBe(true);
+    expect(getState().noiseSuppression).toBe(true);
   });
 });
 
@@ -78,19 +74,11 @@ describe('setNoiseSuppressionMode', () => {
   it('none disables all suppression', () => {
     getState().setNoiseSuppressionMode('none');
     expect(getState().noiseSuppression).toBe(false);
-    expect(getState().enhancedNoiseSuppression).toBe(false);
   });
 
   it('browser enables native suppression', () => {
     getState().setNoiseSuppressionMode('browser');
     expect(getState().noiseSuppression).toBe(true);
-    expect(getState().enhancedNoiseSuppression).toBe(false);
-  });
-
-  it('rnnoise enables enhanced suppression', () => {
-    getState().setNoiseSuppressionMode('rnnoise');
-    expect(getState().noiseSuppression).toBe(false);
-    expect(getState().enhancedNoiseSuppression).toBe(true);
   });
 });
 
@@ -110,11 +98,6 @@ describe('individual setters', () => {
   it('setAutoGainControl', () => {
     getState().setAutoGainControl(false);
     expect(getState().autoGainControl).toBe(false);
-  });
-
-  it('setEnhancedNoiseSuppression', () => {
-    getState().setEnhancedNoiseSuppression(false);
-    expect(getState().enhancedNoiseSuppression).toBe(false);
   });
 
   it('setPushToTalk', () => {
@@ -147,7 +130,7 @@ describe('getAudioConstraints', () => {
   it('returns correct constraints without deviceId', () => {
     const constraints = getState().getAudioConstraints() as MediaTrackConstraints;
     expect(constraints.echoCancellation).toBe(true);
-    expect(constraints.noiseSuppression).toBe(false);
+    expect(constraints.noiseSuppression).toBe(true);
     expect(constraints.autoGainControl).toBe(true);
     expect(constraints.deviceId).toBeUndefined();
   });

@@ -17,16 +17,6 @@ vi.mock('../services/api', () => ({
   },
 }));
 
-vi.mock('../services/noiseSuppression', () => ({
-  NoiseSuppression: vi.fn().mockImplementation(function () {
-    return {
-      initWorklet: vi.fn(),
-      getWorkletNode: vi.fn(),
-      cleanup: vi.fn(),
-    };
-  }),
-}));
-
 vi.mock('../services/notifications', () => ({
   notificationService: {
     setEnabled: vi.fn(),
@@ -40,7 +30,6 @@ const { mockMicTestSession } = vi.hoisted(() => {
     analyser: {},
     gainNode: { gain: { value: 1 } },
     animFrameId: 0,
-    noiseSuppression: null,
     timeDomainData: new Float32Array(128),
   };
   return { mockMicTestSession };
@@ -386,20 +375,6 @@ describe('UserSettings', () => {
     expect(screen.queryByRole('slider', { name: 'Input Sensitivity' })).not.toBeInTheDocument();
   });
 
-  it('shows RNNoise settings when noise suppression is rnnoise', () => {
-    useAudioSettingsStore.setState({ inputProfile: 'custom', noiseSuppressionMode: 'rnnoise' });
-    navigateToTab('voice-video');
-    expect(screen.getByRole('slider', { name: 'VAD Threshold' })).toBeInTheDocument();
-    expect(screen.getByRole('slider', { name: 'Grace Period' })).toBeInTheDocument();
-    expect(screen.getByRole('slider', { name: 'Retroactive Grace' })).toBeInTheDocument();
-  });
-
-  it('does not show RNNoise settings when noise suppression is none', () => {
-    useAudioSettingsStore.setState({ inputProfile: 'custom', noiseSuppressionMode: 'none' });
-    navigateToTab('voice-video');
-    expect(screen.queryByRole('slider', { name: 'VAD Threshold' })).not.toBeInTheDocument();
-  });
-
   it('changes noise suppression dropdown value', () => {
     useAudioSettingsStore.setState({ inputProfile: 'custom', noiseSuppressionMode: 'none' });
     navigateToTab('voice-video');
@@ -457,18 +432,6 @@ describe('UserSettings', () => {
     expect(screen.getByText('A')).toBeInTheDocument();
   });
 
-  it.each([
-    ['VAD Threshold', { vadThreshold: 0.5 }, '70'],
-    ['Grace Period', { vadGracePeriodMs: 200 }, '300'],
-    ['Retroactive Grace', { retroactiveGraceMs: 30 }, '50'],
-  ])('changes %s slider in rnnoise mode', (sliderName, extraState, newValue) => {
-    useAudioSettingsStore.setState({ inputProfile: 'custom', noiseSuppressionMode: 'rnnoise', ...extraState });
-    navigateToTab('voice-video');
-    const slider = screen.getByRole('slider', { name: sliderName });
-    fireEvent.change(slider, { target: { value: newValue } });
-    expect(slider).toHaveValue(newValue);
-  });
-
   it('changes input sensitivity slider when auto gain is off', () => {
     useAudioSettingsStore.setState({ inputProfile: 'custom', autoGainControl: false });
     navigateToTab('voice-video');
@@ -490,7 +453,7 @@ describe('UserSettings', () => {
     const { api } = await import('../services/api');
     let resolveUpdate: (v: unknown) => void;
     const updatePromise = new Promise(r => { resolveUpdate = r; });
-    vi.mocked(api.updateMe).mockReturnValueOnce(updatePromise as Promise<unknown>);
+    vi.mocked(api.updateMe).mockReturnValueOnce(updatePromise);
 
     renderUserSettings();
     fireEvent.click(screen.getByText('Edit'));
@@ -623,15 +586,6 @@ describe('UserSettings', () => {
     expect(screen.getByText('testuser')).toBeInTheDocument();
   });
 
-  it('uses setRetroactiveGraceMs from audioSettingsStore', () => {
-    useAudioSettingsStore.setState({ inputProfile: 'custom', noiseSuppressionMode: 'rnnoise', retroactiveGraceMs: 20 });
-    navigateToTab('voice-video');
-    const retroSlider = screen.getByRole('slider', { name: 'Retroactive Grace' });
-    fireEvent.change(retroSlider, { target: { value: '60' } });
-    // Verify the store was updated
-    expect(retroSlider).toHaveValue('60');
-  });
-
   it('renders language dropdown with i18n language', () => {
     navigateToTab('language');
     // The dropdown should show a select with the current language
@@ -729,19 +683,6 @@ describe('UserSettings', () => {
       expect(startMicTest).toHaveBeenCalled();
     });
 
-    // Verify createNoiseSuppression factory was passed and works
-    const callArgs = vi.mocked(startMicTest).mock.calls[0][0];
-    if (callArgs.createNoiseSuppression) {
-      const ns = callArgs.createNoiseSuppression();
-      expect(ns).toHaveProperty('initWorklet');
-      expect(ns).toHaveProperty('getWorkletNode');
-      expect(ns).toHaveProperty('cleanup');
-      // Call the methods to exercise the factory body
-      ns.initWorklet({} as AudioContext);
-      ns.getWorkletNode();
-      ns.cleanup();
-    }
-
     // After starting, the button should show "Stop"
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /stopTest|Stop/ })).toBeInTheDocument();
@@ -776,38 +717,4 @@ describe('UserSettings', () => {
     expect(mockMicTestSession.gainNode.gain.value).toBeDefined();
   });
 
-  it('restarts mic test when enhancedNoiseSuppression changes during active test', async () => {
-    const { startMicTest, stopMicTest } = await import('../services/micTest');
-    const { waitFor, act } = await import('@testing-library/react');
-
-    // Ensure enhancedNoiseSuppression starts as false
-    useAudioSettingsStore.setState({ enhancedNoiseSuppression: false });
-
-    navigateToTab('voice-video');
-
-    // Start mic test
-    const testBtn = screen.getByRole('button', { name: /startTest|Test Mic/ });
-
-    await act(async () => {
-      fireEvent.click(testBtn);
-    });
-
-    // Wait for testing state to become true (Stop button appears)
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /stopTest|Stop/ })).toBeInTheDocument();
-    });
-
-    const startCallsBefore = vi.mocked(startMicTest).mock.calls.length;
-
-    // Toggle enhancedNoiseSuppression while test is active
-    act(() => {
-      useAudioSettingsStore.setState({ enhancedNoiseSuppression: true });
-    });
-
-    // The effect should have called handleStop + handleStart
-    await waitFor(() => {
-      expect(stopMicTest).toHaveBeenCalled();
-      expect(vi.mocked(startMicTest).mock.calls.length).toBeGreaterThan(startCallsBefore);
-    });
-  });
 });
