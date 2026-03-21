@@ -1,7 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useTeamStore, type Channel } from '../../stores/teamStore';
 import { api } from '../../services/api';
+import CategorySelect from '../CategorySelect/CategorySelect';
 import './EditChannel.css';
 
 interface Props {
@@ -11,7 +12,7 @@ interface Props {
 
 export default function EditChannel({ channel, onClose }: Readonly<Props>) {
   const { t } = useTranslation();
-  const { activeTeamId, channels, updateChannel } = useTeamStore();
+  const { activeTeamId, updateChannel } = useTeamStore();
   const [name, setName] = useState(channel.name);
   const [topic, setTopic] = useState(channel.topic ?? '');
   const [category, setCategory] = useState(channel.category ?? '');
@@ -19,12 +20,6 @@ export default function EditChannel({ channel, onClose }: Readonly<Props>) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const existingCategories = useMemo(() => {
-    if (!activeTeamId) return [];
-    const chans = channels.get(activeTeamId) ?? [];
-    const uiLabels = new Set([t('channels.voiceChannels', 'Voice Channels'), t('channels.textChannels', 'Text Channels')]);
-    return [...new Set(chans.map((c) => c.category).filter((c): c is string => Boolean(c) && !uiLabels.has(c)))];
-  }, [activeTeamId, channels, t]);
 
   const handleSave = async () => {
     if (!activeTeamId || !name.trim()) return;
@@ -74,24 +69,13 @@ export default function EditChannel({ channel, onClose }: Readonly<Props>) {
 
         <div className="edit-channel-field">
           <label htmlFor="edit-channel-category">{t('channels.categoryLabel', 'Category')}</label>
-          <select id="edit-channel-category" value={category} onChange={(e) => setCategory(e.target.value)}>
-            <option value="">{t('channels.noCategory', 'No category')}</option>
-            {existingCategories.map((cat) => (
-              <option key={cat} value={cat}>
-                {cat}
-              </option>
-            ))}
-            <option value="__new__">{t('channels.newCategory', '+ Create new')}</option>
-          </select>
-          {category === '__new__' && (
-            <input
-              type="text"
-              value={newCategory}
-              onChange={(e) => setNewCategory(e.target.value)}
-              placeholder={t('channels.categoryPlaceholder', 'Category name')}
-              style={{ marginTop: 8 }}
-            />
-          )}
+          <CategorySelect
+            id="edit-channel-category"
+            category={category}
+            newCategory={newCategory}
+            onCategoryChange={setCategory}
+            onNewCategoryChange={setNewCategory}
+          />
         </div>
 
         <div className="edit-channel-field">

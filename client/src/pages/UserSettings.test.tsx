@@ -92,6 +92,15 @@ import { useUserSettingsStore } from '../stores/userSettingsStore';
 import { useAudioSettingsStore } from '../stores/audioSettingsStore';
 import { useTelemetryStore } from '../stores/telemetryStore';
 
+function renderUserSettings() {
+  return render(<UserSettings />);
+}
+
+function navigateToTab(tabId: string) {
+  renderUserSettings();
+  fireEvent.click(screen.getByTestId(`nav-${tabId}`));
+}
+
 describe('UserSettings', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -137,67 +146,64 @@ describe('UserSettings', () => {
   });
 
   it('renders inside SettingsLayout', () => {
-    render(<UserSettings />);
+    renderUserSettings();
     expect(screen.getByTestId('settings-layout')).toBeInTheDocument();
   });
 
   it('shows My Account tab by default with username', () => {
-    render(<UserSettings />);
+    renderUserSettings();
     expect(screen.getByText('@testuser')).toBeInTheDocument();
   });
 
   it('shows display name', () => {
-    render(<UserSettings />);
+    renderUserSettings();
     expect(screen.getByText('Test User')).toBeInTheDocument();
   });
 
   it('shows public key fingerprint', () => {
-    render(<UserSettings />);
+    renderUserSettings();
     expect(screen.getByText('test-public-key-fingerprint')).toBeInTheDocument();
   });
 
   it('shows edit button for display name', () => {
-    render(<UserSettings />);
+    renderUserSettings();
     expect(screen.getByText('Edit')).toBeInTheDocument();
   });
 
   it('shows user initials in avatar', () => {
-    render(<UserSettings />);
+    renderUserSettings();
     expect(screen.getByText('TU')).toBeInTheDocument();
   });
 
   it('navigates to /app on close', () => {
-    render(<UserSettings />);
+    renderUserSettings();
     fireEvent.click(screen.getByTestId('close-btn'));
     expect(mockNavigate).toHaveBeenCalledWith('/app');
   });
 
   it('handles logout navigation', () => {
-    render(<UserSettings />);
+    renderUserSettings();
     fireEvent.click(screen.getByTestId('nav-logout'));
     expect(mockNavigate).toHaveBeenCalledWith('/welcome');
   });
 
   // Voice & Video tab
   it('shows device selectors in voice tab', () => {
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
 
     expect(screen.getByText('Input Device')).toBeInTheDocument();
     expect(screen.getByText('Output Device')).toBeInTheDocument();
   });
 
   it('shows volume sliders in voice tab', () => {
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
 
     expect(screen.getByText('Input Volume')).toBeInTheDocument();
     expect(screen.getByText('Output Volume')).toBeInTheDocument();
   });
 
   it('shows input profile radio options', () => {
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
 
     expect(screen.getByText('Voice Isolation')).toBeInTheDocument();
     expect(screen.getByText('Studio')).toBeInTheDocument();
@@ -207,8 +213,7 @@ describe('UserSettings', () => {
   it('shows custom settings when Custom profile selected', () => {
     useAudioSettingsStore.setState({ inputProfile: 'custom' });
 
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
 
     expect(screen.getByText('Echo Cancellation')).toBeInTheDocument();
     expect(screen.getByText('Push to Talk')).toBeInTheDocument();
@@ -217,24 +222,21 @@ describe('UserSettings', () => {
   it('does not show custom settings when Voice Isolation profile selected', () => {
     useAudioSettingsStore.setState({ inputProfile: 'voice-isolation' });
 
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
 
     expect(screen.queryByText('Echo Cancellation')).not.toBeInTheDocument();
     expect(screen.queryByText('Push to Talk')).not.toBeInTheDocument();
   });
 
   it('shows mic test button', () => {
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
 
     expect(screen.getByText('Test Mic')).toBeInTheDocument();
   });
 
   // Notifications tab
   it('shows notification toggles', () => {
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-notifications'));
+    navigateToTab('notifications');
 
     expect(screen.getByText('Desktop Notifications')).toBeInTheDocument();
     expect(screen.getByText('Notification Sounds')).toBeInTheDocument();
@@ -242,16 +244,14 @@ describe('UserSettings', () => {
 
   // Appearance tab
   it('shows theme buttons in appearance tab', () => {
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-appearance'));
+    navigateToTab('appearance');
 
     expect(screen.getByText('Dark')).toBeInTheDocument();
     expect(screen.getByText('Light')).toBeInTheDocument();
   });
 
   it('shows dark theme button as active by default', () => {
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-appearance'));
+    navigateToTab('appearance');
 
     const darkBtn = screen.getByText('Dark');
     expect(darkBtn.className).toContain('active');
@@ -259,38 +259,35 @@ describe('UserSettings', () => {
 
   // Keybinds tab
   it('shows keybind shortcuts', () => {
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-keybinds'));
+    navigateToTab('keybinds');
 
     expect(screen.getByText('Escape')).toBeInTheDocument();
   });
 
   // Language tab - requires i18n.options.supportedLngs in mock
   it('renders language nav item', () => {
-    render(<UserSettings />);
+    renderUserSettings();
     expect(screen.getByTestId('nav-language')).toBeInTheDocument();
     expect(screen.getByTestId('nav-language').textContent).toBe('Language');
   });
 
   // Privacy tab
   it('shows telemetry toggle in privacy tab', () => {
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-privacy'));
+    navigateToTab('privacy');
 
     expect(screen.getByText('Anonymous Telemetry')).toBeInTheDocument();
   });
 
   // Security tab
   it('shows passkey manager in security tab', () => {
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-security'));
+    navigateToTab('security');
 
     expect(screen.getByTestId('passkey-manager')).toBeInTheDocument();
   });
 
   // Navigation items
   it('renders all navigation items', () => {
-    render(<UserSettings />);
+    renderUserSettings();
 
     expect(screen.getByTestId('nav-my-account')).toBeInTheDocument();
     expect(screen.getByTestId('nav-voice-video')).toBeInTheDocument();
@@ -310,8 +307,7 @@ describe('UserSettings', () => {
       pushToTalkKey: 'Space',
     });
 
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
 
     expect(screen.getByText('Push to Talk Key')).toBeInTheDocument();
     expect(screen.getByText('Space')).toBeInTheDocument();
@@ -320,25 +316,24 @@ describe('UserSettings', () => {
   it('shows noise suppression dropdown in custom mode', () => {
     useAudioSettingsStore.setState({ inputProfile: 'custom' });
 
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
 
     expect(screen.getByText('Noise Suppression')).toBeInTheDocument();
   });
 
   it('shows public key label when public key exists', () => {
-    render(<UserSettings />);
+    renderUserSettings();
     expect(screen.getByText('Your public key fingerprint')).toBeInTheDocument();
   });
 
   it('does not show public key section when publicKey is null', () => {
     useAuthStore.setState({ publicKey: null });
-    render(<UserSettings />);
+    renderUserSettings();
     expect(screen.queryByText('Your public key fingerprint')).not.toBeInTheDocument();
   });
 
   it('enters edit mode when Edit button is clicked', () => {
-    render(<UserSettings />);
+    renderUserSettings();
     fireEvent.click(screen.getByText('Edit'));
     const input = screen.getByDisplayValue('Test User');
     expect(input).toBeInTheDocument();
@@ -346,7 +341,7 @@ describe('UserSettings', () => {
   });
 
   it('allows changing display name in edit mode', () => {
-    render(<UserSettings />);
+    renderUserSettings();
     fireEvent.click(screen.getByText('Edit'));
     const input = screen.getByDisplayValue('Test User');
     fireEvent.change(input, { target: { value: 'New Name' } });
@@ -355,7 +350,7 @@ describe('UserSettings', () => {
 
   it('saves display name on blur', async () => {
     const { api } = await import('../services/api');
-    render(<UserSettings />);
+    renderUserSettings();
     fireEvent.click(screen.getByText('Edit'));
     const input = screen.getByDisplayValue('Test User');
     fireEvent.change(input, { target: { value: 'Updated' } });
@@ -365,7 +360,7 @@ describe('UserSettings', () => {
 
   it('saves display name on Enter key', async () => {
     const { api } = await import('../services/api');
-    render(<UserSettings />);
+    renderUserSettings();
     fireEvent.click(screen.getByText('Edit'));
     const input = screen.getByDisplayValue('Test User');
     fireEvent.keyDown(input, { key: 'Enter' });
@@ -373,22 +368,20 @@ describe('UserSettings', () => {
   });
 
   it('calls logout on store when logout is clicked', () => {
-    render(<UserSettings />);
+    renderUserSettings();
     fireEvent.click(screen.getByTestId('nav-logout'));
     expect(useAuthStore.getState().logout).toHaveBeenCalled();
   });
 
   it('changes input volume slider', () => {
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     const slider = screen.getByRole('slider', { name: 'Input Volume' });
     fireEvent.change(slider, { target: { value: '150' } });
     expect(slider).toHaveValue('150');
   });
 
   it('changes output volume slider', () => {
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     const slider = screen.getByRole('slider', { name: 'Output Volume' });
     fireEvent.change(slider, { target: { value: '50' } });
     expect(slider).toHaveValue('50');
@@ -396,8 +389,7 @@ describe('UserSettings', () => {
 
   it('selects custom profile and toggles echo cancellation', () => {
     useAudioSettingsStore.setState({ inputProfile: 'custom', echoCancellation: true });
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     const echoSwitch = screen.getByRole('switch', { name: /Echo Cancellation/ });
     expect(echoSwitch).toHaveAttribute('aria-checked', 'true');
     fireEvent.click(echoSwitch);
@@ -405,8 +397,7 @@ describe('UserSettings', () => {
 
   it('toggles push to talk in custom mode', () => {
     useAudioSettingsStore.setState({ inputProfile: 'custom', pushToTalk: false });
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     const pttSwitch = screen.getByRole('switch', { name: /Push to Talk/ });
     expect(pttSwitch).toHaveAttribute('aria-checked', 'false');
     fireEvent.click(pttSwitch);
@@ -414,15 +405,13 @@ describe('UserSettings', () => {
 
   it('shows PTT key capture button when PTT is enabled', () => {
     useAudioSettingsStore.setState({ inputProfile: 'custom', pushToTalk: true, pushToTalkKey: 'KeyV' });
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     expect(screen.getByText('V')).toBeInTheDocument();
   });
 
   it('shows "Press a key..." when PTT capture is active', () => {
     useAudioSettingsStore.setState({ inputProfile: 'custom', pushToTalk: true, pushToTalkKey: 'Space' });
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     const captureBtn = screen.getByRole('button', { name: /Click to change push to talk key/ });
     fireEvent.click(captureBtn);
     expect(screen.getByText('Press a key...')).toBeInTheDocument();
@@ -430,8 +419,7 @@ describe('UserSettings', () => {
 
   it('captures PTT key on keydown during capture mode', () => {
     useAudioSettingsStore.setState({ inputProfile: 'custom', pushToTalk: true, pushToTalkKey: 'Space' });
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     const captureBtn = screen.getByRole('button', { name: /Click to change push to talk key/ });
     fireEvent.click(captureBtn);
     fireEvent.keyDown(globalThis, { code: 'KeyG' });
@@ -440,8 +428,7 @@ describe('UserSettings', () => {
 
   it('toggles auto gain control in custom mode', () => {
     useAudioSettingsStore.setState({ inputProfile: 'custom', autoGainControl: true });
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     const agcSwitch = screen.getByRole('switch', { name: /Automatically Adjust Input Sensitivity/ });
     expect(agcSwitch).toHaveAttribute('aria-checked', 'true');
     fireEvent.click(agcSwitch);
@@ -449,22 +436,19 @@ describe('UserSettings', () => {
 
   it('shows input sensitivity slider when auto gain is off in custom mode', () => {
     useAudioSettingsStore.setState({ inputProfile: 'custom', autoGainControl: false });
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     expect(screen.getByRole('slider', { name: 'Input Sensitivity' })).toBeInTheDocument();
   });
 
   it('hides input sensitivity slider when auto gain is on in custom mode', () => {
     useAudioSettingsStore.setState({ inputProfile: 'custom', autoGainControl: true });
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     expect(screen.queryByRole('slider', { name: 'Input Sensitivity' })).not.toBeInTheDocument();
   });
 
   it('shows RNNoise settings when noise suppression is rnnoise', () => {
     useAudioSettingsStore.setState({ inputProfile: 'custom', noiseSuppressionMode: 'rnnoise' });
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     expect(screen.getByRole('slider', { name: 'VAD Threshold' })).toBeInTheDocument();
     expect(screen.getByRole('slider', { name: 'Grace Period' })).toBeInTheDocument();
     expect(screen.getByRole('slider', { name: 'Retroactive Grace' })).toBeInTheDocument();
@@ -472,30 +456,26 @@ describe('UserSettings', () => {
 
   it('does not show RNNoise settings when noise suppression is none', () => {
     useAudioSettingsStore.setState({ inputProfile: 'custom', noiseSuppressionMode: 'none' });
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     expect(screen.queryByRole('slider', { name: 'VAD Threshold' })).not.toBeInTheDocument();
   });
 
   it('changes noise suppression dropdown value', () => {
     useAudioSettingsStore.setState({ inputProfile: 'custom', noiseSuppressionMode: 'none' });
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     const select = screen.getByDisplayValue('None');
     fireEvent.change(select, { target: { value: 'browser' } });
   });
 
   it('toggles desktop notifications', () => {
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-notifications'));
+    navigateToTab('notifications');
     const toggles = screen.getAllByRole('button').filter(b => b.className.includes('toggle-switch'));
     expect(toggles.length).toBeGreaterThanOrEqual(1);
     fireEvent.click(toggles[0]);
   });
 
   it('switches theme to light', () => {
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-appearance'));
+    navigateToTab('appearance');
     fireEvent.click(screen.getByText('Light'));
     const lightBtn = screen.getByText('Light');
     expect(lightBtn.className).toContain('active');
@@ -505,28 +485,24 @@ describe('UserSettings', () => {
   // which is not available in the global react-i18next mock
 
   it('toggles telemetry in privacy tab', () => {
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-privacy'));
+    navigateToTab('privacy');
     const telemetryToggle = screen.getByRole('button', { name: /Anonymous Telemetry/ });
     fireEvent.click(telemetryToggle);
   });
 
   it('shows all keybind shortcuts', () => {
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-keybinds'));
+    navigateToTab('keybinds');
     expect(screen.getByText('Escape')).toBeInTheDocument();
     expect(screen.getByText('Alt+\u2191/\u2193')).toBeInTheDocument();
   });
 
   it('shows mic level meter in voice tab', () => {
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     expect(screen.getByRole('meter', { name: /Microphone level/ })).toBeInTheDocument();
   });
 
   it('selects studio profile', () => {
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     const studioRadio = screen.getByRole('radio', { name: /Studio/ });
     fireEvent.click(studioRadio);
   });
@@ -537,14 +513,13 @@ describe('UserSettings', () => {
         ['team1', { baseUrl: 'http://localhost:8080', token: 'tok', user: { id: 'u1', username: 'alice', display_name: '' }, teamInfo: {} }],
       ]),
     });
-    render(<UserSettings />);
+    renderUserSettings();
     expect(screen.getByText('A')).toBeInTheDocument();
   });
 
   it('changes VAD threshold slider in rnnoise mode', () => {
     useAudioSettingsStore.setState({ inputProfile: 'custom', noiseSuppressionMode: 'rnnoise', vadThreshold: 0.5 });
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     const vadSlider = screen.getByRole('slider', { name: 'VAD Threshold' });
     fireEvent.change(vadSlider, { target: { value: '70' } });
     expect(vadSlider).toHaveValue('70');
@@ -552,8 +527,7 @@ describe('UserSettings', () => {
 
   it('changes grace period slider in rnnoise mode', () => {
     useAudioSettingsStore.setState({ inputProfile: 'custom', noiseSuppressionMode: 'rnnoise', vadGracePeriodMs: 200 });
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     const graceSlider = screen.getByRole('slider', { name: 'Grace Period' });
     fireEvent.change(graceSlider, { target: { value: '300' } });
     expect(graceSlider).toHaveValue('300');
@@ -561,8 +535,7 @@ describe('UserSettings', () => {
 
   it('changes retroactive grace slider in rnnoise mode', () => {
     useAudioSettingsStore.setState({ inputProfile: 'custom', noiseSuppressionMode: 'rnnoise', retroactiveGraceMs: 30 });
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     const retroSlider = screen.getByRole('slider', { name: 'Retroactive Grace' });
     fireEvent.change(retroSlider, { target: { value: '50' } });
     expect(retroSlider).toHaveValue('50');
@@ -570,16 +543,14 @@ describe('UserSettings', () => {
 
   it('changes input sensitivity slider when auto gain is off', () => {
     useAudioSettingsStore.setState({ inputProfile: 'custom', autoGainControl: false });
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     const sensitivitySlider = screen.getByRole('slider', { name: 'Input Sensitivity' });
     fireEvent.change(sensitivitySlider, { target: { value: '50' } });
     expect(sensitivitySlider).toHaveValue('50');
   });
 
   it('toggles sound notifications', () => {
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-notifications'));
+    navigateToTab('notifications');
     const toggles = screen.getAllByRole('button').filter(b => b.className.includes('toggle-switch'));
     // Second toggle is sound notifications
     if (toggles.length >= 2) {
@@ -593,7 +564,7 @@ describe('UserSettings', () => {
     const updatePromise = new Promise(r => { resolveUpdate = r; });
     vi.mocked(api.updateMe).mockReturnValueOnce(updatePromise as Promise<unknown>);
 
-    render(<UserSettings />);
+    renderUserSettings();
     fireEvent.click(screen.getByText('Edit'));
     const input = screen.getByDisplayValue('Test User');
     fireEvent.change(input, { target: { value: 'New Name' } });
@@ -606,7 +577,7 @@ describe('UserSettings', () => {
 
   it('does not save when display name is empty', async () => {
     const { api } = await import('../services/api');
-    render(<UserSettings />);
+    renderUserSettings();
     fireEvent.click(screen.getByText('Edit'));
     const input = screen.getByDisplayValue('Test User');
     fireEvent.change(input, { target: { value: '' } });
@@ -618,7 +589,7 @@ describe('UserSettings', () => {
     const { api } = await import('../services/api');
     vi.mocked(api.updateMe).mockRejectedValueOnce(new Error('Network error'));
 
-    render(<UserSettings />);
+    renderUserSettings();
     fireEvent.click(screen.getByText('Edit'));
     const input = screen.getByDisplayValue('Test User');
     fireEvent.change(input, { target: { value: 'Failed Name' } });
@@ -634,7 +605,7 @@ describe('UserSettings', () => {
       publicKey: null,
       teams: new Map(),
     });
-    render(<UserSettings />);
+    renderUserSettings();
     expect(screen.queryByText('Your public key fingerprint')).not.toBeInTheDocument();
   });
 
@@ -651,8 +622,7 @@ describe('UserSettings', () => {
       configurable: true,
     });
 
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     const testMicBtn = screen.getByText('Test Mic');
     fireEvent.click(testMicBtn);
     // Should show "Stop" button after starting
@@ -660,76 +630,65 @@ describe('UserSettings', () => {
   });
 
   it('shows voice isolation profile description', () => {
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     expect(screen.getByText(/Just your beautiful voice/)).toBeInTheDocument();
   });
 
   it('shows studio profile description', () => {
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     expect(screen.getByText(/Pure audio/)).toBeInTheDocument();
   });
 
   it('shows custom profile description', () => {
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     expect(screen.getByText(/Advanced mode/)).toBeInTheDocument();
   });
 
   it('selects voice isolation profile via radio', () => {
     useAudioSettingsStore.setState({ inputProfile: 'custom' });
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     const voiceIsolationRadio = screen.getByRole('radio', { name: /Voice Isolation/ });
     fireEvent.click(voiceIsolationRadio);
   });
 
   it('shows auto sensitivity toggle description in custom mode', () => {
     useAudioSettingsStore.setState({ inputProfile: 'custom' });
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     expect(screen.getByText(/Automatically adjusts your mic volume/)).toBeInTheDocument();
   });
 
   it('shows echo cancellation description in custom mode', () => {
     useAudioSettingsStore.setState({ inputProfile: 'custom' });
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     expect(screen.getByText(/Removes echo from speakers/)).toBeInTheDocument();
   });
 
   it('shows push to talk description in custom mode', () => {
     useAudioSettingsStore.setState({ inputProfile: 'custom' });
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     expect(screen.getByText(/Hold a key to transmit/)).toBeInTheDocument();
   });
 
   it('shows language selector in language tab', () => {
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-language'));
+    navigateToTab('language');
     expect(screen.getByText('Select Language')).toBeInTheDocument();
   });
 
   it('keyCodeToLabel converts KeyX to X', () => {
     useAudioSettingsStore.setState({ inputProfile: 'custom', pushToTalk: true, pushToTalkKey: 'KeyA' });
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     expect(screen.getByText('A')).toBeInTheDocument();
   });
 
   it('keyCodeToLabel converts DigitX to X', () => {
     useAudioSettingsStore.setState({ inputProfile: 'custom', pushToTalk: true, pushToTalkKey: 'Digit5' });
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     expect(screen.getByText('5')).toBeInTheDocument();
   });
 
   it('keyCodeToLabel handles camelCase codes', () => {
     useAudioSettingsStore.setState({ inputProfile: 'custom', pushToTalk: true, pushToTalkKey: 'ShiftLeft' });
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     expect(screen.getByText('Shift Left')).toBeInTheDocument();
   });
 
@@ -740,7 +699,7 @@ describe('UserSettings', () => {
         ['team1', { baseUrl: '', token: null, user: { id: 'u1', username: 'testuser', display_name: 'Test User' }, teamInfo: {} }],
       ]),
     });
-    render(<UserSettings />);
+    renderUserSettings();
     fireEvent.click(screen.getByText('Edit'));
     const input = screen.getByDisplayValue('Test User');
     fireEvent.change(input, { target: { value: 'New Name' } });
@@ -754,14 +713,13 @@ describe('UserSettings', () => {
         ['team1', { baseUrl: 'http://localhost:8080', token: 'tok', user: { id: 'u1', username: 'testuser', display_name: '' }, teamInfo: {} }],
       ]),
     });
-    render(<UserSettings />);
+    renderUserSettings();
     expect(screen.getByText('testuser')).toBeInTheDocument();
   });
 
   it('uses setRetroactiveGraceMs from audioSettingsStore', () => {
     useAudioSettingsStore.setState({ inputProfile: 'custom', noiseSuppressionMode: 'rnnoise', retroactiveGraceMs: 20 });
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     const retroSlider = screen.getByRole('slider', { name: 'Retroactive Grace' });
     fireEvent.change(retroSlider, { target: { value: '60' } });
     // Verify the store was updated
@@ -769,16 +727,14 @@ describe('UserSettings', () => {
   });
 
   it('renders language dropdown with i18n language', () => {
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-language'));
+    navigateToTab('language');
     // The dropdown should show a select with the current language
     const select = screen.getByRole('combobox');
     expect(select).toBeInTheDocument();
   });
 
   it('switches between all nav tabs', () => {
-    render(<UserSettings />);
-    // Visit every tab to exercise all activeId branches
+    renderUserSettings();
     fireEvent.click(screen.getByTestId('nav-my-account'));
     expect(screen.getByText('@testuser')).toBeInTheDocument();
 
@@ -805,8 +761,7 @@ describe('UserSettings', () => {
   });
 
   it('shows MicTest with meter even when not testing', () => {
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     const meter = screen.getByRole('meter', { name: /Microphone level/ });
     expect(meter).toBeInTheDocument();
   });
@@ -828,8 +783,7 @@ describe('UserSettings', () => {
       configurable: true,
     });
 
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
 
     // Wait for devices to load (useEffect with enumerateDevices)
     const { waitFor } = await import('@testing-library/react');
@@ -840,8 +794,7 @@ describe('UserSettings', () => {
   });
 
   it('mic test button is present and clickable', () => {
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
     // The mic test button shows the i18n key
     const btn = screen.getByRole('button', { name: /startTest|Test Mic/ });
     expect(btn).toBeInTheDocument();
@@ -850,8 +803,7 @@ describe('UserSettings', () => {
   });
 
   it('language tab renders change handler', () => {
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-language'));
+    navigateToTab('language');
     // The language select should be present
     const selects = document.querySelectorAll('select');
     expect(selects.length).toBeGreaterThan(0);
@@ -861,8 +813,7 @@ describe('UserSettings', () => {
     const { startMicTest, stopMicTest } = await import('../services/micTest');
     const { waitFor } = await import('@testing-library/react');
 
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
 
     // Click "Test Mic" to start
     const testBtn = screen.getByRole('button', { name: /startTest|Test Mic/ });
@@ -899,8 +850,7 @@ describe('UserSettings', () => {
     await import('../services/micTest');
     const { waitFor, act } = await import('@testing-library/react');
 
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
 
     // Start mic test
     const testBtn = screen.getByRole('button', { name: /startTest|Test Mic/ });
@@ -927,8 +877,7 @@ describe('UserSettings', () => {
     // Ensure enhancedNoiseSuppression starts as false
     useAudioSettingsStore.setState({ enhancedNoiseSuppression: false });
 
-    render(<UserSettings />);
-    fireEvent.click(screen.getByTestId('nav-voice-video'));
+    navigateToTab('voice-video');
 
     // Start mic test
     const testBtn = screen.getByRole('button', { name: /startTest|Test Mic/ });

@@ -1,18 +1,17 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
-import { CloudCheck, CloudXmark, CloudSync } from 'iconoir-react';
 import { useAuthStore, type User } from '../stores/authStore';
 import { api } from '../services/api';
-import { cryptoService } from '../services/crypto';
 import { exportIdentityBlob, hasIdentity } from '../services/keyStore';
+import ServerAddressInput from '../components/ServerAddressInput/ServerAddressInput';
+import {
+  normalizeServerUrl,
+  useServerHealthCheck,
+  uploadPrekeyBundle,
+  activateTeamAndNavigate,
+} from '../utils/serverConnection';
 import PublicShell from './PublicShell';
-
-function normalizeUrl(address: string): string {
-  return address.startsWith('http')
-    ? address.replace(/\/$/, '')
-    : `https://${address}`;
-}
 
 export default function JoinTeam() {
   const { t } = useTranslation();
@@ -49,36 +48,17 @@ export default function JoinTeam() {
   const [teamInfo, setTeamInfo] = useState<{ team_name?: string; created_by?: string } | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [serverStatus, setServerStatus] = useState<'unknown' | 'checking' | 'online' | 'offline'>(
+  const [serverStatus, setServerStatus] = useServerHealthCheck(
+    serverAddress,
     fromInviteLink ? 'checking' : 'unknown',
   );
-
-  const checkServer = useCallback(async (address: string) => {
-    if (!address.trim()) {
-      setServerStatus('unknown');
-      return;
-    }
-    setServerStatus('checking');
-    try {
-      const url = normalizeUrl(address);
-      const res = await fetch(`${url}/api/v1/health`, { signal: AbortSignal.timeout(5000) });
-      setServerStatus(res.ok ? 'online' : 'offline');
-    } catch {
-      setServerStatus('offline');
-    }
-  }, []);
-
-  useEffect(() => {
-    const timer = setTimeout(() => checkServer(serverAddress), 500);
-    return () => clearTimeout(timer);
-  }, [serverAddress, checkServer]);
 
   // Auto-check invite when arriving via invite link (/join/:token)
   useEffect(() => {
     if (!fromInviteLink || !urlToken) return;
     const autoCheck = async () => {
       try {
-        const url = normalizeUrl(globalThis.location.origin);
+        const url = normalizeServerUrl(globalThis.location.origin);
         const res = await fetch(`${url}/api/v1/health`, { signal: AbortSignal.timeout(5000) });
         if (res.ok) {
           setServerStatus('online');
@@ -98,7 +78,7 @@ export default function JoinTeam() {
     setError('');
     if (!serverAddress || !inviteToken) return;
     try {
-      const info = await api.getInviteInfo(normalizeUrl(serverAddress), inviteToken) as { team_name?: string; created_by?: string };
+      const info = await api.getInviteInfo(normalizeServerUrl(serverAddress), inviteToken) as { team_name?: string; created_by?: string };
       setTeamInfo(info);
     } catch (e) {
       setError(String(e));
@@ -114,7 +94,7 @@ export default function JoinTeam() {
 
     setLoading(true);
     try {
-      const normalizedUrl = normalizeUrl(serverAddress);
+      const normalizedUrl = normalizeServerUrl(serverAddress);
       const tempId = normalizedUrl;
       api.addTeam(tempId, normalizedUrl);
 
@@ -131,18 +111,7 @@ export default function JoinTeam() {
 
       // Upload prekey bundle for E2E encryption (non-blocking)
       if (derivedKey) {
-        try {
-          const bundle = await cryptoService.generatePrekeyBundle(derivedKey);
-          const toB64 = (arr: number[]) => btoa(String.fromCodePoint(...arr));
-          await api.uploadPrekeyBundle(realTeamId, {
-            identity_key: toB64(bundle.identity_key),
-            signed_prekey: toB64(bundle.signed_prekey),
-            signed_prekey_signature: toB64(bundle.signed_prekey_signature),
-            one_time_prekeys: bundle.one_time_prekeys.map(toB64),
-          });
-        } catch (e) {
-          console.warn('Prekey upload failed:', e);
-        }
+        await uploadPrekeyBundle(derivedKey, realTeamId);
 
         // Upload encrypted identity blob for cross-device recovery
         try {
@@ -159,11 +128,7 @@ export default function JoinTeam() {
         }
       }
 
-      // Set active team so AppLayout loads data
-      const { useTeamStore } = await import('../stores/teamStore');
-      useTeamStore.getState().setActiveTeam(realTeamId);
-
-      navigate('/app');
+      await activateTeamAndNavigate(realTeamId, navigate);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -189,24 +154,12 @@ export default function JoinTeam() {
 
       <div className="form">
         {!fromInviteLink && (
-          <div style={{ position: 'relative' }}>
-            <input
-              type="text"
-              placeholder={t('join.serverAddress')}
-              value={serverAddress}
-              onChange={(e) => setServerAddress(e.target.value)}
-              style={{ paddingRight: '2.5rem' }}
-            />
-            {serverStatus === 'online' && (
-              <CloudCheck style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-positive)', width: 18, height: 18 }} />
-            )}
-            {serverStatus === 'offline' && (
-              <CloudXmark style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-danger)', width: 18, height: 18 }} />
-            )}
-            {serverStatus === 'checking' && (
-              <CloudSync style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-warning)', width: 18, height: 18, animation: 'spin 1s linear infinite' }} />
-            )}
-          </div>
+          <ServerAddressInput
+            placeholder={t('join.serverAddress')}
+            value={serverAddress}
+            onChange={setServerAddress}
+            serverStatus={serverStatus}
+          />
         )}
         {!fromInviteLink && (
           <input

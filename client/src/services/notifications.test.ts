@@ -1,6 +1,34 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { notificationService } from './notifications';
 
+function setNotificationPermission(value: string) {
+  Object.defineProperty(Notification, 'permission', { value, configurable: true });
+}
+
+function resetNotificationPermission() {
+  setNotificationPermission('granted');
+}
+
+function setupTauriMocks(overrides: { isPermissionGranted?: boolean; requestPermission?: string } = {}) {
+  const mockSendNotification = vi.fn();
+  const mockIsPermissionGranted = vi.fn().mockResolvedValue(overrides.isPermissionGranted ?? true);
+  const mockRequestPermission = vi.fn().mockResolvedValue(overrides.requestPermission ?? 'granted');
+
+  (globalThis as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+  vi.doMock('@tauri-apps/api/notification', () => ({
+    isPermissionGranted: mockIsPermissionGranted,
+    requestPermission: mockRequestPermission,
+    sendNotification: mockSendNotification,
+  }));
+
+  return { mockSendNotification, mockIsPermissionGranted, mockRequestPermission };
+}
+
+function teardownTauriMocks() {
+  delete (globalThis as Record<string, unknown>).__TAURI_INTERNALS__;
+  vi.doUnmock('@tauri-apps/api/notification');
+}
+
 beforeEach(() => {
   notificationService.setEnabled(true);
   vi.clearAllMocks();
@@ -59,30 +87,28 @@ describe('NotificationService', () => {
   });
 
   it('requestPermission returns false when permission is denied', async () => {
-    Object.defineProperty(Notification, 'permission', { value: 'denied', configurable: true });
+    setNotificationPermission('denied');
     const result = await notificationService.requestPermission();
     expect(result).toBe(false);
-    Object.defineProperty(Notification, 'permission', { value: 'granted', configurable: true });
+    resetNotificationPermission();
   });
 
   it('notify requests permission when not yet granted', async () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(false);
-    Object.defineProperty(Notification, 'permission', { value: 'default', configurable: true });
+    setNotificationPermission('default');
     const requestSpy = vi.spyOn(Notification, 'requestPermission').mockResolvedValue('granted');
     await notificationService.notify('Title', 'Body');
     expect(requestSpy).toHaveBeenCalled();
-    Object.defineProperty(Notification, 'permission', { value: 'granted', configurable: true });
+    resetNotificationPermission();
   });
 
   it('notify does not create notification when permission request denied', async () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(false);
-    Object.defineProperty(Notification, 'permission', { value: 'default', configurable: true });
+    setNotificationPermission('default');
     vi.spyOn(Notification, 'requestPermission').mockResolvedValue('denied');
-    // Clear the mock constructor to track calls specifically
     (Notification as unknown as ReturnType<typeof vi.fn>).mockClear();
     await notificationService.notify('Title', 'Body');
-    // Notification constructor should not be called after denied
-    Object.defineProperty(Notification, 'permission', { value: 'granted', configurable: true });
+    resetNotificationPermission();
   });
 
   it('setEnabled and isEnabled round-trip', () => {
@@ -93,62 +119,34 @@ describe('NotificationService', () => {
   });
 
   it('requestPermission asks browser when permission is default', async () => {
-    Object.defineProperty(Notification, 'permission', { value: 'default', configurable: true });
+    setNotificationPermission('default');
     const requestSpy = vi.spyOn(Notification, 'requestPermission').mockResolvedValue('granted');
     const result = await notificationService.requestPermission();
     expect(result).toBe(true);
     expect(requestSpy).toHaveBeenCalled();
-    Object.defineProperty(Notification, 'permission', { value: 'granted', configurable: true });
+    resetNotificationPermission();
   });
 
   it('requestPermission returns false when browser denies', async () => {
-    Object.defineProperty(Notification, 'permission', { value: 'default', configurable: true });
+    setNotificationPermission('default');
     vi.spyOn(Notification, 'requestPermission').mockResolvedValue('denied');
     const result = await notificationService.requestPermission();
     expect(result).toBe(false);
-    Object.defineProperty(Notification, 'permission', { value: 'granted', configurable: true });
+    resetNotificationPermission();
   });
 
   it('notify uses Tauri API when __TAURI_INTERNALS__ is present', async () => {
-    const mockSendNotification = vi.fn();
-    const mockIsPermissionGranted = vi.fn().mockResolvedValue(true);
-    const mockRequestPermission = vi.fn().mockResolvedValue('granted');
-
-    // Set up Tauri internals
-    (globalThis as Record<string, unknown>).__TAURI_INTERNALS__ = {};
-
-    // Mock the dynamic import
-    vi.doMock('@tauri-apps/api/notification', () => ({
-      isPermissionGranted: mockIsPermissionGranted,
-      requestPermission: mockRequestPermission,
-      sendNotification: mockSendNotification,
-    }));
-
+    setupTauriMocks();
     vi.spyOn(document, 'hasFocus').mockReturnValue(false);
     await notificationService.notify('Title', 'Body');
-
-    delete (globalThis as Record<string, unknown>).__TAURI_INTERNALS__;
-    vi.doUnmock('@tauri-apps/api/notification');
+    teardownTauriMocks();
   });
 
   it('notify uses Tauri API and requests permission when not granted', async () => {
-    const mockSendNotification = vi.fn();
-    const mockIsPermissionGranted = vi.fn().mockResolvedValue(false);
-    const mockRequestPermission = vi.fn().mockResolvedValue('granted');
-
-    (globalThis as Record<string, unknown>).__TAURI_INTERNALS__ = {};
-
-    vi.doMock('@tauri-apps/api/notification', () => ({
-      isPermissionGranted: mockIsPermissionGranted,
-      requestPermission: mockRequestPermission,
-      sendNotification: mockSendNotification,
-    }));
-
+    setupTauriMocks({ isPermissionGranted: false });
     vi.spyOn(document, 'hasFocus').mockReturnValue(false);
     await notificationService.notify('Title', 'Body');
-
-    delete (globalThis as Record<string, unknown>).__TAURI_INTERNALS__;
-    vi.doUnmock('@tauri-apps/api/notification');
+    teardownTauriMocks();
   });
 
   it('notify falls through to browser API when Tauri import fails', async () => {

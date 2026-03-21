@@ -1,7 +1,6 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { CloudCheck, CloudXmark, CloudSync } from 'iconoir-react';
 import { useAuthStore } from '../stores/authStore';
 import { api } from '../services/api';
 import { decodeRecoveryKey } from '../services/webauthn';
@@ -12,6 +11,12 @@ import {
   signChallenge,
 } from '../services/keyStore';
 import { toBase64, fromBase64 } from '../services/cryptoCore';
+import ServerAddressInput from '../components/ServerAddressInput/ServerAddressInput';
+import {
+  normalizeServerUrl,
+  useServerHealthCheck,
+  activateTeamAndNavigate,
+} from '../utils/serverConnection';
 import PublicShell from './PublicShell';
 
 export default function RecoverFromServer() {
@@ -24,30 +29,7 @@ export default function RecoverFromServer() {
   const [recoveryKeyInput, setRecoveryKeyInput] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [serverStatus, setServerStatus] = useState<'unknown' | 'checking' | 'online' | 'offline'>('unknown');
-
-  const checkServer = useCallback(async (address: string) => {
-    if (!address.trim()) {
-      setServerStatus('unknown');
-      return;
-    }
-    setServerStatus('checking');
-    try {
-      let url = address.trim().replace(/\/$/, '');
-      if (!/^https?:\/\//i.test(url)) {
-        url = `https://${url}`;
-      }
-      const resp = await fetch(`${url}/api/v1/health`);
-      setServerStatus(resp.ok ? 'online' : 'offline');
-    } catch {
-      setServerStatus('offline');
-    }
-  }, []);
-
-  useEffect(() => {
-    const timer = setTimeout(() => checkServer(serverAddress), 500);
-    return () => clearTimeout(timer);
-  }, [serverAddress, checkServer]);
+  const [serverStatus] = useServerHealthCheck(serverAddress);
 
   const handleRecover = async () => {
     setError('');
@@ -58,10 +40,7 @@ export default function RecoverFromServer() {
       const recoveryBytes = decodeRecoveryKey(recoveryKeyInput.trim());
       const recoveryKeyB64 = toBase64(recoveryBytes);
 
-      let normalizedUrl = serverAddress.trim().replace(/\/$/, '');
-      if (!/^https?:\/\//i.test(normalizedUrl)) {
-        normalizedUrl = `https://${normalizedUrl}`;
-      }
+      const normalizedUrl = normalizeServerUrl(serverAddress);
 
       // Fetch identity blob from server
       const blobResp = await fetch(`${normalizedUrl}/api/v1/identity/blob?username=${encodeURIComponent(username)}`);
@@ -97,10 +76,7 @@ export default function RecoverFromServer() {
       api.setToken(teamId, verified.token);
       addTeam(teamId, verified.token, verified.user, null, normalizedUrl);
 
-      const { useTeamStore } = await import('../stores/teamStore');
-      useTeamStore.getState().setActiveTeam(teamId);
-
-      navigate('/app');
+      await activateTeamAndNavigate(teamId, navigate);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -118,24 +94,12 @@ export default function RecoverFromServer() {
       {error && <p className="error">{error}</p>}
 
       <div className="form">
-        <div style={{ position: 'relative' }}>
-          <input
-            type="text"
-            placeholder={t('join.serverAddress', 'Server address (e.g. http://localhost:8080)')}
-            value={serverAddress}
-            onChange={(e) => setServerAddress(e.target.value)}
-            style={{ paddingRight: '2.5rem' }}
-          />
-          {serverStatus === 'online' && (
-            <CloudCheck style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-positive)', width: 18, height: 18 }} />
-          )}
-          {serverStatus === 'offline' && (
-            <CloudXmark style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-danger)', width: 18, height: 18 }} />
-          )}
-          {serverStatus === 'checking' && (
-            <CloudSync style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-warning)', width: 18, height: 18, animation: 'spin 1s linear infinite' }} />
-          )}
-        </div>
+        <ServerAddressInput
+          placeholder={t('join.serverAddress', 'Server address (e.g. http://localhost:8080)')}
+          value={serverAddress}
+          onChange={setServerAddress}
+          serverStatus={serverStatus}
+        />
 
         <input
           type="text"

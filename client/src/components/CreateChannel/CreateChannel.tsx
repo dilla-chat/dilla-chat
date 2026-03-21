@@ -1,8 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Hashtag, SoundHigh } from 'iconoir-react';
 import { useTeamStore } from '../../stores/teamStore';
 import { api } from '../../services/api';
+import CategorySelect from '../CategorySelect/CategorySelect';
 import './CreateChannel.css';
 
 interface Props {
@@ -12,7 +13,7 @@ interface Props {
 
 export default function CreateChannel({ defaultCategory, onClose }: Readonly<Props>) {
   const { t } = useTranslation();
-  const { activeTeamId, channels, addChannel } = useTeamStore();
+  const { activeTeamId, addChannel } = useTeamStore();
   const [name, setName] = useState('');
   const [type, setType] = useState<'text' | 'voice'>('text');
   const [category, setCategory] = useState(defaultCategory ?? '');
@@ -20,13 +21,6 @@ export default function CreateChannel({ defaultCategory, onClose }: Readonly<Pro
   const [topic, setTopic] = useState('');
   const [creating, setCreating] = useState(false);
 
-  const existingCategories = useMemo(() => {
-    if (!activeTeamId) return [];
-    const chans = channels.get(activeTeamId) ?? [];
-    // Filter out UI-generated labels that aren't real DB categories
-    const uiLabels = new Set([t('channels.voiceChannels', 'Voice Channels'), t('channels.textChannels', 'Text Channels')]);
-    return [...new Set(chans.map((c) => c.category).filter((c): c is string => Boolean(c) && !uiLabels.has(c)))];
-  }, [activeTeamId, channels, t]);
 
   const handleCreate = async () => {
     if (!activeTeamId || !name.trim()) return;
@@ -95,24 +89,13 @@ export default function CreateChannel({ defaultCategory, onClose }: Readonly<Pro
 
         <div className="create-channel-field">
           <label htmlFor="create-channel-category">{t('channels.categoryLabel', 'Category')}</label>
-          <select id="create-channel-category" value={category} onChange={(e) => setCategory(e.target.value)}>
-            <option value="">{t('channels.noCategory', 'No category')}</option>
-            {existingCategories.map((cat) => (
-              <option key={cat} value={cat}>
-                {cat}
-              </option>
-            ))}
-            <option value="__new__">{t('channels.newCategory', '+ Create new')}</option>
-          </select>
-          {category === '__new__' && (
-            <input
-              type="text"
-              value={newCategory}
-              onChange={(e) => setNewCategory(e.target.value)}
-              placeholder={t('channels.categoryPlaceholder', 'Category name')}
-              style={{ marginTop: 8 }}
-            />
-          )}
+          <CategorySelect
+            id="create-channel-category"
+            category={category}
+            newCategory={newCategory}
+            onCategoryChange={setCategory}
+            onNewCategoryChange={setNewCategory}
+          />
         </div>
 
         <div className="create-channel-field">
