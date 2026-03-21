@@ -75,6 +75,45 @@ const makeDM = (overrides?: Partial<DMChannel>): DMChannel => ({
   ...overrides,
 });
 
+/** Render DMView with standard props */
+function renderDMView(overrides?: Partial<DMChannel>) {
+  return render(<DMView dm={makeDM(overrides)} currentUserId="user-1" />);
+}
+
+/** Render + get ws module (most tests need it) */
+async function renderWithWs(overrides?: Partial<DMChannel>) {
+  const { ws } = await import('../../services/websocket');
+  const result = renderDMView(overrides);
+  return { ws, ...result };
+}
+
+/** Fire a WS event handler by name */
+async function fireWsEvent(eventName: string, payload: Record<string, unknown>) {
+  const { ws } = await import('../../services/websocket');
+  const handler = getWsHandler(vi.mocked(ws.on), eventName);
+  if (handler) await invokeWsHandler(handler, payload);
+}
+
+/** Build a raw DM message payload for WS/API responses */
+function makeDMMessagePayload(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'dm-msg-1', channel_id: 'dm-1', dm_id: 'dm-1', author_id: 'user-2',
+    username: 'bob', content: 'Hey!', type: 'text', thread_id: null,
+    edited_at: null, deleted: false, created_at: '2025-01-01T00:00:00Z', reactions: [],
+    ...overrides,
+  };
+}
+
+/** Set up message store with existing messages for load-more tests */
+function setStoreWithMessages(opts: { loading?: boolean; hasMore?: boolean } = {}) {
+  useMessageStore.setState({
+    messages: new Map([['dm-1', [{ id: 'old-msg', channelId: 'dm-1', authorId: 'user-2', username: 'bob', content: 'old', encryptedContent: '', type: 'text', threadId: null, editedAt: null, deleted: false, createdAt: '2025-01-01T00:00:00Z', reactions: [] }]]]),
+    typing: new Map(),
+    loadingHistory: new Map([['dm-1', opts.loading ?? false]]),
+    hasMore: new Map([['dm-1', opts.hasMore ?? true]]),
+  });
+}
+
 describe('DMView', () => {
   beforeEach(() => {
     useTeamStore.setState({ activeTeamId: 'team-1' });
@@ -87,39 +126,38 @@ describe('DMView', () => {
     });
   });
 
-  it('renders MessageList and MessageInput', () => {
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
-    expect(screen.getByTestId('message-list')).toBeInTheDocument();
+  it('renders MessageList and MessageInput with correct channel id', () => {
+    renderDMView();
+    expect(screen.getByTestId('message-list')).toHaveAttribute('data-channel-id', 'dm-1');
     expect(screen.getByTestId('message-input')).toBeInTheDocument();
   });
 
-  it('passes DM id as channelId to MessageList', () => {
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
-    expect(screen.getByTestId('message-list')).toHaveAttribute('data-channel-id', 'dm-1');
-  });
-
   it('shows the other participant name in MessageInput for 1:1 DM', () => {
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
+    renderDMView();
     expect(screen.getByTestId('message-input')).toHaveAttribute('data-channel-name', 'Bob');
   });
 
   it('shows comma-joined names for group DM', () => {
-    const groupDM = makeDM({
-      is_group: true,
-      members: [
-        { user_id: 'user-1', username: 'alice', display_name: 'Alice' },
-        { user_id: 'user-2', username: 'bob', display_name: 'Bob' },
-        { user_id: 'user-3', username: 'charlie', display_name: 'Charlie' },
-      ],
-    });
-    render(<DMView dm={groupDM} currentUserId="user-1" />);
+    render(
+      <DMView
+        dm={makeDM({
+          is_group: true,
+          members: [
+            { user_id: 'user-1', username: 'alice', display_name: 'Alice' },
+            { user_id: 'user-2', username: 'bob', display_name: 'Bob' },
+            { user_id: 'user-3', username: 'charlie', display_name: 'Charlie' },
+          ],
+        })}
+        currentUserId="user-1"
+      />,
+    );
     expect(screen.getByTestId('message-input')).toHaveAttribute(
       'data-channel-name',
       'Alice, Bob, Charlie',
     );
   });
 
-  it('shows member panel when showMembers is true for group DM', () => {
+  it('shows member panel with usernames for group DM when showMembers is true', () => {
     const groupDM = makeDM({
       is_group: true,
       members: [
@@ -131,6 +169,8 @@ describe('DMView', () => {
     expect(screen.getByText('{{count}} members')).toBeInTheDocument();
     expect(screen.getByText('Alice')).toBeInTheDocument();
     expect(screen.getByText('Bob')).toBeInTheDocument();
+    expect(screen.getByText('@alice')).toBeInTheDocument();
+    expect(screen.getByText('@bob')).toBeInTheDocument();
   });
 
   it('does not show member panel for non-group DM even with showMembers', () => {
@@ -138,25 +178,18 @@ describe('DMView', () => {
     expect(screen.queryByText('{{count}} members')).not.toBeInTheDocument();
   });
 
+  it.each([
+    { scenario: 'no display_name', members: [{ user_id: 'user-1', username: 'alice', display_name: '' }, { user_id: 'user-2', username: 'bob', display_name: '' }], expected: 'bob' },
+    { scenario: 'no other member', members: [{ user_id: 'user-1', username: 'alice', display_name: 'Alice' }], expected: 'Unknown' },
+  ])('shows fallback channel name when $scenario', ({ members, expected }) => {
+    render(<DMView dm={makeDM({ members })} currentUserId="user-1" />);
+    expect(screen.getByTestId('message-input')).toHaveAttribute('data-channel-name', expected);
+  });
+
   it('loads DM message history via API on mount', async () => {
     const { api } = await import('../../services/api');
-    vi.mocked(api.getDMMessages).mockResolvedValueOnce([
-      {
-        id: 'dm-msg-1',
-        channel_id: 'dm-1',
-        dm_id: 'dm-1',
-        author_id: 'user-2',
-        username: 'bob',
-        content: 'Hey!',
-        type: 'text',
-        thread_id: null,
-        edited_at: null,
-        deleted: false,
-        created_at: '2025-01-01T00:00:00Z',
-        reactions: [],
-      },
-    ]);
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
+    vi.mocked(api.getDMMessages).mockResolvedValueOnce([makeDMMessagePayload()]);
+    renderDMView();
     await vi.waitFor(() => {
       expect(api.getDMMessages).toHaveBeenCalledWith('team-1', 'dm-1', undefined, 50);
     });
@@ -166,7 +199,7 @@ describe('DMView', () => {
     const { ws } = await import('../../services/websocket');
     vi.mocked(ws.isConnected).mockReturnValue(true);
     vi.mocked(ws.request).mockResolvedValueOnce([]);
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
+    renderDMView();
     await vi.waitFor(() => {
       expect(ws.request).toHaveBeenCalledWith('team-1', 'dms:messages', expect.objectContaining({ dm_id: 'dm-1' }));
     });
@@ -174,107 +207,44 @@ describe('DMView', () => {
 
   it('subscribes to DM WebSocket events', async () => {
     const { ws } = await import('../../services/websocket');
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
-    const calls = vi.mocked(ws.on).mock.calls;
-    const eventNames = calls.map(c => c[0]);
-    expect(eventNames).toContain('dm:message:new');
-    expect(eventNames).toContain('dm:message:updated');
-    expect(eventNames).toContain('dm:message:deleted');
-    expect(eventNames).toContain('dm:typing:indicator');
-  });
-
-  it('handles dm:message:new event for this DM', async () => {
-    const { ws } = await import('../../services/websocket');
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
-    const handler = getWsHandler(vi.mocked(ws.on), 'dm:message:new');
-    if (handler) {
-      await invokeWsHandler(handler, {
-        id: 'dm-msg-2', dm_id: 'dm-1', channel_id: 'dm-1', author_id: 'user-2',
-        username: 'bob', content: 'Hi!', type: 'text', thread_id: null,
-        edited_at: null, deleted: false, created_at: '2025-01-01T01:00:00Z', reactions: [],
-      });
+    renderDMView();
+    const eventNames = vi.mocked(ws.on).mock.calls.map(c => c[0]);
+    for (const evt of ['dm:message:new', 'dm:message:updated', 'dm:message:deleted', 'dm:typing:indicator']) {
+      expect(eventNames).toContain(evt);
     }
   });
 
-  it('ignores dm:message:new event for other DMs', async () => {
-    const { ws } = await import('../../services/websocket');
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
-    const handler = getWsHandler(vi.mocked(ws.on), 'dm:message:new');
-    if (handler) {
-      await invokeWsHandler(handler, {
-        id: 'dm-msg-x', dm_id: 'other-dm', channel_id: 'other-dm', author_id: 'user-3',
-        username: 'charlie', content: 'Nope', type: 'text', thread_id: null,
-        edited_at: null, deleted: false, created_at: '2025-01-01T01:00:00Z', reactions: [],
-      });
-    }
+  it.each([
+    { event: 'dm:message:new', payload: { id: 'dm-msg-2', dm_id: 'dm-1', channel_id: 'dm-1', author_id: 'user-2', username: 'bob', content: 'Hi!', type: 'text', thread_id: null, edited_at: null, deleted: false, created_at: '2025-01-01T01:00:00Z', reactions: [] } },
+    { event: 'dm:message:updated', payload: { dm_id: 'dm-1', message_id: 'dm-msg-1', content: 'edited', author_id: 'user-2', username: 'bob' } },
+    { event: 'dm:message:deleted', payload: { dm_id: 'dm-1', message_id: 'dm-msg-1' } },
+    { event: 'dm:typing:indicator', payload: { dm_id: 'dm-1', user_id: 'user-2', username: 'bob' } },
+  ])('handles $event for this DM', async ({ event, payload }) => {
+    renderDMView();
+    await fireWsEvent(event, payload);
   });
 
-  it('handles dm:message:updated event', async () => {
-    const { ws } = await import('../../services/websocket');
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
-    const handler = getWsHandler(vi.mocked(ws.on), 'dm:message:updated');
-    if (handler) {
-      await invokeWsHandler(handler, {
-        dm_id: 'dm-1', message_id: 'dm-msg-1', content: 'edited', author_id: 'user-2', username: 'bob',
-      });
-    }
-  });
-
-  it('handles dm:message:deleted event', async () => {
-    const { ws } = await import('../../services/websocket');
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
-    const handler = getWsHandler(vi.mocked(ws.on), 'dm:message:deleted');
-    if (handler) {
-      await invokeWsHandler(handler, { dm_id: 'dm-1', message_id: 'dm-msg-1' });
-    }
-  });
-
-  it('handles dm:typing:indicator event', async () => {
-    const { ws } = await import('../../services/websocket');
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
-    const handler = getWsHandler(vi.mocked(ws.on), 'dm:typing:indicator');
-    if (handler) {
-      await invokeWsHandler(handler, { dm_id: 'dm-1', user_id: 'user-2', username: 'bob' });
-    }
+  it.each([
+    { event: 'dm:message:new', payload: { id: 'dm-msg-x', dm_id: 'other-dm', channel_id: 'other-dm', author_id: 'user-3', username: 'charlie', content: 'Nope', type: 'text', thread_id: null, edited_at: null, deleted: false, created_at: '2025-01-01T01:00:00Z', reactions: [] } },
+    { event: 'dm:message:updated', payload: { dm_id: 'other-dm', message_id: 'msg-x', content: 'edited', author_id: 'user-3', username: 'charlie' } },
+    { event: 'dm:message:deleted', payload: { dm_id: 'other-dm', message_id: 'msg-x' } },
+    { event: 'dm:typing:indicator', payload: { dm_id: 'other-dm', user_id: 'user-3', username: 'charlie' } },
+  ])('ignores $event for other DMs', async ({ event, payload }) => {
+    renderDMView();
+    await fireWsEvent(event, payload);
   });
 
   it('unsubscribes from events on unmount', async () => {
     const { ws } = await import('../../services/websocket');
     const unsub = vi.fn();
     vi.mocked(ws.on).mockReturnValue(unsub);
-
-    const { unmount } = render(<DMView dm={makeDM()} currentUserId="user-1" />);
+    const { unmount } = renderDMView();
     unmount();
     expect(unsub).toHaveBeenCalled();
   });
 
-  it('shows member username with @ prefix in group member panel', () => {
-    const groupDM = makeDM({
-      is_group: true,
-      members: [
-        { user_id: 'user-1', username: 'alice', display_name: 'Alice' },
-        { user_id: 'user-2', username: 'bob', display_name: 'Bob' },
-      ],
-    });
-    render(<DMView dm={groupDM} currentUserId="user-1" showMembers />);
-    expect(screen.getByText('@alice')).toBeInTheDocument();
-    expect(screen.getByText('@bob')).toBeInTheDocument();
-  });
-
-  it('shows fallback display name when member has no display_name', () => {
-    const dm = makeDM({
-      members: [
-        { user_id: 'user-1', username: 'alice', display_name: '' },
-        { user_id: 'user-2', username: 'bob', display_name: '' },
-      ],
-    });
-    render(<DMView dm={dm} currentUserId="user-1" />);
-    expect(screen.getByTestId('message-input')).toHaveAttribute('data-channel-name', 'bob');
-  });
-
   it('sends a DM message via WS when send button is clicked', async () => {
-    const { ws } = await import('../../services/websocket');
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
+    const { ws } = await renderWithWs();
     fireEvent.click(screen.getByTestId('send-btn'));
     await vi.waitFor(() => {
       expect(ws.sendDMMessage).toHaveBeenCalledWith('team-1', 'dm-1', expect.any(String));
@@ -282,11 +252,8 @@ describe('DMView', () => {
   });
 
   it('edits a DM message via WS when save edit button is clicked', async () => {
-    const { ws } = await import('../../services/websocket');
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
-    // First trigger edit mode
+    const { ws } = await renderWithWs();
     fireEvent.click(screen.getByTestId('edit-msg'));
-    // Then save the edit
     fireEvent.click(screen.getByTestId('edit-btn'));
     await vi.waitFor(() => {
       expect(ws.editDMMessage).toHaveBeenCalledWith('team-1', 'dm-1', 'msg-1', expect.any(String));
@@ -294,60 +261,52 @@ describe('DMView', () => {
   });
 
   it('deletes a DM message via WS when delete button is clicked', async () => {
-    const { ws } = await import('../../services/websocket');
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
+    const { ws } = await renderWithWs();
     fireEvent.click(screen.getByTestId('delete-msg'));
     expect(ws.deleteDMMessage).toHaveBeenCalledWith('team-1', 'dm-1', 'msg-1');
   });
 
   it('sends typing indicator via WS when typing', async () => {
-    const { ws } = await import('../../services/websocket');
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
+    const { ws } = await renderWithWs();
     fireEvent.click(screen.getByTestId('typing-btn'));
     expect(ws.startDMTyping).toHaveBeenCalledWith('team-1', 'dm-1');
   });
 
-  it('clicking edit button sets editing message state', () => {
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
-    fireEvent.click(screen.getByTestId('edit-msg'));
-    expect(screen.getByTestId('editing-indicator')).toBeInTheDocument();
-  });
-
-  it('clicking cancel edit clears editing message state', () => {
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
+  it('clicking edit button sets editing state, cancel clears it', () => {
+    renderDMView();
     fireEvent.click(screen.getByTestId('edit-msg'));
     expect(screen.getByTestId('editing-indicator')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('cancel-edit-btn'));
     expect(screen.queryByTestId('editing-indicator')).not.toBeInTheDocument();
   });
 
-  it('triggers handleLoadMore via load more button', async () => {
-    useMessageStore.setState({
-      messages: new Map([['dm-1', [{ id: 'old-msg', channelId: 'dm-1', authorId: 'user-2', username: 'bob', content: 'old', encryptedContent: '', type: 'text', threadId: null, editedAt: null, deleted: false, createdAt: '2025-01-01T00:00:00Z', reactions: [] }]]]),
-      typing: new Map(),
-      loadingHistory: new Map([['dm-1', false]]),
-      hasMore: new Map([['dm-1', true]]),
-    });
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
+  it('triggers handleLoadMore via load more button', () => {
+    setStoreWithMessages();
+    renderDMView();
     fireEvent.click(screen.getByTestId('load-more'));
-    // Should trigger load more via API since ws is not connected
   });
 
-  it('does not send when activeTeamId is null', async () => {
+  it.each([
+    { scenario: 'send', btnId: 'send-btn', method: 'sendDMMessage' as const },
+    { scenario: 'edit', btnId: 'edit-msg+edit-btn', method: 'editDMMessage' as const },
+    { scenario: 'delete', btnId: 'delete-msg', method: 'deleteDMMessage' as const },
+    { scenario: 'type', btnId: 'typing-btn', method: 'startDMTyping' as const },
+  ])('does not $scenario when activeTeamId is null', async ({ btnId, method }) => {
     useTeamStore.setState({ activeTeamId: null as unknown as string });
     const { ws } = await import('../../services/websocket');
-    vi.mocked(ws.sendDMMessage).mockClear();
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
-    fireEvent.click(screen.getByTestId('send-btn'));
-    // With null activeTeamId, handleSend returns early
-    expect(ws.sendDMMessage).not.toHaveBeenCalled();
+    vi.mocked(ws[method]).mockClear();
+    renderDMView();
+    for (const id of btnId.split('+')) {
+      fireEvent.click(screen.getByTestId(id));
+    }
+    expect(ws[method]).not.toHaveBeenCalled();
   });
 
   it('encrypts DM messages when derivedKey is set', async () => {
     useAuthStore.setState({ derivedKey: 'test-key' } as never);
     const { cryptoService } = await import('../../services/crypto');
     vi.mocked(cryptoService.encryptDM).mockResolvedValueOnce('encrypted-text');
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
+    renderDMView();
     fireEvent.click(screen.getByTestId('send-btn'));
     await vi.waitFor(() => {
       expect(cryptoService.encryptDM).toHaveBeenCalled();
@@ -359,7 +318,7 @@ describe('DMView', () => {
     const { ws } = await import('../../services/websocket');
     const { cryptoService } = await import('../../services/crypto');
     vi.mocked(cryptoService.encryptDM).mockRejectedValueOnce(new Error('encrypt failed'));
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
+    renderDMView();
     fireEvent.click(screen.getByTestId('send-btn'));
     await vi.waitFor(() => {
       expect(ws.sendDMMessage).toHaveBeenCalledWith('team-1', 'dm-1', 'test message');
@@ -372,16 +331,9 @@ describe('DMView', () => {
     const { cryptoService } = await import('../../services/crypto');
     vi.mocked(ws.isConnected).mockReturnValue(false);
     const { api } = await import('../../services/api');
-    vi.mocked(api.getDMMessages).mockResolvedValueOnce([
-      {
-        id: 'dm-msg-enc', channel_id: 'dm-1', dm_id: 'dm-1', author_id: 'user-2',
-        username: 'bob', content: 'encrypted', type: 'text', thread_id: null,
-        edited_at: null, deleted: false, created_at: '2025-01-01T00:00:00Z', reactions: [],
-      },
-    ]);
+    vi.mocked(api.getDMMessages).mockResolvedValueOnce([makeDMMessagePayload({ id: 'dm-msg-enc', content: 'encrypted' })]);
     vi.mocked(cryptoService.decryptDM).mockResolvedValueOnce('decrypted');
-
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
+    renderDMView();
     await vi.waitFor(() => {
       expect(cryptoService.decryptDM).toHaveBeenCalled();
     });
@@ -391,13 +343,8 @@ describe('DMView', () => {
     const { ws } = await import('../../services/websocket');
     vi.mocked(ws.isConnected).mockReturnValue(true);
     vi.mocked(ws.request).mockResolvedValueOnce([]);
-    useMessageStore.setState({
-      messages: new Map([['dm-1', [{ id: 'old-msg', channelId: 'dm-1', authorId: 'user-2', username: 'bob', content: 'old', encryptedContent: '', type: 'text', threadId: null, editedAt: null, deleted: false, createdAt: '2025-01-01T00:00:00Z', reactions: [] }]]]),
-      typing: new Map(),
-      loadingHistory: new Map([['dm-1', false]]),
-      hasMore: new Map([['dm-1', true]]),
-    });
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
+    setStoreWithMessages();
+    renderDMView();
     fireEvent.click(screen.getByTestId('load-more'));
     await vi.waitFor(() => {
       expect(ws.request).toHaveBeenCalledWith('team-1', 'dms:messages', expect.objectContaining({ dm_id: 'dm-1' }));
@@ -414,74 +361,25 @@ describe('DMView', () => {
       loadingHistory: new Map([['dm-1', false]]),
       hasMore: new Map([['dm-1', true]]),
     });
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
+    renderDMView();
     fireEvent.click(screen.getByTestId('load-more'));
     expect(ws.request).not.toHaveBeenCalled();
   });
 
-  it('does not edit when activeTeamId is null', async () => {
-    useTeamStore.setState({ activeTeamId: null as unknown as string });
-    const { ws } = await import('../../services/websocket');
-    vi.mocked(ws.editDMMessage).mockClear();
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
-    fireEvent.click(screen.getByTestId('edit-msg'));
-    fireEvent.click(screen.getByTestId('edit-btn'));
-    expect(ws.editDMMessage).not.toHaveBeenCalled();
-  });
-
-  it('does not delete when activeTeamId is null', async () => {
-    useTeamStore.setState({ activeTeamId: null as unknown as string });
-    const { ws } = await import('../../services/websocket');
-    vi.mocked(ws.deleteDMMessage).mockClear();
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
-    fireEvent.click(screen.getByTestId('delete-msg'));
-    expect(ws.deleteDMMessage).not.toHaveBeenCalled();
-  });
-
-  it('does not type when activeTeamId is null', async () => {
-    useTeamStore.setState({ activeTeamId: null as unknown as string });
-    const { ws } = await import('../../services/websocket');
-    vi.mocked(ws.startDMTyping).mockClear();
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
-    fireEvent.click(screen.getByTestId('typing-btn'));
-    expect(ws.startDMTyping).not.toHaveBeenCalled();
-  });
-
-  it('ignores dm:message:updated for other DMs', async () => {
-    const { ws } = await import('../../services/websocket');
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
-    const handler = getWsHandler(vi.mocked(ws.on), 'dm:message:updated');
-    if (handler) {
-      await invokeWsHandler(handler, {
-        dm_id: 'other-dm', message_id: 'msg-x', content: 'edited', author_id: 'user-3', username: 'charlie',
-      });
-    }
-  });
-
-  it('ignores dm:message:deleted for other DMs', async () => {
-    const { ws } = await import('../../services/websocket');
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
-    const handler = getWsHandler(vi.mocked(ws.on), 'dm:message:deleted');
-    if (handler) {
-      await invokeWsHandler(handler, { dm_id: 'other-dm', message_id: 'msg-x' });
-    }
-  });
-
-  it('ignores dm:typing:indicator for other DMs', async () => {
-    const { ws } = await import('../../services/websocket');
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
-    const handler = getWsHandler(vi.mocked(ws.on), 'dm:typing:indicator');
-    if (handler) {
-      await invokeWsHandler(handler, { dm_id: 'other-dm', user_id: 'user-3', username: 'charlie' });
-    }
-  });
-
-  it('shows Unknown when no other member found', () => {
-    const dm = makeDM({
-      members: [{ user_id: 'user-1', username: 'alice', display_name: 'Alice' }],
+  it.each([
+    { scenario: 'already loading', loading: true, hasMore: true },
+    { scenario: 'no more messages', loading: false, hasMore: false },
+  ])('handleLoadMore does nothing when $scenario', async ({ loading, hasMore }) => {
+    const { api } = await import('../../services/api');
+    vi.mocked(api.getDMMessages).mockResolvedValueOnce([]);
+    useMessageStore.setState({
+      messages: new Map(),
+      typing: new Map(),
+      loadingHistory: new Map([['dm-1', loading]]),
+      hasMore: new Map([['dm-1', hasMore]]),
     });
-    render(<DMView dm={dm} currentUserId="user-1" />);
-    expect(screen.getByTestId('message-input')).toHaveAttribute('data-channel-name', 'Unknown');
+    renderDMView();
+    fireEvent.click(screen.getByTestId('load-more'));
   });
 
   it('tryDecryptDM falls back to content when decryption fails', async () => {
@@ -490,20 +388,12 @@ describe('DMView', () => {
     const { cryptoService } = await import('../../services/crypto');
     vi.mocked(ws.isConnected).mockReturnValue(false);
     const { api } = await import('../../services/api');
-    vi.mocked(api.getDMMessages).mockResolvedValueOnce([
-      {
-        id: 'dm-msg-fail', channel_id: 'dm-1', dm_id: 'dm-1', author_id: 'user-2',
-        username: 'bob', content: 'encrypted-raw', type: 'text', thread_id: null,
-        edited_at: null, deleted: false, created_at: '2025-01-01T00:00:00Z', reactions: [],
-      },
-    ]);
+    vi.mocked(api.getDMMessages).mockResolvedValueOnce([makeDMMessagePayload({ id: 'dm-msg-fail', content: 'encrypted-raw' })]);
     vi.mocked(cryptoService.decryptDM).mockRejectedValueOnce(new Error('decrypt failed'));
-
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
+    renderDMView();
     await vi.waitFor(() => {
       expect(cryptoService.decryptDM).toHaveBeenCalled();
     });
-    // Should fall back to raw content instead of crashing
   });
 
   it('handleLoadMore via API when WS is not connected with decryption', async () => {
@@ -511,80 +401,33 @@ describe('DMView', () => {
     const { ws } = await import('../../services/websocket');
     const { api } = await import('../../services/api');
     const { cryptoService } = await import('../../services/crypto');
-
     vi.mocked(ws.isConnected).mockReturnValue(false);
     vi.mocked(api.getDMMessages).mockClear();
     vi.mocked(api.getDMMessages).mockResolvedValue([]);
     vi.mocked(cryptoService.decryptDM).mockResolvedValue('decrypted-old');
-
-    useMessageStore.setState({
-      messages: new Map([['dm-1', [{ id: 'existing-msg', channelId: 'dm-1', authorId: 'user-2', username: 'bob', content: 'existing', encryptedContent: '', type: 'text', threadId: null, editedAt: null, deleted: false, createdAt: '2025-01-01T00:00:00Z', reactions: [] }]]]),
-      typing: new Map(),
-      loadingHistory: new Map([['dm-1', false]]),
-      hasMore: new Map([['dm-1', true]]),
-    });
-
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
-
-    // Wait for initial load
+    setStoreWithMessages();
+    renderDMView();
     await vi.waitFor(() => {
       expect(api.getDMMessages).toHaveBeenCalled();
     });
-
-    // Click load more
     fireEvent.click(screen.getByTestId('load-more'));
-    // Verify at least one more call was made (load more triggered)
     await vi.waitFor(() => {
       expect(vi.mocked(api.getDMMessages).mock.calls.length).toBeGreaterThanOrEqual(1);
     });
-  });
-
-  it('handleLoadMore does nothing when already loading', async () => {
-    const { api } = await import('../../services/api');
-    vi.mocked(api.getDMMessages).mockResolvedValueOnce([]);
-    useMessageStore.setState({
-      messages: new Map(),
-      typing: new Map(),
-      loadingHistory: new Map([['dm-1', true]]),
-      hasMore: new Map([['dm-1', true]]),
-    });
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
-    fireEvent.click(screen.getByTestId('load-more'));
-    // Should not make additional API calls when already loading
-  });
-
-  it('handleLoadMore does nothing when no more messages', async () => {
-    const { api } = await import('../../services/api');
-    vi.mocked(api.getDMMessages).mockResolvedValueOnce([]);
-    useMessageStore.setState({
-      messages: new Map(),
-      typing: new Map(),
-      loadingHistory: new Map([['dm-1', false]]),
-      hasMore: new Map([['dm-1', false]]),
-    });
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
-    fireEvent.click(screen.getByTestId('load-more'));
-    // Should not make additional API calls when hasMore is false
   });
 
   it('handleLoadMore catches errors gracefully', async () => {
     const { ws } = await import('../../services/websocket');
     vi.mocked(ws.isConnected).mockReturnValue(true);
     vi.mocked(ws.request)
-      .mockResolvedValueOnce([]) // initial load
-      .mockRejectedValueOnce(new Error('network error')); // load more
-    useMessageStore.setState({
-      messages: new Map([['dm-1', [{ id: 'msg-1', channelId: 'dm-1', authorId: 'user-2', username: 'bob', content: 'hi', encryptedContent: '', type: 'text', threadId: null, editedAt: null, deleted: false, createdAt: '2025-01-01T00:00:00Z', reactions: [] }]]]),
-      typing: new Map(),
-      loadingHistory: new Map([['dm-1', false]]),
-      hasMore: new Map([['dm-1', true]]),
-    });
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new Error('network error'));
+    setStoreWithMessages();
+    renderDMView();
     await vi.waitFor(() => {
       expect(ws.request).toHaveBeenCalled();
     });
     fireEvent.click(screen.getByTestId('load-more'));
-    // Should not crash
   });
 
   it('handleLoadMore via WS returns messages with decryption', async () => {
@@ -592,34 +435,19 @@ describe('DMView', () => {
     const { ws } = await import('../../services/websocket');
     const { api } = await import('../../services/api');
     const { cryptoService } = await import('../../services/crypto');
-
     vi.mocked(ws.isConnected).mockReturnValue(false);
     vi.mocked(cryptoService.decryptDM).mockResolvedValue('decrypted-old');
-
-    // First call (initial load) returns 50 messages to set hasMore=true
-    const fiftyMsgs = Array.from({ length: MESSAGE_PAGE_SIZE }, (_, i) => ({
-      id: `msg-${i}`, channel_id: 'dm-1', dm_id: 'dm-1', author_id: 'user-2',
-      username: 'bob', content: `enc-${i}`, type: 'text', thread_id: null,
-      edited_at: null, deleted: false, created_at: `2025-01-01T00:${String(i).padStart(2, '0')}:00Z`, reactions: [],
+    const fiftyMsgs = Array.from({ length: MESSAGE_PAGE_SIZE }, (_, i) => makeDMMessagePayload({
+      id: `msg-${i}`, content: `enc-${i}`,
+      created_at: `2025-01-01T00:${String(i).padStart(2, '0')}:00Z`,
     }));
-    // Second call (load more) returns actual older messages
-    const olderMsgs = [{
-      id: 'older-msg', channel_id: 'dm-1', dm_id: 'dm-1', author_id: 'user-2',
-      username: 'bob', content: 'encrypted-old', type: 'text', thread_id: null,
-      edited_at: null, deleted: false, created_at: '2024-12-31T00:00:00Z', reactions: [],
-    }];
     vi.mocked(api.getDMMessages)
       .mockResolvedValueOnce(fiftyMsgs)
-      .mockResolvedValueOnce(olderMsgs);
-
-    render(<DMView dm={makeDM()} currentUserId="user-1" />);
-
-    // Wait for initial load to complete and load-more to appear
+      .mockResolvedValueOnce([makeDMMessagePayload({ id: 'older-msg', content: 'encrypted-old', created_at: '2024-12-31T00:00:00Z' })]);
+    renderDMView();
     await vi.waitFor(() => {
       expect(vi.mocked(api.getDMMessages).mock.calls.length).toBeGreaterThanOrEqual(1);
     });
-
-    // Trigger load more
     const loadMoreBtn = screen.queryByTestId('load-more');
     if (loadMoreBtn) {
       fireEvent.click(loadMoreBtn);
@@ -638,15 +466,10 @@ describe('DMView', () => {
     vi.mocked(ws.isConnected).mockReturnValue(false);
     const { api } = await import('../../services/api');
     vi.mocked(api.getDMMessages).mockClear();
-    vi.mocked(api.getDMMessages).mockResolvedValueOnce([
-      {
-        id: 'dm-dec-msg-unique', channel_id: 'dm-unique', dm_id: 'dm-unique', author_id: 'user-2',
-        username: 'bob', content: 'encrypted-content', type: 'text', thread_id: null,
-        edited_at: null, deleted: false, created_at: '2025-01-01T00:00:00Z', reactions: [],
-      },
-    ]);
-    const uniqueDM = makeDM({ id: 'dm-unique' });
-    render(<DMView dm={uniqueDM} currentUserId="user-1" />);
+    vi.mocked(api.getDMMessages).mockResolvedValueOnce([makeDMMessagePayload({
+      id: 'dm-dec-msg-unique', channel_id: 'dm-unique', dm_id: 'dm-unique', content: 'encrypted-content',
+    })]);
+    render(<DMView dm={makeDM({ id: 'dm-unique' })} currentUserId="user-1" />);
     await vi.waitFor(() => {
       expect(cryptoService.decryptDM).toHaveBeenCalled();
     });

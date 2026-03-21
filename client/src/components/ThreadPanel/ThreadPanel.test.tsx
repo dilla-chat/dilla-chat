@@ -27,9 +27,7 @@ vi.mock('iconoir-react', () => ({
 }));
 
 vi.mock('../../services/api', () => ({
-  api: {
-    getThreadMessages: vi.fn(() => Promise.resolve([])),
-  },
+  api: { getThreadMessages: vi.fn(() => Promise.resolve([])) },
 }));
 
 vi.mock('../../services/websocket', () => ({
@@ -60,9 +58,7 @@ vi.mock('react-markdown', () => ({
   default: ({ children }: { children: string }) => <span>{children}</span>,
 }));
 
-vi.mock('remark-gfm', () => ({
-  default: () => {},
-}));
+vi.mock('remark-gfm', () => ({ default: () => {} }));
 
 vi.mock('../../utils/colors', () => ({
   usernameColor: () => '#2e8b9a',
@@ -82,7 +78,7 @@ vi.mock('../MessageInput/MessageInput', () => ({
   ),
 }));
 
-const thread: Thread = {
+const baseThread: Thread = {
   id: 'thread-1',
   channel_id: 'ch-1',
   parent_message_id: 'msg-parent',
@@ -94,205 +90,149 @@ const thread: Thread = {
   created_at: '2025-01-01T10:00:00Z',
 };
 
+/** Build a thread message for store or WS payloads */
+function makeThreadMsg(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'tmsg-1', channelId: 'ch-1', authorId: 'user-1', username: 'alice',
+    content: 'Hello from thread', encryptedContent: '', type: 'text',
+    threadId: 'thread-1', editedAt: null, deleted: false,
+    createdAt: '2025-01-01T11:00:00Z', reactions: [],
+    ...overrides,
+  };
+}
+
+/** Build a raw WS/API thread message payload (snake_case) */
+function makeRawThreadMsg(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'tmsg-1', channel_id: 'ch-1', author_id: 'user-1', username: 'alice',
+    content: 'Hello from thread', type: 'text', thread_id: 'thread-1',
+    edited_at: null, deleted: false, created_at: '2025-01-01T11:00:00Z', reactions: [],
+    ...overrides,
+  };
+}
+
+/** Standard render with default thread */
+function renderThreadPanel(threadOverrides?: Partial<Thread>, onClose = vi.fn()) {
+  const thread = { ...baseThread, ...threadOverrides };
+  return render(<ThreadPanel thread={thread} onClose={onClose} />);
+}
+
+/** Set up default beforeEach state */
+function setupDefaultStores() {
+  useTeamStore.setState({ activeTeamId: 'team-1' });
+  useAuthStore.setState({
+    teams: new Map([['team-1', { token: 't', user: { id: 'user-1', username: 'alice' }, teamInfo: null, baseUrl: '' }]]),
+    derivedKey: null,
+  });
+  useThreadStore.setState({
+    threadMessages: {
+      'thread-1': [
+        makeThreadMsg(),
+        makeThreadMsg({ id: 'tmsg-2', authorId: 'user-2', username: 'bob', content: 'Reply from bob', createdAt: '2025-01-01T11:05:00Z' }),
+      ],
+    },
+  });
+  useMessageStore.setState({
+    messages: new Map([['ch-1', [{
+      id: 'msg-parent', channelId: 'ch-1', authorId: 'user-1', username: 'alice',
+      content: 'Parent message content', encryptedContent: '', type: 'text',
+      threadId: null, editedAt: null, deleted: false, createdAt: '2025-01-01T10:00:00Z', reactions: [],
+    }]]]),
+  });
+}
+
+/** Simulate scrolling near top to trigger load-more */
+function simulateScrollNearTop(container: HTMLElement) {
+  const messagesDiv = container.querySelector('.thread-messages');
+  if (messagesDiv) {
+    Object.defineProperty(messagesDiv, 'scrollTop', { value: 30, configurable: true });
+    Object.defineProperty(messagesDiv, 'scrollHeight', { value: 2000, configurable: true });
+    Object.defineProperty(messagesDiv, 'clientHeight', { value: 500, configurable: true });
+    fireEvent.scroll(messagesDiv);
+  }
+}
+
+/** Build N raw messages for load-more tests */
+function buildFiftyRawMessages(threadId: string, prefix = 'msg') {
+  return Array.from({ length: 50 }, (_, i) => makeRawThreadMsg({
+    id: `${prefix}-${i}`, content: `msg-${i}`, thread_id: threadId,
+    created_at: `2025-01-01T${String(i).padStart(2, '0')}:00:00Z`,
+  }));
+}
+
 describe('ThreadPanel', () => {
-  beforeEach(() => {
-    useTeamStore.setState({ activeTeamId: 'team-1' });
-    const teams = new Map([['team-1', { token: 't', user: { id: 'user-1', username: 'alice' }, teamInfo: null, baseUrl: '' }]]);
-    useAuthStore.setState({ teams, derivedKey: null });
+  beforeEach(setupDefaultStores);
 
-    useThreadStore.setState({
-      threadMessages: {
-        'thread-1': [
-          {
-            id: 'tmsg-1',
-            channelId: 'ch-1',
-            authorId: 'user-1',
-            username: 'alice',
-            content: 'Hello from thread',
-            encryptedContent: '',
-            type: 'text',
-            threadId: 'thread-1',
-            editedAt: null,
-            deleted: false,
-            createdAt: '2025-01-01T11:00:00Z',
-            reactions: [],
-          },
-          {
-            id: 'tmsg-2',
-            channelId: 'ch-1',
-            authorId: 'user-2',
-            username: 'bob',
-            content: 'Reply from bob',
-            encryptedContent: '',
-            type: 'text',
-            threadId: 'thread-1',
-            editedAt: null,
-            deleted: false,
-            createdAt: '2025-01-01T11:05:00Z',
-            reactions: [],
-          },
-        ],
-      },
-    });
-
-    useMessageStore.setState({
-      messages: new Map([['ch-1', [
-        {
-          id: 'msg-parent',
-          channelId: 'ch-1',
-          authorId: 'user-1',
-          username: 'alice',
-          content: 'Parent message content',
-          encryptedContent: '',
-          type: 'text',
-          threadId: null,
-          editedAt: null,
-          deleted: false,
-          createdAt: '2025-01-01T10:00:00Z',
-          reactions: [],
-        },
-      ]]]),
-    });
-  });
-
-  it('renders thread title', () => {
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+  it('renders thread title, reply count, close button, parent message, thread messages, and input', () => {
+    renderThreadPanel();
     expect(screen.getByText('Test Thread')).toBeInTheDocument();
-  });
-
-  it('renders reply count subtitle', () => {
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    // Appears both in subtitle and in thread reply count indicator
-    const elements = screen.getAllByText('{{count}} replies');
-    expect(elements.length).toBeGreaterThanOrEqual(1);
-  });
-
-  it('renders close button', () => {
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    expect(screen.getAllByText('{{count}} replies').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByTestId('Xmark')).toBeInTheDocument();
+    expect(screen.getByText('Parent message content')).toBeInTheDocument();
+    expect(screen.getByText('Hello from thread')).toBeInTheDocument();
+    expect(screen.getByText('Reply from bob')).toBeInTheDocument();
+    expect(screen.getByTestId('message-input')).toBeInTheDocument();
   });
 
   it('calls onClose when close button is clicked', () => {
     const onClose = vi.fn();
-    render(<ThreadPanel thread={thread} onClose={onClose} />);
-    const closeBtn = screen.getByTestId('Xmark').closest('button')!;
-    fireEvent.click(closeBtn);
+    renderThreadPanel(undefined, onClose);
+    fireEvent.click(screen.getByTestId('Xmark').closest('button')!);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('renders parent message', () => {
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    expect(screen.getByText('Parent message content')).toBeInTheDocument();
-  });
-
-  it('renders thread messages', () => {
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    expect(screen.getByText('Hello from thread')).toBeInTheDocument();
-    expect(screen.getByText('Reply from bob')).toBeInTheDocument();
-  });
-
-  it('renders message input', () => {
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    expect(screen.getByTestId('message-input')).toBeInTheDocument();
-  });
-
-  it('shows edit and delete buttons for own messages', () => {
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    // user-1 authored tmsg-1, so edit/delete should appear
-    expect(screen.getByTestId('EditPencil')).toBeInTheDocument();
-    expect(screen.getByTestId('Trash')).toBeInTheDocument();
+  it('shows edit and delete buttons only for own messages', () => {
+    renderThreadPanel();
+    expect(screen.getAllByTestId('EditPencil')).toHaveLength(1);
+    expect(screen.getAllByTestId('Trash')).toHaveLength(1);
   });
 
   it('shows default title when thread has no title', () => {
-    const untitled = { ...thread, title: '' };
-    render(<ThreadPanel thread={untitled} onClose={vi.fn()} />);
+    renderThreadPanel({ title: '' });
     expect(screen.getByText('Thread')).toBeInTheDocument();
   });
 
   it('shows no replies message when thread is empty', () => {
     useThreadStore.setState({ threadMessages: {} });
-    const emptyThread = { ...thread, message_count: 0 };
-    render(<ThreadPanel thread={emptyThread} onClose={vi.fn()} />);
+    renderThreadPanel({ message_count: 0 });
     expect(screen.getByText('No replies yet. Start the conversation!')).toBeInTheDocument();
   });
 
   it('shows 1 reply subtitle for single message', () => {
     useThreadStore.setState({
-      threadMessages: {
-        'thread-1': [
-          {
-            id: 'tmsg-1', channelId: 'ch-1', authorId: 'user-1', username: 'alice',
-            content: 'Hello', encryptedContent: '', type: 'text', threadId: 'thread-1',
-            editedAt: null, deleted: false, createdAt: '2025-01-01T11:00:00Z', reactions: [],
-          },
-        ],
-      },
+      threadMessages: { 'thread-1': [makeThreadMsg({ content: 'Hello' })] },
     });
-    const singleReply = { ...thread, message_count: 1 };
-    render(<ThreadPanel thread={singleReply} onClose={vi.fn()} />);
+    renderThreadPanel({ message_count: 1 });
     expect(screen.getAllByText('1 reply').length).toBeGreaterThanOrEqual(1);
   });
 
-  it('shows deleted message placeholder for deleted messages', () => {
-    useThreadStore.setState({
-      threadMessages: {
-        'thread-1': [
-          {
-            id: 'tmsg-del', channelId: 'ch-1', authorId: 'user-1', username: 'alice',
-            content: '', encryptedContent: '', type: 'text', threadId: 'thread-1',
-            editedAt: null, deleted: true, createdAt: '2025-01-01T11:00:00Z', reactions: [],
-          },
-        ],
-      },
-    });
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    expect(screen.getByText('[message deleted]')).toBeInTheDocument();
+  it.each([
+    { scenario: 'deleted message', msg: { id: 'tmsg-del', deleted: true, content: '' }, expected: '[message deleted]' },
+    { scenario: 'edited message', msg: { id: 'tmsg-ed', authorId: 'user-2', username: 'bob', content: 'Edited msg', editedAt: '2025-01-01T12:00:00Z' }, expected: '(edited)' },
+  ])('shows $scenario indicator', ({ msg, expected }) => {
+    useThreadStore.setState({ threadMessages: { 'thread-1': [makeThreadMsg(msg)] } });
+    renderThreadPanel();
+    expect(screen.getByText(expected)).toBeInTheDocument();
   });
 
-  it('shows edited indicator for edited messages', () => {
-    useThreadStore.setState({
-      threadMessages: {
-        'thread-1': [
-          {
-            id: 'tmsg-ed', channelId: 'ch-1', authorId: 'user-2', username: 'bob',
-            content: 'Edited msg', encryptedContent: '', type: 'text', threadId: 'thread-1',
-            editedAt: '2025-01-01T12:00:00Z', deleted: false, createdAt: '2025-01-01T11:00:00Z', reactions: [],
-          },
-        ],
-      },
-    });
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    expect(screen.getByText('(edited)')).toBeInTheDocument();
-  });
-
-  it('clicking edit button sets editing message', () => {
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    const editBtn = screen.getByTestId('EditPencil').closest('button')!;
-    fireEvent.click(editBtn);
-    // The MessageInput should now have an input; verify it exists
-    expect(screen.getByTestId('message-input')).toBeInTheDocument();
+  it('clicking edit sets editing state, cancel clears it', () => {
+    renderThreadPanel();
+    fireEvent.click(screen.getByTestId('EditPencil').closest('button')!);
+    expect(screen.getByTestId('editing-indicator')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('cancel-edit'));
+    expect(screen.queryByTestId('editing-indicator')).not.toBeInTheDocument();
   });
 
   it('clicking delete button calls ws.deleteThreadMessage', async () => {
     const { ws } = await import('../../services/websocket');
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    const deleteBtn = screen.getByTestId('Trash').closest('button')!;
-    fireEvent.click(deleteBtn);
+    renderThreadPanel();
+    fireEvent.click(screen.getByTestId('Trash').closest('button')!);
     expect(ws.deleteThreadMessage).toHaveBeenCalledWith('team-1', 'thread-1', 'tmsg-1');
-  });
-
-  it('does not show edit/delete for other users messages', () => {
-    // bob's message (user-2) should not have edit/delete since current user is user-1
-    // alice's message (user-1) should have them
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    // Only one set of edit/delete (for alice)
-    expect(screen.getAllByTestId('EditPencil')).toHaveLength(1);
-    expect(screen.getAllByTestId('Trash')).toHaveLength(1);
   });
 
   it('sends message via thread input', async () => {
     const { ws } = await import('../../services/websocket');
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    renderThreadPanel();
     const input = screen.getByTestId('message-input').querySelector('input')!;
     fireEvent.change(input, { target: { value: 'new reply' } });
     fireEvent.keyDown(input, { key: 'Enter' });
@@ -301,75 +241,46 @@ describe('ThreadPanel', () => {
 
   it('renders without parent message when not found', () => {
     useMessageStore.setState({ messages: new Map() });
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    // Should still render thread messages without crash
+    renderThreadPanel();
     expect(screen.getByText('Hello from thread')).toBeInTheDocument();
   });
 
   it('subscribes to thread WS events on mount', async () => {
     const { ws } = await import('../../services/websocket');
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    const calls = vi.mocked(ws.on).mock.calls;
-    const eventNames = calls.map(c => c[0]);
-    expect(eventNames).toContain('thread:message:new');
-    expect(eventNames).toContain('thread:message:updated');
-    expect(eventNames).toContain('thread:message:deleted');
-  });
-
-  it('handles thread:message:new WS event', async () => {
-    const { ws } = await import('../../services/websocket');
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    const handler = getWsHandler(vi.mocked(ws.on), 'thread:message:new');
-    if (handler) {
-      await invokeWsHandler(handler, {
-        id: 'tmsg-new', channel_id: 'ch-1', author_id: 'user-2', username: 'bob',
-        content: 'New thread msg', type: 'text', thread_id: 'thread-1',
-        edited_at: null, deleted: false, created_at: '2025-01-01T12:00:00Z', reactions: [],
-      });
+    renderThreadPanel();
+    const eventNames = vi.mocked(ws.on).mock.calls.map(c => c[0]);
+    for (const evt of ['thread:message:new', 'thread:message:updated', 'thread:message:deleted']) {
+      expect(eventNames).toContain(evt);
     }
   });
 
-  it('ignores thread:message:new for other threads', async () => {
+  it.each([
+    { event: 'thread:message:new', payload: { id: 'tmsg-new', channel_id: 'ch-1', author_id: 'user-2', username: 'bob', content: 'New thread msg', type: 'text', thread_id: 'thread-1', edited_at: null, deleted: false, created_at: '2025-01-01T12:00:00Z', reactions: [] } },
+    { event: 'thread:message:updated', payload: { id: 'tmsg-1', channel_id: 'ch-1', author_id: 'user-1', username: 'alice', content: 'Edited content', type: 'text', thread_id: 'thread-1', edited_at: '2025-01-01T12:30:00Z', deleted: false, created_at: '2025-01-01T11:00:00Z', reactions: [] } },
+    { event: 'thread:message:deleted', payload: { message_id: 'tmsg-1', thread_id: 'thread-1' } },
+  ])('handles $event for this thread', async ({ event, payload }) => {
     const { ws } = await import('../../services/websocket');
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    const handler = getWsHandler(vi.mocked(ws.on), 'thread:message:new');
-    if (handler) {
-      await invokeWsHandler(handler, {
-        id: 'tmsg-other', channel_id: 'ch-1', author_id: 'user-2', username: 'bob',
-        content: 'Other', type: 'text', thread_id: 'other-thread',
-        edited_at: null, deleted: false, created_at: '2025-01-01T12:00:00Z', reactions: [],
-      });
-    }
+    renderThreadPanel();
+    const handler = getWsHandler(vi.mocked(ws.on), event);
+    if (handler) await invokeWsHandler(handler, payload);
   });
 
-  it('handles thread:message:updated WS event', async () => {
+  it.each([
+    { event: 'thread:message:new', payload: { id: 'tmsg-other', channel_id: 'ch-1', author_id: 'user-2', username: 'bob', content: 'Other', type: 'text', thread_id: 'other-thread', edited_at: null, deleted: false, created_at: '2025-01-01T12:00:00Z', reactions: [] } },
+    { event: 'thread:message:updated', payload: { id: 'tmsg-1', channel_id: 'ch-1', author_id: 'user-1', username: 'alice', content: 'Edited', type: 'text', thread_id: 'other-thread', edited_at: '2025-01-01T12:30:00Z', deleted: false, created_at: '2025-01-01T11:00:00Z', reactions: [] } },
+    { event: 'thread:message:deleted', payload: { message_id: 'tmsg-1', thread_id: 'other-thread' } },
+  ])('ignores $event for other threads', async ({ event, payload }) => {
     const { ws } = await import('../../services/websocket');
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    const handler = getWsHandler(vi.mocked(ws.on), 'thread:message:updated');
-    if (handler) {
-      await invokeWsHandler(handler, {
-        id: 'tmsg-1', channel_id: 'ch-1', author_id: 'user-1', username: 'alice',
-        content: 'Edited content', type: 'text', thread_id: 'thread-1',
-        edited_at: '2025-01-01T12:30:00Z', deleted: false, created_at: '2025-01-01T11:00:00Z', reactions: [],
-      });
-    }
-  });
-
-  it('handles thread:message:deleted WS event', async () => {
-    const { ws } = await import('../../services/websocket');
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    const handler = getWsHandler(vi.mocked(ws.on), 'thread:message:deleted');
-    if (handler) {
-      await invokeWsHandler(handler, { message_id: 'tmsg-1', thread_id: 'thread-1' });
-    }
+    renderThreadPanel();
+    const handler = getWsHandler(vi.mocked(ws.on), event);
+    if (handler) await invokeWsHandler(handler, payload);
   });
 
   it('unsubscribes from events on unmount', async () => {
     const { ws } = await import('../../services/websocket');
     const unsub = vi.fn();
     vi.mocked(ws.on).mockReturnValue(unsub);
-
-    const { unmount } = render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    const { unmount } = renderThreadPanel();
     unmount();
     expect(unsub).toHaveBeenCalled();
   });
@@ -377,10 +288,8 @@ describe('ThreadPanel', () => {
   it('loads thread messages via API on mount', async () => {
     const { api } = await import('../../services/api');
     vi.mocked(api.getThreadMessages).mockResolvedValueOnce([]);
-    // Clear initialLoadDone by using a new thread id
-    const freshThread = { ...thread, id: 'thread-fresh' };
     useThreadStore.setState({ threadMessages: {} });
-    render(<ThreadPanel thread={freshThread} onClose={vi.fn()} />);
+    renderThreadPanel({ id: 'thread-fresh' });
     await vi.waitFor(() => {
       expect(api.getThreadMessages).toHaveBeenCalledWith('team-1', 'thread-fresh');
     });
@@ -388,9 +297,8 @@ describe('ThreadPanel', () => {
 
   it('edit button sets editing state and save edit calls ws.editThreadMessage', async () => {
     const { ws } = await import('../../services/websocket');
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    const editBtn = screen.getByTestId('EditPencil').closest('button')!;
-    fireEvent.click(editBtn);
+    renderThreadPanel();
+    fireEvent.click(screen.getByTestId('EditPencil').closest('button')!);
     expect(screen.getByTestId('editing-indicator')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('save-edit'));
     await vi.waitFor(() => {
@@ -398,54 +306,29 @@ describe('ThreadPanel', () => {
     });
   });
 
-  it('cancel edit clears editing state', () => {
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    const editBtn = screen.getByTestId('EditPencil').closest('button')!;
-    fireEvent.click(editBtn);
-    expect(screen.getByTestId('editing-indicator')).toBeInTheDocument();
-    fireEvent.click(screen.getByTestId('cancel-edit'));
-    expect(screen.queryByTestId('editing-indicator')).not.toBeInTheDocument();
-  });
-
-  it('renders yesterday timestamp', () => {
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
+  it.each([
+    { scenario: 'yesterday', dateFactory: () => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString(); }, pattern: /Yesterday at/ },
+    { scenario: 'old date', dateFactory: () => '2020-06-15T10:00:00Z', pattern: /2020/ },
+    { scenario: 'today', dateFactory: () => new Date().toISOString(), pattern: /Today at/ },
+  ])('renders $scenario timestamp', ({ dateFactory, pattern }) => {
     useThreadStore.setState({
       threadMessages: {
-        'thread-1': [
-          {
-            id: 'tmsg-yesterday', channelId: 'ch-1', authorId: 'user-2', username: 'bob',
-            content: 'Yesterday msg', encryptedContent: '', type: 'text', threadId: 'thread-1',
-            editedAt: null, deleted: false, createdAt: yesterday.toISOString(), reactions: [],
-          },
-        ],
+        'thread-1': [makeThreadMsg({ id: `tmsg-ts`, authorId: 'user-2', username: 'bob', content: 'Timestamped msg', createdAt: dateFactory() })],
       },
     });
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    expect(screen.getByText(/Yesterday at/)).toBeInTheDocument();
+    renderThreadPanel();
+    expect(screen.getByText(pattern)).toBeInTheDocument();
   });
 
-  it('renders old date timestamp', () => {
-    useThreadStore.setState({
-      threadMessages: {
-        'thread-1': [
-          {
-            id: 'tmsg-old', channelId: 'ch-1', authorId: 'user-2', username: 'bob',
-            content: 'Old msg', encryptedContent: '', type: 'text', threadId: 'thread-1',
-            editedAt: null, deleted: false, createdAt: '2020-06-15T10:00:00Z', reactions: [],
-          },
-        ],
-      },
-    });
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    // Should show date in format like "6/15/2020"
-    expect(screen.getByText(/2020/)).toBeInTheDocument();
-  });
-
-  it('encrypts messages when derivedKey is set', async () => {
-    useAuthStore.setState({ teams: new Map([['team-1', { token: 't', user: { id: 'user-1', username: 'alice' }, teamInfo: null, baseUrl: '' }]]), derivedKey: 'test-derived-key' });
+  it.each([
+    { scenario: 'send', derivedKey: 'test-derived-key' },
+    { scenario: 'send (no key)', derivedKey: null },
+  ])('encrypts messages when derivedKey is set ($scenario)', async ({ derivedKey }) => {
+    if (derivedKey) {
+      useAuthStore.setState({ teams: new Map([['team-1', { token: 't', user: { id: 'user-1', username: 'alice' }, teamInfo: null, baseUrl: '' }]]), derivedKey });
+    }
     const { ws } = await import('../../services/websocket');
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    renderThreadPanel();
     const input = screen.getByTestId('message-input').querySelector('input')!;
     fireEvent.change(input, { target: { value: 'encrypted msg' } });
     fireEvent.keyDown(input, { key: 'Enter' });
@@ -457,9 +340,8 @@ describe('ThreadPanel', () => {
   it('encrypts edited messages when derivedKey is set', async () => {
     useAuthStore.setState({ teams: new Map([['team-1', { token: 't', user: { id: 'user-1', username: 'alice' }, teamInfo: null, baseUrl: '' }]]), derivedKey: 'test-derived-key' });
     const { ws } = await import('../../services/websocket');
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    const editBtn = screen.getByTestId('EditPencil').closest('button')!;
-    fireEvent.click(editBtn);
+    renderThreadPanel();
+    fireEvent.click(screen.getByTestId('EditPencil').closest('button')!);
     fireEvent.click(screen.getByTestId('save-edit'));
     await vi.waitFor(() => {
       expect(ws.editThreadMessage).toHaveBeenCalledWith('team-1', 'thread-1', 'tmsg-1', expect.any(String));
@@ -470,178 +352,78 @@ describe('ThreadPanel', () => {
     useTeamStore.setState({ activeTeamId: null as unknown as string });
     const { ws } = await import('../../services/websocket');
     vi.mocked(ws.sendThreadMessage).mockClear();
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    renderThreadPanel();
     const input = screen.getByTestId('message-input').querySelector('input')!;
     fireEvent.change(input, { target: { value: 'test' } });
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(ws.sendThreadMessage).not.toHaveBeenCalled();
   });
 
-  it('handles scroll and triggers load more at top', async () => {
-    // Set up thread with messages and hasMore=true
-    useThreadStore.setState({
-      threadMessages: {
-        'thread-1': [
-          {
-            id: 'tmsg-1', channelId: 'ch-1', authorId: 'user-1', username: 'alice',
-            content: 'Hello', encryptedContent: '', type: 'text', threadId: 'thread-1',
-            editedAt: null, deleted: false, createdAt: '2025-01-01T11:00:00Z', reactions: [],
-          },
-        ],
-      },
-    });
-
-    const { container } = render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+  it('handles scroll near top and at bottom', () => {
+    const { container } = renderThreadPanel();
     const messagesDiv = container.querySelector('.thread-messages');
     if (messagesDiv) {
-      // Simulate scroll near top
+      // Near top
       Object.defineProperty(messagesDiv, 'scrollTop', { value: 50, configurable: true });
       Object.defineProperty(messagesDiv, 'scrollHeight', { value: 1000, configurable: true });
       Object.defineProperty(messagesDiv, 'clientHeight', { value: 500, configurable: true });
       fireEvent.scroll(messagesDiv);
-    }
-  });
-
-  it('handles scroll and detects auto-scroll position', async () => {
-    const { container } = render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    const messagesDiv = container.querySelector('.thread-messages');
-    if (messagesDiv) {
-      // Simulate scroll at bottom (auto-scroll should be true)
+      // At bottom
       Object.defineProperty(messagesDiv, 'scrollTop', { value: 480, configurable: true });
-      Object.defineProperty(messagesDiv, 'scrollHeight', { value: 1000, configurable: true });
-      Object.defineProperty(messagesDiv, 'clientHeight', { value: 500, configurable: true });
       fireEvent.scroll(messagesDiv);
     }
   });
 
   it('renders loading state', () => {
     useThreadStore.setState({ threadMessages: {} });
-    const freshThread = { ...thread, id: 'thread-loading' };
-    render(<ThreadPanel thread={freshThread} onClose={vi.fn()} />);
+    renderThreadPanel({ id: 'thread-loading' });
     expect(screen.getByText('Loading...')).toBeInTheDocument();
-  });
-
-  it('formats time correctly for today, yesterday, and other dates', () => {
-    // The formatTime function is internal but tested via rendered output
-    const now = new Date();
-    useThreadStore.setState({
-      threadMessages: {
-        'thread-1': [
-          {
-            id: 'tmsg-today', channelId: 'ch-1', authorId: 'user-2', username: 'bob',
-            content: 'Today msg', encryptedContent: '', type: 'text', threadId: 'thread-1',
-            editedAt: null, deleted: false, createdAt: now.toISOString(), reactions: [],
-          },
-        ],
-      },
-    });
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    expect(screen.getByText(/Today at/)).toBeInTheDocument();
   });
 
   it('loads more messages via handleLoadMore with WS', async () => {
     const { ws } = await import('../../services/websocket');
     vi.mocked(ws.isConnected).mockReturnValue(true);
     vi.mocked(ws.request).mockResolvedValueOnce([]);
-
     useThreadStore.setState({
-      threadMessages: {
-        'thread-loadmore': [
-          {
-            id: 'tmsg-old', channelId: 'ch-1', authorId: 'user-2', username: 'bob',
-            content: 'Old msg', encryptedContent: '', type: 'text', threadId: 'thread-loadmore',
-            editedAt: null, deleted: false, createdAt: '2025-01-01T11:00:00Z', reactions: [],
-          },
-        ],
-      },
+      threadMessages: { 'thread-loadmore': [makeThreadMsg({ id: 'tmsg-old', threadId: 'thread-loadmore', content: 'Old msg' })] },
     });
-
-    const loadMoreThread = { ...thread, id: 'thread-loadmore' };
-    const { container } = render(<ThreadPanel thread={loadMoreThread} onClose={vi.fn()} />);
-
-    // Simulate scroll near top to trigger load more
-    const messagesDiv = container.querySelector('.thread-messages');
-    if (messagesDiv) {
-      Object.defineProperty(messagesDiv, 'scrollTop', { value: 30, configurable: true });
-      Object.defineProperty(messagesDiv, 'scrollHeight', { value: 1000, configurable: true });
-      Object.defineProperty(messagesDiv, 'clientHeight', { value: 500, configurable: true });
-      fireEvent.scroll(messagesDiv);
-    }
-
+    const { container } = renderThreadPanel({ id: 'thread-loadmore' });
+    simulateScrollNearTop(container);
     await vi.waitFor(() => {
-      expect(ws.request).toHaveBeenCalledWith('team-1', 'threads:messages', expect.objectContaining({
-        thread_id: 'thread-loadmore',
-      }));
+      expect(ws.request).toHaveBeenCalledWith('team-1', 'threads:messages', expect.objectContaining({ thread_id: 'thread-loadmore' }));
     });
   });
-
 
   it('decrypts messages with derivedKey during initial load via WS', async () => {
     const { ws } = await import('../../services/websocket');
     const { cryptoService } = await import('../../services/crypto');
     vi.mocked(ws.isConnected).mockReturnValue(true);
-    vi.mocked(ws.request).mockResolvedValueOnce([
-      {
-        id: 'tmsg-enc', channel_id: 'ch-1', author_id: 'user-1', username: 'alice',
-        content: 'encrypted-content', type: 'text', thread_id: 'thread-decrypt',
-        edited_at: null, deleted: false, created_at: '2025-01-01T11:00:00Z', reactions: [],
-      },
-    ]);
+    vi.mocked(ws.request).mockResolvedValueOnce([makeRawThreadMsg({ id: 'tmsg-enc', content: 'encrypted-content', thread_id: 'thread-decrypt' })]);
     vi.mocked(cryptoService.decryptMessage).mockResolvedValueOnce('decrypted-content');
-
     useAuthStore.setState({
       teams: new Map([['team-1', { token: 't', user: { id: 'user-1', username: 'alice' }, teamInfo: null, baseUrl: '' }]]),
       derivedKey: 'test-key',
     });
     useThreadStore.setState({ threadMessages: {} });
-
-    const decryptThread = { ...thread, id: 'thread-decrypt' };
-    render(<ThreadPanel thread={decryptThread} onClose={vi.fn()} />);
-
+    renderThreadPanel({ id: 'thread-decrypt' });
     await vi.waitFor(() => {
       expect(cryptoService.decryptMessage).toHaveBeenCalled();
     });
   });
 
-  it('handles thread:message:updated for other thread (ignores)', async () => {
-    const { ws } = await import('../../services/websocket');
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    const handler = getWsHandler(vi.mocked(ws.on), 'thread:message:updated');
-    if (handler) {
-      await invokeWsHandler(handler, {
-        id: 'tmsg-1', channel_id: 'ch-1', author_id: 'user-1', username: 'alice',
-        content: 'Edited', type: 'text', thread_id: 'other-thread',
-        edited_at: '2025-01-01T12:30:00Z', deleted: false, created_at: '2025-01-01T11:00:00Z', reactions: [],
-      });
-    }
-    // Should not crash and should not update messages
-  });
-
-  it('handles thread:message:deleted for other thread (ignores)', async () => {
-    const { ws } = await import('../../services/websocket');
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    const handler = getWsHandler(vi.mocked(ws.on), 'thread:message:deleted');
-    if (handler) {
-      await invokeWsHandler(handler, { message_id: 'tmsg-1', thread_id: 'other-thread' });
-    }
-  });
-
-  it('encrypts messages with derivedKey during send', async () => {
+  it('encrypts messages with derivedKey during send (falls back on error)', async () => {
     useAuthStore.setState({
       teams: new Map([['team-1', { token: 't', user: { id: 'user-1', username: 'alice' }, teamInfo: null, baseUrl: '' }]]),
       derivedKey: 'test-key',
     });
     const { cryptoService } = await import('../../services/crypto');
     vi.mocked(cryptoService.encryptMessage).mockRejectedValueOnce(new Error('encryption failed'));
-
     const { ws } = await import('../../services/websocket');
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    renderThreadPanel();
     const input = screen.getByTestId('message-input').querySelector('input')!;
     fireEvent.change(input, { target: { value: 'plaintext msg' } });
     fireEvent.keyDown(input, { key: 'Enter' });
-
     await vi.waitFor(() => {
-      // Should fall through and send plaintext
       expect(ws.sendThreadMessage).toHaveBeenCalled();
     });
   });
@@ -652,14 +434,9 @@ describe('ThreadPanel', () => {
     vi.mocked(ws.isConnected).mockReturnValue(false);
     vi.mocked(api.getThreadMessages).mockClear();
     vi.mocked(api.getThreadMessages).mockResolvedValue([]);
-
-    const threadId = `thread-api-more-661`;
+    const threadId = 'thread-api-more-661';
     useThreadStore.setState({ threadMessages: {} });
-
-    const apiThread = { ...thread, id: threadId };
-    render(<ThreadPanel thread={apiThread} onClose={vi.fn()} />);
-
-    // Wait for initial load
+    renderThreadPanel({ id: threadId });
     await vi.waitFor(() => {
       expect(vi.mocked(api.getThreadMessages).mock.calls.some(c => c[1] === threadId)).toBe(true);
     });
@@ -669,14 +446,8 @@ describe('ThreadPanel', () => {
     const { ws } = await import('../../services/websocket');
     vi.mocked(ws.isConnected).mockReturnValue(true);
     vi.mocked(ws.request).mockResolvedValue([]);
-
-    // The initial load sets loading=true; render with a fresh thread so the initial
-    // load runs. While it's loading, scroll near top shouldn't trigger a second request.
     useThreadStore.setState({ threadMessages: {} });
-    const loadingThread = { ...thread, id: 'thread-loading-check' };
-    const { container } = render(<ThreadPanel thread={loadingThread} onClose={vi.fn()} />);
-
-    // Initial load fires. Now scroll near top immediately.
+    const { container } = renderThreadPanel({ id: 'thread-loading-check' });
     const messagesDiv = container.querySelector('.thread-messages');
     if (messagesDiv) {
       Object.defineProperty(messagesDiv, 'scrollTop', { value: 30, configurable: true });
@@ -689,43 +460,15 @@ describe('ThreadPanel', () => {
   it('handleLoadMore deduplicates messages', async () => {
     const { ws } = await import('../../services/websocket');
     vi.mocked(ws.isConnected).mockReturnValue(true);
-    // Return a message that already exists in the store
-    vi.mocked(ws.request).mockResolvedValueOnce([]).mockResolvedValueOnce([
-      {
-        id: 'tmsg-dup', channel_id: 'ch-1', author_id: 'user-2', username: 'bob',
-        content: 'Dup msg', type: 'text', thread_id: 'thread-dedup',
-        edited_at: null, deleted: false, created_at: '2025-01-01T10:00:00Z', reactions: [],
-      },
-    ]);
-
+    vi.mocked(ws.request).mockResolvedValueOnce([]).mockResolvedValueOnce([makeRawThreadMsg({
+      id: 'tmsg-dup', authorId: 'user-2', username: 'bob', content: 'Dup msg', thread_id: 'thread-dedup', created_at: '2025-01-01T10:00:00Z',
+    })]);
     useThreadStore.setState({
-      threadMessages: {
-        'thread-dedup': [
-          {
-            id: 'tmsg-dup', channelId: 'ch-1', authorId: 'user-2', username: 'bob',
-            content: 'Dup msg', encryptedContent: '', type: 'text', threadId: 'thread-dedup',
-            editedAt: null, deleted: false, createdAt: '2025-01-01T10:00:00Z', reactions: [],
-          },
-        ],
-      },
+      threadMessages: { 'thread-dedup': [makeThreadMsg({ id: 'tmsg-dup', authorId: 'user-2', username: 'bob', content: 'Dup msg', threadId: 'thread-dedup', createdAt: '2025-01-01T10:00:00Z' })] },
     });
-
-    const dedupThread = { ...thread, id: 'thread-dedup' };
-    const { container } = render(<ThreadPanel thread={dedupThread} onClose={vi.fn()} />);
-
-    // Wait for initial load to finish
-    await vi.waitFor(() => {
-      expect(ws.request).toHaveBeenCalled();
-    });
-
-    // Trigger scroll near top to invoke handleLoadMore
-    const messagesDiv = container.querySelector('.thread-messages');
-    if (messagesDiv) {
-      Object.defineProperty(messagesDiv, 'scrollTop', { value: 30, configurable: true });
-      Object.defineProperty(messagesDiv, 'scrollHeight', { value: 1000, configurable: true });
-      Object.defineProperty(messagesDiv, 'clientHeight', { value: 500, configurable: true });
-      fireEvent.scroll(messagesDiv);
-    }
+    const { container } = renderThreadPanel({ id: 'thread-dedup' });
+    await vi.waitFor(() => { expect(ws.request).toHaveBeenCalled(); });
+    simulateScrollNearTop(container);
   });
 
   it('initial load with derivedKey calls decryptMessage for each message', async () => {
@@ -734,25 +477,14 @@ describe('ThreadPanel', () => {
     vi.mocked(ws.isConnected).mockReturnValue(true);
     vi.mocked(cryptoService.decryptMessage).mockClear();
     vi.mocked(cryptoService.decryptMessage).mockResolvedValue('decrypted-plain');
-
-    const threadId = `thread-decrypt-743`;
-    vi.mocked(ws.request).mockResolvedValueOnce([
-      {
-        id: 'tmsg-dec-1', channel_id: 'ch-1', author_id: 'user-1', username: 'alice',
-        content: 'encrypted-1', type: 'text', thread_id: threadId,
-        edited_at: null, deleted: false, created_at: '2025-01-01T11:00:00Z', reactions: [],
-      },
-    ]);
-
+    const threadId = 'thread-decrypt-743';
+    vi.mocked(ws.request).mockResolvedValueOnce([makeRawThreadMsg({ id: 'tmsg-dec-1', content: 'encrypted-1', thread_id: threadId })]);
     useAuthStore.setState({
       teams: new Map([['team-1', { token: 't', user: { id: 'user-1', username: 'alice' }, teamInfo: null, baseUrl: '' }]]),
       derivedKey: 'test-key',
     });
     useThreadStore.setState({ threadMessages: {} });
-
-    const decryptThread = { ...thread, id: threadId };
-    render(<ThreadPanel thread={decryptThread} onClose={vi.fn()} />);
-
+    renderThreadPanel({ id: threadId });
     await vi.waitFor(() => {
       expect(cryptoService.decryptMessage).toHaveBeenCalled();
     });
@@ -762,153 +494,69 @@ describe('ThreadPanel', () => {
     const { ws } = await import('../../services/websocket');
     vi.mocked(ws.request).mockReset();
     vi.mocked(ws.isConnected).mockReset();
-
     const threadId = `thread-loadmore-ws-${Date.now()}`;
     let callCount = 0;
-
-    // Build 50 messages so hasMore stays true after initial load
-    const fiftyMessages = Array.from({ length: 50 }, (_, i) => ({
-      id: `init-msg-${i}`, channel_id: 'ch-1', author_id: 'user-2', username: 'bob',
-      content: `msg-${i}`, type: 'text', thread_id: threadId,
-      edited_at: null, deleted: false, created_at: `2025-01-01T${String(i).padStart(2, '0')}:00:00Z`,
-      reactions: [],
-    }));
-
+    const fiftyMessages = buildFiftyRawMessages(threadId, 'init-msg');
     vi.mocked(ws.isConnected).mockReturnValue(true);
-    vi.mocked(ws.request).mockImplementation(async (_teamId, event, _params) => {
+    vi.mocked(ws.request).mockImplementation(async (_teamId, event) => {
       if (event === 'threads:messages') {
         callCount++;
-        if (callCount === 1) return fiftyMessages; // initial load
-        // loadMore: return one new message
-        return [{
-          id: 'older-msg-1', channel_id: 'ch-1', author_id: 'user-2', username: 'bob',
-          content: 'Older message', type: 'text', thread_id: threadId,
-          edited_at: null, deleted: false, created_at: '2024-12-31T23:00:00Z',
-          reactions: [],
-        }];
+        if (callCount === 1) return fiftyMessages;
+        return [makeRawThreadMsg({ id: 'older-msg-1', content: 'Older message', thread_id: threadId, created_at: '2024-12-31T23:00:00Z' })];
       }
       return [];
     });
-
     useThreadStore.setState({ threadMessages: {} });
-    const loadMoreThread = { ...thread, id: threadId };
-    const { container } = render(<ThreadPanel thread={loadMoreThread} onClose={vi.fn()} />);
-
-    // Wait for initial load to complete
+    const { container } = renderThreadPanel({ id: threadId });
     await vi.waitFor(() => {
-      const msgs = useThreadStore.getState().threadMessages[threadId];
-      expect(msgs?.length).toBe(50);
+      expect(useThreadStore.getState().threadMessages[threadId]?.length).toBe(50);
     });
-
-    // Trigger scroll near top to invoke handleLoadMore
-    const messagesDiv = container.querySelector('.thread-messages');
-    if (messagesDiv) {
-      Object.defineProperty(messagesDiv, 'scrollTop', { value: 30, configurable: true });
-      Object.defineProperty(messagesDiv, 'scrollHeight', { value: 2000, configurable: true });
-      Object.defineProperty(messagesDiv, 'clientHeight', { value: 500, configurable: true });
-      fireEvent.scroll(messagesDiv);
-    }
-
-    // Wait for loadMore to be called
+    simulateScrollNearTop(container);
+    await vi.waitFor(() => { expect(callCount).toBeGreaterThanOrEqual(2); });
     await vi.waitFor(() => {
-      expect(callCount).toBeGreaterThanOrEqual(2);
-    });
-
-    // Verify messages were prepended
-    await vi.waitFor(() => {
-      const msgs = useThreadStore.getState().threadMessages[threadId];
-      expect(msgs?.length).toBe(51);
+      expect(useThreadStore.getState().threadMessages[threadId]?.length).toBe(51);
     });
   });
 
   it('handleLoadMore loads older messages via API when WS not connected', async () => {
     const { ws } = await import('../../services/websocket');
     const { api } = await import('../../services/api');
-
     const threadId = `thread-loadmore-api-${Date.now()}`;
     let apiCallCount = 0;
-
-    const fiftyMessages = Array.from({ length: 50 }, (_, i) => ({
-      id: `api-init-msg-${i}`, channel_id: 'ch-1', author_id: 'user-2', username: 'bob',
-      content: `msg-${i}`, type: 'text', thread_id: threadId,
-      edited_at: null, deleted: false, created_at: `2025-01-01T${String(i).padStart(2, '0')}:00:00Z`,
-      reactions: [],
-    }));
-
+    const fiftyMessages = buildFiftyRawMessages(threadId, 'api-init-msg');
     vi.mocked(ws.isConnected).mockReturnValue(false);
-    vi.mocked(api.getThreadMessages).mockImplementation(async (..._args) => {
+    vi.mocked(api.getThreadMessages).mockImplementation(async () => {
       apiCallCount++;
       if (apiCallCount === 1) return fiftyMessages as never;
-      return [{
-        id: 'api-older-1', channel_id: 'ch-1', author_id: 'user-2', username: 'bob',
-        content: 'API older', type: 'text', thread_id: threadId,
-        edited_at: null, deleted: false, created_at: '2024-12-31T23:00:00Z',
-        reactions: [],
-      }] as never;
+      return [makeRawThreadMsg({ id: 'api-older-1', content: 'API older', thread_id: threadId, created_at: '2024-12-31T23:00:00Z' })] as never;
     });
-
     useThreadStore.setState({ threadMessages: {} });
-    const loadMoreThread = { ...thread, id: threadId };
-    const { container } = render(<ThreadPanel thread={loadMoreThread} onClose={vi.fn()} />);
-
+    const { container } = renderThreadPanel({ id: threadId });
     await vi.waitFor(() => {
-      const msgs = useThreadStore.getState().threadMessages[threadId];
-      expect(msgs?.length).toBe(50);
+      expect(useThreadStore.getState().threadMessages[threadId]?.length).toBe(50);
     });
-
-    const messagesDiv = container.querySelector('.thread-messages');
-    if (messagesDiv) {
-      Object.defineProperty(messagesDiv, 'scrollTop', { value: 30, configurable: true });
-      Object.defineProperty(messagesDiv, 'scrollHeight', { value: 2000, configurable: true });
-      Object.defineProperty(messagesDiv, 'clientHeight', { value: 500, configurable: true });
-      fireEvent.scroll(messagesDiv);
-    }
-
-    await vi.waitFor(() => {
-      expect(apiCallCount).toBeGreaterThanOrEqual(2);
-    });
+    simulateScrollNearTop(container);
+    await vi.waitFor(() => { expect(apiCallCount).toBeGreaterThanOrEqual(2); });
   });
 
   it('handleLoadMore handles error gracefully', async () => {
     const { ws } = await import('../../services/websocket');
-
     const threadId = `thread-loadmore-err-${Date.now()}`;
     let callCount = 0;
-
-    const fiftyMessages = Array.from({ length: 50 }, (_, i) => ({
-      id: `err-msg-${i}`, channel_id: 'ch-1', author_id: 'user-2', username: 'bob',
-      content: `msg-${i}`, type: 'text', thread_id: threadId,
-      edited_at: null, deleted: false, created_at: `2025-01-01T${String(i).padStart(2, '0')}:00:00Z`,
-      reactions: [],
-    }));
-
+    const fiftyMessages = buildFiftyRawMessages(threadId, 'err-msg');
     vi.mocked(ws.isConnected).mockReturnValue(true);
     vi.mocked(ws.request).mockImplementation(async () => {
       callCount++;
       if (callCount === 1) return fiftyMessages;
       throw new Error('load more failed');
     });
-
     useThreadStore.setState({ threadMessages: {} });
-    const loadMoreThread = { ...thread, id: threadId };
-    const { container } = render(<ThreadPanel thread={loadMoreThread} onClose={vi.fn()} />);
-
+    const { container } = renderThreadPanel({ id: threadId });
     await vi.waitFor(() => {
-      const msgs = useThreadStore.getState().threadMessages[threadId];
-      expect(msgs?.length).toBe(50);
+      expect(useThreadStore.getState().threadMessages[threadId]?.length).toBe(50);
     });
-
-    const messagesDiv = container.querySelector('.thread-messages');
-    if (messagesDiv) {
-      Object.defineProperty(messagesDiv, 'scrollTop', { value: 30, configurable: true });
-      Object.defineProperty(messagesDiv, 'scrollHeight', { value: 2000, configurable: true });
-      Object.defineProperty(messagesDiv, 'clientHeight', { value: 500, configurable: true });
-      fireEvent.scroll(messagesDiv);
-    }
-
-    await vi.waitFor(() => {
-      expect(callCount).toBeGreaterThanOrEqual(2);
-    });
+    simulateScrollNearTop(container);
+    await vi.waitFor(() => { expect(callCount).toBeGreaterThanOrEqual(2); });
   });
 
   it('decrypts new thread message when derivedKey is set and no cache', async () => {
@@ -919,20 +567,17 @@ describe('ThreadPanel', () => {
     vi.mocked(getCachedMessage).mockResolvedValue(null);
     vi.mocked(cryptoService.decryptMessage).mockClear();
     vi.mocked(cryptoService.decryptMessage).mockResolvedValue('decrypted-new');
-
     useAuthStore.setState({
       teams: new Map([['team-1', { token: 't', user: { id: 'user-1', username: 'alice' }, teamInfo: null, baseUrl: '' }]]),
       derivedKey: 'test-key',
     });
-
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    renderThreadPanel();
     const newHandler = getLastWsHandler(vi.mocked(ws.on), 'thread:message:new');
     expect(newHandler).toBeDefined();
-    await invokeWsHandler(newHandler!, {
-      id: 'tmsg-decrypt-new', channel_id: 'ch-1', author_id: 'user-2', username: 'bob',
-      content: 'encrypted-content', type: 'text', thread_id: 'thread-1',
-      edited_at: null, deleted: false, created_at: '2025-01-01T13:00:00Z', reactions: [],
-    });
+    await invokeWsHandler(newHandler!, makeRawThreadMsg({
+      id: 'tmsg-decrypt-new', author_id: 'user-2', username: 'bob',
+      content: 'encrypted-content', created_at: '2025-01-01T13:00:00Z',
+    }));
     expect(cryptoService.decryptMessage).toHaveBeenCalled();
   });
 
@@ -942,20 +587,16 @@ describe('ThreadPanel', () => {
     vi.mocked(ws.on).mockClear();
     vi.mocked(cryptoService.decryptMessage).mockClear();
     vi.mocked(cryptoService.decryptMessage).mockResolvedValue('decrypted-edit');
-
     useAuthStore.setState({
       teams: new Map([['team-1', { token: 't', user: { id: 'user-1', username: 'alice' }, teamInfo: null, baseUrl: '' }]]),
       derivedKey: 'test-key',
     });
-
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    renderThreadPanel();
     const editHandler = getLastWsHandler(vi.mocked(ws.on), 'thread:message:updated');
     expect(editHandler).toBeDefined();
-    await invokeWsHandler(editHandler!, {
-      id: 'tmsg-1', channel_id: 'ch-1', author_id: 'user-1', username: 'alice',
-      content: 'encrypted-edit', type: 'text', thread_id: 'thread-1',
-      edited_at: '2025-01-01T12:30:00Z', deleted: false, created_at: '2025-01-01T11:00:00Z', reactions: [],
-    });
+    await invokeWsHandler(editHandler!, makeRawThreadMsg({
+      content: 'encrypted-edit', edited_at: '2025-01-01T12:30:00Z',
+    }));
     expect(cryptoService.decryptMessage).toHaveBeenCalled();
   });
 
@@ -963,20 +604,17 @@ describe('ThreadPanel', () => {
     const { ws } = await import('../../services/websocket');
     const { getCachedMessage } = await import('../../services/messageCache');
     vi.mocked(getCachedMessage).mockResolvedValueOnce('cached-new-content');
-
     useAuthStore.setState({
       teams: new Map([['team-1', { token: 't', user: { id: 'user-1', username: 'alice' }, teamInfo: null, baseUrl: '' }]]),
       derivedKey: 'test-key',
     });
-
-    render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
+    renderThreadPanel();
     const handler = getWsHandler(vi.mocked(ws.on), 'thread:message:new');
     if (handler) {
-      await invokeWsHandler(handler, {
-        id: 'tmsg-cached-new', channel_id: 'ch-1', author_id: 'user-2', username: 'bob',
-        content: 'encrypted-content', type: 'text', thread_id: 'thread-1',
-        edited_at: null, deleted: false, created_at: '2025-01-01T13:00:00Z', reactions: [],
-      });
+      await invokeWsHandler(handler, makeRawThreadMsg({
+        id: 'tmsg-cached-new', author_id: 'user-2', username: 'bob',
+        content: 'encrypted-content', created_at: '2025-01-01T13:00:00Z',
+      }));
     }
   });
 });

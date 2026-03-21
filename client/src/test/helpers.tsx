@@ -74,5 +74,5 @@ export function getLastWsHandler(
 ): ((...args: unknown[]) => Promise<void>) | undefined {
   const calls = onMock.mock.calls as [string, (...args: unknown[]) => Promise<void>][];
   const matches = calls.filter((c) => c[0] === eventName);
-  return matches.length > 0 ? matches[matches.length - 1][1] : undefined;
+  return matches.length > 0 ? matches.at(-1)![1] : undefined;
 }
