@@ -48,6 +48,13 @@ jobs:
       - name: Create dist placeholder for rust-embed
         run: mkdir -p server-rs/dist && touch server-rs/dist/index.html
 
+      - name: Install cargo-tarpaulin
+        run: cargo install cargo-tarpaulin
+
+      - name: Run Rust tests with coverage
+        working-directory: server-rs
+        run: cargo tarpaulin --out lcov --output-dir . -- --test-threads=1
+
       - name: Generate Clippy report
         working-directory: server-rs
         run: cargo clippy --message-format=json > clippy-report.json 2>&1 || true
