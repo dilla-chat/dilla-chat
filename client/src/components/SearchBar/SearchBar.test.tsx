@@ -50,7 +50,7 @@ describe('SearchBar', () => {
     render(<SearchBar />);
     const input = screen.getByPlaceholderText('Search messages...');
     await user.type(input, 'test');
-    fireEvent.click(screen.getByTestId('xmark-icon').closest('button')!);
+    fireEvent.click(screen.getByTestId('xmark-icon').closest('button') as HTMLElement);
     expect(input).toHaveValue('');
   });
 
@@ -131,7 +131,7 @@ describe('SearchBar', () => {
       expect(screen.getByText('alice')).toBeInTheDocument();
     }, { timeout: 1000 });
 
-    fireEvent.click(screen.getByText('alice').closest('.search-bar-result')!);
+    fireEvent.click(screen.getByText('alice').closest('.search-bar-result') as HTMLElement);
     expect(onJump).toHaveBeenCalledWith('ch-1', 'msg-1');
   });
 

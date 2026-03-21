@@ -1,6 +1,5 @@
 import { ws } from './websocket';
 import { api } from './api';
-import { noiseSuppression } from './noiseSuppression';
 import { useVoiceStore } from '../stores/voiceStore';
 import { useAuthStore } from '../stores/authStore';
 import { useUserSettingsStore } from '../stores/userSettingsStore';
@@ -59,12 +58,8 @@ class WebRTCService {
       const audioConstraints = audioSettings.getAudioConstraints(deviceId);
       this.rawStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false });
 
-      // Build a single audio graph: source → [worklet] → gain → destination
-      const useRNNoise = audioSettings.enhancedNoiseSuppression;
-      const ctx = useRNNoise
-        ? new AudioContext({ sampleRate: 48000 })
-        : this.getAudioContext();
-      if (useRNNoise) this.audioContext = ctx;
+      // Build audio graph: source → gain → destination
+      const ctx = this.getAudioContext();
 
       const source = ctx.createMediaStreamSource(this.rawStream);
       const gainNode = ctx.createGain();
@@ -72,19 +67,7 @@ class WebRTCService {
       this.gainNode = gainNode;
       const destination = ctx.createMediaStreamDestination();
 
-      if (useRNNoise) {
-        noiseSuppression.setEnabled(true);
-        await noiseSuppression.initWorklet(ctx);
-        const workletNode = noiseSuppression.getWorkletNode();
-        if (!workletNode) throw new Error('RNNoise worklet failed to initialize');
-        source.connect(workletNode);
-        workletNode.connect(gainNode);
-        await noiseSuppression.waitForReady();
-      } else {
-        noiseSuppression.setEnabled(false);
-        source.connect(gainNode);
-      }
-
+      source.connect(gainNode);
       gainNode.connect(destination);
       this.localStream = destination.stream;
     } catch {
@@ -575,9 +558,6 @@ class WebRTCService {
     if (this.teamId && this.channelId) {
       ws.voiceLeave(this.teamId, this.channelId);
     }
-
-    // Clean up noise suppression pipeline
-    noiseSuppression.cleanup();
 
     // Stop local tracks (raw stream holds the actual mic tracks)
     if (this.rawStream) {

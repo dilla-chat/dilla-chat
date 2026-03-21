@@ -9,19 +9,12 @@ export interface MicTestSession {
   analyser: AnalyserNode;
   gainNode: GainNode;
   animFrameId: number;
-  noiseSuppression: { cleanup: () => void } | null;
   timeDomainData: Float32Array;
 }
 
 export interface MicTestOptions {
   audioConstraints: MediaTrackConstraints | boolean;
   inputVolume: number;
-  useRNNoise: boolean;
-  createNoiseSuppression?: () => {
-    initWorklet: (ctx: AudioContext) => Promise<void>;
-    getWorkletNode: () => AudioNode | null;
-    cleanup: () => void;
-  };
   onLevelUpdate: (level: number) => void;
 }
 
@@ -31,28 +24,14 @@ export interface MicTestOptions {
 export async function startMicTest(options: MicTestOptions): Promise<MicTestSession> {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: options.audioConstraints });
 
-  const audioContext = options.useRNNoise
-    ? new AudioContext({ sampleRate: 48000 })
-    : new AudioContext();
+  const audioContext = new AudioContext();
 
   const source = audioContext.createMediaStreamSource(stream);
 
   const gainNode = audioContext.createGain();
   gainNode.gain.value = options.inputVolume;
 
-  let noiseSuppression: MicTestSession['noiseSuppression'] = null;
-
-  if (options.useRNNoise && options.createNoiseSuppression) {
-    const ns = options.createNoiseSuppression();
-    noiseSuppression = ns;
-    await ns.initWorklet(audioContext);
-    const worklet = ns.getWorkletNode();
-    if (!worklet) throw new Error('RNNoise worklet failed to initialize');
-    source.connect(worklet);
-    worklet.connect(gainNode);
-  } else {
-    source.connect(gainNode);
-  }
+  source.connect(gainNode);
 
   const analyser = audioContext.createAnalyser();
   analyser.fftSize = 1024;
@@ -70,7 +49,7 @@ export async function startMicTest(options: MicTestOptions): Promise<MicTestSess
   };
   animFrameId = requestAnimationFrame(update);
 
-  return { stream, audioContext, analyser, gainNode, animFrameId, noiseSuppression, timeDomainData };
+  return { stream, audioContext, analyser, gainNode, animFrameId, timeDomainData };
 }
 
 /**
@@ -80,10 +59,6 @@ export function stopMicTest(session: MicTestSession | null): void {
   if (!session) return;
 
   cancelAnimationFrame(session.animFrameId);
-
-  if (session.noiseSuppression) {
-    session.noiseSuppression.cleanup();
-  }
 
   session.stream.getTracks().forEach(t => t.stop());
 

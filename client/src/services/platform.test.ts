@@ -22,8 +22,8 @@ describe('getOriginServerUrl', () => {
     delete (globalThis as Record<string, unknown>).__TAURI_INTERNALS__;
   });
 
-  it('returns window.location.origin in browser mode', () => {
-    expect(getOriginServerUrl()).toBe(window.location.origin);
+  it('returns globalThis.location.origin in browser mode', () => {
+    expect(getOriginServerUrl()).toBe(globalThis.location.origin);
   });
 
   it('returns null in Tauri mode', () => {

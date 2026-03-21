@@ -99,7 +99,6 @@ describe('startMicTest', () => {
     const session = await startMicTest({
       audioConstraints: { echoCancellation: true },
       inputVolume: 0.8,
-      useRNNoise: false,
       onLevelUpdate: onLevel,
     });
 
@@ -133,7 +132,6 @@ describe('startMicTest', () => {
     await startMicTest({
       audioConstraints: {},
       inputVolume: 1,
-      useRNNoise: false,
       onLevelUpdate: onLevel,
     });
 
@@ -143,33 +141,10 @@ describe('startMicTest', () => {
     expect(level).toBeGreaterThan(0);
   });
 
-  it('uses 48kHz sample rate with RNNoise', async () => {
-    const mockNS = {
-      initWorklet: vi.fn().mockResolvedValue(undefined),
-      getWorkletNode: vi.fn(() => ({ connect: vi.fn() })),
-      cleanup: vi.fn(),
-    };
-
-    const session = await startMicTest({
-      audioConstraints: {},
-      inputVolume: 1,
-      useRNNoise: true,
-      createNoiseSuppression: () => mockNS,
-      onLevelUpdate: vi.fn(),
-    });
-
-    expect(session.audioContext).toBe(mockAudioContext);
-    expect(mockNS.initWorklet).toHaveBeenCalledWith(mockAudioContext);
-    expect(session.noiseSuppression).toBe(mockNS);
-
-    stopMicTest(session);
-  });
-
-  it('connects source directly to gain without RNNoise', async () => {
+  it('connects source directly to gain', async () => {
     await startMicTest({
       audioConstraints: {},
       inputVolume: 1,
-      useRNNoise: false,
       onLevelUpdate: vi.fn(),
     });
 
@@ -190,7 +165,6 @@ describe('stopMicTest', () => {
       analyser: {} as AnalyserNode,
       gainNode: {} as GainNode,
       animFrameId: 99,
-      noiseSuppression: { cleanup: vi.fn() },
       timeDomainData: new Float32Array(1024),
     };
 
@@ -199,12 +173,11 @@ describe('stopMicTest', () => {
     stopMicTest(session);
 
     expect(cancelAnimationFrame).toHaveBeenCalledWith(99);
-    expect(session.noiseSuppression!.cleanup).toHaveBeenCalled();
     expect(mockTrack.stop).toHaveBeenCalled();
     expect(session.audioContext.close).toHaveBeenCalled();
   });
 
-  it('works without noise suppression', () => {
+  it('works without issues', () => {
     const mockTrack = { stop: vi.fn() };
     const session: MicTestSession = {
       stream: { getTracks: () => [mockTrack] } as unknown as MediaStream,
@@ -212,7 +185,6 @@ describe('stopMicTest', () => {
       analyser: {} as AnalyserNode,
       gainNode: {} as GainNode,
       animFrameId: 0,
-      noiseSuppression: null,
       timeDomainData: new Float32Array(1024),
     };
 

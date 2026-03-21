@@ -387,7 +387,7 @@ describe('MessageList', () => {
         threadInfo={{ 'msg-1': { count: 2, lastReplyAt: null } }}
       />,
     );
-    fireEvent.click(screen.getByText('{{count}} replies').closest('button')!);
+    fireEvent.click(screen.getByText('{{count}} replies').closest('button') as HTMLElement);
     expect(onOpenThread).toHaveBeenCalledWith('msg-1');
   });
 
