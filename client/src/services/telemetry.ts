@@ -27,7 +27,7 @@ const ALLOWED_ATTRIBUTES = new Set([
 
 /** Escapes special regex characters in a string for use in `new RegExp(...)`. */
 function escapeRegExp(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return str.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
 
 let sdkActive = false;

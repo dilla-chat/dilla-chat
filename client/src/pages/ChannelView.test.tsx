@@ -68,6 +68,7 @@ import ChannelView from './ChannelView';
 import { useTeamStore, type Channel } from '../stores/teamStore';
 import { useAuthStore } from '../stores/authStore';
 import { ws } from '../services/websocket';
+import { invokeWsHandler, getWsHandler } from '../test/helpers';
 
 function makeChannel(overrides?: Partial<Channel>): Channel {
   return {
@@ -207,13 +208,11 @@ describe('ChannelView', () => {
 
   it('invokes WS event callbacks for message:new', async () => {
     render(<ChannelView channel={makeChannel()} />);
-    // Verify message:new handler was registered
-    const calls = vi.mocked(ws.on).mock.calls;
-    const newMsgHandler = calls.find(c => c[0] === 'message:new');
-    expect(newMsgHandler).toBeDefined();
+    const handler = getWsHandler(vi.mocked(ws.on), 'message:new');
+    expect(handler).toBeDefined();
     // Call the handler with a message from a different channel - should be ignored
-    if (newMsgHandler) {
-      await (newMsgHandler[1] as (...args: unknown[]) => Promise<void>)({
+    if (handler) {
+      await invokeWsHandler(handler, {
         id: 'msg-x', channel_id: 'ch-other', author_id: 'u2', username: 'bob',
         content: 'hi', type: 'text', thread_id: null, edited_at: null, deleted: false,
         created_at: '2025-01-01T00:00:00Z', reactions: [],
@@ -223,11 +222,10 @@ describe('ChannelView', () => {
 
   it('invokes WS event callbacks for message:edited', async () => {
     render(<ChannelView channel={makeChannel()} />);
-    const calls = vi.mocked(ws.on).mock.calls;
-    const editHandler = calls.find(c => c[0] === 'message:edited');
-    expect(editHandler).toBeDefined();
-    if (editHandler) {
-      await (editHandler[1] as (...args: unknown[]) => Promise<void>)({
+    const handler = getWsHandler(vi.mocked(ws.on), 'message:edited');
+    expect(handler).toBeDefined();
+    if (handler) {
+      await invokeWsHandler(handler, {
         message_id: 'msg-1', channel_id: 'ch-1', content: 'edited', author_id: 'u1',
       });
     }
@@ -235,92 +233,89 @@ describe('ChannelView', () => {
 
   it('invokes WS event callbacks for message:deleted', async () => {
     render(<ChannelView channel={makeChannel()} />);
-    const calls = vi.mocked(ws.on).mock.calls;
-    const deleteHandler = calls.find(c => c[0] === 'message:deleted');
-    expect(deleteHandler).toBeDefined();
-    if (deleteHandler) {
-      (deleteHandler[1] as (...args: unknown[]) => Promise<void>)({ message_id: 'msg-1', channel_id: 'ch-1' });
+    const handler = getWsHandler(vi.mocked(ws.on), 'message:deleted');
+    expect(handler).toBeDefined();
+    if (handler) {
+      await invokeWsHandler(handler, { message_id: 'msg-1', channel_id: 'ch-1' });
     }
   });
 
   it('invokes WS event callbacks for typing:start', async () => {
     render(<ChannelView channel={makeChannel()} />);
-    const calls = vi.mocked(ws.on).mock.calls;
-    const typingHandler = calls.find(c => c[0] === 'typing:start');
-    expect(typingHandler).toBeDefined();
-    if (typingHandler) {
-      (typingHandler[1] as (...args: unknown[]) => Promise<void>)({ channel_id: 'ch-1', user_id: 'u2', username: 'bob' });
+    const handler = getWsHandler(vi.mocked(ws.on), 'typing:start');
+    expect(handler).toBeDefined();
+    if (handler) {
+      await invokeWsHandler(handler, { channel_id: 'ch-1', user_id: 'u2', username: 'bob' });
     }
   });
 
   it('invokes WS thread event callbacks', async () => {
     render(<ChannelView channel={makeChannel()} />);
-    const calls = vi.mocked(ws.on).mock.calls;
+    const onMock = vi.mocked(ws.on);
 
-    const threadCreated = calls.find(c => c[0] === 'thread:created');
+    const threadCreated = getWsHandler(onMock, 'thread:created');
     if (threadCreated) {
-      (threadCreated[1] as (...args: unknown[]) => Promise<void>)({ id: 'th1', channel_id: 'ch-1', parent_message_id: 'msg-1' });
+      await invokeWsHandler(threadCreated, { id: 'th1', channel_id: 'ch-1', parent_message_id: 'msg-1' });
     }
 
-    const threadUpdated = calls.find(c => c[0] === 'thread:updated');
+    const threadUpdated = getWsHandler(onMock, 'thread:updated');
     if (threadUpdated) {
-      (threadUpdated[1] as (...args: unknown[]) => Promise<void>)({ id: 'th1', channel_id: 'ch-1' });
+      await invokeWsHandler(threadUpdated, { id: 'th1', channel_id: 'ch-1' });
     }
 
-    const threadMsgNew = calls.find(c => c[0] === 'thread:message:new');
+    const threadMsgNew = getWsHandler(onMock, 'thread:message:new');
     if (threadMsgNew) {
-      await (threadMsgNew[1] as (...args: unknown[]) => Promise<void>)({
+      await invokeWsHandler(threadMsgNew, {
         id: 'tmsg-1', channel_id: 'ch-1', thread_id: 'th1', author_id: 'u1',
         username: 'tester', content: 'reply', type: 'text', edited_at: null,
         deleted: false, created_at: '2025-01-01T00:00:00Z', reactions: [],
       });
     }
 
-    const threadMsgEdit = calls.find(c => c[0] === 'thread:message:updated');
+    const threadMsgEdit = getWsHandler(onMock, 'thread:message:updated');
     if (threadMsgEdit) {
-      await (threadMsgEdit[1] as (...args: unknown[]) => Promise<void>)({
+      await invokeWsHandler(threadMsgEdit, {
         id: 'tmsg-1', channel_id: 'ch-1', thread_id: 'th1', author_id: 'u1',
         username: 'tester', content: 'edited', type: 'text', edited_at: '2025-01-01T01:00:00Z',
         deleted: false, created_at: '2025-01-01T00:00:00Z', reactions: [],
       });
     }
 
-    const threadMsgDel = calls.find(c => c[0] === 'thread:message:deleted');
+    const threadMsgDel = getWsHandler(onMock, 'thread:message:deleted');
     if (threadMsgDel) {
-      (threadMsgDel[1] as (...args: unknown[]) => Promise<void>)({ message_id: 'tmsg-1', thread_id: 'th1' });
+      await invokeWsHandler(threadMsgDel, { message_id: 'tmsg-1', thread_id: 'th1' });
     }
   });
 
   it('ignores WS events for other channels', async () => {
     render(<ChannelView channel={makeChannel()} />);
-    const calls = vi.mocked(ws.on).mock.calls;
+    const onMock = vi.mocked(ws.on);
 
-    const newMsgHandler = calls.find(c => c[0] === 'message:new');
+    const newMsgHandler = getWsHandler(onMock, 'message:new');
     if (newMsgHandler) {
-      await (newMsgHandler[1] as (...args: unknown[]) => Promise<void>)({
+      await invokeWsHandler(newMsgHandler, {
         id: 'msg-x', channel_id: 'other-ch', author_id: 'u2', username: 'bob',
         content: 'hi', type: 'text', thread_id: null, edited_at: null, deleted: false,
         created_at: '2025-01-01T00:00:00Z', reactions: [],
       });
     }
 
-    const deleteHandler = calls.find(c => c[0] === 'message:deleted');
+    const deleteHandler = getWsHandler(onMock, 'message:deleted');
     if (deleteHandler) {
-      (deleteHandler[1] as (...args: unknown[]) => Promise<void>)({ message_id: 'msg-x', channel_id: 'other-ch' });
+      await invokeWsHandler(deleteHandler, { message_id: 'msg-x', channel_id: 'other-ch' });
     }
 
-    const typingHandler = calls.find(c => c[0] === 'typing:start');
+    const typingHandler = getWsHandler(onMock, 'typing:start');
     if (typingHandler) {
-      (typingHandler[1] as (...args: unknown[]) => Promise<void>)({ channel_id: 'other-ch', user_id: 'u2', username: 'bob' });
+      await invokeWsHandler(typingHandler, { channel_id: 'other-ch', user_id: 'u2', username: 'bob' });
     }
   });
 
   it('handles thread message events with null thread_id', async () => {
     render(<ChannelView channel={makeChannel()} />);
-    const calls = vi.mocked(ws.on).mock.calls;
-    const threadMsgNew = calls.find(c => c[0] === 'thread:message:new');
-    if (threadMsgNew) {
-      await (threadMsgNew[1] as (...args: unknown[]) => Promise<void>)({
+    const handler = getWsHandler(vi.mocked(ws.on), 'thread:message:new');
+    if (handler) {
+      await invokeWsHandler(handler, {
         id: 'tmsg-1', channel_id: 'ch-1', thread_id: null, author_id: 'u1',
         username: 'tester', content: 'reply', type: 'text', edited_at: null,
         deleted: false, created_at: '2025-01-01T00:00:00Z', reactions: [],
@@ -511,10 +506,9 @@ describe('ChannelView', () => {
 
   it('invokes message:new handler for same channel', async () => {
     render(<ChannelView channel={makeChannel()} />);
-    const calls = vi.mocked(ws.on).mock.calls;
-    const newMsgHandler = calls.find(c => c[0] === 'message:new');
-    if (newMsgHandler) {
-      await (newMsgHandler[1] as (...args: unknown[]) => Promise<void>)({
+    const handler = getWsHandler(vi.mocked(ws.on), 'message:new');
+    if (handler) {
+      await invokeWsHandler(handler, {
         id: 'msg-new', channel_id: 'ch-1', author_id: 'u2', username: 'bob',
         content: 'hello!', type: 'text', thread_id: null, edited_at: null, deleted: false,
         created_at: '2025-01-01T00:00:00Z', reactions: [],
@@ -528,10 +522,9 @@ describe('ChannelView', () => {
       threads: { 'ch-1': [{ id: 'th1', channel_id: 'ch-1', parent_message_id: 'msg-1', team_id: 't1', creator_id: 'u1', title: '', message_count: 2, last_message_at: null, created_at: '' }] },
     });
     render(<ChannelView channel={makeChannel()} />);
-    const calls = vi.mocked(ws.on).mock.calls;
-    const threadMsgNew = calls.find(c => c[0] === 'thread:message:new');
-    if (threadMsgNew) {
-      await (threadMsgNew[1] as (...args: unknown[]) => Promise<void>)({
+    const handler = getWsHandler(vi.mocked(ws.on), 'thread:message:new');
+    if (handler) {
+      await invokeWsHandler(handler, {
         id: 'tmsg-2', channel_id: 'ch-1', thread_id: 'th1', author_id: 'u1',
         username: 'tester', content: 'reply2', type: 'text', edited_at: null,
         deleted: false, created_at: '2025-01-02T00:00:00Z', reactions: [],
@@ -562,10 +555,9 @@ describe('ChannelView', () => {
 
   it('handles thread:message:updated with null thread_id', async () => {
     render(<ChannelView channel={makeChannel()} />);
-    const calls = vi.mocked(ws.on).mock.calls;
-    const threadMsgEdit = calls.find(c => c[0] === 'thread:message:updated');
-    if (threadMsgEdit) {
-      await (threadMsgEdit[1] as (...args: unknown[]) => Promise<void>)({
+    const handler = getWsHandler(vi.mocked(ws.on), 'thread:message:updated');
+    if (handler) {
+      await invokeWsHandler(handler, {
         id: 'tmsg-1', channel_id: 'ch-1', thread_id: null, author_id: 'u1',
         username: 'tester', content: 'edited', type: 'text', edited_at: '2025-01-01T01:00:00Z',
         deleted: false, created_at: '2025-01-01T00:00:00Z', reactions: [],
@@ -575,34 +567,32 @@ describe('ChannelView', () => {
 
   it('handles thread:message:deleted with null thread_id', async () => {
     render(<ChannelView channel={makeChannel()} />);
-    const calls = vi.mocked(ws.on).mock.calls;
-    const threadMsgDel = calls.find(c => c[0] === 'thread:message:deleted');
-    if (threadMsgDel) {
-      (threadMsgDel[1] as (...args: unknown[]) => Promise<void>)({ message_id: 'tmsg-1', thread_id: null });
+    const handler = getWsHandler(vi.mocked(ws.on), 'thread:message:deleted');
+    if (handler) {
+      await invokeWsHandler(handler, { message_id: 'tmsg-1', thread_id: null });
     }
   });
 
   it('thread events from other channels are ignored', async () => {
     render(<ChannelView channel={makeChannel()} />);
-    const calls = vi.mocked(ws.on).mock.calls;
+    const onMock = vi.mocked(ws.on);
 
-    const threadCreated = calls.find(c => c[0] === 'thread:created');
+    const threadCreated = getWsHandler(onMock, 'thread:created');
     if (threadCreated) {
-      (threadCreated[1] as (...args: unknown[]) => Promise<void>)({ id: 'th-other', channel_id: 'other-ch', parent_message_id: 'msg-x' });
+      await invokeWsHandler(threadCreated, { id: 'th-other', channel_id: 'other-ch', parent_message_id: 'msg-x' });
     }
 
-    const threadUpdated = calls.find(c => c[0] === 'thread:updated');
+    const threadUpdated = getWsHandler(onMock, 'thread:updated');
     if (threadUpdated) {
-      (threadUpdated[1] as (...args: unknown[]) => Promise<void>)({ id: 'th-other', channel_id: 'other-ch' });
+      await invokeWsHandler(threadUpdated, { id: 'th-other', channel_id: 'other-ch' });
     }
   });
 
   it('ignores message:edited from other channels', async () => {
     render(<ChannelView channel={makeChannel()} />);
-    const calls = vi.mocked(ws.on).mock.calls;
-    const editHandler = calls.find(c => c[0] === 'message:edited');
-    if (editHandler) {
-      await (editHandler[1] as (...args: unknown[]) => Promise<void>)({
+    const handler = getWsHandler(vi.mocked(ws.on), 'message:edited');
+    if (handler) {
+      await invokeWsHandler(handler, {
         message_id: 'msg-x', channel_id: 'other-ch', content: 'edited', author_id: 'u1',
       });
     }
@@ -655,10 +645,9 @@ describe('ChannelView', () => {
       members: new Map([['t1', [{ id: 'm1', userId: 'u2', username: 'bob', displayName: 'Bob', nickname: '', roles: [], statusType: '' }]]]),
     });
     render(<ChannelView channel={makeChannel()} />);
-    const calls = vi.mocked(ws.on).mock.calls;
-    const newMsgHandler = calls.find(c => c[0] === 'message:new');
-    if (newMsgHandler) {
-      await (newMsgHandler[1] as (...args: unknown[]) => Promise<void>)({
+    const handler = getWsHandler(vi.mocked(ws.on), 'message:new');
+    if (handler) {
+      await invokeWsHandler(handler, {
         id: 'msg-no-user', channel_id: 'ch-1', author_id: 'u2', username: '',
         content: 'hi', type: 'text', thread_id: null, edited_at: null, deleted: false,
         created_at: '2025-01-01T00:00:00Z', reactions: [],

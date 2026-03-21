@@ -5,6 +5,7 @@ import { useTeamStore } from '../../stores/teamStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useThreadStore, type Thread } from '../../stores/threadStore';
 import { useMessageStore } from '../../stores/messageStore';
+import { invokeWsHandler, getWsHandler, getLastWsHandler } from '../../test/helpers';
 
 // Mock scrollIntoView which is not available in jsdom
 Element.prototype.scrollIntoView = vi.fn();
@@ -318,10 +319,9 @@ describe('ThreadPanel', () => {
   it('handles thread:message:new WS event', async () => {
     const { ws } = await import('../../services/websocket');
     render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    const calls = vi.mocked(ws.on).mock.calls;
-    const newHandler = calls.find(c => c[0] === 'thread:message:new');
-    if (newHandler) {
-      await (newHandler[1] as (...args: unknown[]) => Promise<void>)({
+    const handler = getWsHandler(vi.mocked(ws.on), 'thread:message:new');
+    if (handler) {
+      await invokeWsHandler(handler, {
         id: 'tmsg-new', channel_id: 'ch-1', author_id: 'user-2', username: 'bob',
         content: 'New thread msg', type: 'text', thread_id: 'thread-1',
         edited_at: null, deleted: false, created_at: '2025-01-01T12:00:00Z', reactions: [],
@@ -332,10 +332,9 @@ describe('ThreadPanel', () => {
   it('ignores thread:message:new for other threads', async () => {
     const { ws } = await import('../../services/websocket');
     render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    const calls = vi.mocked(ws.on).mock.calls;
-    const newHandler = calls.find(c => c[0] === 'thread:message:new');
-    if (newHandler) {
-      await (newHandler[1] as (...args: unknown[]) => Promise<void>)({
+    const handler = getWsHandler(vi.mocked(ws.on), 'thread:message:new');
+    if (handler) {
+      await invokeWsHandler(handler, {
         id: 'tmsg-other', channel_id: 'ch-1', author_id: 'user-2', username: 'bob',
         content: 'Other', type: 'text', thread_id: 'other-thread',
         edited_at: null, deleted: false, created_at: '2025-01-01T12:00:00Z', reactions: [],
@@ -346,10 +345,9 @@ describe('ThreadPanel', () => {
   it('handles thread:message:updated WS event', async () => {
     const { ws } = await import('../../services/websocket');
     render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    const calls = vi.mocked(ws.on).mock.calls;
-    const editHandler = calls.find(c => c[0] === 'thread:message:updated');
-    if (editHandler) {
-      await (editHandler[1] as (...args: unknown[]) => Promise<void>)({
+    const handler = getWsHandler(vi.mocked(ws.on), 'thread:message:updated');
+    if (handler) {
+      await invokeWsHandler(handler, {
         id: 'tmsg-1', channel_id: 'ch-1', author_id: 'user-1', username: 'alice',
         content: 'Edited content', type: 'text', thread_id: 'thread-1',
         edited_at: '2025-01-01T12:30:00Z', deleted: false, created_at: '2025-01-01T11:00:00Z', reactions: [],
@@ -360,10 +358,9 @@ describe('ThreadPanel', () => {
   it('handles thread:message:deleted WS event', async () => {
     const { ws } = await import('../../services/websocket');
     render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    const calls = vi.mocked(ws.on).mock.calls;
-    const deleteHandler = calls.find(c => c[0] === 'thread:message:deleted');
-    if (deleteHandler) {
-      (deleteHandler[1] as (...args: unknown[]) => Promise<void>)({ message_id: 'tmsg-1', thread_id: 'thread-1' });
+    const handler = getWsHandler(vi.mocked(ws.on), 'thread:message:deleted');
+    if (handler) {
+      await invokeWsHandler(handler, { message_id: 'tmsg-1', thread_id: 'thread-1' });
     }
   });
 
@@ -609,10 +606,9 @@ describe('ThreadPanel', () => {
   it('handles thread:message:updated for other thread (ignores)', async () => {
     const { ws } = await import('../../services/websocket');
     render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    const calls = vi.mocked(ws.on).mock.calls;
-    const editHandler = calls.find(c => c[0] === 'thread:message:updated');
-    if (editHandler) {
-      await (editHandler[1] as (...args: unknown[]) => Promise<void>)({
+    const handler = getWsHandler(vi.mocked(ws.on), 'thread:message:updated');
+    if (handler) {
+      await invokeWsHandler(handler, {
         id: 'tmsg-1', channel_id: 'ch-1', author_id: 'user-1', username: 'alice',
         content: 'Edited', type: 'text', thread_id: 'other-thread',
         edited_at: '2025-01-01T12:30:00Z', deleted: false, created_at: '2025-01-01T11:00:00Z', reactions: [],
@@ -624,10 +620,9 @@ describe('ThreadPanel', () => {
   it('handles thread:message:deleted for other thread (ignores)', async () => {
     const { ws } = await import('../../services/websocket');
     render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    const calls = vi.mocked(ws.on).mock.calls;
-    const deleteHandler = calls.find(c => c[0] === 'thread:message:deleted');
-    if (deleteHandler) {
-      (deleteHandler[1] as (...args: unknown[]) => Promise<void>)({ message_id: 'tmsg-1', thread_id: 'other-thread' });
+    const handler = getWsHandler(vi.mocked(ws.on), 'thread:message:deleted');
+    if (handler) {
+      await invokeWsHandler(handler, { message_id: 'tmsg-1', thread_id: 'other-thread' });
     }
   });
 
@@ -931,12 +926,9 @@ describe('ThreadPanel', () => {
     });
 
     render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    const calls = vi.mocked(ws.on).mock.calls;
-    // Get the LAST registered handler for this event (in case effect re-ran)
-    const newHandlers = calls.filter(c => c[0] === 'thread:message:new');
-    const newHandler = newHandlers[newHandlers.length - 1];
+    const newHandler = getLastWsHandler(vi.mocked(ws.on), 'thread:message:new');
     expect(newHandler).toBeDefined();
-    await (newHandler[1] as (...args: unknown[]) => Promise<void>)({
+    await invokeWsHandler(newHandler!, {
       id: 'tmsg-decrypt-new', channel_id: 'ch-1', author_id: 'user-2', username: 'bob',
       content: 'encrypted-content', type: 'text', thread_id: 'thread-1',
       edited_at: null, deleted: false, created_at: '2025-01-01T13:00:00Z', reactions: [],
@@ -957,11 +949,9 @@ describe('ThreadPanel', () => {
     });
 
     render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    const calls = vi.mocked(ws.on).mock.calls;
-    const editHandlers = calls.filter(c => c[0] === 'thread:message:updated');
-    const editHandler = editHandlers[editHandlers.length - 1];
+    const editHandler = getLastWsHandler(vi.mocked(ws.on), 'thread:message:updated');
     expect(editHandler).toBeDefined();
-    await (editHandler[1] as (...args: unknown[]) => Promise<void>)({
+    await invokeWsHandler(editHandler!, {
       id: 'tmsg-1', channel_id: 'ch-1', author_id: 'user-1', username: 'alice',
       content: 'encrypted-edit', type: 'text', thread_id: 'thread-1',
       edited_at: '2025-01-01T12:30:00Z', deleted: false, created_at: '2025-01-01T11:00:00Z', reactions: [],
@@ -980,10 +970,9 @@ describe('ThreadPanel', () => {
     });
 
     render(<ThreadPanel thread={thread} onClose={vi.fn()} />);
-    const calls = vi.mocked(ws.on).mock.calls;
-    const newHandler = calls.find(c => c[0] === 'thread:message:new');
-    if (newHandler) {
-      await (newHandler[1] as (...args: unknown[]) => Promise<void>)({
+    const handler = getWsHandler(vi.mocked(ws.on), 'thread:message:new');
+    if (handler) {
+      await invokeWsHandler(handler, {
         id: 'tmsg-cached-new', channel_id: 'ch-1', author_id: 'user-2', username: 'bob',
         content: 'encrypted-content', type: 'text', thread_id: 'thread-1',
         edited_at: null, deleted: false, created_at: '2025-01-01T13:00:00Z', reactions: [],

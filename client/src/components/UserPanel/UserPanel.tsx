@@ -109,11 +109,9 @@ export default function UserPanel({
     toggleDeafen();
   };
 
-  const muteTitle = deafened
-    ? t('voice.deafened', 'Deafened')
-    : muted
-      ? t('voice.unmute', 'Unmute')
-      : t('voice.mute', 'Mute');
+  let muteTitle = t('voice.mute', 'Mute');
+  if (deafened) muteTitle = t('voice.deafened', 'Deafened');
+  else if (muted) muteTitle = t('voice.unmute', 'Unmute');
 
   return (
     <div className="user-panel">
