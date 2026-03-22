@@ -9,24 +9,24 @@ use tokio::time::{timeout, Duration};
 
 // ── Test helpers ─────────────────────────────────────────────────────────
 
-/// Create a fresh Hub backed by a temporary in-memory-ish SQLite database.
-fn test_hub() -> Arc<Hub> {
+/// Create a Database backed by a temporary in-memory-ish SQLite database.
+fn test_db() -> Database {
     let tmp = tempfile::tempdir().unwrap();
     let db = Database::open(tmp.path().to_str().unwrap(), "").unwrap();
     db.run_migrations().unwrap();
     db.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;")).unwrap();
     std::mem::forget(tmp);
-    Arc::new(Hub::new(db))
+    db
+}
+
+/// Create a fresh Hub backed by a temporary database.
+fn test_hub() -> Arc<Hub> {
+    Arc::new(Hub::new(test_db()))
 }
 
 /// Create a Hub with voice room manager attached.
 fn test_hub_with_voice() -> Arc<Hub> {
-    let tmp = tempfile::tempdir().unwrap();
-    let db = Database::open(tmp.path().to_str().unwrap(), "").unwrap();
-    db.run_migrations().unwrap();
-    db.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;")).unwrap();
-    std::mem::forget(tmp);
-    let mut hub = Hub::new(db);
+    let mut hub = Hub::new(test_db());
     hub.voice_room_manager = Some(Arc::new(RoomManager::new()));
     Arc::new(hub)
 }
@@ -67,24 +67,14 @@ impl VoiceSFU for MockVoiceSFU {
 
 /// Create a Hub with voice room manager and mock SFU attached.
 fn test_hub_with_voice_and_sfu() -> Arc<Hub> {
-    let tmp = tempfile::tempdir().unwrap();
-    let db = Database::open(tmp.path().to_str().unwrap(), "").unwrap();
-    db.run_migrations().unwrap();
-    db.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;")).unwrap();
-    std::mem::forget(tmp);
-    let mut hub = Hub::new(db);
+    let mut hub = Hub::new(test_db());
     hub.voice_room_manager = Some(Arc::new(RoomManager::new()));
     hub.voice_sfu = Some(Arc::new(MockVoiceSFU::new_ok()));
     Arc::new(hub)
 }
 
 fn test_hub_with_voice_and_failing_sfu() -> Arc<Hub> {
-    let tmp = tempfile::tempdir().unwrap();
-    let db = Database::open(tmp.path().to_str().unwrap(), "").unwrap();
-    db.run_migrations().unwrap();
-    db.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;")).unwrap();
-    std::mem::forget(tmp);
-    let mut hub = Hub::new(db);
+    let mut hub = Hub::new(test_db());
     hub.voice_room_manager = Some(Arc::new(RoomManager::new()));
     hub.voice_sfu = Some(Arc::new(MockVoiceSFU::new_err()));
     Arc::new(hub)
@@ -119,21 +109,7 @@ async fn settle() {
 /// Seed a team + user + channel in the DB for testing handlers that verify ownership.
 fn seed_team_channel(db: &Database, team_id: &str, user_id: &str, channel_id: &str) {
     db.with_conn(|conn| {
-        db::create_user(
-            conn,
-            &db::User {
-                id: user_id.to_string(),
-                username: "testuser".to_string(),
-                display_name: "Test User".to_string(),
-                public_key: vec![0u8; 32],
-                avatar_url: String::new(),
-                status_text: String::new(),
-                status_type: "online".to_string(),
-                is_admin: false,
-                created_at: db::now_str(),
-                updated_at: db::now_str(),
-            },
-        )?;
+        db::create_user(conn, &make_test_user(user_id, "testuser", "Test User", &[0u8; 32]))?;
         db::create_team(
             conn,
             &db::Team {
@@ -221,9 +197,144 @@ fn seed_thread(db: &Database, thread_id: &str, channel_id: &str, team_id: &str, 
     .unwrap();
 }
 
+/// Build a test user struct.
+fn make_test_user(id: &str, username: &str, display_name: &str, public_key: &[u8]) -> db::User {
+    db::User {
+        id: id.to_string(),
+        username: username.to_string(),
+        display_name: display_name.to_string(),
+        public_key: public_key.to_vec(),
+        avatar_url: String::new(),
+        status_text: String::new(),
+        status_type: "online".to_string(),
+        is_admin: false,
+        created_at: db::now_str(),
+        updated_at: db::now_str(),
+    }
+}
+
+/// Build a test message struct.
+fn make_test_msg(id: &str, channel_id: &str, dm_channel_id: &str, author_id: &str, content: &str, thread_id: &str) -> db::Message {
+    db::Message {
+        id: id.to_string(),
+        channel_id: channel_id.to_string(),
+        dm_channel_id: dm_channel_id.to_string(),
+        author_id: author_id.to_string(),
+        content: content.to_string(),
+        msg_type: "text".to_string(),
+        thread_id: thread_id.to_string(),
+        edited_at: None,
+        deleted: false,
+        lamport_ts: 0,
+        created_at: db::now_str(),
+    }
+}
+
+/// Insert a channel message into the DB, returning the message ID.
+fn insert_channel_msg(db: &Database, channel_id: &str, author_id: &str, content: &str) -> String {
+    let id = db::new_id();
+    db.with_conn(|conn| db::create_message(conn, &make_test_msg(&id, channel_id, "", author_id, content, ""))).unwrap();
+    id
+}
+
+/// Insert a DM message into the DB, returning the message ID.
+fn insert_dm_msg(db: &Database, dm_channel_id: &str, author_id: &str, content: &str) -> String {
+    let id = db::new_id();
+    db.with_conn(|conn| db::create_message(conn, &make_test_msg(&id, "", dm_channel_id, author_id, content, ""))).unwrap();
+    id
+}
+
+/// Insert a thread message into the DB, returning the message ID.
+fn insert_thread_msg(db: &Database, channel_id: &str, thread_id: &str, author_id: &str, content: &str) -> String {
+    let id = db::new_id();
+    db.with_conn(|conn| db::create_thread_message(conn, &make_test_msg(&id, channel_id, "", author_id, content, thread_id))).unwrap();
+    id
+}
+
+/// Seed a second user "u2"/"bob" used in many DM tests.
+fn seed_bob(db: &Database) {
+    db.with_conn(|conn| db::create_user(conn, &make_test_user("u2", "bob", "Bob", &[1u8; 32]))).unwrap();
+}
+
+/// Seed a parent message + thread, returning (parent_msg_id, thread_id).
+fn seed_parent_and_thread(db: &Database, channel_id: &str, team_id: &str, creator_id: &str) -> (String, String) {
+    let parent_msg_id = insert_channel_msg(db, channel_id, creator_id, "parent");
+    let thread_id = db::new_id();
+    seed_thread(db, &thread_id, channel_id, team_id, creator_id, &parent_msg_id);
+    (parent_msg_id, thread_id)
+}
+
+/// Common DM setup: seed team+channel, bob, DM channel.
+fn seed_dm_fixture(db: &Database) {
+    seed_team_channel(db, "t1", "u1", "ch-ignore");
+    seed_bob(db);
+    seed_dm_channel(db, "t1", "dm1", "u1", "u2");
+}
+
+/// Register client and settle.
+async fn register(hub: &Arc<Hub>, client: ClientHandle) {
+    hub.register(client).await;
+    settle().await;
+}
+
+/// Subscribe client to channel and settle.
+async fn subscribe(hub: &Arc<Hub>, client_id: &str, channel: &str) {
+    hub.subscribe(client_id, channel).await;
+    settle().await;
+}
+
+/// Register + subscribe helper.
+async fn register_and_subscribe(hub: &Arc<Hub>, client: ClientHandle, channel: &str) {
+    let id = client.id.clone();
+    register(hub, client).await;
+    subscribe(hub, &id, channel).await;
+}
+
+/// Receive and parse a single event from the receiver within a timeout.
+async fn recv_event(rx: &mut mpsc::UnboundedReceiver<Vec<u8>>) -> Event {
+    let msg = timeout(Duration::from_millis(200), rx.recv())
+        .await
+        .expect("timed out waiting for event")
+        .expect("channel closed");
+    parse_event(&msg)
+}
+
+/// Assert that no message is received within the timeout.
+async fn assert_no_recv(rx: &mut mpsc::UnboundedReceiver<Vec<u8>>, context: &str) {
+    let result = timeout(Duration::from_millis(100), rx.recv()).await;
+    assert!(result.is_err(), "{}", context);
+}
+
+/// Collect all events received within a short window.
+async fn drain_events(rx: &mut mpsc::UnboundedReceiver<Vec<u8>>, max: usize) -> Vec<Event> {
+    let mut events = Vec::new();
+    for _ in 0..max {
+        match timeout(Duration::from_millis(100), rx.recv()).await {
+            Ok(Some(data)) => events.push(parse_event(&data)),
+            _ => break,
+        }
+    }
+    events
+}
+
 /// Helper to parse a received event from raw bytes.
 fn parse_event(data: &[u8]) -> Event {
     serde_json::from_slice(data).expect("failed to parse event from bytes")
+}
+
+/// Drain hub events looking for a match, using a predicate.
+async fn find_hub_event<F: Fn(&super::hub::HubEvent) -> bool>(
+    event_rx: &mut tokio::sync::broadcast::Receiver<super::hub::HubEvent>,
+    pred: F,
+    desc: &str,
+) -> super::hub::HubEvent {
+    for _ in 0..10 {
+        match timeout(Duration::from_millis(100), event_rx.recv()).await {
+            Ok(Ok(evt)) if pred(&evt) => return evt,
+            _ => continue,
+        }
+    }
+    panic!("{} hub event was not found", desc);
 }
 
 // =========================================================================
@@ -364,10 +475,6 @@ fn dm_typing_payload_parses() {
 // =========================================================================
 // client.rs dispatch: handle_event tests
 // =========================================================================
-// handle_event is private, but we can test it indirectly through Event
-// deserialization + handler behavior (the handlers ARE what gets called).
-// We test each event type by constructing the event, sending through hub,
-// and checking side effects.
 
 // ── handle_channel_event ─────────────────────────────────────────────────
 
@@ -377,15 +484,11 @@ async fn handle_channel_join_subscribes_client() {
     let _h = spawn_hub(&hub);
 
     let (client, mut rx) = make_client("c1", "u1", "alice", "t1");
-    hub.register(client).await;
-    settle().await;
+    register(&hub, client).await;
 
-    // Simulate channel:join by directly calling the hub subscribe
-    // (handle_channel_event internally calls hub.subscribe)
     hub.subscribe("c1", "chan-test").await;
     settle().await;
 
-    // Verify by broadcasting to channel and checking receipt
     hub.broadcast_to_channel("chan-test", b"verify".to_vec(), None).await;
     settle().await;
 
@@ -404,20 +507,13 @@ async fn handle_ping_sends_pong_to_user() {
     let _h = spawn_hub(&hub);
 
     let (client, mut rx) = make_client("c1", "u1", "alice", "t1");
-    hub.register(client).await;
-    settle().await;
+    register(&hub, client).await;
 
-    // Construct and send a pong event (what handle_ping does)
     let pong = Event::new(EVENT_PONG, serde_json::json!({})).unwrap();
-    let data = pong.to_bytes().unwrap();
-    hub.send_to_user("u1", data).await;
+    hub.send_to_user("u1", pong.to_bytes().unwrap()).await;
     settle().await;
 
-    let msg = timeout(Duration::from_millis(100), rx.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
+    let evt = recv_event(&mut rx).await;
     assert_eq!(evt.event_type, "pong");
 }
 
@@ -442,21 +538,14 @@ async fn handle_presence_update_emits_hub_event() {
         });
     }
 
-    let evt = timeout(Duration::from_millis(100), event_rx.recv())
-        .await
-        .unwrap()
-        .unwrap();
+    let evt = find_hub_event(&mut event_rx, |e| matches!(e, super::hub::HubEvent::PresenceUpdate { .. }), "PresenceUpdate").await;
     match evt {
-        super::hub::HubEvent::PresenceUpdate {
-            user_id,
-            status,
-            custom_status,
-        } => {
+        super::hub::HubEvent::PresenceUpdate { user_id, status, custom_status } => {
             assert_eq!(user_id, "u1");
             assert_eq!(status, "dnd");
             assert_eq!(custom_status, "busy");
         }
-        other => panic!("expected PresenceUpdate, got {:?}", other),
+        _ => unreachable!(),
     }
 }
 
@@ -468,43 +557,25 @@ async fn handle_presence_update_emits_hub_event() {
 async fn message_send_creates_and_broadcasts() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
-    // Seed data
     seed_team_channel(&hub.db, "t1", "u1", "ch1");
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
     let (c2, mut rx2) = make_client("c2", "u2", "bob", "t1");
-    hub.register(c1).await;
-    hub.register(c2).await;
-    settle().await;
+    register(&hub, c1).await;
+    register(&hub, c2).await;
+    subscribe(&hub, "c1", "ch1").await;
+    subscribe(&hub, "c2", "ch1").await;
 
-    hub.subscribe("c1", "ch1").await;
-    hub.subscribe("c2", "ch1").await;
-    settle().await;
-
-    // Call the handler
-    let payload = serde_json::json!({
-        "channel_id": "ch1",
-        "content": "hello world",
-    });
+    let payload = serde_json::json!({"channel_id": "ch1", "content": "hello world"});
     super::handlers::handle_message_send(&hub, "c1", "u1", "alice", "t1", payload).await;
     settle().await;
 
-    // Both subscribers should receive message:new
-    let msg1 = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt1 = parse_event(&msg1);
+    let evt1 = recv_event(&mut rx1).await;
     assert_eq!(evt1.event_type, EVENT_MESSAGE_NEW);
     assert_eq!(evt1.payload["content"], "hello world");
     assert_eq!(evt1.payload["author_id"], "u1");
 
-    let msg2 = timeout(Duration::from_millis(200), rx2.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt2 = parse_event(&msg2);
+    let evt2 = recv_event(&mut rx2).await;
     assert_eq!(evt2.event_type, EVENT_MESSAGE_NEW);
 }
 
@@ -512,85 +583,40 @@ async fn message_send_creates_and_broadcasts() {
 async fn message_send_rejects_wrong_team() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
     seed_team_channel(&hub.db, "t1", "u1", "ch1");
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
-    hub.subscribe("c1", "ch1").await;
-    settle().await;
+    register_and_subscribe(&hub, c1, "ch1").await;
 
-    // Send with wrong team_id
-    let payload = serde_json::json!({
-        "channel_id": "ch1",
-        "content": "should not work",
-    });
+    let payload = serde_json::json!({"channel_id": "ch1", "content": "should not work"});
     super::handlers::handle_message_send(&hub, "c1", "u1", "alice", "wrong-team", payload).await;
     settle().await;
 
-    // Should not receive any message
-    let result = timeout(Duration::from_millis(100), rx1.recv()).await;
-    assert!(result.is_err(), "no message should be sent for wrong team");
+    assert_no_recv(&mut rx1, "no message should be sent for wrong team").await;
 }
 
 #[tokio::test]
 async fn message_send_with_invalid_payload_does_not_panic() {
     let hub = test_hub();
-    let payload = serde_json::json!({"invalid": true});
-    super::handlers::handle_message_send(&hub, "c1", "u1", "alice", "t1", payload).await;
-    // No panic = pass
+    super::handlers::handle_message_send(&hub, "c1", "u1", "alice", "t1", serde_json::json!({"invalid": true})).await;
 }
 
 #[tokio::test]
 async fn message_edit_updates_and_broadcasts() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
     seed_team_channel(&hub.db, "t1", "u1", "ch1");
 
-    // Create a message first
-    let msg_id = db::new_id();
-    hub.db
-        .with_conn(|conn| {
-            db::create_message(
-                conn,
-                &db::Message {
-                    id: msg_id.clone(),
-                    channel_id: "ch1".to_string(),
-                    dm_channel_id: String::new(),
-                    author_id: "u1".to_string(),
-                    content: "original".to_string(),
-                    msg_type: "text".to_string(),
-                    thread_id: String::new(),
-                    edited_at: None,
-                    deleted: false,
-                    lamport_ts: 0,
-                    created_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
+    let msg_id = insert_channel_msg(&hub.db, "ch1", "u1", "original");
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
-    hub.subscribe("c1", "ch1").await;
-    settle().await;
+    register_and_subscribe(&hub, c1, "ch1").await;
 
-    let payload = serde_json::json!({
-        "message_id": msg_id,
-        "channel_id": "ch1",
-        "content": "edited",
-    });
+    let payload = serde_json::json!({"message_id": msg_id, "channel_id": "ch1", "content": "edited"});
     super::handlers::handle_message_edit(&hub, "u1", payload).await;
     settle().await;
 
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
+    let evt = recv_event(&mut rx1).await;
     assert_eq!(evt.event_type, EVENT_MESSAGE_UPDATED);
 }
 
@@ -598,97 +624,36 @@ async fn message_edit_updates_and_broadcasts() {
 async fn message_edit_by_non_author_is_rejected() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
     seed_team_channel(&hub.db, "t1", "u1", "ch1");
 
-    let msg_id = db::new_id();
-    hub.db
-        .with_conn(|conn| {
-            db::create_message(
-                conn,
-                &db::Message {
-                    id: msg_id.clone(),
-                    channel_id: "ch1".to_string(),
-                    dm_channel_id: String::new(),
-                    author_id: "u1".to_string(),
-                    content: "original".to_string(),
-                    msg_type: "text".to_string(),
-                    thread_id: String::new(),
-                    edited_at: None,
-                    deleted: false,
-                    lamport_ts: 0,
-                    created_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
+    let msg_id = insert_channel_msg(&hub.db, "ch1", "u1", "original");
 
     let (c1, mut rx1) = make_client("c1", "u2", "eve", "t1");
-    hub.register(c1).await;
-    settle().await;
-    hub.subscribe("c1", "ch1").await;
-    settle().await;
+    register_and_subscribe(&hub, c1, "ch1").await;
 
-    let payload = serde_json::json!({
-        "message_id": msg_id,
-        "channel_id": "ch1",
-        "content": "hacked",
-    });
-    // u2 tries to edit u1's message
+    let payload = serde_json::json!({"message_id": msg_id, "channel_id": "ch1", "content": "hacked"});
     super::handlers::handle_message_edit(&hub, "u2", payload).await;
     settle().await;
 
-    let result = timeout(Duration::from_millis(100), rx1.recv()).await;
-    assert!(result.is_err(), "non-author should not be able to edit");
+    assert_no_recv(&mut rx1, "non-author should not be able to edit").await;
 }
 
 #[tokio::test]
 async fn message_delete_soft_deletes_and_broadcasts() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
     seed_team_channel(&hub.db, "t1", "u1", "ch1");
 
-    let msg_id = db::new_id();
-    hub.db
-        .with_conn(|conn| {
-            db::create_message(
-                conn,
-                &db::Message {
-                    id: msg_id.clone(),
-                    channel_id: "ch1".to_string(),
-                    dm_channel_id: String::new(),
-                    author_id: "u1".to_string(),
-                    content: "to delete".to_string(),
-                    msg_type: "text".to_string(),
-                    thread_id: String::new(),
-                    edited_at: None,
-                    deleted: false,
-                    lamport_ts: 0,
-                    created_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
+    let msg_id = insert_channel_msg(&hub.db, "ch1", "u1", "to delete");
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
-    hub.subscribe("c1", "ch1").await;
-    settle().await;
+    register_and_subscribe(&hub, c1, "ch1").await;
 
-    let payload = serde_json::json!({
-        "message_id": msg_id,
-        "channel_id": "ch1",
-    });
+    let payload = serde_json::json!({"message_id": msg_id, "channel_id": "ch1"});
     super::handlers::handle_message_delete(&hub, "u1", payload).await;
     settle().await;
 
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
+    let evt = recv_event(&mut rx1).await;
     assert_eq!(evt.event_type, EVENT_MESSAGE_DELETED);
 }
 
@@ -703,30 +668,19 @@ async fn typing_broadcasts_to_channel_excluding_sender() {
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
     let (c2, mut rx2) = make_client("c2", "u2", "bob", "t1");
-    hub.register(c1).await;
-    hub.register(c2).await;
+    register(&hub, c1).await;
+    register(&hub, c2).await;
+    subscribe(&hub, "c1", "ch1").await;
+    subscribe(&hub, "c2", "ch1").await;
+
+    super::handlers::handle_typing(&hub, "c1", "u1", "alice", serde_json::json!({"channel_id": "ch1"})).await;
     settle().await;
 
-    hub.subscribe("c1", "ch1").await;
-    hub.subscribe("c2", "ch1").await;
-    settle().await;
-
-    let payload = serde_json::json!({"channel_id": "ch1"});
-    super::handlers::handle_typing(&hub, "c1", "u1", "alice", payload).await;
-    settle().await;
-
-    // c2 should receive typing indicator
-    let msg = timeout(Duration::from_millis(200), rx2.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
+    let evt = recv_event(&mut rx2).await;
     assert_eq!(evt.event_type, EVENT_TYPING_INDICATOR);
     assert_eq!(evt.payload["user_id"], "u1");
 
-    // c1 should NOT receive (excluded)
-    let result = timeout(Duration::from_millis(100), rx1.recv()).await;
-    assert!(result.is_err(), "sender should be excluded from typing indicator");
+    assert_no_recv(&mut rx1, "sender should be excluded from typing indicator").await;
 }
 
 #[tokio::test]
@@ -736,30 +690,23 @@ async fn typing_is_throttled() {
 
     let (c1, _rx1) = make_client("c1", "u1", "alice", "t1");
     let (c2, mut rx2) = make_client("c2", "u2", "bob", "t1");
-    hub.register(c1).await;
-    hub.register(c2).await;
-    settle().await;
-
-    hub.subscribe("c1", "ch1").await;
-    hub.subscribe("c2", "ch1").await;
-    settle().await;
-
-    let payload1 = serde_json::json!({"channel_id": "ch1"});
-    let payload2 = serde_json::json!({"channel_id": "ch1"});
+    register(&hub, c1).await;
+    register(&hub, c2).await;
+    subscribe(&hub, "c1", "ch1").await;
+    subscribe(&hub, "c2", "ch1").await;
 
     // First typing event should go through
-    super::handlers::handle_typing(&hub, "c1", "u1", "alice", payload1).await;
+    super::handlers::handle_typing(&hub, "c1", "u1", "alice", serde_json::json!({"channel_id": "ch1"})).await;
     settle().await;
 
     let msg = timeout(Duration::from_millis(200), rx2.recv()).await;
     assert!(msg.is_ok(), "first typing event should be received");
 
     // Second typing event within throttle period should be dropped
-    super::handlers::handle_typing(&hub, "c1", "u1", "alice", payload2).await;
+    super::handlers::handle_typing(&hub, "c1", "u1", "alice", serde_json::json!({"channel_id": "ch1"})).await;
     settle().await;
 
-    let result = timeout(Duration::from_millis(100), rx2.recv()).await;
-    assert!(result.is_err(), "throttled typing event should not be received");
+    assert_no_recv(&mut rx2, "throttled typing event should not be received").await;
 }
 
 // =========================================================================
@@ -770,51 +717,18 @@ async fn typing_is_throttled() {
 async fn reaction_add_stores_and_broadcasts() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
     seed_team_channel(&hub.db, "t1", "u1", "ch1");
 
-    // Create a message to react to
-    let msg_id = db::new_id();
-    hub.db
-        .with_conn(|conn| {
-            db::create_message(
-                conn,
-                &db::Message {
-                    id: msg_id.clone(),
-                    channel_id: "ch1".to_string(),
-                    dm_channel_id: String::new(),
-                    author_id: "u1".to_string(),
-                    content: "react to me".to_string(),
-                    msg_type: "text".to_string(),
-                    thread_id: String::new(),
-                    edited_at: None,
-                    deleted: false,
-                    lamport_ts: 0,
-                    created_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
+    let msg_id = insert_channel_msg(&hub.db, "ch1", "u1", "react to me");
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
-    hub.subscribe("c1", "ch1").await;
-    settle().await;
+    register_and_subscribe(&hub, c1, "ch1").await;
 
-    let p = ReactionPayload {
-        message_id: msg_id.clone(),
-        channel_id: "ch1".to_string(),
-        emoji: "thumbsup".to_string(),
-    };
+    let p = ReactionPayload { message_id: msg_id, channel_id: "ch1".to_string(), emoji: "thumbsup".to_string() };
     super::handlers::handle_reaction_add(&hub, "u1", p).await;
     settle().await;
 
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
+    let evt = recv_event(&mut rx1).await;
     assert_eq!(evt.event_type, EVENT_REACTION_ADDED);
     assert_eq!(evt.payload["emoji"], "thumbsup");
 }
@@ -823,51 +737,19 @@ async fn reaction_add_stores_and_broadcasts() {
 async fn reaction_remove_deletes_and_broadcasts() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
     seed_team_channel(&hub.db, "t1", "u1", "ch1");
 
-    let msg_id = db::new_id();
-    hub.db
-        .with_conn(|conn| {
-            db::create_message(
-                conn,
-                &db::Message {
-                    id: msg_id.clone(),
-                    channel_id: "ch1".to_string(),
-                    dm_channel_id: String::new(),
-                    author_id: "u1".to_string(),
-                    content: "react".to_string(),
-                    msg_type: "text".to_string(),
-                    thread_id: String::new(),
-                    edited_at: None,
-                    deleted: false,
-                    lamport_ts: 0,
-                    created_at: db::now_str(),
-                },
-            )?;
-            db::add_reaction(conn, &msg_id, "u1", "thumbsup")
-        })
-        .unwrap();
+    let msg_id = insert_channel_msg(&hub.db, "ch1", "u1", "react");
+    hub.db.with_conn(|conn| db::add_reaction(conn, &msg_id, "u1", "thumbsup")).unwrap();
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
-    hub.subscribe("c1", "ch1").await;
-    settle().await;
+    register_and_subscribe(&hub, c1, "ch1").await;
 
-    let p = ReactionPayload {
-        message_id: msg_id,
-        channel_id: "ch1".to_string(),
-        emoji: "thumbsup".to_string(),
-    };
+    let p = ReactionPayload { message_id: msg_id, channel_id: "ch1".to_string(), emoji: "thumbsup".to_string() };
     super::handlers::handle_reaction_remove(&hub, "u1", p).await;
     settle().await;
 
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
+    let evt = recv_event(&mut rx1).await;
     assert_eq!(evt.event_type, EVENT_REACTION_REMOVED);
 }
 
@@ -879,65 +761,23 @@ async fn reaction_remove_deletes_and_broadcasts() {
 async fn thread_message_send_creates_and_broadcasts() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
     seed_team_channel(&hub.db, "t1", "u1", "ch1");
 
-    // Create a parent message
-    let parent_msg_id = db::new_id();
-    hub.db
-        .with_conn(|conn| {
-            db::create_message(
-                conn,
-                &db::Message {
-                    id: parent_msg_id.clone(),
-                    channel_id: "ch1".to_string(),
-                    dm_channel_id: String::new(),
-                    author_id: "u1".to_string(),
-                    content: "parent".to_string(),
-                    msg_type: "text".to_string(),
-                    thread_id: String::new(),
-                    edited_at: None,
-                    deleted: false,
-                    lamport_ts: 0,
-                    created_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
-
-    let thread_id = db::new_id();
-    seed_thread(&hub.db, &thread_id, "ch1", "t1", "u1", &parent_msg_id);
+    let (_parent_msg_id, thread_id) = seed_parent_and_thread(&hub.db, "ch1", "t1", "u1");
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
-    hub.subscribe("c1", "ch1").await;
-    settle().await;
+    register_and_subscribe(&hub, c1, "ch1").await;
 
-    let p = ThreadMessageSendPayload {
-        thread_id: thread_id.clone(),
-        content: "thread reply".to_string(),
-        nonce: String::new(),
-    };
+    let p = ThreadMessageSendPayload { thread_id: thread_id.clone(), content: "thread reply".to_string(), nonce: String::new() };
     super::handlers::handle_thread_message_send(&hub, "u1", p).await;
     settle().await;
 
-    // Should receive thread:message:new
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
+    let evt = recv_event(&mut rx1).await;
     assert_eq!(evt.event_type, EVENT_THREAD_MESSAGE_NEW);
     assert_eq!(evt.payload["content"], "thread reply");
     assert_eq!(evt.payload["thread_id"], thread_id);
 
-    // Should also receive thread:updated
-    let msg2 = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt2 = parse_event(&msg2);
+    let evt2 = recv_event(&mut rx1).await;
     assert_eq!(evt2.event_type, EVENT_THREAD_UPDATED);
 }
 
@@ -945,76 +785,19 @@ async fn thread_message_send_creates_and_broadcasts() {
 async fn thread_message_edit_broadcasts_update() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
     seed_team_channel(&hub.db, "t1", "u1", "ch1");
 
-    let parent_msg_id = db::new_id();
-    hub.db
-        .with_conn(|conn| {
-            db::create_message(
-                conn,
-                &db::Message {
-                    id: parent_msg_id.clone(),
-                    channel_id: "ch1".to_string(),
-                    dm_channel_id: String::new(),
-                    author_id: "u1".to_string(),
-                    content: "parent".to_string(),
-                    msg_type: "text".to_string(),
-                    thread_id: String::new(),
-                    edited_at: None,
-                    deleted: false,
-                    lamport_ts: 0,
-                    created_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
-
-    let thread_id = db::new_id();
-    seed_thread(&hub.db, &thread_id, "ch1", "t1", "u1", &parent_msg_id);
-
-    // Create a thread message
-    let thread_msg_id = db::new_id();
-    hub.db
-        .with_conn(|conn| {
-            db::create_thread_message(
-                conn,
-                &db::Message {
-                    id: thread_msg_id.clone(),
-                    channel_id: "ch1".to_string(),
-                    dm_channel_id: String::new(),
-                    author_id: "u1".to_string(),
-                    content: "original".to_string(),
-                    msg_type: "text".to_string(),
-                    thread_id: thread_id.clone(),
-                    edited_at: None,
-                    deleted: false,
-                    lamport_ts: 0,
-                    created_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
+    let (_parent_msg_id, thread_id) = seed_parent_and_thread(&hub.db, "ch1", "t1", "u1");
+    let thread_msg_id = insert_thread_msg(&hub.db, "ch1", &thread_id, "u1", "original");
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
-    hub.subscribe("c1", "ch1").await;
-    settle().await;
+    register_and_subscribe(&hub, c1, "ch1").await;
 
-    let p = ThreadMessageEditPayload {
-        thread_id: thread_id.clone(),
-        message_id: thread_msg_id,
-        content: "edited thread msg".to_string(),
-    };
+    let p = ThreadMessageEditPayload { thread_id, message_id: thread_msg_id, content: "edited thread msg".to_string() };
     super::handlers::handle_thread_message_edit(&hub, "u1", p).await;
     settle().await;
 
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
+    let evt = recv_event(&mut rx1).await;
     assert_eq!(evt.event_type, EVENT_THREAD_MESSAGE_UPDATED);
     assert_eq!(evt.payload["content"], "edited thread msg");
 }
@@ -1023,74 +806,19 @@ async fn thread_message_edit_broadcasts_update() {
 async fn thread_message_remove_broadcasts_deletion() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
     seed_team_channel(&hub.db, "t1", "u1", "ch1");
 
-    let parent_msg_id = db::new_id();
-    hub.db
-        .with_conn(|conn| {
-            db::create_message(
-                conn,
-                &db::Message {
-                    id: parent_msg_id.clone(),
-                    channel_id: "ch1".to_string(),
-                    dm_channel_id: String::new(),
-                    author_id: "u1".to_string(),
-                    content: "parent".to_string(),
-                    msg_type: "text".to_string(),
-                    thread_id: String::new(),
-                    edited_at: None,
-                    deleted: false,
-                    lamport_ts: 0,
-                    created_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
-
-    let thread_id = db::new_id();
-    seed_thread(&hub.db, &thread_id, "ch1", "t1", "u1", &parent_msg_id);
-
-    let thread_msg_id = db::new_id();
-    hub.db
-        .with_conn(|conn| {
-            db::create_thread_message(
-                conn,
-                &db::Message {
-                    id: thread_msg_id.clone(),
-                    channel_id: "ch1".to_string(),
-                    dm_channel_id: String::new(),
-                    author_id: "u1".to_string(),
-                    content: "to delete".to_string(),
-                    msg_type: "text".to_string(),
-                    thread_id: thread_id.clone(),
-                    edited_at: None,
-                    deleted: false,
-                    lamport_ts: 0,
-                    created_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
+    let (_parent_msg_id, thread_id) = seed_parent_and_thread(&hub.db, "ch1", "t1", "u1");
+    let thread_msg_id = insert_thread_msg(&hub.db, "ch1", &thread_id, "u1", "to delete");
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
-    hub.subscribe("c1", "ch1").await;
-    settle().await;
+    register_and_subscribe(&hub, c1, "ch1").await;
 
-    let p = ThreadMessageRemovePayload {
-        thread_id: thread_id.clone(),
-        message_id: thread_msg_id,
-    };
+    let p = ThreadMessageRemovePayload { thread_id, message_id: thread_msg_id };
     super::handlers::handle_thread_message_remove(&hub, "u1", p).await;
     settle().await;
 
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
+    let evt = recv_event(&mut rx1).await;
     assert_eq!(evt.event_type, EVENT_THREAD_MESSAGE_DELETED);
 }
 
@@ -1102,59 +830,22 @@ async fn thread_message_remove_broadcasts_deletion() {
 async fn dm_message_send_delivers_to_members() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
-    // Seed two users
-    seed_team_channel(&hub.db, "t1", "u1", "ch-ignore");
-    hub.db
-        .with_conn(|conn| {
-            db::create_user(
-                conn,
-                &db::User {
-                    id: "u2".to_string(),
-                    username: "bob".to_string(),
-                    display_name: "Bob".to_string(),
-                    public_key: vec![1u8; 32],
-                    avatar_url: String::new(),
-                    status_text: String::new(),
-                    status_type: "online".to_string(),
-                    is_admin: false,
-                    created_at: db::now_str(),
-                    updated_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
-
-    seed_dm_channel(&hub.db, "t1", "dm1", "u1", "u2");
+    seed_dm_fixture(&hub.db);
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
     let (c2, mut rx2) = make_client("c2", "u2", "bob", "t1");
-    hub.register(c1).await;
-    hub.register(c2).await;
-    settle().await;
+    register(&hub, c1).await;
+    register(&hub, c2).await;
 
-    let p = DMMessageSendPayload {
-        dm_channel_id: "dm1".to_string(),
-        content: "hey bob".to_string(),
-        msg_type: String::new(),
-    };
+    let p = DMMessageSendPayload { dm_channel_id: "dm1".to_string(), content: "hey bob".to_string(), msg_type: String::new() };
     super::handlers::handle_dm_message_send(&hub, "u1", "alice", p).await;
     settle().await;
 
-    // Both members should receive the message
-    let msg1 = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt1 = parse_event(&msg1);
+    let evt1 = recv_event(&mut rx1).await;
     assert_eq!(evt1.event_type, EVENT_DM_MESSAGE_NEW);
     assert_eq!(evt1.payload["content"], "hey bob");
 
-    let msg2 = timeout(Duration::from_millis(200), rx2.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt2 = parse_event(&msg2);
+    let evt2 = recv_event(&mut rx2).await;
     assert_eq!(evt2.event_type, EVENT_DM_MESSAGE_NEW);
 }
 
@@ -1162,200 +853,58 @@ async fn dm_message_send_delivers_to_members() {
 async fn dm_message_send_rejects_non_member() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
-    seed_team_channel(&hub.db, "t1", "u1", "ch-ignore");
-    hub.db
-        .with_conn(|conn| {
-            db::create_user(
-                conn,
-                &db::User {
-                    id: "u2".to_string(),
-                    username: "bob".to_string(),
-                    display_name: "Bob".to_string(),
-                    public_key: vec![1u8; 32],
-                    avatar_url: String::new(),
-                    status_text: String::new(),
-                    status_type: "online".to_string(),
-                    is_admin: false,
-                    created_at: db::now_str(),
-                    updated_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
-    seed_dm_channel(&hub.db, "t1", "dm1", "u1", "u2");
+    seed_dm_fixture(&hub.db);
 
     let (c3, mut rx3) = make_client("c3", "u3", "eve", "t1");
-    hub.register(c3).await;
-    settle().await;
+    register(&hub, c3).await;
 
-    // u3 is NOT a member of dm1
-    let p = DMMessageSendPayload {
-        dm_channel_id: "dm1".to_string(),
-        content: "hacked".to_string(),
-        msg_type: String::new(),
-    };
+    let p = DMMessageSendPayload { dm_channel_id: "dm1".to_string(), content: "hacked".to_string(), msg_type: String::new() };
     super::handlers::handle_dm_message_send(&hub, "u3", "eve", p).await;
     settle().await;
 
-    let result = timeout(Duration::from_millis(100), rx3.recv()).await;
-    assert!(result.is_err(), "non-member should not be able to send DM");
+    assert_no_recv(&mut rx3, "non-member should not be able to send DM").await;
 }
 
 #[tokio::test]
 async fn dm_message_edit_broadcasts_update() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
+    seed_dm_fixture(&hub.db);
 
-    seed_team_channel(&hub.db, "t1", "u1", "ch-ignore");
-    hub.db
-        .with_conn(|conn| {
-            db::create_user(
-                conn,
-                &db::User {
-                    id: "u2".to_string(),
-                    username: "bob".to_string(),
-                    display_name: "Bob".to_string(),
-                    public_key: vec![1u8; 32],
-                    avatar_url: String::new(),
-                    status_text: String::new(),
-                    status_type: "online".to_string(),
-                    is_admin: false,
-                    created_at: db::now_str(),
-                    updated_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
-    seed_dm_channel(&hub.db, "t1", "dm1", "u1", "u2");
-
-    // Create a DM message
-    let msg_id = db::new_id();
-    hub.db
-        .with_conn(|conn| {
-            db::create_message(
-                conn,
-                &db::Message {
-                    id: msg_id.clone(),
-                    channel_id: String::new(),
-                    dm_channel_id: "dm1".to_string(),
-                    author_id: "u1".to_string(),
-                    content: "original dm".to_string(),
-                    msg_type: "text".to_string(),
-                    thread_id: String::new(),
-                    edited_at: None,
-                    deleted: false,
-                    lamport_ts: 0,
-                    created_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
+    let msg_id = insert_dm_msg(&hub.db, "dm1", "u1", "original dm");
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
     let (c2, mut rx2) = make_client("c2", "u2", "bob", "t1");
-    hub.register(c1).await;
-    hub.register(c2).await;
-    settle().await;
+    register(&hub, c1).await;
+    register(&hub, c2).await;
 
-    let p = DMMessageEditPayload {
-        dm_channel_id: "dm1".to_string(),
-        message_id: msg_id,
-        content: "edited dm".to_string(),
-    };
+    let p = DMMessageEditPayload { dm_channel_id: "dm1".to_string(), message_id: msg_id, content: "edited dm".to_string() };
     super::handlers::handle_dm_message_edit(&hub, "u1", p).await;
     settle().await;
 
-    let msg1 = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt1 = parse_event(&msg1);
-    assert_eq!(evt1.event_type, EVENT_DM_MESSAGE_UPDATED);
-
-    let msg2 = timeout(Duration::from_millis(200), rx2.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt2 = parse_event(&msg2);
-    assert_eq!(evt2.event_type, EVENT_DM_MESSAGE_UPDATED);
+    assert_eq!(recv_event(&mut rx1).await.event_type, EVENT_DM_MESSAGE_UPDATED);
+    assert_eq!(recv_event(&mut rx2).await.event_type, EVENT_DM_MESSAGE_UPDATED);
 }
 
 #[tokio::test]
 async fn dm_message_delete_broadcasts_deletion() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
+    seed_dm_fixture(&hub.db);
 
-    seed_team_channel(&hub.db, "t1", "u1", "ch-ignore");
-    hub.db
-        .with_conn(|conn| {
-            db::create_user(
-                conn,
-                &db::User {
-                    id: "u2".to_string(),
-                    username: "bob".to_string(),
-                    display_name: "Bob".to_string(),
-                    public_key: vec![1u8; 32],
-                    avatar_url: String::new(),
-                    status_text: String::new(),
-                    status_type: "online".to_string(),
-                    is_admin: false,
-                    created_at: db::now_str(),
-                    updated_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
-    seed_dm_channel(&hub.db, "t1", "dm1", "u1", "u2");
-
-    let msg_id = db::new_id();
-    hub.db
-        .with_conn(|conn| {
-            db::create_message(
-                conn,
-                &db::Message {
-                    id: msg_id.clone(),
-                    channel_id: String::new(),
-                    dm_channel_id: "dm1".to_string(),
-                    author_id: "u1".to_string(),
-                    content: "delete me".to_string(),
-                    msg_type: "text".to_string(),
-                    thread_id: String::new(),
-                    edited_at: None,
-                    deleted: false,
-                    lamport_ts: 0,
-                    created_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
+    let msg_id = insert_dm_msg(&hub.db, "dm1", "u1", "delete me");
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
     let (c2, mut rx2) = make_client("c2", "u2", "bob", "t1");
-    hub.register(c1).await;
-    hub.register(c2).await;
-    settle().await;
+    register(&hub, c1).await;
+    register(&hub, c2).await;
 
-    let p = DMMessageDeletePayload {
-        dm_channel_id: "dm1".to_string(),
-        message_id: msg_id,
-    };
+    let p = DMMessageDeletePayload { dm_channel_id: "dm1".to_string(), message_id: msg_id };
     super::handlers::handle_dm_message_delete(&hub, "u1", p).await;
     settle().await;
 
-    let msg1 = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt1 = parse_event(&msg1);
-    assert_eq!(evt1.event_type, EVENT_DM_MESSAGE_DELETED);
-
-    let msg2 = timeout(Duration::from_millis(200), rx2.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt2 = parse_event(&msg2);
-    assert_eq!(evt2.event_type, EVENT_DM_MESSAGE_DELETED);
+    assert_eq!(recv_event(&mut rx1).await.event_type, EVENT_DM_MESSAGE_DELETED);
+    assert_eq!(recv_event(&mut rx2).await.event_type, EVENT_DM_MESSAGE_DELETED);
 }
 
 // =========================================================================
@@ -1364,14 +913,9 @@ async fn dm_message_delete_broadcasts_deletion() {
 
 #[tokio::test]
 async fn voice_join_without_room_manager_returns_early() {
-    // Hub without voice_room_manager
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
-    let p = VoiceJoinPayload {
-        channel_id: "voice-ch".to_string(),
-    };
-    // Should not panic even without voice_room_manager
+    let p = VoiceJoinPayload { channel_id: "voice-ch".to_string() };
     super::handlers::handle_voice_join(&hub, "c1", "u1", "alice", "t1", p).await;
 }
 
@@ -1382,39 +926,20 @@ async fn voice_join_adds_peer_and_broadcasts() {
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
     let (c2, mut rx2) = make_client("c2", "u2", "bob", "t1");
-    hub.register(c1).await;
-    hub.register(c2).await;
-    settle().await;
+    register(&hub, c1).await;
+    register(&hub, c2).await;
 
-    let p = VoiceJoinPayload {
-        channel_id: "voice-ch".to_string(),
-    };
+    let p = VoiceJoinPayload { channel_id: "voice-ch".to_string() };
     super::handlers::handle_voice_join(&hub, "c1", "u1", "alice", "t1", p).await;
     settle().await;
 
-    // Check that the peer was added to the room manager
     let rm = hub.voice_room_manager.as_ref().unwrap();
-    let peers = rm.get_room("voice-ch").await;
-    assert!(peers.is_some());
-    let peers = peers.unwrap();
+    let peers = rm.get_room("voice-ch").await.unwrap();
     assert_eq!(peers.len(), 1);
     assert_eq!(peers[0].user_id, "u1");
 
-    // Collect events from both clients
-    let mut c1_events = Vec::new();
-    for _ in 0..10 {
-        match timeout(Duration::from_millis(100), rx1.recv()).await {
-            Ok(Some(data)) => c1_events.push(parse_event(&data)),
-            _ => break,
-        }
-    }
-    let mut c2_events = Vec::new();
-    for _ in 0..10 {
-        match timeout(Duration::from_millis(100), rx2.recv()).await {
-            Ok(Some(data)) => c2_events.push(parse_event(&data)),
-            _ => break,
-        }
-    }
+    let c1_events = drain_events(&mut rx1, 10).await;
+    let c2_events = drain_events(&mut rx2, 10).await;
 
     let c1_types: Vec<&str> = c1_events.iter().map(|e| e.event_type.as_str()).collect();
     let c2_types: Vec<&str> = c2_events.iter().map(|e| e.event_type.as_str()).collect();
@@ -1427,30 +952,17 @@ async fn voice_join_sends_voice_state_to_joiner() {
     let hub = test_hub_with_voice_and_sfu();
     let _h = spawn_hub(&hub);
 
-    // Add a pre-existing peer
     let rm = hub.voice_room_manager.as_ref().unwrap();
     rm.add_peer("voice-ch", "u-existing", "existing-user", "t1").await;
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
+    register(&hub, c1).await;
 
-    let p = VoiceJoinPayload {
-        channel_id: "voice-ch".to_string(),
-    };
+    let p = VoiceJoinPayload { channel_id: "voice-ch".to_string() };
     super::handlers::handle_voice_join(&hub, "c1", "u1", "alice", "t1", p).await;
     settle().await;
 
-    // u1 should receive: voice:user-joined (broadcast), voice:state, voice:offer
-    // Collect all messages
-    let mut events = Vec::new();
-    for _ in 0..10 {
-        match timeout(Duration::from_millis(100), rx1.recv()).await {
-            Ok(Some(data)) => events.push(parse_event(&data)),
-            _ => break,
-        }
-    }
-
+    let events = drain_events(&mut rx1, 10).await;
     let event_types: Vec<&str> = events.iter().map(|e| e.event_type.as_str()).collect();
     assert!(event_types.contains(&EVENT_VOICE_USER_JOINED), "should have voice:user-joined, got {:?}", event_types);
     assert!(event_types.contains(&EVENT_VOICE_STATE), "should have voice:state, got {:?}", event_types);
@@ -1463,13 +975,9 @@ async fn voice_join_with_failing_sfu_does_not_crash() {
     let _h = spawn_hub(&hub);
 
     let (c1, _rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
+    register(&hub, c1).await;
 
-    let p = VoiceJoinPayload {
-        channel_id: "voice-ch".to_string(),
-    };
-    // Should not panic even if SFU fails
+    let p = VoiceJoinPayload { channel_id: "voice-ch".to_string() };
     super::handlers::handle_voice_join(&hub, "c1", "u1", "alice", "t1", p).await;
 }
 
@@ -1482,27 +990,15 @@ async fn voice_leave_removes_peer_and_broadcasts() {
     rm.add_peer("voice-ch", "u1", "alice", "t1").await;
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
-    hub.subscribe("c1", "voice-ch").await;
-    settle().await;
+    register_and_subscribe(&hub, c1, "voice-ch").await;
 
-    let p = VoiceJoinPayload {
-        channel_id: "voice-ch".to_string(),
-    };
+    let p = VoiceJoinPayload { channel_id: "voice-ch".to_string() };
     super::handlers::handle_voice_leave(&hub, "c1", "u1", p).await;
     settle().await;
 
-    // Peer should be removed
-    let peers = rm.get_room("voice-ch").await;
-    assert!(peers.is_none(), "room should be empty after last peer leaves");
+    assert!(rm.get_room("voice-ch").await.is_none(), "room should be empty after last peer leaves");
 
-    // Should receive voice:user-left
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
+    let evt = recv_event(&mut rx1).await;
     assert_eq!(evt.event_type, EVENT_VOICE_USER_LEFT);
     assert_eq!(evt.payload["user_id"], "u1");
 }
@@ -1516,26 +1012,15 @@ async fn voice_mute_updates_state_and_broadcasts() {
     rm.add_peer("voice-ch", "u1", "alice", "t1").await;
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
+    register(&hub, c1).await;
 
-    let p = VoiceMutePayload {
-        channel_id: "voice-ch".to_string(),
-        muted: true,
-    };
+    let p = VoiceMutePayload { channel_id: "voice-ch".to_string(), muted: true };
     super::handlers::handle_voice_mute(&hub, "u1", p).await;
     settle().await;
 
-    // Check the room manager state
-    let peers = rm.get_room("voice-ch").await.unwrap();
-    assert!(peers[0].muted);
+    assert!(rm.get_room("voice-ch").await.unwrap()[0].muted);
 
-    // Should broadcast mute update
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
+    let evt = recv_event(&mut rx1).await;
     assert_eq!(evt.event_type, EVENT_VOICE_MUTE_UPDATE);
     assert_eq!(evt.payload["muted"], true);
 }
@@ -1549,13 +1034,9 @@ async fn voice_deafen_also_mutes() {
     rm.add_peer("voice-ch", "u1", "alice", "t1").await;
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
+    register(&hub, c1).await;
 
-    let p = VoiceDeafenPayload {
-        channel_id: "voice-ch".to_string(),
-        deafened: true,
-    };
+    let p = VoiceDeafenPayload { channel_id: "voice-ch".to_string(), deafened: true };
     super::handlers::handle_voice_deafen(&hub, "u1", p).await;
     settle().await;
 
@@ -1563,11 +1044,7 @@ async fn voice_deafen_also_mutes() {
     assert!(peers[0].deafened);
     assert!(peers[0].muted, "deafening should also mute");
 
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
+    let evt = recv_event(&mut rx1).await;
     assert_eq!(evt.event_type, EVENT_VOICE_MUTE_UPDATE);
     assert_eq!(evt.payload["deafened"], true);
     assert_eq!(evt.payload["muted"], true);
@@ -1582,23 +1059,14 @@ async fn voice_screen_start_sets_sharing_and_broadcasts() {
     rm.add_peer("voice-ch", "u1", "alice", "t1").await;
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
+    register(&hub, c1).await;
+
+    super::handlers::handle_voice_screen_start(&hub, "u1", VoiceScreenPayload { channel_id: "voice-ch".to_string() }).await;
     settle().await;
 
-    let p = VoiceScreenPayload {
-        channel_id: "voice-ch".to_string(),
-    };
-    super::handlers::handle_voice_screen_start(&hub, "u1", p).await;
-    settle().await;
+    assert!(rm.get_room("voice-ch").await.unwrap()[0].screen_sharing);
 
-    let peers = rm.get_room("voice-ch").await.unwrap();
-    assert!(peers[0].screen_sharing);
-
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
+    let evt = recv_event(&mut rx1).await;
     assert_eq!(evt.event_type, EVENT_VOICE_SCREEN_UPDATE);
     assert_eq!(evt.payload["sharing"], true);
 }
@@ -1613,23 +1081,14 @@ async fn voice_screen_stop_clears_sharing_and_broadcasts() {
     rm.set_screen_sharing("voice-ch", "u1", true).await;
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
+    register(&hub, c1).await;
+
+    super::handlers::handle_voice_screen_stop(&hub, "u1", VoiceScreenPayload { channel_id: "voice-ch".to_string() }).await;
     settle().await;
 
-    let p = VoiceScreenPayload {
-        channel_id: "voice-ch".to_string(),
-    };
-    super::handlers::handle_voice_screen_stop(&hub, "u1", p).await;
-    settle().await;
+    assert!(!rm.get_room("voice-ch").await.unwrap()[0].screen_sharing);
 
-    let peers = rm.get_room("voice-ch").await.unwrap();
-    assert!(!peers[0].screen_sharing);
-
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
+    let evt = recv_event(&mut rx1).await;
     assert_eq!(evt.event_type, EVENT_VOICE_SCREEN_UPDATE);
     assert_eq!(evt.payload["sharing"], false);
 }
@@ -1643,23 +1102,14 @@ async fn voice_webcam_start_sets_sharing_and_broadcasts() {
     rm.add_peer("voice-ch", "u1", "alice", "t1").await;
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
+    register(&hub, c1).await;
+
+    super::handlers::handle_voice_webcam_start(&hub, "u1", VoiceScreenPayload { channel_id: "voice-ch".to_string() }).await;
     settle().await;
 
-    let p = VoiceScreenPayload {
-        channel_id: "voice-ch".to_string(),
-    };
-    super::handlers::handle_voice_webcam_start(&hub, "u1", p).await;
-    settle().await;
+    assert!(rm.get_room("voice-ch").await.unwrap()[0].webcam_sharing);
 
-    let peers = rm.get_room("voice-ch").await.unwrap();
-    assert!(peers[0].webcam_sharing);
-
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
+    let evt = recv_event(&mut rx1).await;
     assert_eq!(evt.event_type, EVENT_VOICE_WEBCAM_UPDATE);
     assert_eq!(evt.payload["sharing"], true);
 }
@@ -1674,23 +1124,14 @@ async fn voice_webcam_stop_clears_sharing_and_broadcasts() {
     rm.set_webcam_sharing("voice-ch", "u1", true).await;
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
+    register(&hub, c1).await;
+
+    super::handlers::handle_voice_webcam_stop(&hub, "u1", VoiceScreenPayload { channel_id: "voice-ch".to_string() }).await;
     settle().await;
 
-    let p = VoiceScreenPayload {
-        channel_id: "voice-ch".to_string(),
-    };
-    super::handlers::handle_voice_webcam_stop(&hub, "u1", p).await;
-    settle().await;
+    assert!(!rm.get_room("voice-ch").await.unwrap()[0].webcam_sharing);
 
-    let peers = rm.get_room("voice-ch").await.unwrap();
-    assert!(!peers[0].webcam_sharing);
-
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
+    let evt = recv_event(&mut rx1).await;
     assert_eq!(evt.event_type, EVENT_VOICE_WEBCAM_UPDATE);
     assert_eq!(evt.payload["sharing"], false);
 }
@@ -1698,23 +1139,16 @@ async fn voice_webcam_stop_clears_sharing_and_broadcasts() {
 #[tokio::test]
 async fn voice_answer_without_sfu_does_not_panic() {
     let hub = test_hub();
-    let p = VoiceAnswerPayload {
-        channel_id: "voice-ch".to_string(),
-        sdp: "mock-sdp".to_string(),
-    };
-    super::handlers::handle_voice_answer(&hub, "u1", p).await;
+    super::handlers::handle_voice_answer(&hub, "u1", VoiceAnswerPayload { channel_id: "voice-ch".to_string(), sdp: "mock-sdp".to_string() }).await;
 }
 
 #[tokio::test]
 async fn voice_ice_candidate_without_sfu_does_not_panic() {
     let hub = test_hub();
-    let p = VoiceICECandidatePayload {
-        channel_id: "voice-ch".to_string(),
-        candidate: "candidate:...".to_string(),
-        sdp_mid: "0".to_string(),
-        sdp_mline_index: 0,
-    };
-    super::handlers::handle_voice_ice_candidate(&hub, "u1", p).await;
+    super::handlers::handle_voice_ice_candidate(&hub, "u1", VoiceICECandidatePayload {
+        channel_id: "voice-ch".to_string(), candidate: "candidate:...".to_string(),
+        sdp_mid: "0".to_string(), sdp_mline_index: 0,
+    }).await;
 }
 
 // =========================================================================
@@ -1728,129 +1162,72 @@ async fn voice_key_distribute_broadcasts_to_channel_excluding_sender() {
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
     let (c2, mut rx2) = make_client("c2", "u2", "bob", "t1");
-    hub.register(c1).await;
-    hub.register(c2).await;
-    settle().await;
+    register(&hub, c1).await;
+    register(&hub, c2).await;
+    subscribe(&hub, "c1", "voice-ch").await;
+    subscribe(&hub, "c2", "voice-ch").await;
 
-    hub.subscribe("c1", "voice-ch").await;
-    hub.subscribe("c2", "voice-ch").await;
-    settle().await;
-
-    // Simulate what handle_voice_key_distribute does
     let mut p = VoiceKeyDistributePayload {
-        channel_id: "voice-ch".to_string(),
-        sender_id: String::new(),
-        key_id: 1,
-        encrypted_keys: {
-            let mut m = HashMap::new();
-            m.insert("u2".to_string(), "encrypted-key-data".to_string());
-            m
-        },
+        channel_id: "voice-ch".to_string(), sender_id: String::new(), key_id: 1,
+        encrypted_keys: { let mut m = HashMap::new(); m.insert("u2".to_string(), "encrypted-key-data".to_string()); m },
     };
     p.sender_id = "u1".to_string();
     let evt = Event::new(EVENT_VOICE_KEY_DISTRIBUTE, &p).unwrap();
-    let data = evt.to_bytes().unwrap();
-    hub.broadcast_to_channel(&p.channel_id, data, Some("c1".to_string()))
-        .await;
+    hub.broadcast_to_channel(&p.channel_id, evt.to_bytes().unwrap(), Some("c1".to_string())).await;
     settle().await;
 
-    // c2 should receive
-    let msg = timeout(Duration::from_millis(200), rx2.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
+    let evt = recv_event(&mut rx2).await;
     assert_eq!(evt.event_type, EVENT_VOICE_KEY_DISTRIBUTE);
     assert_eq!(evt.payload["sender_id"], "u1");
 
-    // c1 (sender) should NOT receive
-    let result = timeout(Duration::from_millis(100), rx1.recv()).await;
-    assert!(result.is_err());
+    assert_no_recv(&mut rx1, "sender should not receive key distribute").await;
 }
 
 // =========================================================================
 // handlers/request.rs tests
 // =========================================================================
 
+/// Helper to send a request and receive the response event.
+async fn send_request_and_recv(hub: &Arc<Hub>, user_id: &str, team_id: &str, req: RequestEvent, rx: &mut mpsc::UnboundedReceiver<Vec<u8>>) -> Event {
+    super::handlers::handle_request(hub, user_id, team_id, req).await;
+    settle().await;
+    recv_event(rx).await
+}
+
 #[tokio::test]
 async fn request_sync_init_returns_team_data() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
     seed_team_channel(&hub.db, "t1", "u1", "ch1");
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
+    register(&hub, c1).await;
 
-    let req = RequestEvent {
-        id: "req1".to_string(),
-        action: ACTION_SYNC_INIT.to_string(),
-        payload: serde_json::json!({}),
-    };
-    super::handlers::handle_request(&hub, "u1", "t1", req).await;
-    settle().await;
+    let req = RequestEvent { id: "req1".to_string(), action: ACTION_SYNC_INIT.to_string(), payload: serde_json::json!({}) };
+    let evt = send_request_and_recv(&hub, "u1", "t1", req, &mut rx1).await;
 
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
     assert_eq!(evt.event_type, "response");
-    let payload = &evt.payload;
-    assert_eq!(payload["ok"], true);
-    assert_eq!(payload["action"], "sync:init");
-    assert!(payload["payload"]["channels"].is_array());
+    assert_eq!(evt.payload["ok"], true);
+    assert_eq!(evt.payload["action"], "sync:init");
+    assert!(evt.payload["payload"]["channels"].is_array());
 }
 
 #[tokio::test]
 async fn request_message_list_returns_messages() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
     seed_team_channel(&hub.db, "t1", "u1", "ch1");
 
-    // Create some messages
     for i in 0..3 {
-        hub.db
-            .with_conn(|conn| {
-                db::create_message(
-                    conn,
-                    &db::Message {
-                        id: db::new_id(),
-                        channel_id: "ch1".to_string(),
-                        dm_channel_id: String::new(),
-                        author_id: "u1".to_string(),
-                        content: format!("msg {}", i),
-                        msg_type: "text".to_string(),
-                        thread_id: String::new(),
-                        edited_at: None,
-                        deleted: false,
-                        lamport_ts: 0,
-                        created_at: db::now_str(),
-                    },
-                )
-            })
-            .unwrap();
+        insert_channel_msg(&hub.db, "ch1", "u1", &format!("msg {}", i));
     }
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
+    register(&hub, c1).await;
 
-    let req = RequestEvent {
-        id: "req2".to_string(),
-        action: ACTION_MESSAGE_LIST.to_string(),
-        payload: serde_json::json!({"channel_id": "ch1"}),
-    };
-    super::handlers::handle_request(&hub, "u1", "t1", req).await;
-    settle().await;
+    let req = RequestEvent { id: "req2".to_string(), action: ACTION_MESSAGE_LIST.to_string(), payload: serde_json::json!({"channel_id": "ch1"}) };
+    let evt = send_request_and_recv(&hub, "u1", "t1", req, &mut rx1).await;
 
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
     assert_eq!(evt.payload["ok"], true);
     assert!(evt.payload["payload"].is_array());
 }
@@ -1861,22 +1238,11 @@ async fn request_unknown_action_returns_null_payload() {
     let _h = spawn_hub(&hub);
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
+    register(&hub, c1).await;
 
-    let req = RequestEvent {
-        id: "req3".to_string(),
-        action: "nonexistent:action".to_string(),
-        payload: serde_json::json!({}),
-    };
-    super::handlers::handle_request(&hub, "u1", "t1", req).await;
-    settle().await;
+    let req = RequestEvent { id: "req3".to_string(), action: "nonexistent:action".to_string(), payload: serde_json::json!({}) };
+    let evt = send_request_and_recv(&hub, "u1", "t1", req, &mut rx1).await;
 
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
     assert_eq!(evt.payload["ok"], true);
     assert!(evt.payload["payload"].is_null());
 }
@@ -1885,46 +1251,14 @@ async fn request_unknown_action_returns_null_payload() {
 async fn request_dm_list_returns_channels() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
-    seed_team_channel(&hub.db, "t1", "u1", "ch1");
-    hub.db
-        .with_conn(|conn| {
-            db::create_user(
-                conn,
-                &db::User {
-                    id: "u2".to_string(),
-                    username: "bob".to_string(),
-                    display_name: "Bob".to_string(),
-                    public_key: vec![1u8; 32],
-                    avatar_url: String::new(),
-                    status_text: String::new(),
-                    status_type: "online".to_string(),
-                    is_admin: false,
-                    created_at: db::now_str(),
-                    updated_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
-    seed_dm_channel(&hub.db, "t1", "dm1", "u1", "u2");
+    seed_dm_fixture(&hub.db);
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
+    register(&hub, c1).await;
 
-    let req = RequestEvent {
-        id: "req4".to_string(),
-        action: ACTION_DM_LIST.to_string(),
-        payload: serde_json::json!({}),
-    };
-    super::handlers::handle_request(&hub, "u1", "t1", req).await;
-    settle().await;
+    let req = RequestEvent { id: "req4".to_string(), action: ACTION_DM_LIST.to_string(), payload: serde_json::json!({}) };
+    let evt = send_request_and_recv(&hub, "u1", "t1", req, &mut rx1).await;
 
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
     assert_eq!(evt.payload["ok"], true);
     assert!(evt.payload["payload"]["dm_channels"].is_array());
 }
@@ -1933,51 +1267,16 @@ async fn request_dm_list_returns_channels() {
 async fn request_thread_list_returns_threads() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
     seed_team_channel(&hub.db, "t1", "u1", "ch1");
 
-    let parent_msg_id = db::new_id();
-    hub.db
-        .with_conn(|conn| {
-            db::create_message(
-                conn,
-                &db::Message {
-                    id: parent_msg_id.clone(),
-                    channel_id: "ch1".to_string(),
-                    dm_channel_id: String::new(),
-                    author_id: "u1".to_string(),
-                    content: "parent".to_string(),
-                    msg_type: "text".to_string(),
-                    thread_id: String::new(),
-                    edited_at: None,
-                    deleted: false,
-                    lamport_ts: 0,
-                    created_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
-
-    let thread_id = db::new_id();
-    seed_thread(&hub.db, &thread_id, "ch1", "t1", "u1", &parent_msg_id);
+    seed_parent_and_thread(&hub.db, "ch1", "t1", "u1");
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
+    register(&hub, c1).await;
 
-    let req = RequestEvent {
-        id: "req5".to_string(),
-        action: ACTION_THREAD_LIST.to_string(),
-        payload: serde_json::json!({"channel_id": "ch1"}),
-    };
-    super::handlers::handle_request(&hub, "u1", "t1", req).await;
-    settle().await;
+    let req = RequestEvent { id: "req5".to_string(), action: ACTION_THREAD_LIST.to_string(), payload: serde_json::json!({"channel_id": "ch1"}) };
+    let evt = send_request_and_recv(&hub, "u1", "t1", req, &mut rx1).await;
 
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
     assert_eq!(evt.payload["ok"], true);
     assert!(evt.payload["payload"].is_array());
 }
@@ -1986,73 +1285,17 @@ async fn request_thread_list_returns_threads() {
 async fn request_thread_messages_returns_messages() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
     seed_team_channel(&hub.db, "t1", "u1", "ch1");
 
-    let parent_msg_id = db::new_id();
-    hub.db
-        .with_conn(|conn| {
-            db::create_message(
-                conn,
-                &db::Message {
-                    id: parent_msg_id.clone(),
-                    channel_id: "ch1".to_string(),
-                    dm_channel_id: String::new(),
-                    author_id: "u1".to_string(),
-                    content: "parent".to_string(),
-                    msg_type: "text".to_string(),
-                    thread_id: String::new(),
-                    edited_at: None,
-                    deleted: false,
-                    lamport_ts: 0,
-                    created_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
-
-    let thread_id = db::new_id();
-    seed_thread(&hub.db, &thread_id, "ch1", "t1", "u1", &parent_msg_id);
-
-    // Add a thread message
-    hub.db
-        .with_conn(|conn| {
-            db::create_thread_message(
-                conn,
-                &db::Message {
-                    id: db::new_id(),
-                    channel_id: "ch1".to_string(),
-                    dm_channel_id: String::new(),
-                    author_id: "u1".to_string(),
-                    content: "thread reply".to_string(),
-                    msg_type: "text".to_string(),
-                    thread_id: thread_id.clone(),
-                    edited_at: None,
-                    deleted: false,
-                    lamport_ts: 0,
-                    created_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
+    let (_parent_msg_id, thread_id) = seed_parent_and_thread(&hub.db, "ch1", "t1", "u1");
+    insert_thread_msg(&hub.db, "ch1", &thread_id, "u1", "thread reply");
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
+    register(&hub, c1).await;
 
-    let req = RequestEvent {
-        id: "req-tm".to_string(),
-        action: ACTION_THREAD_MESSAGES.to_string(),
-        payload: serde_json::json!({"thread_id": thread_id}),
-    };
-    super::handlers::handle_request(&hub, "u1", "t1", req).await;
-    settle().await;
+    let req = RequestEvent { id: "req-tm".to_string(), action: ACTION_THREAD_MESSAGES.to_string(), payload: serde_json::json!({"thread_id": thread_id}) };
+    let evt = send_request_and_recv(&hub, "u1", "t1", req, &mut rx1).await;
 
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
     assert_eq!(evt.payload["ok"], true);
     assert!(evt.payload["payload"].is_array());
 }
@@ -2061,68 +1304,16 @@ async fn request_thread_messages_returns_messages() {
 async fn request_dm_messages_returns_messages() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
+    seed_dm_fixture(&hub.db);
 
-    seed_team_channel(&hub.db, "t1", "u1", "ch-ignore");
-    hub.db
-        .with_conn(|conn| {
-            db::create_user(
-                conn,
-                &db::User {
-                    id: "u2".to_string(),
-                    username: "bob".to_string(),
-                    display_name: "Bob".to_string(),
-                    public_key: vec![1u8; 32],
-                    avatar_url: String::new(),
-                    status_text: String::new(),
-                    status_type: "online".to_string(),
-                    is_admin: false,
-                    created_at: db::now_str(),
-                    updated_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
-    seed_dm_channel(&hub.db, "t1", "dm1", "u1", "u2");
-
-    // Create a DM message
-    hub.db
-        .with_conn(|conn| {
-            db::create_message(
-                conn,
-                &db::Message {
-                    id: db::new_id(),
-                    channel_id: String::new(),
-                    dm_channel_id: "dm1".to_string(),
-                    author_id: "u1".to_string(),
-                    content: "dm content".to_string(),
-                    msg_type: "text".to_string(),
-                    thread_id: String::new(),
-                    edited_at: None,
-                    deleted: false,
-                    lamport_ts: 0,
-                    created_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
+    insert_dm_msg(&hub.db, "dm1", "u1", "dm content");
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
+    register(&hub, c1).await;
 
-    let req = RequestEvent {
-        id: "req-dm-msgs".to_string(),
-        action: ACTION_DM_MESSAGES.to_string(),
-        payload: serde_json::json!({"dm_id": "dm1"}),
-    };
-    super::handlers::handle_request(&hub, "u1", "t1", req).await;
-    settle().await;
+    let req = RequestEvent { id: "req-dm-msgs".to_string(), action: ACTION_DM_MESSAGES.to_string(), payload: serde_json::json!({"dm_id": "dm1"}) };
+    let evt = send_request_and_recv(&hub, "u1", "t1", req, &mut rx1).await;
 
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
     assert_eq!(evt.payload["ok"], true);
     assert!(evt.payload["payload"].is_array());
 }
@@ -2150,9 +1341,7 @@ async fn room_manager_set_muted() {
     let rm = RoomManager::new();
     rm.add_peer("ch1", "u1", "alice", "t1").await;
     rm.set_muted("ch1", "u1", true).await;
-
-    let peers = rm.get_room("ch1").await.unwrap();
-    assert!(peers[0].muted);
+    assert!(rm.get_room("ch1").await.unwrap()[0].muted);
 }
 
 #[tokio::test]
@@ -2160,9 +1349,7 @@ async fn room_manager_set_deafened() {
     let rm = RoomManager::new();
     rm.add_peer("ch1", "u1", "alice", "t1").await;
     rm.set_deafened("ch1", "u1", true).await;
-
-    let peers = rm.get_room("ch1").await.unwrap();
-    assert!(peers[0].deafened);
+    assert!(rm.get_room("ch1").await.unwrap()[0].deafened);
 }
 
 #[tokio::test]
@@ -2171,10 +1358,8 @@ async fn room_manager_screen_sharing() {
     rm.add_peer("ch1", "u1", "alice", "t1").await;
 
     assert!(rm.screen_sharer("ch1").await.is_none());
-
     rm.set_screen_sharing("ch1", "u1", true).await;
     assert_eq!(rm.screen_sharer("ch1").await, Some("u1".to_string()));
-
     rm.set_screen_sharing("ch1", "u1", false).await;
     assert!(rm.screen_sharer("ch1").await.is_none());
 }
@@ -2184,9 +1369,7 @@ async fn room_manager_webcam_sharing() {
     let rm = RoomManager::new();
     rm.add_peer("ch1", "u1", "alice", "t1").await;
     rm.set_webcam_sharing("ch1", "u1", true).await;
-
-    let peers = rm.get_room("ch1").await.unwrap();
-    assert!(peers[0].webcam_sharing);
+    assert!(rm.get_room("ch1").await.unwrap()[0].webcam_sharing);
 }
 
 #[tokio::test]
@@ -2209,10 +1392,8 @@ async fn room_manager_multiple_peers_in_room() {
     rm.add_peer("ch1", "u1", "alice", "t1").await;
     rm.add_peer("ch1", "u2", "bob", "t1").await;
 
-    let peers = rm.get_room("ch1").await.unwrap();
-    assert_eq!(peers.len(), 2);
+    assert_eq!(rm.get_room("ch1").await.unwrap().len(), 2);
 
-    // Remove one peer
     rm.remove_peer("ch1", "u1").await;
     let peers = rm.get_room("ch1").await.unwrap();
     assert_eq!(peers.len(), 1);
@@ -2233,7 +1414,6 @@ async fn room_manager_get_nonexistent_room() {
 fn sfu_new_creates_instance() {
     use crate::voice::signaling::SFU;
     let _sfu = SFU::new();
-    // No panic = pass
 }
 
 #[tokio::test]
@@ -2241,7 +1421,6 @@ async fn sfu_set_on_event_stores_callback() {
     use crate::voice::signaling::SFU;
     let sfu = SFU::new();
     sfu.set_on_event(|_channel_id, _event| {}).await;
-    // No panic = pass
 }
 
 #[tokio::test]
@@ -2249,7 +1428,6 @@ async fn sfu_handle_leave_on_empty_room_does_not_panic() {
     use crate::voice::signaling::SFU;
     let sfu = SFU::new();
     sfu.handle_leave("nonexistent", "u1").await;
-    // No panic = pass
 }
 
 #[tokio::test]
@@ -2257,7 +1435,6 @@ async fn sfu_renegotiate_all_on_empty_room_does_not_panic() {
     use crate::voice::signaling::SFU;
     let sfu = SFU::new();
     sfu.renegotiate_all("nonexistent").await;
-    // No panic = pass
 }
 
 #[tokio::test]
@@ -2265,13 +1442,11 @@ async fn sfu_renegotiate_all_except_on_empty_room_does_not_panic() {
     use crate::voice::signaling::SFU;
     let sfu = SFU::new();
     sfu.renegotiate_all_except("nonexistent", "u1").await;
-    // No panic = pass
 }
 
 // =========================================================================
 // client.rs dispatch tests (Event -> handler routing)
 // =========================================================================
-// These test that the correct handler path is triggered for each event type.
 
 #[tokio::test]
 async fn dispatch_channel_join_event_subscribes() {
@@ -2279,24 +1454,18 @@ async fn dispatch_channel_join_event_subscribes() {
     let _h = spawn_hub(&hub);
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
+    register(&hub, c1).await;
 
-    // Manually call what handle_event delegates to for channel:join
     let payload = serde_json::json!({"channel_id": "test-chan"});
     if let Ok(p) = serde_json::from_value::<ChannelJoinPayload>(payload) {
         hub.subscribe("c1", &p.channel_id).await;
     }
     settle().await;
 
-    // Verify subscription by broadcasting
     hub.broadcast_to_channel("test-chan", b"verify".to_vec(), None).await;
     settle().await;
 
-    let msg = timeout(Duration::from_millis(100), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
+    let msg = timeout(Duration::from_millis(100), rx1.recv()).await.unwrap().unwrap();
     assert_eq!(msg, b"verify");
 }
 
@@ -2306,21 +1475,16 @@ async fn dispatch_channel_leave_event_unsubscribes() {
     let _h = spawn_hub(&hub);
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
-
-    hub.subscribe("c1", "test-chan").await;
-    settle().await;
+    register(&hub, c1).await;
+    subscribe(&hub, "c1", "test-chan").await;
 
     hub.unsubscribe("c1", "test-chan").await;
     settle().await;
 
-    // Verify unsubscription: broadcast should NOT be received
     hub.broadcast_to_channel("test-chan", b"should-not-recv".to_vec(), None).await;
     settle().await;
 
-    let result = timeout(Duration::from_millis(100), rx1.recv()).await;
-    assert!(result.is_err(), "unsubscribed client should not receive broadcast");
+    assert_no_recv(&mut rx1, "unsubscribed client should not receive broadcast").await;
 }
 
 // =========================================================================
@@ -2329,31 +1493,20 @@ async fn dispatch_channel_leave_event_unsubscribes() {
 
 #[tokio::test]
 async fn voice_mute_without_room_manager_does_not_panic() {
-    let hub = test_hub(); // no voice_room_manager
-    let p = VoiceMutePayload {
-        channel_id: "voice-ch".to_string(),
-        muted: true,
-    };
-    super::handlers::handle_voice_mute(&hub, "u1", p).await;
+    let hub = test_hub();
+    super::handlers::handle_voice_mute(&hub, "u1", VoiceMutePayload { channel_id: "voice-ch".to_string(), muted: true }).await;
 }
 
 #[tokio::test]
 async fn voice_deafen_without_room_manager_does_not_panic() {
     let hub = test_hub();
-    let p = VoiceDeafenPayload {
-        channel_id: "voice-ch".to_string(),
-        deafened: true,
-    };
-    super::handlers::handle_voice_deafen(&hub, "u1", p).await;
+    super::handlers::handle_voice_deafen(&hub, "u1", VoiceDeafenPayload { channel_id: "voice-ch".to_string(), deafened: true }).await;
 }
 
 #[tokio::test]
 async fn voice_screen_start_without_room_manager_does_not_panic() {
     let hub = test_hub();
-    let p = VoiceScreenPayload {
-        channel_id: "voice-ch".to_string(),
-    };
-    super::handlers::handle_voice_screen_start(&hub, "u1", p).await;
+    super::handlers::handle_voice_screen_start(&hub, "u1", VoiceScreenPayload { channel_id: "voice-ch".to_string() }).await;
 }
 
 #[tokio::test]
@@ -2362,72 +1515,36 @@ async fn voice_leave_without_sfu_and_room_manager() {
     let _h = spawn_hub(&hub);
 
     let (c1, _rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
+    register(&hub, c1).await;
 
-    let p = VoiceJoinPayload {
-        channel_id: "voice-ch".to_string(),
-    };
-    super::handlers::handle_voice_leave(&hub, "c1", "u1", p).await;
-    // No panic = pass
+    super::handlers::handle_voice_leave(&hub, "c1", "u1", VoiceJoinPayload { channel_id: "voice-ch".to_string() }).await;
 }
 
 #[tokio::test]
 async fn dm_typing_delivers_to_other_member() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
-    seed_team_channel(&hub.db, "t1", "u1", "ch-ignore");
-    hub.db
-        .with_conn(|conn| {
-            db::create_user(
-                conn,
-                &db::User {
-                    id: "u2".to_string(),
-                    username: "bob".to_string(),
-                    display_name: "Bob".to_string(),
-                    public_key: vec![1u8; 32],
-                    avatar_url: String::new(),
-                    status_text: String::new(),
-                    status_type: "online".to_string(),
-                    is_admin: false,
-                    created_at: db::now_str(),
-                    updated_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
-    seed_dm_channel(&hub.db, "t1", "dm1", "u1", "u2");
+    seed_dm_fixture(&hub.db);
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
     let (c2, mut rx2) = make_client("c2", "u2", "bob", "t1");
-    hub.register(c1).await;
-    hub.register(c2).await;
-    settle().await;
+    register(&hub, c1).await;
+    register(&hub, c2).await;
 
-    // Simulate dm typing (directly calling what handle_dm_typing does)
     let payload = serde_json::json!({"dm_channel_id": "dm1"});
     let p: DMTypingPayload = serde_json::from_value(payload).unwrap();
 
     let typing_evt = Event::new(
         EVENT_TYPING_INDICATOR,
-        TypingPayload {
-            channel_id: p.dm_channel_id.clone(),
-            user_id: "u1".to_string(),
-            username: "alice".to_string(),
-        },
-    )
-    .unwrap();
+        TypingPayload { channel_id: p.dm_channel_id.clone(), user_id: "u1".to_string(), username: "alice".to_string() },
+    ).unwrap();
     let data = typing_evt.to_bytes().unwrap();
 
     let db = hub.db.clone();
     let dm_id = p.dm_channel_id.clone();
     let members = tokio::task::spawn_blocking(move || {
         db.with_conn(|conn| db::get_dm_members(conn, &dm_id))
-    })
-    .await
-    .unwrap()
-    .unwrap();
+    }).await.unwrap().unwrap();
 
     for member in &members {
         if member.user_id != "u1" {
@@ -2436,21 +1553,12 @@ async fn dm_typing_delivers_to_other_member() {
     }
     settle().await;
 
-    // u2 should get typing indicator
-    let msg = timeout(Duration::from_millis(200), rx2.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
+    let evt = recv_event(&mut rx2).await;
     assert_eq!(evt.event_type, EVENT_TYPING_INDICATOR);
 
-    // u1 should NOT get typing indicator (excluded self)
-    let result = timeout(Duration::from_millis(100), rx1.recv()).await;
-    assert!(result.is_err());
+    assert_no_recv(&mut rx1, "sender should not get own typing indicator").await;
 }
 
-// Tests that message:send preserves explicit msg_type field.
-// Verified by the payload parsing test for MessageSendPayload.
 #[test]
 fn message_send_payload_preserves_explicit_type() {
     let json = r#"{"channel_id":"ch1","content":"an image","type":"image"}"#;
@@ -2463,46 +1571,16 @@ fn message_send_payload_preserves_explicit_type() {
 async fn dm_message_send_defaults_to_text_type() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
-    seed_team_channel(&hub.db, "t1", "u1", "ch-ignore");
-    hub.db
-        .with_conn(|conn| {
-            db::create_user(
-                conn,
-                &db::User {
-                    id: "u2".to_string(),
-                    username: "bob".to_string(),
-                    display_name: "Bob".to_string(),
-                    public_key: vec![1u8; 32],
-                    avatar_url: String::new(),
-                    status_text: String::new(),
-                    status_type: "online".to_string(),
-                    is_admin: false,
-                    created_at: db::now_str(),
-                    updated_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
-    seed_dm_channel(&hub.db, "t1", "dm1", "u1", "u2");
+    seed_dm_fixture(&hub.db);
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
+    register(&hub, c1).await;
 
-    let p = DMMessageSendPayload {
-        dm_channel_id: "dm1".to_string(),
-        content: "hello".to_string(),
-        msg_type: String::new(), // empty = should default to "text"
-    };
+    let p = DMMessageSendPayload { dm_channel_id: "dm1".to_string(), content: "hello".to_string(), msg_type: String::new() };
     super::handlers::handle_dm_message_send(&hub, "u1", "alice", p).await;
     settle().await;
 
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
+    let evt = recv_event(&mut rx1).await;
     assert_eq!(evt.payload["type"], "text");
 }
 
@@ -2515,30 +1593,19 @@ async fn message_send_emits_message_sent_hub_event() {
     let hub = test_hub();
     let mut event_rx = hub.event_tx().subscribe();
     let _h = spawn_hub(&hub);
-
     seed_team_channel(&hub.db, "t1", "u1", "ch1");
 
-    let payload = serde_json::json!({
-        "channel_id": "ch1",
-        "content": "test event",
-    });
-    super::handlers::handle_message_send(&hub, "c1", "u1", "alice", "t1", payload).await;
+    super::handlers::handle_message_send(&hub, "c1", "u1", "alice", "t1", serde_json::json!({"channel_id": "ch1", "content": "test event"})).await;
     settle().await;
 
-    // Drain events until we find MessageSent
-    let mut found = false;
-    for _ in 0..10 {
-        match timeout(Duration::from_millis(100), event_rx.recv()).await {
-            Ok(Ok(super::hub::HubEvent::MessageSent { message, team_id })) => {
-                assert_eq!(message.content, "test event");
-                assert_eq!(team_id, "t1");
-                found = true;
-                break;
-            }
-            _ => continue,
+    let evt = find_hub_event(&mut event_rx, |e| matches!(e, super::hub::HubEvent::MessageSent { .. }), "MessageSent").await;
+    match evt {
+        super::hub::HubEvent::MessageSent { message, team_id } => {
+            assert_eq!(message.content, "test event");
+            assert_eq!(team_id, "t1");
         }
+        _ => unreachable!(),
     }
-    assert!(found, "MessageSent hub event should have been emitted");
 }
 
 #[tokio::test]
@@ -2546,51 +1613,18 @@ async fn message_edit_emits_message_edited_hub_event() {
     let hub = test_hub();
     let mut event_rx = hub.event_tx().subscribe();
     let _h = spawn_hub(&hub);
-
     seed_team_channel(&hub.db, "t1", "u1", "ch1");
 
-    let msg_id = db::new_id();
-    hub.db
-        .with_conn(|conn| {
-            db::create_message(
-                conn,
-                &db::Message {
-                    id: msg_id.clone(),
-                    channel_id: "ch1".to_string(),
-                    dm_channel_id: String::new(),
-                    author_id: "u1".to_string(),
-                    content: "original".to_string(),
-                    msg_type: "text".to_string(),
-                    thread_id: String::new(),
-                    edited_at: None,
-                    deleted: false,
-                    lamport_ts: 0,
-                    created_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
+    let msg_id = insert_channel_msg(&hub.db, "ch1", "u1", "original");
 
-    let payload = serde_json::json!({
-        "message_id": msg_id,
-        "channel_id": "ch1",
-        "content": "edited",
-    });
-    super::handlers::handle_message_edit(&hub, "u1", payload).await;
+    super::handlers::handle_message_edit(&hub, "u1", serde_json::json!({"message_id": msg_id, "channel_id": "ch1", "content": "edited"})).await;
     settle().await;
 
-    let mut found = false;
-    for _ in 0..10 {
-        match timeout(Duration::from_millis(100), event_rx.recv()).await {
-            Ok(Ok(super::hub::HubEvent::MessageEdited { content, .. })) => {
-                assert_eq!(content, "edited");
-                found = true;
-                break;
-            }
-            _ => continue,
-        }
+    let evt = find_hub_event(&mut event_rx, |e| matches!(e, super::hub::HubEvent::MessageEdited { .. }), "MessageEdited").await;
+    match evt {
+        super::hub::HubEvent::MessageEdited { content, .. } => assert_eq!(content, "edited"),
+        _ => unreachable!(),
     }
-    assert!(found, "MessageEdited hub event should have been emitted");
 }
 
 #[tokio::test]
@@ -2598,50 +1632,18 @@ async fn message_delete_emits_message_deleted_hub_event() {
     let hub = test_hub();
     let mut event_rx = hub.event_tx().subscribe();
     let _h = spawn_hub(&hub);
-
     seed_team_channel(&hub.db, "t1", "u1", "ch1");
 
-    let msg_id = db::new_id();
-    hub.db
-        .with_conn(|conn| {
-            db::create_message(
-                conn,
-                &db::Message {
-                    id: msg_id.clone(),
-                    channel_id: "ch1".to_string(),
-                    dm_channel_id: String::new(),
-                    author_id: "u1".to_string(),
-                    content: "to delete".to_string(),
-                    msg_type: "text".to_string(),
-                    thread_id: String::new(),
-                    edited_at: None,
-                    deleted: false,
-                    lamport_ts: 0,
-                    created_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
+    let msg_id = insert_channel_msg(&hub.db, "ch1", "u1", "to delete");
 
-    let payload = serde_json::json!({
-        "message_id": msg_id,
-        "channel_id": "ch1",
-    });
-    super::handlers::handle_message_delete(&hub, "u1", payload).await;
+    super::handlers::handle_message_delete(&hub, "u1", serde_json::json!({"message_id": msg_id, "channel_id": "ch1"})).await;
     settle().await;
 
-    let mut found = false;
-    for _ in 0..10 {
-        match timeout(Duration::from_millis(100), event_rx.recv()).await {
-            Ok(Ok(super::hub::HubEvent::MessageDeleted { message_id, .. })) => {
-                assert_eq!(message_id, msg_id);
-                found = true;
-                break;
-            }
-            _ => continue,
-        }
+    let evt = find_hub_event(&mut event_rx, |e| matches!(e, super::hub::HubEvent::MessageDeleted { .. }), "MessageDeleted").await;
+    match evt {
+        super::hub::HubEvent::MessageDeleted { message_id, .. } => assert_eq!(message_id, msg_id),
+        _ => unreachable!(),
     }
-    assert!(found, "MessageDeleted hub event should have been emitted");
 }
 
 // =========================================================================
@@ -2655,33 +1657,20 @@ async fn voice_join_emits_voice_joined_hub_event() {
     let _h = spawn_hub(&hub);
 
     let (c1, _rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
+    register(&hub, c1).await;
+
+    super::handlers::handle_voice_join(&hub, "c1", "u1", "alice", "t1", VoiceJoinPayload { channel_id: "voice-ch".to_string() }).await;
     settle().await;
 
-    let p = VoiceJoinPayload {
-        channel_id: "voice-ch".to_string(),
-    };
-    super::handlers::handle_voice_join(&hub, "c1", "u1", "alice", "t1", p).await;
-    settle().await;
-
-    let mut found = false;
-    for _ in 0..10 {
-        match timeout(Duration::from_millis(100), event_rx.recv()).await {
-            Ok(Ok(super::hub::HubEvent::VoiceJoined {
-                channel_id,
-                user_id,
-                team_id,
-            })) => {
-                assert_eq!(channel_id, "voice-ch");
-                assert_eq!(user_id, "u1");
-                assert_eq!(team_id, "t1");
-                found = true;
-                break;
-            }
-            _ => continue,
+    let evt = find_hub_event(&mut event_rx, |e| matches!(e, super::hub::HubEvent::VoiceJoined { .. }), "VoiceJoined").await;
+    match evt {
+        super::hub::HubEvent::VoiceJoined { channel_id, user_id, team_id } => {
+            assert_eq!(channel_id, "voice-ch");
+            assert_eq!(user_id, "u1");
+            assert_eq!(team_id, "t1");
         }
+        _ => unreachable!(),
     }
-    assert!(found, "VoiceJoined hub event should have been emitted");
 }
 
 #[tokio::test]
@@ -2694,66 +1683,39 @@ async fn voice_leave_emits_voice_left_hub_event() {
     rm.add_peer("voice-ch", "u1", "alice", "t1").await;
 
     let (c1, _rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
+    register(&hub, c1).await;
+
+    super::handlers::handle_voice_leave(&hub, "c1", "u1", VoiceJoinPayload { channel_id: "voice-ch".to_string() }).await;
     settle().await;
 
-    let p = VoiceJoinPayload {
-        channel_id: "voice-ch".to_string(),
-    };
-    super::handlers::handle_voice_leave(&hub, "c1", "u1", p).await;
-    settle().await;
-
-    let mut found = false;
-    for _ in 0..10 {
-        match timeout(Duration::from_millis(100), event_rx.recv()).await {
-            Ok(Ok(super::hub::HubEvent::VoiceLeft {
-                channel_id,
-                user_id,
-            })) => {
-                assert_eq!(channel_id, "voice-ch");
-                assert_eq!(user_id, "u1");
-                found = true;
-                break;
-            }
-            _ => continue,
+    let evt = find_hub_event(&mut event_rx, |e| matches!(e, super::hub::HubEvent::VoiceLeft { .. }), "VoiceLeft").await;
+    match evt {
+        super::hub::HubEvent::VoiceLeft { channel_id, user_id } => {
+            assert_eq!(channel_id, "voice-ch");
+            assert_eq!(user_id, "u1");
         }
+        _ => unreachable!(),
     }
-    assert!(found, "VoiceLeft hub event should have been emitted");
 }
 
 // =========================================================================
 // client.rs: direct dispatch function tests
 // =========================================================================
-// These test the handle_event dispatcher and sub-dispatchers directly.
 
 #[tokio::test]
 async fn dispatch_handle_event_message_send() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
     seed_team_channel(&hub.db, "t1", "u1", "ch1");
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
-    hub.subscribe("c1", "ch1").await;
-    settle().await;
+    register_and_subscribe(&hub, c1, "ch1").await;
 
-    let event = Event {
-        event_type: EVENT_MESSAGE_SEND.to_string(),
-        payload: serde_json::json!({
-            "channel_id": "ch1",
-            "content": "dispatched",
-        }),
-    };
+    let event = Event { event_type: EVENT_MESSAGE_SEND.to_string(), payload: serde_json::json!({"channel_id": "ch1", "content": "dispatched"}) };
     super::client::handle_event(&hub, "c1", "u1", "alice", "t1", event).await;
     settle().await;
 
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
+    let evt = recv_event(&mut rx1).await;
     assert_eq!(evt.event_type, EVENT_MESSAGE_NEW);
     assert_eq!(evt.payload["content"], "dispatched");
 }
@@ -2762,107 +1724,36 @@ async fn dispatch_handle_event_message_send() {
 async fn dispatch_handle_event_message_edit() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
     seed_team_channel(&hub.db, "t1", "u1", "ch1");
 
-    let msg_id = db::new_id();
-    hub.db
-        .with_conn(|conn| {
-            db::create_message(
-                conn,
-                &db::Message {
-                    id: msg_id.clone(),
-                    channel_id: "ch1".to_string(),
-                    dm_channel_id: String::new(),
-                    author_id: "u1".to_string(),
-                    content: "original".to_string(),
-                    msg_type: "text".to_string(),
-                    thread_id: String::new(),
-                    edited_at: None,
-                    deleted: false,
-                    lamport_ts: 0,
-                    created_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
+    let msg_id = insert_channel_msg(&hub.db, "ch1", "u1", "original");
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
-    hub.subscribe("c1", "ch1").await;
-    settle().await;
+    register_and_subscribe(&hub, c1, "ch1").await;
 
-    let event = Event {
-        event_type: EVENT_MESSAGE_EDIT.to_string(),
-        payload: serde_json::json!({
-            "message_id": msg_id,
-            "channel_id": "ch1",
-            "content": "via dispatch",
-        }),
-    };
+    let event = Event { event_type: EVENT_MESSAGE_EDIT.to_string(), payload: serde_json::json!({"message_id": msg_id, "channel_id": "ch1", "content": "via dispatch"}) };
     super::client::handle_event(&hub, "c1", "u1", "alice", "t1", event).await;
     settle().await;
 
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
-    assert_eq!(evt.event_type, EVENT_MESSAGE_UPDATED);
+    assert_eq!(recv_event(&mut rx1).await.event_type, EVENT_MESSAGE_UPDATED);
 }
 
 #[tokio::test]
 async fn dispatch_handle_event_message_delete() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
     seed_team_channel(&hub.db, "t1", "u1", "ch1");
 
-    let msg_id = db::new_id();
-    hub.db
-        .with_conn(|conn| {
-            db::create_message(
-                conn,
-                &db::Message {
-                    id: msg_id.clone(),
-                    channel_id: "ch1".to_string(),
-                    dm_channel_id: String::new(),
-                    author_id: "u1".to_string(),
-                    content: "to delete".to_string(),
-                    msg_type: "text".to_string(),
-                    thread_id: String::new(),
-                    edited_at: None,
-                    deleted: false,
-                    lamport_ts: 0,
-                    created_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
+    let msg_id = insert_channel_msg(&hub.db, "ch1", "u1", "to delete");
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
-    hub.subscribe("c1", "ch1").await;
-    settle().await;
+    register_and_subscribe(&hub, c1, "ch1").await;
 
-    let event = Event {
-        event_type: EVENT_MESSAGE_DELETE.to_string(),
-        payload: serde_json::json!({
-            "message_id": msg_id,
-            "channel_id": "ch1",
-        }),
-    };
+    let event = Event { event_type: EVENT_MESSAGE_DELETE.to_string(), payload: serde_json::json!({"message_id": msg_id, "channel_id": "ch1"}) };
     super::client::handle_event(&hub, "c1", "u1", "alice", "t1", event).await;
     settle().await;
 
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
-    assert_eq!(evt.event_type, EVENT_MESSAGE_DELETED);
+    assert_eq!(recv_event(&mut rx1).await.event_type, EVENT_MESSAGE_DELETED);
 }
 
 #[tokio::test]
@@ -2871,24 +1762,16 @@ async fn dispatch_handle_event_channel_join() {
     let _h = spawn_hub(&hub);
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
+    register(&hub, c1).await;
 
-    let event = Event {
-        event_type: EVENT_CHANNEL_JOIN.to_string(),
-        payload: serde_json::json!({"channel_id": "dispatched-chan"}),
-    };
+    let event = Event { event_type: EVENT_CHANNEL_JOIN.to_string(), payload: serde_json::json!({"channel_id": "dispatched-chan"}) };
     super::client::handle_event(&hub, "c1", "u1", "alice", "t1", event).await;
     settle().await;
 
-    // Verify subscription by broadcasting
     hub.broadcast_to_channel("dispatched-chan", b"check".to_vec(), None).await;
     settle().await;
 
-    let msg = timeout(Duration::from_millis(100), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
+    let msg = timeout(Duration::from_millis(100), rx1.recv()).await.unwrap().unwrap();
     assert_eq!(msg, b"check");
 }
 
@@ -2898,23 +1781,17 @@ async fn dispatch_handle_event_channel_leave() {
     let _h = spawn_hub(&hub);
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
-    hub.subscribe("c1", "leave-chan").await;
-    settle().await;
+    register(&hub, c1).await;
+    subscribe(&hub, "c1", "leave-chan").await;
 
-    let event = Event {
-        event_type: EVENT_CHANNEL_LEAVE.to_string(),
-        payload: serde_json::json!({"channel_id": "leave-chan"}),
-    };
+    let event = Event { event_type: EVENT_CHANNEL_LEAVE.to_string(), payload: serde_json::json!({"channel_id": "leave-chan"}) };
     super::client::handle_event(&hub, "c1", "u1", "alice", "t1", event).await;
     settle().await;
 
     hub.broadcast_to_channel("leave-chan", b"should-not-recv".to_vec(), None).await;
     settle().await;
 
-    let result = timeout(Duration::from_millis(100), rx1.recv()).await;
-    assert!(result.is_err(), "should not receive after channel:leave dispatch");
+    assert_no_recv(&mut rx1, "should not receive after channel:leave dispatch").await;
 }
 
 #[tokio::test]
@@ -2924,26 +1801,16 @@ async fn dispatch_handle_event_typing_start() {
 
     let (c1, _rx1) = make_client("c1", "u1", "alice", "t1");
     let (c2, mut rx2) = make_client("c2", "u2", "bob", "t1");
-    hub.register(c1).await;
-    hub.register(c2).await;
-    settle().await;
-    hub.subscribe("c1", "ch1").await;
-    hub.subscribe("c2", "ch1").await;
-    settle().await;
+    register(&hub, c1).await;
+    register(&hub, c2).await;
+    subscribe(&hub, "c1", "ch1").await;
+    subscribe(&hub, "c2", "ch1").await;
 
-    let event = Event {
-        event_type: EVENT_TYPING_START.to_string(),
-        payload: serde_json::json!({"channel_id": "ch1"}),
-    };
+    let event = Event { event_type: EVENT_TYPING_START.to_string(), payload: serde_json::json!({"channel_id": "ch1"}) };
     super::client::handle_event(&hub, "c1", "u1", "alice", "t1", event).await;
     settle().await;
 
-    let msg = timeout(Duration::from_millis(200), rx2.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
-    assert_eq!(evt.event_type, EVENT_TYPING_INDICATOR);
+    assert_eq!(recv_event(&mut rx2).await.event_type, EVENT_TYPING_INDICATOR);
 }
 
 #[tokio::test]
@@ -2953,25 +1820,18 @@ async fn dispatch_handle_event_presence_update() {
 
     let event = Event {
         event_type: EVENT_PRESENCE_UPDATE.to_string(),
-        payload: serde_json::json!({
-            "user_id": "u1",
-            "status_type": "idle",
-            "status_text": "brb",
-        }),
+        payload: serde_json::json!({"user_id": "u1", "status_type": "idle", "status_text": "brb"}),
     };
     super::client::handle_event(&hub, "c1", "u1", "alice", "t1", event).await;
 
-    let evt = timeout(Duration::from_millis(100), event_rx.recv())
-        .await
-        .unwrap()
-        .unwrap();
+    let evt = find_hub_event(&mut event_rx, |e| matches!(e, super::hub::HubEvent::PresenceUpdate { .. }), "PresenceUpdate").await;
     match evt {
         super::hub::HubEvent::PresenceUpdate { user_id, status, custom_status } => {
             assert_eq!(user_id, "u1");
             assert_eq!(status, "idle");
             assert_eq!(custom_status, "brb");
         }
-        other => panic!("expected PresenceUpdate, got {:?}", other),
+        _ => unreachable!(),
     }
 }
 
@@ -2981,51 +1841,32 @@ async fn dispatch_handle_event_ping() {
     let _h = spawn_hub(&hub);
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
+    register(&hub, c1).await;
 
-    let event = Event {
-        event_type: EVENT_PING.to_string(),
-        payload: serde_json::json!({}),
-    };
+    let event = Event { event_type: EVENT_PING.to_string(), payload: serde_json::json!({}) };
     super::client::handle_event(&hub, "c1", "u1", "alice", "t1", event).await;
     settle().await;
 
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
-    assert_eq!(evt.event_type, "pong");
+    assert_eq!(recv_event(&mut rx1).await.event_type, "pong");
 }
 
 #[tokio::test]
 async fn dispatch_handle_event_request() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
     seed_team_channel(&hub.db, "t1", "u1", "ch1");
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
+    register(&hub, c1).await;
 
     let event = Event {
         event_type: EVENT_REQUEST.to_string(),
-        payload: serde_json::json!({
-            "id": "req-dispatch",
-            "action": ACTION_SYNC_INIT,
-            "payload": {},
-        }),
+        payload: serde_json::json!({"id": "req-dispatch", "action": ACTION_SYNC_INIT, "payload": {}}),
     };
     super::client::handle_event(&hub, "c1", "u1", "alice", "t1", event).await;
     settle().await;
 
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
+    let evt = recv_event(&mut rx1).await;
     assert_eq!(evt.event_type, "response");
     assert_eq!(evt.payload["ok"], true);
 }
@@ -3033,23 +1874,15 @@ async fn dispatch_handle_event_request() {
 #[tokio::test]
 async fn dispatch_handle_event_unknown_type_does_not_panic() {
     let hub = test_hub();
-    let event = Event {
-        event_type: "totally:unknown:event".to_string(),
-        payload: serde_json::json!({}),
-    };
+    let event = Event { event_type: "totally:unknown:event".to_string(), payload: serde_json::json!({}) };
     super::client::handle_event(&hub, "c1", "u1", "alice", "t1", event).await;
-    // No panic = pass
 }
 
 #[tokio::test]
 async fn dispatch_handle_event_request_with_invalid_payload_does_not_panic() {
     let hub = test_hub();
-    let event = Event {
-        event_type: EVENT_REQUEST.to_string(),
-        payload: serde_json::json!("not an object"),
-    };
+    let event = Event { event_type: EVENT_REQUEST.to_string(), payload: serde_json::json!("not an object") };
     super::client::handle_event(&hub, "c1", "u1", "alice", "t1", event).await;
-    // Should not panic — the serde_json::from_value will fail and fall through
 }
 
 // ── handle_channel_event direct tests ────────────────────────────────────
@@ -3060,20 +1893,15 @@ async fn handle_channel_event_join_directly() {
     let _h = spawn_hub(&hub);
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
+    register(&hub, c1).await;
 
-    let payload = serde_json::json!({"channel_id": "direct-chan"});
-    super::client::handle_channel_event(&hub, "c1", EVENT_CHANNEL_JOIN, payload).await;
+    super::client::handle_channel_event(&hub, "c1", EVENT_CHANNEL_JOIN, serde_json::json!({"channel_id": "direct-chan"})).await;
     settle().await;
 
     hub.broadcast_to_channel("direct-chan", b"hello".to_vec(), None).await;
     settle().await;
 
-    let msg = timeout(Duration::from_millis(100), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
+    let msg = timeout(Duration::from_millis(100), rx1.recv()).await.unwrap().unwrap();
     assert_eq!(msg, b"hello");
 }
 
@@ -3083,28 +1911,22 @@ async fn handle_channel_event_leave_directly() {
     let _h = spawn_hub(&hub);
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
-    hub.subscribe("c1", "direct-chan").await;
-    settle().await;
+    register(&hub, c1).await;
+    subscribe(&hub, "c1", "direct-chan").await;
 
-    let payload = serde_json::json!({"channel_id": "direct-chan"});
-    super::client::handle_channel_event(&hub, "c1", EVENT_CHANNEL_LEAVE, payload).await;
+    super::client::handle_channel_event(&hub, "c1", EVENT_CHANNEL_LEAVE, serde_json::json!({"channel_id": "direct-chan"})).await;
     settle().await;
 
     hub.broadcast_to_channel("direct-chan", b"should-not-recv".to_vec(), None).await;
     settle().await;
 
-    let result = timeout(Duration::from_millis(100), rx1.recv()).await;
-    assert!(result.is_err());
+    assert_no_recv(&mut rx1, "should not receive after leave").await;
 }
 
 #[tokio::test]
 async fn handle_channel_event_invalid_payload_does_not_panic() {
     let hub = test_hub();
-    let payload = serde_json::json!("not an object");
-    super::client::handle_channel_event(&hub, "c1", EVENT_CHANNEL_JOIN, payload).await;
-    // No panic = pass (should log warning)
+    super::client::handle_channel_event(&hub, "c1", EVENT_CHANNEL_JOIN, serde_json::json!("not an object")).await;
 }
 
 // ── handle_presence_update direct test ───────────────────────────────────
@@ -3114,31 +1936,19 @@ async fn handle_presence_update_directly() {
     let hub = test_hub();
     let mut event_rx = hub.event_tx().subscribe();
 
-    let payload = serde_json::json!({
-        "user_id": "u1",
-        "status_type": "online",
-        "status_text": "",
-    });
-    super::client::handle_presence_update(&hub, "u1", payload);
+    super::client::handle_presence_update(&hub, "u1", serde_json::json!({"user_id": "u1", "status_type": "online", "status_text": ""}));
 
-    let evt = timeout(Duration::from_millis(100), event_rx.recv())
-        .await
-        .unwrap()
-        .unwrap();
+    let evt = find_hub_event(&mut event_rx, |e| matches!(e, super::hub::HubEvent::PresenceUpdate { .. }), "PresenceUpdate").await;
     match evt {
-        super::hub::HubEvent::PresenceUpdate { user_id, .. } => {
-            assert_eq!(user_id, "u1");
-        }
-        other => panic!("expected PresenceUpdate, got {:?}", other),
+        super::hub::HubEvent::PresenceUpdate { user_id, .. } => assert_eq!(user_id, "u1"),
+        _ => unreachable!(),
     }
 }
 
 #[tokio::test]
 async fn handle_presence_update_invalid_payload_does_not_panic() {
     let hub = test_hub();
-    let payload = serde_json::json!(42);
-    super::client::handle_presence_update(&hub, "u1", payload);
-    // No panic = pass
+    super::client::handle_presence_update(&hub, "u1", serde_json::json!(42));
 }
 
 // ── handle_ping direct test ──────────────────────────────────────────────
@@ -3149,18 +1959,12 @@ async fn handle_ping_directly() {
     let _h = spawn_hub(&hub);
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
+    register(&hub, c1).await;
 
     super::client::handle_ping(&hub, "u1").await;
     settle().await;
 
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
-    assert_eq!(evt.event_type, "pong");
+    assert_eq!(recv_event(&mut rx1).await.event_type, "pong");
 }
 
 // ── handle_reaction_event direct tests ───────────────────────────────────
@@ -3169,110 +1973,41 @@ async fn handle_ping_directly() {
 async fn handle_reaction_event_add_directly() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
     seed_team_channel(&hub.db, "t1", "u1", "ch1");
 
-    let msg_id = db::new_id();
-    hub.db
-        .with_conn(|conn| {
-            db::create_message(
-                conn,
-                &db::Message {
-                    id: msg_id.clone(),
-                    channel_id: "ch1".to_string(),
-                    dm_channel_id: String::new(),
-                    author_id: "u1".to_string(),
-                    content: "react".to_string(),
-                    msg_type: "text".to_string(),
-                    thread_id: String::new(),
-                    edited_at: None,
-                    deleted: false,
-                    lamport_ts: 0,
-                    created_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
+    let msg_id = insert_channel_msg(&hub.db, "ch1", "u1", "react");
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
-    hub.subscribe("c1", "ch1").await;
+    register_and_subscribe(&hub, c1, "ch1").await;
+
+    super::client::handle_reaction_event(&hub, "u1", EVENT_REACTION_ADD, serde_json::json!({"message_id": msg_id, "channel_id": "ch1", "emoji": "heart"})).await;
     settle().await;
 
-    let payload = serde_json::json!({
-        "message_id": msg_id,
-        "channel_id": "ch1",
-        "emoji": "heart",
-    });
-    super::client::handle_reaction_event(&hub, "u1", EVENT_REACTION_ADD, payload).await;
-    settle().await;
-
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
-    assert_eq!(evt.event_type, EVENT_REACTION_ADDED);
+    assert_eq!(recv_event(&mut rx1).await.event_type, EVENT_REACTION_ADDED);
 }
 
 #[tokio::test]
 async fn handle_reaction_event_remove_directly() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
     seed_team_channel(&hub.db, "t1", "u1", "ch1");
 
-    let msg_id = db::new_id();
-    hub.db
-        .with_conn(|conn| {
-            db::create_message(
-                conn,
-                &db::Message {
-                    id: msg_id.clone(),
-                    channel_id: "ch1".to_string(),
-                    dm_channel_id: String::new(),
-                    author_id: "u1".to_string(),
-                    content: "react".to_string(),
-                    msg_type: "text".to_string(),
-                    thread_id: String::new(),
-                    edited_at: None,
-                    deleted: false,
-                    lamport_ts: 0,
-                    created_at: db::now_str(),
-                },
-            )?;
-            db::add_reaction(conn, &msg_id, "u1", "heart")
-        })
-        .unwrap();
+    let msg_id = insert_channel_msg(&hub.db, "ch1", "u1", "react");
+    hub.db.with_conn(|conn| db::add_reaction(conn, &msg_id, "u1", "heart")).unwrap();
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
-    hub.subscribe("c1", "ch1").await;
+    register_and_subscribe(&hub, c1, "ch1").await;
+
+    super::client::handle_reaction_event(&hub, "u1", EVENT_REACTION_REMOVE, serde_json::json!({"message_id": msg_id, "channel_id": "ch1", "emoji": "heart"})).await;
     settle().await;
 
-    let payload = serde_json::json!({
-        "message_id": msg_id,
-        "channel_id": "ch1",
-        "emoji": "heart",
-    });
-    super::client::handle_reaction_event(&hub, "u1", EVENT_REACTION_REMOVE, payload).await;
-    settle().await;
-
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
-    assert_eq!(evt.event_type, EVENT_REACTION_REMOVED);
+    assert_eq!(recv_event(&mut rx1).await.event_type, EVENT_REACTION_REMOVED);
 }
 
 #[tokio::test]
 async fn handle_reaction_event_invalid_payload_does_not_panic() {
     let hub = test_hub();
-    let payload = serde_json::json!("invalid");
-    super::client::handle_reaction_event(&hub, "u1", EVENT_REACTION_ADD, payload).await;
+    super::client::handle_reaction_event(&hub, "u1", EVENT_REACTION_ADD, serde_json::json!("invalid")).await;
 }
 
 // ── handle_thread_event direct tests ─────────────────────────────────────
@@ -3281,68 +2016,29 @@ async fn handle_reaction_event_invalid_payload_does_not_panic() {
 async fn handle_thread_event_send_directly() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
     seed_team_channel(&hub.db, "t1", "u1", "ch1");
 
-    let parent_msg_id = db::new_id();
-    hub.db
-        .with_conn(|conn| {
-            db::create_message(
-                conn,
-                &db::Message {
-                    id: parent_msg_id.clone(),
-                    channel_id: "ch1".to_string(),
-                    dm_channel_id: String::new(),
-                    author_id: "u1".to_string(),
-                    content: "parent".to_string(),
-                    msg_type: "text".to_string(),
-                    thread_id: String::new(),
-                    edited_at: None,
-                    deleted: false,
-                    lamport_ts: 0,
-                    created_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
-
-    let thread_id = db::new_id();
-    seed_thread(&hub.db, &thread_id, "ch1", "t1", "u1", &parent_msg_id);
+    let (_parent_msg_id, thread_id) = seed_parent_and_thread(&hub.db, "ch1", "t1", "u1");
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
-    hub.subscribe("c1", "ch1").await;
+    register_and_subscribe(&hub, c1, "ch1").await;
+
+    super::client::handle_thread_event(&hub, "u1", EVENT_THREAD_MESSAGE_SEND, serde_json::json!({"thread_id": thread_id, "content": "via dispatch"})).await;
     settle().await;
 
-    let payload = serde_json::json!({
-        "thread_id": thread_id,
-        "content": "via dispatch",
-    });
-    super::client::handle_thread_event(&hub, "u1", EVENT_THREAD_MESSAGE_SEND, payload).await;
-    settle().await;
-
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
-    assert_eq!(evt.event_type, EVENT_THREAD_MESSAGE_NEW);
+    assert_eq!(recv_event(&mut rx1).await.event_type, EVENT_THREAD_MESSAGE_NEW);
 }
 
 #[tokio::test]
 async fn handle_thread_event_unknown_type_does_not_panic() {
     let hub = test_hub();
-    let payload = serde_json::json!({"thread_id": "t1", "content": "test"});
-    super::client::handle_thread_event(&hub, "u1", "thread:unknown:action", payload).await;
-    // No panic = pass (falls through _ => {})
+    super::client::handle_thread_event(&hub, "u1", "thread:unknown:action", serde_json::json!({"thread_id": "t1", "content": "test"})).await;
 }
 
 #[tokio::test]
 async fn handle_thread_event_invalid_payload_does_not_panic() {
     let hub = test_hub();
-    let payload = serde_json::json!(42);
-    super::client::handle_thread_event(&hub, "u1", EVENT_THREAD_MESSAGE_SEND, payload).await;
+    super::client::handle_thread_event(&hub, "u1", EVENT_THREAD_MESSAGE_SEND, serde_json::json!(42)).await;
 }
 
 // ── handle_voice_event direct tests ──────────────────────────────────────
@@ -3353,16 +2049,12 @@ async fn handle_voice_event_join_directly() {
     let _h = spawn_hub(&hub);
 
     let (c1, _rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
+    register(&hub, c1).await;
+
+    super::client::handle_voice_event(&hub, "c1", "u1", "alice", "t1", EVENT_VOICE_JOIN, serde_json::json!({"channel_id": "voice-dispatch"})).await;
     settle().await;
 
-    let payload = serde_json::json!({"channel_id": "voice-dispatch"});
-    super::client::handle_voice_event(&hub, "c1", "u1", "alice", "t1", EVENT_VOICE_JOIN, payload).await;
-    settle().await;
-
-    let rm = hub.voice_room_manager.as_ref().unwrap();
-    let peers = rm.get_room("voice-dispatch").await;
-    assert!(peers.is_some());
+    assert!(hub.voice_room_manager.as_ref().unwrap().get_room("voice-dispatch").await.is_some());
 }
 
 #[tokio::test]
@@ -3374,15 +2066,12 @@ async fn handle_voice_event_leave_directly() {
     rm.add_peer("voice-dispatch", "u1", "alice", "t1").await;
 
     let (c1, _rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
+    register(&hub, c1).await;
+
+    super::client::handle_voice_event(&hub, "c1", "u1", "alice", "t1", EVENT_VOICE_LEAVE, serde_json::json!({"channel_id": "voice-dispatch"})).await;
     settle().await;
 
-    let payload = serde_json::json!({"channel_id": "voice-dispatch"});
-    super::client::handle_voice_event(&hub, "c1", "u1", "alice", "t1", EVENT_VOICE_LEAVE, payload).await;
-    settle().await;
-
-    let peers = rm.get_room("voice-dispatch").await;
-    assert!(peers.is_none());
+    assert!(rm.get_room("voice-dispatch").await.is_none());
 }
 
 #[tokio::test]
@@ -3390,15 +2079,12 @@ async fn handle_voice_event_mute_directly() {
     let hub = test_hub_with_voice();
     let _h = spawn_hub(&hub);
 
-    let rm = hub.voice_room_manager.as_ref().unwrap();
-    rm.add_peer("voice-ch", "u1", "alice", "t1").await;
+    hub.voice_room_manager.as_ref().unwrap().add_peer("voice-ch", "u1", "alice", "t1").await;
 
-    let payload = serde_json::json!({"channel_id": "voice-ch", "muted": true});
-    super::client::handle_voice_event(&hub, "c1", "u1", "alice", "t1", EVENT_VOICE_MUTE, payload).await;
+    super::client::handle_voice_event(&hub, "c1", "u1", "alice", "t1", EVENT_VOICE_MUTE, serde_json::json!({"channel_id": "voice-ch", "muted": true})).await;
     settle().await;
 
-    let peers = rm.get_room("voice-ch").await.unwrap();
-    assert!(peers[0].muted);
+    assert!(hub.voice_room_manager.as_ref().unwrap().get_room("voice-ch").await.unwrap()[0].muted);
 }
 
 #[tokio::test]
@@ -3406,35 +2092,26 @@ async fn handle_voice_event_deafen_directly() {
     let hub = test_hub_with_voice();
     let _h = spawn_hub(&hub);
 
-    let rm = hub.voice_room_manager.as_ref().unwrap();
-    rm.add_peer("voice-ch", "u1", "alice", "t1").await;
+    hub.voice_room_manager.as_ref().unwrap().add_peer("voice-ch", "u1", "alice", "t1").await;
 
-    let payload = serde_json::json!({"channel_id": "voice-ch", "deafened": true});
-    super::client::handle_voice_event(&hub, "c1", "u1", "alice", "t1", EVENT_VOICE_DEAFEN, payload).await;
+    super::client::handle_voice_event(&hub, "c1", "u1", "alice", "t1", EVENT_VOICE_DEAFEN, serde_json::json!({"channel_id": "voice-ch", "deafened": true})).await;
     settle().await;
 
-    let peers = rm.get_room("voice-ch").await.unwrap();
-    assert!(peers[0].deafened);
+    assert!(hub.voice_room_manager.as_ref().unwrap().get_room("voice-ch").await.unwrap()[0].deafened);
 }
 
 #[tokio::test]
 async fn handle_voice_event_answer_directly() {
     let hub = test_hub();
-    // voice:answer without SFU — should not panic
-    let payload = serde_json::json!({"channel_id": "voice-ch", "sdp": "mock"});
-    super::client::handle_voice_event(&hub, "c1", "u1", "alice", "t1", EVENT_VOICE_ANSWER, payload).await;
+    super::client::handle_voice_event(&hub, "c1", "u1", "alice", "t1", EVENT_VOICE_ANSWER, serde_json::json!({"channel_id": "voice-ch", "sdp": "mock"})).await;
 }
 
 #[tokio::test]
 async fn handle_voice_event_ice_candidate_directly() {
     let hub = test_hub();
-    let payload = serde_json::json!({
-        "channel_id": "voice-ch",
-        "candidate": "candidate:...",
-        "sdp_mid": "0",
-        "sdp_mline_index": 0,
-    });
-    super::client::handle_voice_event(&hub, "c1", "u1", "alice", "t1", EVENT_VOICE_ICE_CANDIDATE, payload).await;
+    super::client::handle_voice_event(&hub, "c1", "u1", "alice", "t1", EVENT_VOICE_ICE_CANDIDATE, serde_json::json!({
+        "channel_id": "voice-ch", "candidate": "candidate:...", "sdp_mid": "0", "sdp_mline_index": 0,
+    })).await;
 }
 
 #[tokio::test]
@@ -3442,15 +2119,12 @@ async fn handle_voice_event_screen_start_directly() {
     let hub = test_hub_with_voice_and_sfu();
     let _h = spawn_hub(&hub);
 
-    let rm = hub.voice_room_manager.as_ref().unwrap();
-    rm.add_peer("voice-ch", "u1", "alice", "t1").await;
+    hub.voice_room_manager.as_ref().unwrap().add_peer("voice-ch", "u1", "alice", "t1").await;
 
-    let payload = serde_json::json!({"channel_id": "voice-ch"});
-    super::client::handle_voice_event(&hub, "c1", "u1", "alice", "t1", EVENT_VOICE_SCREEN_START, payload).await;
+    super::client::handle_voice_event(&hub, "c1", "u1", "alice", "t1", EVENT_VOICE_SCREEN_START, serde_json::json!({"channel_id": "voice-ch"})).await;
     settle().await;
 
-    let peers = rm.get_room("voice-ch").await.unwrap();
-    assert!(peers[0].screen_sharing);
+    assert!(hub.voice_room_manager.as_ref().unwrap().get_room("voice-ch").await.unwrap()[0].screen_sharing);
 }
 
 #[tokio::test]
@@ -3462,12 +2136,10 @@ async fn handle_voice_event_screen_stop_directly() {
     rm.add_peer("voice-ch", "u1", "alice", "t1").await;
     rm.set_screen_sharing("voice-ch", "u1", true).await;
 
-    let payload = serde_json::json!({"channel_id": "voice-ch"});
-    super::client::handle_voice_event(&hub, "c1", "u1", "alice", "t1", EVENT_VOICE_SCREEN_STOP, payload).await;
+    super::client::handle_voice_event(&hub, "c1", "u1", "alice", "t1", EVENT_VOICE_SCREEN_STOP, serde_json::json!({"channel_id": "voice-ch"})).await;
     settle().await;
 
-    let peers = rm.get_room("voice-ch").await.unwrap();
-    assert!(!peers[0].screen_sharing);
+    assert!(!rm.get_room("voice-ch").await.unwrap()[0].screen_sharing);
 }
 
 #[tokio::test]
@@ -3475,15 +2147,12 @@ async fn handle_voice_event_webcam_start_directly() {
     let hub = test_hub_with_voice_and_sfu();
     let _h = spawn_hub(&hub);
 
-    let rm = hub.voice_room_manager.as_ref().unwrap();
-    rm.add_peer("voice-ch", "u1", "alice", "t1").await;
+    hub.voice_room_manager.as_ref().unwrap().add_peer("voice-ch", "u1", "alice", "t1").await;
 
-    let payload = serde_json::json!({"channel_id": "voice-ch"});
-    super::client::handle_voice_event(&hub, "c1", "u1", "alice", "t1", EVENT_VOICE_WEBCAM_START, payload).await;
+    super::client::handle_voice_event(&hub, "c1", "u1", "alice", "t1", EVENT_VOICE_WEBCAM_START, serde_json::json!({"channel_id": "voice-ch"})).await;
     settle().await;
 
-    let peers = rm.get_room("voice-ch").await.unwrap();
-    assert!(peers[0].webcam_sharing);
+    assert!(hub.voice_room_manager.as_ref().unwrap().get_room("voice-ch").await.unwrap()[0].webcam_sharing);
 }
 
 #[tokio::test]
@@ -3495,12 +2164,10 @@ async fn handle_voice_event_webcam_stop_directly() {
     rm.add_peer("voice-ch", "u1", "alice", "t1").await;
     rm.set_webcam_sharing("voice-ch", "u1", true).await;
 
-    let payload = serde_json::json!({"channel_id": "voice-ch"});
-    super::client::handle_voice_event(&hub, "c1", "u1", "alice", "t1", EVENT_VOICE_WEBCAM_STOP, payload).await;
+    super::client::handle_voice_event(&hub, "c1", "u1", "alice", "t1", EVENT_VOICE_WEBCAM_STOP, serde_json::json!({"channel_id": "voice-ch"})).await;
     settle().await;
 
-    let peers = rm.get_room("voice-ch").await.unwrap();
-    assert!(!peers[0].webcam_sharing);
+    assert!(!rm.get_room("voice-ch").await.unwrap()[0].webcam_sharing);
 }
 
 #[tokio::test]
@@ -3510,42 +2177,28 @@ async fn handle_voice_event_key_distribute_directly() {
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
     let (c2, mut rx2) = make_client("c2", "u2", "bob", "t1");
-    hub.register(c1).await;
-    hub.register(c2).await;
-    settle().await;
-    hub.subscribe("c1", "voice-ch").await;
-    hub.subscribe("c2", "voice-ch").await;
+    register(&hub, c1).await;
+    register(&hub, c2).await;
+    subscribe(&hub, "c1", "voice-ch").await;
+    subscribe(&hub, "c2", "voice-ch").await;
+
+    super::client::handle_voice_event(&hub, "c1", "u1", "alice", "t1", EVENT_VOICE_KEY_DISTRIBUTE, serde_json::json!({
+        "channel_id": "voice-ch", "sender_id": "", "key_id": 42, "encrypted_keys": {"u2": "key-data"},
+    })).await;
     settle().await;
 
-    let payload = serde_json::json!({
-        "channel_id": "voice-ch",
-        "sender_id": "",
-        "key_id": 42,
-        "encrypted_keys": {"u2": "key-data"},
-    });
-    super::client::handle_voice_event(&hub, "c1", "u1", "alice", "t1", EVENT_VOICE_KEY_DISTRIBUTE, payload).await;
-    settle().await;
-
-    // c2 should receive
-    let msg = timeout(Duration::from_millis(200), rx2.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
+    let evt = recv_event(&mut rx2).await;
     assert_eq!(evt.event_type, EVENT_VOICE_KEY_DISTRIBUTE);
     assert_eq!(evt.payload["sender_id"], "u1");
     assert_eq!(evt.payload["key_id"], 42);
 
-    // c1 (sender) should NOT receive
-    let result = timeout(Duration::from_millis(100), rx1.recv()).await;
-    assert!(result.is_err());
+    assert_no_recv(&mut rx1, "sender should not receive key distribute").await;
 }
 
 #[tokio::test]
 async fn handle_voice_event_unknown_type_does_not_panic() {
     let hub = test_hub();
-    let payload = serde_json::json!({"channel_id": "voice-ch"});
-    super::client::handle_voice_event(&hub, "c1", "u1", "alice", "t1", "voice:unknown", payload).await;
+    super::client::handle_voice_event(&hub, "c1", "u1", "alice", "t1", "voice:unknown", serde_json::json!({"channel_id": "voice-ch"})).await;
 }
 
 // ── handle_dm_message_event direct tests ─────────────────────────────────
@@ -3554,197 +2207,65 @@ async fn handle_voice_event_unknown_type_does_not_panic() {
 async fn handle_dm_message_event_send_directly() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
-    seed_team_channel(&hub.db, "t1", "u1", "ch-ignore");
-    hub.db
-        .with_conn(|conn| {
-            db::create_user(
-                conn,
-                &db::User {
-                    id: "u2".to_string(),
-                    username: "bob".to_string(),
-                    display_name: "Bob".to_string(),
-                    public_key: vec![1u8; 32],
-                    avatar_url: String::new(),
-                    status_text: String::new(),
-                    status_type: "online".to_string(),
-                    is_admin: false,
-                    created_at: db::now_str(),
-                    updated_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
-    seed_dm_channel(&hub.db, "t1", "dm1", "u1", "u2");
+    seed_dm_fixture(&hub.db);
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
+    register(&hub, c1).await;
+
+    super::client::handle_dm_message_event(&hub, "u1", "alice", EVENT_DM_MESSAGE_SEND, serde_json::json!({"dm_channel_id": "dm1", "content": "via dispatch"})).await;
     settle().await;
 
-    let payload = serde_json::json!({
-        "dm_channel_id": "dm1",
-        "content": "via dispatch",
-    });
-    super::client::handle_dm_message_event(&hub, "u1", "alice", EVENT_DM_MESSAGE_SEND, payload).await;
-    settle().await;
-
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
-    assert_eq!(evt.event_type, EVENT_DM_MESSAGE_NEW);
+    assert_eq!(recv_event(&mut rx1).await.event_type, EVENT_DM_MESSAGE_NEW);
 }
 
 #[tokio::test]
 async fn handle_dm_message_event_edit_directly() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
+    seed_dm_fixture(&hub.db);
 
-    seed_team_channel(&hub.db, "t1", "u1", "ch-ignore");
-    hub.db
-        .with_conn(|conn| {
-            db::create_user(
-                conn,
-                &db::User {
-                    id: "u2".to_string(),
-                    username: "bob".to_string(),
-                    display_name: "Bob".to_string(),
-                    public_key: vec![1u8; 32],
-                    avatar_url: String::new(),
-                    status_text: String::new(),
-                    status_type: "online".to_string(),
-                    is_admin: false,
-                    created_at: db::now_str(),
-                    updated_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
-    seed_dm_channel(&hub.db, "t1", "dm1", "u1", "u2");
-
-    let msg_id = db::new_id();
-    hub.db
-        .with_conn(|conn| {
-            db::create_message(
-                conn,
-                &db::Message {
-                    id: msg_id.clone(),
-                    channel_id: String::new(),
-                    dm_channel_id: "dm1".to_string(),
-                    author_id: "u1".to_string(),
-                    content: "orig dm".to_string(),
-                    msg_type: "text".to_string(),
-                    thread_id: String::new(),
-                    edited_at: None,
-                    deleted: false,
-                    lamport_ts: 0,
-                    created_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
+    let msg_id = insert_dm_msg(&hub.db, "dm1", "u1", "orig dm");
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
+    register(&hub, c1).await;
+
+    super::client::handle_dm_message_event(&hub, "u1", "alice", EVENT_DM_MESSAGE_EDIT, serde_json::json!({
+        "dm_channel_id": "dm1", "message_id": msg_id, "content": "edited via dispatch",
+    })).await;
     settle().await;
 
-    let payload = serde_json::json!({
-        "dm_channel_id": "dm1",
-        "message_id": msg_id,
-        "content": "edited via dispatch",
-    });
-    super::client::handle_dm_message_event(&hub, "u1", "alice", EVENT_DM_MESSAGE_EDIT, payload).await;
-    settle().await;
-
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
-    assert_eq!(evt.event_type, EVENT_DM_MESSAGE_UPDATED);
+    assert_eq!(recv_event(&mut rx1).await.event_type, EVENT_DM_MESSAGE_UPDATED);
 }
 
 #[tokio::test]
 async fn handle_dm_message_event_delete_directly() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
+    seed_dm_fixture(&hub.db);
 
-    seed_team_channel(&hub.db, "t1", "u1", "ch-ignore");
-    hub.db
-        .with_conn(|conn| {
-            db::create_user(
-                conn,
-                &db::User {
-                    id: "u2".to_string(),
-                    username: "bob".to_string(),
-                    display_name: "Bob".to_string(),
-                    public_key: vec![1u8; 32],
-                    avatar_url: String::new(),
-                    status_text: String::new(),
-                    status_type: "online".to_string(),
-                    is_admin: false,
-                    created_at: db::now_str(),
-                    updated_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
-    seed_dm_channel(&hub.db, "t1", "dm1", "u1", "u2");
-
-    let msg_id = db::new_id();
-    hub.db
-        .with_conn(|conn| {
-            db::create_message(
-                conn,
-                &db::Message {
-                    id: msg_id.clone(),
-                    channel_id: String::new(),
-                    dm_channel_id: "dm1".to_string(),
-                    author_id: "u1".to_string(),
-                    content: "delete me".to_string(),
-                    msg_type: "text".to_string(),
-                    thread_id: String::new(),
-                    edited_at: None,
-                    deleted: false,
-                    lamport_ts: 0,
-                    created_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
+    let msg_id = insert_dm_msg(&hub.db, "dm1", "u1", "delete me");
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
+    register(&hub, c1).await;
+
+    super::client::handle_dm_message_event(&hub, "u1", "alice", EVENT_DM_MESSAGE_DELETE, serde_json::json!({
+        "dm_channel_id": "dm1", "message_id": msg_id,
+    })).await;
     settle().await;
 
-    let payload = serde_json::json!({
-        "dm_channel_id": "dm1",
-        "message_id": msg_id,
-    });
-    super::client::handle_dm_message_event(&hub, "u1", "alice", EVENT_DM_MESSAGE_DELETE, payload).await;
-    settle().await;
-
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
-    assert_eq!(evt.event_type, EVENT_DM_MESSAGE_DELETED);
+    assert_eq!(recv_event(&mut rx1).await.event_type, EVENT_DM_MESSAGE_DELETED);
 }
 
 #[tokio::test]
 async fn handle_dm_message_event_unknown_type_does_not_panic() {
     let hub = test_hub();
-    let payload = serde_json::json!({"dm_channel_id": "dm1", "content": "test"});
-    super::client::handle_dm_message_event(&hub, "u1", "alice", "dm:unknown", payload).await;
+    super::client::handle_dm_message_event(&hub, "u1", "alice", "dm:unknown", serde_json::json!({"dm_channel_id": "dm1", "content": "test"})).await;
 }
 
 #[tokio::test]
 async fn handle_dm_message_event_invalid_payload_does_not_panic() {
     let hub = test_hub();
-    let payload = serde_json::json!("invalid");
-    super::client::handle_dm_message_event(&hub, "u1", "alice", EVENT_DM_MESSAGE_SEND, payload).await;
+    super::client::handle_dm_message_event(&hub, "u1", "alice", EVENT_DM_MESSAGE_SEND, serde_json::json!("invalid")).await;
 }
 
 // ── handle_dm_typing direct test ─────────────────────────────────────────
@@ -3753,57 +2274,24 @@ async fn handle_dm_message_event_invalid_payload_does_not_panic() {
 async fn handle_dm_typing_directly() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
-    seed_team_channel(&hub.db, "t1", "u1", "ch-ignore");
-    hub.db
-        .with_conn(|conn| {
-            db::create_user(
-                conn,
-                &db::User {
-                    id: "u2".to_string(),
-                    username: "bob".to_string(),
-                    display_name: "Bob".to_string(),
-                    public_key: vec![1u8; 32],
-                    avatar_url: String::new(),
-                    status_text: String::new(),
-                    status_type: "online".to_string(),
-                    is_admin: false,
-                    created_at: db::now_str(),
-                    updated_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
-    seed_dm_channel(&hub.db, "t1", "dm1", "u1", "u2");
+    seed_dm_fixture(&hub.db);
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
     let (c2, mut rx2) = make_client("c2", "u2", "bob", "t1");
-    hub.register(c1).await;
-    hub.register(c2).await;
+    register(&hub, c1).await;
+    register(&hub, c2).await;
+
+    super::client::handle_dm_typing(&hub, "u1", "alice", serde_json::json!({"dm_channel_id": "dm1"})).await;
     settle().await;
 
-    let payload = serde_json::json!({"dm_channel_id": "dm1"});
-    super::client::handle_dm_typing(&hub, "u1", "alice", payload).await;
-    settle().await;
-
-    // u2 should get typing indicator
-    let msg = timeout(Duration::from_millis(200), rx2.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
-    assert_eq!(evt.event_type, EVENT_TYPING_INDICATOR);
-
-    // u1 should NOT
-    let result = timeout(Duration::from_millis(100), rx1.recv()).await;
-    assert!(result.is_err());
+    assert_eq!(recv_event(&mut rx2).await.event_type, EVENT_TYPING_INDICATOR);
+    assert_no_recv(&mut rx1, "sender should not get own dm typing").await;
 }
 
 #[tokio::test]
 async fn handle_dm_typing_invalid_payload_does_not_panic() {
     let hub = test_hub();
-    let payload = serde_json::json!("not valid");
-    super::client::handle_dm_typing(&hub, "u1", "alice", payload).await;
+    super::client::handle_dm_typing(&hub, "u1", "alice", serde_json::json!("not valid")).await;
 }
 
 // ── handle_voice_key_distribute direct test ──────────────────────────────
@@ -3815,40 +2303,28 @@ async fn handle_voice_key_distribute_directly() {
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
     let (c2, mut rx2) = make_client("c2", "u2", "bob", "t1");
-    hub.register(c1).await;
-    hub.register(c2).await;
-    settle().await;
-    hub.subscribe("c1", "voice-ch").await;
-    hub.subscribe("c2", "voice-ch").await;
+    register(&hub, c1).await;
+    register(&hub, c2).await;
+    subscribe(&hub, "c1", "voice-ch").await;
+    subscribe(&hub, "c2", "voice-ch").await;
+
+    super::client::handle_voice_key_distribute(&hub, "c1", "u1", serde_json::json!({
+        "channel_id": "voice-ch", "sender_id": "", "key_id": 7, "encrypted_keys": {"u2": "enc-key"},
+    })).await;
     settle().await;
 
-    let payload = serde_json::json!({
-        "channel_id": "voice-ch",
-        "sender_id": "",
-        "key_id": 7,
-        "encrypted_keys": {"u2": "enc-key"},
-    });
-    super::client::handle_voice_key_distribute(&hub, "c1", "u1", payload).await;
-    settle().await;
-
-    let msg = timeout(Duration::from_millis(200), rx2.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
+    let evt = recv_event(&mut rx2).await;
     assert_eq!(evt.event_type, EVENT_VOICE_KEY_DISTRIBUTE);
     assert_eq!(evt.payload["sender_id"], "u1");
     assert_eq!(evt.payload["key_id"], 7);
 
-    let result = timeout(Duration::from_millis(100), rx1.recv()).await;
-    assert!(result.is_err());
+    assert_no_recv(&mut rx1, "sender should not receive key distribute").await;
 }
 
 #[tokio::test]
 async fn handle_voice_key_distribute_invalid_payload_does_not_panic() {
     let hub = test_hub();
-    let payload = serde_json::json!("invalid");
-    super::client::handle_voice_key_distribute(&hub, "c1", "u1", payload).await;
+    super::client::handle_voice_key_distribute(&hub, "c1", "u1", serde_json::json!("invalid")).await;
 }
 
 // ── Full handle_event dispatch for DM events ─────────────────────────────
@@ -3857,207 +2333,70 @@ async fn handle_voice_key_distribute_invalid_payload_does_not_panic() {
 async fn dispatch_handle_event_dm_message_send() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
-    seed_team_channel(&hub.db, "t1", "u1", "ch-ignore");
-    hub.db
-        .with_conn(|conn| {
-            db::create_user(
-                conn,
-                &db::User {
-                    id: "u2".to_string(),
-                    username: "bob".to_string(),
-                    display_name: "Bob".to_string(),
-                    public_key: vec![1u8; 32],
-                    avatar_url: String::new(),
-                    status_text: String::new(),
-                    status_type: "online".to_string(),
-                    is_admin: false,
-                    created_at: db::now_str(),
-                    updated_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
-    seed_dm_channel(&hub.db, "t1", "dm1", "u1", "u2");
+    seed_dm_fixture(&hub.db);
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
+    register(&hub, c1).await;
 
-    let event = Event {
-        event_type: EVENT_DM_MESSAGE_SEND.to_string(),
-        payload: serde_json::json!({
-            "dm_channel_id": "dm1",
-            "content": "full dispatch dm",
-        }),
-    };
+    let event = Event { event_type: EVENT_DM_MESSAGE_SEND.to_string(), payload: serde_json::json!({"dm_channel_id": "dm1", "content": "full dispatch dm"}) };
     super::client::handle_event(&hub, "c1", "u1", "alice", "t1", event).await;
     settle().await;
 
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
-    assert_eq!(evt.event_type, EVENT_DM_MESSAGE_NEW);
+    assert_eq!(recv_event(&mut rx1).await.event_type, EVENT_DM_MESSAGE_NEW);
 }
 
 #[tokio::test]
 async fn dispatch_handle_event_dm_typing_start() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
-    seed_team_channel(&hub.db, "t1", "u1", "ch-ignore");
-    hub.db
-        .with_conn(|conn| {
-            db::create_user(
-                conn,
-                &db::User {
-                    id: "u2".to_string(),
-                    username: "bob".to_string(),
-                    display_name: "Bob".to_string(),
-                    public_key: vec![1u8; 32],
-                    avatar_url: String::new(),
-                    status_text: String::new(),
-                    status_type: "online".to_string(),
-                    is_admin: false,
-                    created_at: db::now_str(),
-                    updated_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
-    seed_dm_channel(&hub.db, "t1", "dm1", "u1", "u2");
+    seed_dm_fixture(&hub.db);
 
     let (c1, _rx1) = make_client("c1", "u1", "alice", "t1");
     let (c2, mut rx2) = make_client("c2", "u2", "bob", "t1");
-    hub.register(c1).await;
-    hub.register(c2).await;
-    settle().await;
+    register(&hub, c1).await;
+    register(&hub, c2).await;
 
-    let event = Event {
-        event_type: EVENT_DM_TYPING_START.to_string(),
-        payload: serde_json::json!({"dm_channel_id": "dm1"}),
-    };
+    let event = Event { event_type: EVENT_DM_TYPING_START.to_string(), payload: serde_json::json!({"dm_channel_id": "dm1"}) };
     super::client::handle_event(&hub, "c1", "u1", "alice", "t1", event).await;
     settle().await;
 
-    let msg = timeout(Duration::from_millis(200), rx2.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
-    assert_eq!(evt.event_type, EVENT_TYPING_INDICATOR);
+    assert_eq!(recv_event(&mut rx2).await.event_type, EVENT_TYPING_INDICATOR);
 }
 
 #[tokio::test]
 async fn dispatch_handle_event_reaction_add() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
     seed_team_channel(&hub.db, "t1", "u1", "ch1");
 
-    let msg_id = db::new_id();
-    hub.db
-        .with_conn(|conn| {
-            db::create_message(
-                conn,
-                &db::Message {
-                    id: msg_id.clone(),
-                    channel_id: "ch1".to_string(),
-                    dm_channel_id: String::new(),
-                    author_id: "u1".to_string(),
-                    content: "react me".to_string(),
-                    msg_type: "text".to_string(),
-                    thread_id: String::new(),
-                    edited_at: None,
-                    deleted: false,
-                    lamport_ts: 0,
-                    created_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
+    let msg_id = insert_channel_msg(&hub.db, "ch1", "u1", "react me");
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
-    hub.subscribe("c1", "ch1").await;
-    settle().await;
+    register_and_subscribe(&hub, c1, "ch1").await;
 
-    let event = Event {
-        event_type: EVENT_REACTION_ADD.to_string(),
-        payload: serde_json::json!({
-            "message_id": msg_id,
-            "channel_id": "ch1",
-            "emoji": "fire",
-        }),
-    };
+    let event = Event { event_type: EVENT_REACTION_ADD.to_string(), payload: serde_json::json!({"message_id": msg_id, "channel_id": "ch1", "emoji": "fire"}) };
     super::client::handle_event(&hub, "c1", "u1", "alice", "t1", event).await;
     settle().await;
 
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
-    assert_eq!(evt.event_type, EVENT_REACTION_ADDED);
+    assert_eq!(recv_event(&mut rx1).await.event_type, EVENT_REACTION_ADDED);
 }
 
 #[tokio::test]
 async fn dispatch_handle_event_thread_message_send() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
-
     seed_team_channel(&hub.db, "t1", "u1", "ch1");
 
-    let parent_msg_id = db::new_id();
-    hub.db
-        .with_conn(|conn| {
-            db::create_message(
-                conn,
-                &db::Message {
-                    id: parent_msg_id.clone(),
-                    channel_id: "ch1".to_string(),
-                    dm_channel_id: String::new(),
-                    author_id: "u1".to_string(),
-                    content: "parent".to_string(),
-                    msg_type: "text".to_string(),
-                    thread_id: String::new(),
-                    edited_at: None,
-                    deleted: false,
-                    lamport_ts: 0,
-                    created_at: db::now_str(),
-                },
-            )
-        })
-        .unwrap();
-
-    let thread_id = db::new_id();
-    seed_thread(&hub.db, &thread_id, "ch1", "t1", "u1", &parent_msg_id);
+    let (_parent_msg_id, thread_id) = seed_parent_and_thread(&hub.db, "ch1", "t1", "u1");
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
-    hub.subscribe("c1", "ch1").await;
-    settle().await;
+    register_and_subscribe(&hub, c1, "ch1").await;
 
-    let event = Event {
-        event_type: EVENT_THREAD_MESSAGE_SEND.to_string(),
-        payload: serde_json::json!({
-            "thread_id": thread_id,
-            "content": "dispatch thread",
-        }),
-    };
+    let event = Event { event_type: EVENT_THREAD_MESSAGE_SEND.to_string(), payload: serde_json::json!({"thread_id": thread_id, "content": "dispatch thread"}) };
     super::client::handle_event(&hub, "c1", "u1", "alice", "t1", event).await;
     settle().await;
 
-    let msg = timeout(Duration::from_millis(200), rx1.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let evt = parse_event(&msg);
-    assert_eq!(evt.event_type, EVENT_THREAD_MESSAGE_NEW);
+    assert_eq!(recv_event(&mut rx1).await.event_type, EVENT_THREAD_MESSAGE_NEW);
 }
 
 #[tokio::test]
@@ -4066,19 +2405,13 @@ async fn dispatch_handle_event_voice_join() {
     let _h = spawn_hub(&hub);
 
     let (c1, _rx1) = make_client("c1", "u1", "alice", "t1");
-    hub.register(c1).await;
-    settle().await;
+    register(&hub, c1).await;
 
-    let event = Event {
-        event_type: EVENT_VOICE_JOIN.to_string(),
-        payload: serde_json::json!({"channel_id": "dispatch-voice"}),
-    };
+    let event = Event { event_type: EVENT_VOICE_JOIN.to_string(), payload: serde_json::json!({"channel_id": "dispatch-voice"}) };
     super::client::handle_event(&hub, "c1", "u1", "alice", "t1", event).await;
     settle().await;
 
-    let rm = hub.voice_room_manager.as_ref().unwrap();
-    let peers = rm.get_room("dispatch-voice").await;
-    assert!(peers.is_some());
+    assert!(hub.voice_room_manager.as_ref().unwrap().get_room("dispatch-voice").await.is_some());
 }
 
 // ── handle_voice_signaling direct tests ──────────────────────────────────
@@ -4086,28 +2419,21 @@ async fn dispatch_handle_event_voice_join() {
 #[tokio::test]
 async fn handle_voice_signaling_answer_directly() {
     let hub = test_hub_with_voice_and_sfu();
-    let payload = serde_json::json!({"channel_id": "voice-ch", "sdp": "mock"});
-    super::client::handle_voice_signaling(&hub, "u1", EVENT_VOICE_ANSWER, payload).await;
-    // No panic = pass
+    super::client::handle_voice_signaling(&hub, "u1", EVENT_VOICE_ANSWER, serde_json::json!({"channel_id": "voice-ch", "sdp": "mock"})).await;
 }
 
 #[tokio::test]
 async fn handle_voice_signaling_ice_candidate_directly() {
     let hub = test_hub_with_voice_and_sfu();
-    let payload = serde_json::json!({
-        "channel_id": "voice-ch",
-        "candidate": "candidate:...",
-        "sdp_mid": "0",
-        "sdp_mline_index": 0,
-    });
-    super::client::handle_voice_signaling(&hub, "u1", EVENT_VOICE_ICE_CANDIDATE, payload).await;
+    super::client::handle_voice_signaling(&hub, "u1", EVENT_VOICE_ICE_CANDIDATE, serde_json::json!({
+        "channel_id": "voice-ch", "candidate": "candidate:...", "sdp_mid": "0", "sdp_mline_index": 0,
+    })).await;
 }
 
 #[tokio::test]
 async fn handle_voice_signaling_unknown_does_not_panic() {
     let hub = test_hub();
-    let payload = serde_json::json!({"channel_id": "voice-ch"});
-    super::client::handle_voice_signaling(&hub, "u1", "voice:unknown-signaling", payload).await;
+    super::client::handle_voice_signaling(&hub, "u1", "voice:unknown-signaling", serde_json::json!({"channel_id": "voice-ch"})).await;
 }
 
 // ── handle_voice_media direct tests ──────────────────────────────────────
@@ -4115,15 +2441,13 @@ async fn handle_voice_signaling_unknown_does_not_panic() {
 #[tokio::test]
 async fn handle_voice_media_unknown_does_not_panic() {
     let hub = test_hub();
-    let payload = serde_json::json!({"channel_id": "voice-ch"});
-    super::client::handle_voice_media(&hub, "u1", "voice:unknown-media", payload).await;
+    super::client::handle_voice_media(&hub, "u1", "voice:unknown-media", serde_json::json!({"channel_id": "voice-ch"})).await;
 }
 
 #[tokio::test]
 async fn handle_voice_media_invalid_payload_does_not_panic() {
     let hub = test_hub();
-    let payload = serde_json::json!(42);
-    super::client::handle_voice_media(&hub, "u1", EVENT_VOICE_SCREEN_START, payload).await;
+    super::client::handle_voice_media(&hub, "u1", EVENT_VOICE_SCREEN_START, serde_json::json!(42)).await;
 }
 
 // ── handle_voice_join_leave direct tests ─────────────────────────────────
@@ -4131,8 +2455,7 @@ async fn handle_voice_media_invalid_payload_does_not_panic() {
 #[tokio::test]
 async fn handle_voice_join_leave_invalid_payload_does_not_panic() {
     let hub = test_hub();
-    let payload = serde_json::json!("invalid");
-    super::client::handle_voice_join_leave(&hub, "c1", "u1", "alice", "t1", EVENT_VOICE_JOIN, payload).await;
+    super::client::handle_voice_join_leave(&hub, "c1", "u1", "alice", "t1", EVENT_VOICE_JOIN, serde_json::json!("invalid")).await;
 }
 
 // ── handle_voice_signaling invalid payload ───────────────────────────────
@@ -4140,6 +2463,5 @@ async fn handle_voice_join_leave_invalid_payload_does_not_panic() {
 #[tokio::test]
 async fn handle_voice_signaling_invalid_payload_does_not_panic() {
     let hub = test_hub();
-    let payload = serde_json::json!("invalid");
-    super::client::handle_voice_signaling(&hub, "u1", EVENT_VOICE_ANSWER, payload).await;
+    super::client::handle_voice_signaling(&hub, "u1", EVENT_VOICE_ANSWER, serde_json::json!("invalid")).await;
 }
