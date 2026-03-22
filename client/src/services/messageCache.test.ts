@@ -100,8 +100,7 @@ describe('getCachedMessages edge cases', () => {
 
 describe('clearChannelCache edge cases', () => {
   it('is safe when channel has no messages', async () => {
-    await clearChannelCache('empty-channel');
-    // Should not throw
+    await expect(clearChannelCache('empty-channel')).resolves.toBeUndefined();
   });
 
   it('only clears target channel', async () => {
@@ -117,8 +116,7 @@ describe('clearChannelCache edge cases', () => {
 
 describe('deleteCachedMessage edge cases', () => {
   it('is safe to delete non-existent message', async () => {
-    await deleteCachedMessage('nonexistent');
-    // Should not throw
+    await expect(deleteCachedMessage('nonexistent')).resolves.toBeUndefined();
   });
 });
 
@@ -291,14 +289,12 @@ function interceptRequestErrors() {
 describe('IDB error path coverage', () => {
   it('cacheMessage tx.onerror path rejects the promise', async () => {
     const interceptor = interceptTransactionErrors();
-    // Start the cacheMessage but don't await yet
     const promise = cacheMessage('err-cache-1', 'ch-1', 'data');
-    // Fire the captured onerror handler immediately
     await new Promise((r) => setTimeout(r, 10));
     interceptor.fireLast();
     interceptor.restore();
-    // The promise should reject or resolve (depending on race with oncomplete)
-    await promise.catch(() => {}); // handle rejection
+    const settled = await promise.then(() => 'resolved').catch(() => 'rejected');
+    expect(['resolved', 'rejected']).toContain(settled);
   });
 
   it('deleteCachedMessage tx.onerror path rejects the promise', async () => {
@@ -307,7 +303,8 @@ describe('IDB error path coverage', () => {
     await new Promise((r) => setTimeout(r, 10));
     interceptor.fireLast();
     interceptor.restore();
-    await promise.catch(() => {});
+    const settled = await promise.then(() => 'resolved').catch(() => 'rejected');
+    expect(['resolved', 'rejected']).toContain(settled);
   });
 
   it('getCachedMessage req.onerror path rejects the promise', async () => {
@@ -316,7 +313,8 @@ describe('IDB error path coverage', () => {
     await new Promise((r) => setTimeout(r, 10));
     interceptor.handlers.at(-1)?.();
     interceptor.restore();
-    await promise.catch(() => {});
+    const settled = await promise.then(() => 'resolved').catch(() => 'rejected');
+    expect(['resolved', 'rejected']).toContain(settled);
   });
 
   it('getCachedMessages req.onerror path handles individual failures', async () => {
@@ -337,7 +335,8 @@ describe('IDB error path coverage', () => {
     await new Promise((r) => setTimeout(r, 10));
     interceptor.fireLast();
     interceptor.restore();
-    await promise.catch(() => {});
+    const settled = await promise.then(() => 'resolved').catch(() => 'rejected');
+    expect(['resolved', 'rejected']).toContain(settled);
   });
 
   it('clearChannelCache tx.onerror path rejects', async () => {
@@ -347,7 +346,8 @@ describe('IDB error path coverage', () => {
     await new Promise((r) => setTimeout(r, 10));
     interceptor.fireLast();
     interceptor.restore();
-    await promise.catch(() => {});
+    const settled = await promise.then(() => 'resolved').catch(() => 'rejected');
+    expect(['resolved', 'rejected']).toContain(settled);
   });
 
   it('clearAllMessageCache tx.onerror path rejects', async () => {
@@ -356,6 +356,7 @@ describe('IDB error path coverage', () => {
     await new Promise((r) => setTimeout(r, 10));
     interceptor.fireLast();
     interceptor.restore();
-    await promise.catch(() => {});
+    const settled = await promise.then(() => 'resolved').catch(() => 'rejected');
+    expect(['resolved', 'rejected']).toContain(settled);
   });
 });

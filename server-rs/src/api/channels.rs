@@ -173,28 +173,8 @@ pub async fn update(
                 ));
             }
 
-            let mut channel = db::get_channel_by_id(conn, &cid)?
-                .ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)?;
-
-            if channel.team_id != tid {
-                return Err(rusqlite::Error::InvalidParameterName(
-                    "channel does not belong to this team".into(),
-                ));
-            }
-
-            if let Some(ref name) = body.name {
-                channel.name = name.clone();
-            }
-            if let Some(ref topic) = body.topic {
-                channel.topic = topic.clone();
-            }
-            if let Some(pos) = body.position {
-                channel.position = pos;
-            }
-            if let Some(ref cat) = body.category {
-                channel.category = cat.clone();
-            }
-
+            let mut channel = get_channel_for_team(conn, &cid, &tid)?;
+            apply_channel_updates(&mut channel, &body);
             db::update_channel(conn, &channel)?;
             Ok(channel)
         })
@@ -209,6 +189,39 @@ pub async fn update(
             Err(AppError::NotFound("channel not found".into()))
         }
         Err(e) => Err(AppError::Internal(format!("db: {}", e))),
+    }
+}
+
+/// Fetch a channel by ID and verify it belongs to the given team.
+fn get_channel_for_team(
+    conn: &rusqlite::Connection,
+    channel_id: &str,
+    team_id: &str,
+) -> Result<db::Channel, rusqlite::Error> {
+    let channel = db::get_channel_by_id(conn, channel_id)?
+        .ok_or(rusqlite::Error::QueryReturnedNoRows)?;
+
+    if channel.team_id != team_id {
+        return Err(rusqlite::Error::InvalidParameterName(
+            "channel does not belong to this team".into(),
+        ));
+    }
+    Ok(channel)
+}
+
+/// Apply optional update fields to a channel.
+fn apply_channel_updates(channel: &mut db::Channel, body: &UpdateChannelRequest) {
+    if let Some(ref name) = body.name {
+        channel.name = name.clone();
+    }
+    if let Some(ref topic) = body.topic {
+        channel.topic = topic.clone();
+    }
+    if let Some(pos) = body.position {
+        channel.position = pos;
+    }
+    if let Some(ref cat) = body.category {
+        channel.category = cat.clone();
     }
 }
 

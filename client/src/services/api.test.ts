@@ -70,8 +70,7 @@ describe('ApiService', () => {
     });
 
     it('does nothing for unknown team', () => {
-      // Should not throw
-      api.setToken('nonexistent', 'tok');
+      expect(() => api.setToken('nonexistent', 'tok')).not.toThrow();
     });
   });
 

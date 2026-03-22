@@ -105,7 +105,7 @@ export default function UserSettings() {
         const updatedUser = await api.updateMe(userInfo.baseUrl, userInfo.token, { display_name: displayName });
         const firstTeamId = teams.keys().next().value;
         if (firstTeamId && updatedUser) {
-          useAuthStore.getState().updateTeamUser(firstTeamId as string, updatedUser as Record<string, unknown>);
+          useAuthStore.getState().updateTeamUser(firstTeamId, updatedUser as Record<string, unknown>);
         }
       }
     } catch {

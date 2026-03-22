@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MutableRefObject } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTeamStore, type Channel, type Team, type Role } from '../stores/teamStore';
 import { useAuthStore } from '../stores/authStore';
@@ -123,7 +123,7 @@ function restoreApiConnections(teams: Map<string, { baseUrl: string; token: stri
  * Handles API connection restoration, auth-error redirects, WS setup,
  * sync:init on connect, and REST-fallback data loading.
  */
-export function useTeamSync(activeTeamId: string | null): { authChecked: boolean; dataLoaded: MutableRefObject<Set<string>> } {
+export function useTeamSync(activeTeamId: string | null): { authChecked: boolean; dataLoaded: RefObject<Set<string>> } {
   const navigate = useNavigate();
   const { teams } = useAuthStore();
   const { setTeam, setChannels, setMembers, setRoles } = useTeamStore();

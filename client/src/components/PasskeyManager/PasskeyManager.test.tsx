@@ -321,6 +321,7 @@ describe('PasskeyManager', () => {
     });
 
     render(<PasskeyManager />);
-    await screen.findByText('Passkey');
+    const passkeyEl = await screen.findByText('Passkey');
+    expect(passkeyEl).toBeInTheDocument();
   });
 });

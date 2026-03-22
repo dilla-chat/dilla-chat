@@ -30,20 +30,56 @@ async fn main() {
     // Initialize logging.
     observability::init_logging(&cfg);
 
-    // Validate config.
+    let database = init_database(&cfg);
+    let auth_svc = Arc::new(AuthService::new(database.clone(), &cfg.db_passphrase));
+    check_first_start(&database, &auth_svc);
+
+    let sfu = Arc::new(voice::SFU::new());
+    configure_turn_provider(&sfu, &cfg).await;
+
+    // Create WebSocket hub.
+    let mut hub = ws::Hub::new(database.clone());
+    hub.voice_sfu = Some(sfu as Arc<dyn ws::hub::VoiceSFU>);
+    let hub = Arc::new(hub);
+
+    // Spawn hub dispatch loop.
+    let hub_runner = hub.clone();
+    tokio::spawn(async move {
+        hub_runner.run().await;
+    });
+
+    let presence_mgr = init_presence_manager(&hub).await;
+    spawn_hub_event_handler(&hub, &presence_mgr, &database);
+
+    let mesh = init_federation_mesh(&cfg, &database, &hub).await;
+
+    // Build application state.
+    let state = api::AppState {
+        db: database.clone(),
+        auth: auth_svc.clone(),
+        hub: hub.clone(),
+        presence: presence_mgr.clone(),
+        config: Arc::new(cfg.clone()),
+        mesh,
+    };
+
+    // Create router and start server.
+    let app = api::create_router(state);
+    start_server(&cfg, app).await;
+}
+
+fn init_database(cfg: &Config) -> Database {
     if let Err(e) = cfg.validate() {
         tracing::error!("invalid configuration: {}", e);
         std::process::exit(1);
     }
     cfg.warn_insecure_defaults();
 
-    // Ensure data directory exists.
     if let Err(e) = db::ensure_data_dir(&cfg.data_dir) {
         tracing::error!("failed to create data directory: {}", e);
         std::process::exit(1);
     }
 
-    // Open database.
     let database = match Database::open(&cfg.data_dir, &cfg.db_passphrase) {
         Ok(db) => db,
         Err(e) => {
@@ -52,16 +88,15 @@ async fn main() {
         }
     };
 
-    // Run migrations.
     if let Err(e) = database.run_migrations() {
         tracing::error!("failed to run migrations: {}", e);
         std::process::exit(1);
     }
 
-    // Create auth service.
-    let auth_svc = Arc::new(AuthService::new(database.clone(), &cfg.db_passphrase));
+    database
+}
 
-    // Check for first start (no users).
+fn check_first_start(database: &Database, auth_svc: &AuthService) {
     match database.has_users() {
         Ok(false) => {
             match auth_svc.generate_bootstrap_token() {
@@ -85,9 +120,9 @@ async fn main() {
         }
         _ => {}
     }
+}
 
-    // Create Voice SFU and wire TURN provider.
-    let sfu = Arc::new(voice::SFU::new());
+async fn configure_turn_provider(sfu: &voice::SFU, cfg: &Config) {
     match cfg.turn_mode.as_str() {
         "cloudflare" => {
             let provider = voice::CFTurnClient::new(voice::CFTurnConfig {
@@ -118,22 +153,11 @@ async fn main() {
             tracing::warn!("unknown TURN mode '{}', using STUN-only fallback", other);
         }
     }
+}
 
-    // Create WebSocket hub.
-    let mut hub = ws::Hub::new(database.clone());
-    hub.voice_sfu = Some(sfu as Arc<dyn ws::hub::VoiceSFU>);
-    let hub = Arc::new(hub);
-
-    // Spawn hub dispatch loop.
-    let hub_runner = hub.clone();
-    tokio::spawn(async move {
-        hub_runner.run().await;
-    });
-
-    // Create presence manager.
+async fn init_presence_manager(hub: &Arc<ws::Hub>) -> Arc<PresenceManager> {
     let mut presence_mgr = PresenceManager::new();
 
-    // Wire presence broadcast to WebSocket hub.
     let hub_presence = hub.clone();
     *presence_mgr.on_broadcast.write().await = Some(Box::new(move |user_id, status_type, custom_status| {
         let evt = ws::events::Event::new(
@@ -155,92 +179,86 @@ async fn main() {
     }));
 
     presence_mgr.start_idle_checker(std::time::Duration::from_secs(30));
-    let presence_mgr = Arc::new(presence_mgr);
+    Arc::new(presence_mgr)
+}
 
-    // Subscribe to hub events and handle presence updates.
-    {
-        let pm = presence_mgr.clone();
-        let db_evt = database.clone();
-        let mut event_rx = hub.event_tx().subscribe();
-        tokio::spawn(async move {
-            while let Ok(event) = event_rx.recv().await {
-                match event {
-                    ws::hub::HubEvent::ClientConnected { user_id } => {
-                        pm.set_online(&user_id).await;
-                    }
-                    ws::hub::HubEvent::ClientDisconnected { user_id } => {
-                        pm.set_offline(&user_id).await;
-                    }
-                    ws::hub::HubEvent::ClientActivity { user_id } => {
-                        pm.update_activity(&user_id).await;
-                    }
-                    ws::hub::HubEvent::PresenceUpdate { user_id, status, custom_status } => {
-                        pm.update_presence(&user_id, presence::Status::from_str(&status), &custom_status)
-                            .await;
-                        let db = db_evt.clone();
-                        let uid = user_id.clone();
-                        let st = status.clone();
-                        let cs = custom_status.clone();
-                        let _ = tokio::task::spawn_blocking(move || {
-                            db.with_conn(|conn| db::update_user_status(conn, &uid, &st, &cs))
-                        })
-                        .await;
-                    }
-                    // MessageSent, MessageEdited, MessageDeleted, VoiceJoined, VoiceLeft
-                    // are available for federation subscribers to consume.
-                    _ => {}
-                }
-            }
-        });
+fn spawn_hub_event_handler(hub: &Arc<ws::Hub>, presence_mgr: &Arc<PresenceManager>, database: &Database) {
+    let pm = presence_mgr.clone();
+    let db_evt = database.clone();
+    let mut event_rx = hub.event_tx().subscribe();
+    tokio::spawn(async move {
+        while let Ok(event) = event_rx.recv().await {
+            handle_hub_event(&pm, &db_evt, event).await;
+        }
+    });
+}
+
+async fn handle_hub_event(pm: &PresenceManager, db_evt: &Database, event: ws::hub::HubEvent) {
+    match event {
+        ws::hub::HubEvent::ClientConnected { user_id } => {
+            pm.set_online(&user_id).await;
+        }
+        ws::hub::HubEvent::ClientDisconnected { user_id } => {
+            pm.set_offline(&user_id).await;
+        }
+        ws::hub::HubEvent::ClientActivity { user_id } => {
+            pm.update_activity(&user_id).await;
+        }
+        ws::hub::HubEvent::PresenceUpdate { user_id, status, custom_status } => {
+            pm.update_presence(&user_id, presence::Status::from_str(&status), &custom_status)
+                .await;
+            let db = db_evt.clone();
+            let uid = user_id.clone();
+            let st = status.clone();
+            let cs = custom_status.clone();
+            let _ = tokio::task::spawn_blocking(move || {
+                db.with_conn(|conn| db::update_user_status(conn, &uid, &st, &cs))
+            })
+            .await;
+        }
+        _ => {}
+    }
+}
+
+async fn init_federation_mesh(
+    cfg: &Config,
+    database: &Database,
+    hub: &Arc<ws::Hub>,
+) -> Option<Arc<federation::MeshNode>> {
+    if cfg.peers.is_empty() && cfg.node_name.is_empty() {
+        return None;
     }
 
-    // Start federation mesh node (if peers or federation port configured).
-    let mesh = if !cfg.peers.is_empty() || !cfg.node_name.is_empty() {
-        let mesh_config = federation::MeshConfig {
-            node_name: if cfg.node_name.is_empty() {
-                format!("node-{}", cfg.port)
-            } else {
-                cfg.node_name.clone()
-            },
-            bind_addr: cfg.fed_bind_addr.clone(),
-            bind_port: cfg.federation_port,
-            advertise_addr: cfg.fed_advert_addr.clone(),
-            advertise_port: cfg.fed_advert_port,
-            peers: cfg.peers.clone(),
-            tls_cert: cfg.tls_cert.clone(),
-            tls_key: cfg.tls_key.clone(),
-            join_secret: cfg.join_secret.clone(),
-        };
-
-        let mesh_node = Arc::new(federation::MeshNode::new(
-            mesh_config,
-            database.clone(),
-            hub.clone(),
-        ));
-
-        if let Err(e) = mesh_node.start().await {
-            tracing::error!("failed to start federation mesh: {}", e);
-        }
-
-        Some(mesh_node)
-    } else {
-        None
+    let mesh_config = federation::MeshConfig {
+        node_name: if cfg.node_name.is_empty() {
+            format!("node-{}", cfg.port)
+        } else {
+            cfg.node_name.clone()
+        },
+        bind_addr: cfg.fed_bind_addr.clone(),
+        bind_port: cfg.federation_port,
+        advertise_addr: cfg.fed_advert_addr.clone(),
+        advertise_port: cfg.fed_advert_port,
+        peers: cfg.peers.clone(),
+        tls_cert: cfg.tls_cert.clone(),
+        tls_key: cfg.tls_key.clone(),
+        join_secret: cfg.join_secret.clone(),
     };
 
-    // Build application state.
-    let state = api::AppState {
-        db: database.clone(),
-        auth: auth_svc.clone(),
-        hub: hub.clone(),
-        presence: presence_mgr.clone(),
-        config: Arc::new(cfg.clone()),
-        mesh,
-    };
+    let mesh_node = Arc::new(federation::MeshNode::new(
+        mesh_config,
+        database.clone(),
+        hub.clone(),
+    ));
 
-    // Create router.
-    let app = api::create_router(state);
+    if let Err(e) = mesh_node.start().await {
+        tracing::error!("failed to start federation mesh: {}", e);
+    }
 
-    // Start server.
+    Some(mesh_node)
+}
+
+async fn start_server(cfg: &Config, app: axum::Router) {
     let addr = format!("0.0.0.0:{}", cfg.port);
     tracing::info!(addr = %addr, team = %cfg.team_name, "server starting");
 
@@ -252,7 +270,6 @@ async fn main() {
         }
     };
 
-    // Graceful shutdown.
     if let Err(e) = axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await

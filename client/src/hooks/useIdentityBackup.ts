@@ -1,4 +1,4 @@
-import { useEffect, useRef, type MutableRefObject } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 import { useAuthStore } from '../stores/authStore';
 import { api } from '../services/api';
 
@@ -7,7 +7,7 @@ import { api } from '../services/api';
  */
 export function useIdentityBackup(
   activeTeamId: string | null,
-  dataLoaded: MutableRefObject<Set<string>>,
+  dataLoaded: RefObject<Set<string>>,
 ): void {
   const { teams, derivedKey } = useAuthStore();
   const blobUploaded = useRef(false);

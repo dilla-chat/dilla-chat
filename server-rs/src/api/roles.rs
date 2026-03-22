@@ -59,11 +59,7 @@ pub async fn list(
     .await
     .map_err(|e| AppError::Internal(format!("task join: {}", e)))?;
 
-    match result {
-        Ok(roles) => Ok(Json(json!(roles))),
-        Err(rusqlite::Error::InvalidParameterName(msg)) => Err(AppError::Forbidden(msg)),
-        Err(e) => Err(AppError::Internal(format!("db: {}", e))),
-    }
+    map_roles_result(result)
 }
 
 pub async fn create(
@@ -136,28 +132,8 @@ pub async fn update(
                 ));
             }
 
-            let mut role = db::get_role_by_id(conn, &rid)?
-                .ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)?;
-
-            if role.team_id != tid {
-                return Err(rusqlite::Error::InvalidParameterName(
-                    "role does not belong to this team".into(),
-                ));
-            }
-
-            if let Some(ref name) = body.name {
-                role.name = name.clone();
-            }
-            if let Some(ref color) = body.color {
-                role.color = color.clone();
-            }
-            if let Some(perms) = body.permissions {
-                role.permissions = perms;
-            }
-            if let Some(pos) = body.position {
-                role.position = pos;
-            }
-
+            let mut role = get_role_for_team(conn, &rid, &tid)?;
+            apply_role_updates(&mut role, &body);
             db::update_role(conn, &role)?;
             Ok(role)
         })
@@ -262,9 +238,47 @@ pub async fn reorder(
     .await
     .map_err(|e| AppError::Internal(format!("task join: {}", e)))?;
 
+    map_roles_result(result)
+}
+
+/// Map a rusqlite Result to the standard roles endpoint response.
+fn map_roles_result(result: Result<Vec<db::Role>, rusqlite::Error>) -> Result<Json<Value>, AppError> {
     match result {
         Ok(roles) => Ok(Json(json!(roles))),
         Err(rusqlite::Error::InvalidParameterName(msg)) => Err(AppError::Forbidden(msg)),
         Err(e) => Err(AppError::Internal(format!("db: {}", e))),
+    }
+}
+
+/// Fetch a role by ID and verify it belongs to the given team.
+fn get_role_for_team(
+    conn: &rusqlite::Connection,
+    role_id: &str,
+    team_id: &str,
+) -> Result<db::Role, rusqlite::Error> {
+    let role = db::get_role_by_id(conn, role_id)?
+        .ok_or(rusqlite::Error::QueryReturnedNoRows)?;
+
+    if role.team_id != team_id {
+        return Err(rusqlite::Error::InvalidParameterName(
+            "role does not belong to this team".into(),
+        ));
+    }
+    Ok(role)
+}
+
+/// Apply optional update fields to a role.
+fn apply_role_updates(role: &mut db::Role, body: &UpdateRoleRequest) {
+    if let Some(ref name) = body.name {
+        role.name = name.clone();
+    }
+    if let Some(ref color) = body.color {
+        role.color = color.clone();
+    }
+    if let Some(perms) = body.permissions {
+        role.permissions = perms;
+    }
+    if let Some(pos) = body.position {
+        role.position = pos;
     }
 }

@@ -153,33 +153,7 @@ pub async fn get_invite_info(
 
     let result = tokio::task::spawn_blocking(move || {
         db.with_conn(|conn| {
-            let invite = db::get_invite_by_token(conn, &token)?
-                .ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)?;
-
-            if invite.revoked {
-                return Err(rusqlite::Error::InvalidParameterName(
-                    "invite has been revoked".into(),
-                ));
-            }
-
-            if let Some(max) = invite.max_uses {
-                if invite.uses >= max {
-                    return Err(rusqlite::Error::InvalidParameterName(
-                        "invite max uses reached".into(),
-                    ));
-                }
-            }
-
-            if let Some(ref expires) = invite.expires_at {
-                let now = db::now_str();
-                if now > *expires {
-                    return Err(rusqlite::Error::InvalidParameterName(
-                        "invite has expired".into(),
-                    ));
-                }
-            }
-
-            // Get team info.
+            let invite = validate_invite_token(conn, &token)?;
             let team = db::get_team(conn, &invite.team_id)?;
 
             Ok(json!({
@@ -200,4 +174,28 @@ pub async fn get_invite_info(
         }
         Err(e) => Err(AppError::Internal(format!("db: {}", e))),
     }
+}
+
+/// Validate an invite token: check existence, revocation, max uses, and expiry.
+fn validate_invite_token(
+    conn: &rusqlite::Connection,
+    token: &str,
+) -> Result<db::Invite, rusqlite::Error> {
+    let invite = db::get_invite_by_token(conn, token)?
+        .ok_or(rusqlite::Error::QueryReturnedNoRows)?;
+
+    if invite.revoked {
+        return Err(rusqlite::Error::InvalidParameterName("invite has been revoked".into()));
+    }
+    if let Some(max) = invite.max_uses {
+        if invite.uses >= max {
+            return Err(rusqlite::Error::InvalidParameterName("invite max uses reached".into()));
+        }
+    }
+    if let Some(ref expires) = invite.expires_at {
+        if db::now_str() > *expires {
+            return Err(rusqlite::Error::InvalidParameterName("invite has expired".into()));
+        }
+    }
+    Ok(invite)
 }

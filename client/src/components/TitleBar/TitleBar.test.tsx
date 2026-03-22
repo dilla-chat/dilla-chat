@@ -84,6 +84,7 @@ describe('TitleBar', () => {
 
     render(<TitleBar />);
     const closeBtn = screen.getByLabelText('Close');
+    expect(closeBtn).toBeInTheDocument();
     fireEvent.click(closeBtn);
     // The dynamic import of @tauri-apps/api/window is mocked, so close() should be called
     // Wait for the async handler to resolve
@@ -99,6 +100,7 @@ describe('TitleBar', () => {
 
     render(<TitleBar />);
     const minimizeBtn = screen.getByLabelText('Minimize');
+    expect(minimizeBtn).toBeInTheDocument();
     fireEvent.click(minimizeBtn);
     await new Promise(r => setTimeout(r, 10));
   });
@@ -112,6 +114,7 @@ describe('TitleBar', () => {
 
     render(<TitleBar />);
     const maximizeBtn = screen.getByLabelText('Maximize');
+    expect(maximizeBtn).toBeInTheDocument();
     fireEvent.click(maximizeBtn);
     await new Promise(r => setTimeout(r, 10));
   });
@@ -128,9 +131,9 @@ describe('TitleBar', () => {
     // Remove TAURI_INTERNALS after render but before click
     delete (globalThis as Record<string, unknown>).__TAURI_INTERNALS__;
     const closeBtn = screen.getByLabelText('Close');
+    expect(closeBtn).toBeInTheDocument();
     fireEvent.click(closeBtn);
     await new Promise(r => setTimeout(r, 10));
-    // Should not throw
   });
 
   it('has data-tauri-drag-region attribute', () => {

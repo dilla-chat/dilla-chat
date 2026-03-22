@@ -66,51 +66,16 @@ pub async fn create_or_get(
 
     let result = tokio::task::spawn_blocking(move || {
         db.with_conn(|conn| {
-            // Verify caller is a team member.
-            let member = db::get_member_by_user_and_team(conn, &uid, &tid)?;
-            if member.is_none() {
-                return Err(rusqlite::Error::InvalidParameterName(
-                    "not a member of this team".into(),
-                ));
-            }
+            require_team_member(conn, &uid, &tid)?;
 
             // For 1:1 DMs, check if one already exists.
             if body.user_ids.len() == 1 {
-                let other_id = &body.user_ids[0];
-                if let Some(existing) =
-                    db::get_dm_channel_by_members(conn, &tid, &uid, other_id)?
-                {
+                if let Some(existing) = db::get_dm_channel_by_members(conn, &tid, &uid, &body.user_ids[0])? {
                     return Ok(existing);
                 }
             }
 
-            // Create new DM channel.
-            let dm_type = if body.user_ids.len() > 1 {
-                "group"
-            } else {
-                "dm"
-            };
-
-            let now = db::now_str();
-            let dm = db::DMChannel {
-                id: db::new_id(),
-                team_id: tid.clone(),
-                dm_type: dm_type.into(),
-                name: body.name.clone(),
-                created_at: now,
-            };
-            db::create_dm_channel(conn, &dm)?;
-
-            // Add all members including the creator.
-            let mut all_members: Vec<String> = vec![uid.clone()];
-            for id in &body.user_ids {
-                if *id != uid {
-                    all_members.push(id.clone());
-                }
-            }
-            db::add_dm_members(conn, &dm.id, &all_members)?;
-
-            Ok(dm)
+            create_new_dm_channel(conn, &tid, &uid, &body)
         })
     })
     .await
@@ -483,4 +448,49 @@ pub async fn remove_member(
         Err(rusqlite::Error::InvalidParameterName(msg)) => Err(AppError::Forbidden(msg)),
         Err(e) => Err(AppError::Internal(format!("db: {}", e))),
     }
+}
+
+// --- Shared helpers ---
+
+/// Verify that a user is a member of the given team.
+fn require_team_member(
+    conn: &rusqlite::Connection,
+    user_id: &str,
+    team_id: &str,
+) -> Result<(), rusqlite::Error> {
+    if db::get_member_by_user_and_team(conn, user_id, team_id)?.is_none() {
+        return Err(rusqlite::Error::InvalidParameterName(
+            "not a member of this team".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// Create a new DM channel and add all members.
+fn create_new_dm_channel(
+    conn: &rusqlite::Connection,
+    team_id: &str,
+    creator_id: &str,
+    body: &CreateDMRequest,
+) -> Result<db::DMChannel, rusqlite::Error> {
+    let dm_type = if body.user_ids.len() > 1 { "group" } else { "dm" };
+
+    let dm = db::DMChannel {
+        id: db::new_id(),
+        team_id: team_id.to_string(),
+        dm_type: dm_type.into(),
+        name: body.name.clone(),
+        created_at: db::now_str(),
+    };
+    db::create_dm_channel(conn, &dm)?;
+
+    let mut all_members: Vec<String> = vec![creator_id.to_string()];
+    for id in &body.user_ids {
+        if *id != creator_id {
+            all_members.push(id.clone());
+        }
+    }
+    db::add_dm_members(conn, &dm.id, &all_members)?;
+
+    Ok(dm)
 }
