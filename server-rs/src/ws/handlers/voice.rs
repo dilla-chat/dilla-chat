@@ -9,35 +9,81 @@ pub(in crate::ws) async fn handle_voice_join(
     team_id: &str,
     p: VoiceJoinPayload,
 ) {
-    if let Some(room_mgr) = &hub.voice_room_manager {
-        room_mgr
-            .add_peer(&p.channel_id, user_id, username, team_id)
-            .await;
+    let room_mgr = match &hub.voice_room_manager {
+        Some(rm) => rm,
+        None => return,
+    };
 
-        hub.subscribe(client_id, &p.channel_id).await;
+    room_mgr
+        .add_peer(&p.channel_id, user_id, username, team_id)
+        .await;
+    hub.subscribe(client_id, &p.channel_id).await;
 
-        // Notify all clients about the join.
+    broadcast_voice_joined(hub, &p.channel_id, user_id, username).await;
+    send_voice_state(hub, room_mgr, &p.channel_id, user_id).await;
+    initiate_sfu_join(hub, &p.channel_id, user_id).await;
+
+    hub.emit_event(crate::ws::hub::HubEvent::VoiceJoined {
+        channel_id: p.channel_id.clone(),
+        user_id: user_id.to_string(),
+        team_id: team_id.to_string(),
+    });
+}
+
+/// Broadcast a voice:user:joined event to all clients.
+async fn broadcast_voice_joined(hub: &Hub, channel_id: &str, user_id: &str, username: &str) {
+    let evt = Event::new(
+        EVENT_VOICE_USER_JOINED,
+        VoiceUserJoinedPayload {
+            channel_id: channel_id.to_string(),
+            user_id: user_id.to_string(),
+            username: username.to_string(),
+        },
+    );
+    if let Ok(evt) = evt {
+        if let Ok(data) = evt.to_bytes() {
+            hub.broadcast_to_all(data).await;
+        }
+    }
+}
+
+/// Send current voice state to the joining client.
+async fn send_voice_state(
+    hub: &Hub,
+    room_mgr: &crate::voice::RoomManager,
+    channel_id: &str,
+    user_id: &str,
+) {
+    if let Some(peers) = room_mgr.get_room(channel_id).await {
         let evt = Event::new(
-            EVENT_VOICE_USER_JOINED,
-            VoiceUserJoinedPayload {
-                channel_id: p.channel_id.clone(),
-                user_id: user_id.to_string(),
-                username: username.to_string(),
+            EVENT_VOICE_STATE,
+            VoiceStatePayload {
+                channel_id: channel_id.to_string(),
+                peers,
             },
         );
         if let Ok(evt) = evt {
             if let Ok(data) = evt.to_bytes() {
-                hub.broadcast_to_all(data).await;
+                hub.send_to_user(user_id, data).await;
             }
         }
+    }
+}
 
-        // Send current voice state to the joining client.
-        if let Some(peers) = room_mgr.get_room(&p.channel_id).await {
+/// Initiate SFU join and send offer to the client.
+async fn initiate_sfu_join(hub: &Hub, channel_id: &str, user_id: &str) {
+    let sfu = match &hub.voice_sfu {
+        Some(sfu) => sfu,
+        None => return,
+    };
+
+    match sfu.handle_join(channel_id, user_id).await {
+        Ok(offer_sdp) => {
             let evt = Event::new(
-                EVENT_VOICE_STATE,
-                VoiceStatePayload {
-                    channel_id: p.channel_id.clone(),
-                    peers,
+                EVENT_VOICE_OFFER,
+                VoiceOfferPayload {
+                    channel_id: channel_id.to_string(),
+                    sdp: offer_sdp,
                 },
             );
             if let Ok(evt) = evt {
@@ -46,35 +92,9 @@ pub(in crate::ws) async fn handle_voice_join(
                 }
             }
         }
-
-        // SFU join - create peer connection and send offer.
-        if let Some(sfu) = &hub.voice_sfu {
-            match sfu.handle_join(&p.channel_id, user_id).await {
-                Ok(offer_sdp) => {
-                    let evt = Event::new(
-                        EVENT_VOICE_OFFER,
-                        VoiceOfferPayload {
-                            channel_id: p.channel_id.clone(),
-                            sdp: offer_sdp,
-                        },
-                    );
-                    if let Ok(evt) = evt {
-                        if let Ok(data) = evt.to_bytes() {
-                            hub.send_to_user(user_id, data).await;
-                        }
-                    }
-                }
-                Err(e) => {
-                    tracing::error!("voice join failed: {}", e);
-                }
-            }
+        Err(e) => {
+            tracing::error!("voice join failed: {}", e);
         }
-
-        hub.emit_event(crate::ws::hub::HubEvent::VoiceJoined {
-            channel_id: p.channel_id.clone(),
-            user_id: user_id.to_string(),
-            team_id: team_id.to_string(),
-        });
     }
 }
 

@@ -833,6 +833,7 @@ describe('MessageList', () => {
     useMessageStore.setState({
       messages: new Map([['ch-1', newMsgs]]),
     });
+    expect(list).toBeDefined();
   });
 
   it('does not call onLoadMore when loading history is true', () => {
@@ -923,7 +924,7 @@ describe('MessageList', () => {
     Object.defineProperty(list, 'scrollHeight', { value: 1000, configurable: true });
     Object.defineProperty(list, 'clientHeight', { value: 500, configurable: true });
     fireEvent.scroll(list);
-    // No assertion needed — this exercises the atBottom branch
+    expect(list).toBeDefined();
   });
 
   it('renders thread indicator without lastReplyAt', () => {

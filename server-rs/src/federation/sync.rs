@@ -163,102 +163,10 @@ impl SyncManager {
                 conn.execute_batch("BEGIN")?;
 
                 let result = (|| {
-                    // Merge channels (last-writer-wins on updated_at).
-                    for channel in &data.channels {
-                        if let Some(existing) = db::get_channel_by_id(conn, &channel.id)? {
-                            if channel.updated_at > existing.updated_at {
-                                db::update_channel_from_sync(conn, channel)?;
-                                tracing::debug!(
-                                    channel_id = %channel.id,
-                                    name = %channel.name,
-                                    "updated channel from peer (newer)"
-                                );
-                            }
-                        } else {
-                            db::create_channel(conn, channel)?;
-                            tracing::debug!(
-                                channel_id = %channel.id,
-                                name = %channel.name,
-                                "synced channel from peer"
-                            );
-                        }
-                    }
-
-                    // Merge roles (last-writer-wins on updated_at).
-                    for role in &data.roles {
-                        if let Some(existing) = db::get_role_by_id(conn, &role.id)? {
-                            if role.updated_at > existing.updated_at {
-                                db::update_role_from_sync(conn, role)?;
-                                tracing::debug!(
-                                    role_id = %role.id,
-                                    name = %role.name,
-                                    "updated role from peer (newer)"
-                                );
-                            }
-                        } else {
-                            db::create_role(conn, role)?;
-                            tracing::debug!(
-                                role_id = %role.id,
-                                name = %role.name,
-                                "synced role from peer"
-                            );
-                        }
-                    }
-
-                    // Merge members (last-writer-wins on updated_at).
-                    for member in &data.members {
-                        if let Some(existing) =
-                            db::get_member_by_user_and_team(conn, &member.user_id, &member.team_id)?
-                        {
-                            if member.updated_at > existing.updated_at {
-                                db::update_member_from_sync(conn, member)?;
-                                tracing::debug!(
-                                    member_id = %member.id,
-                                    user_id = %member.user_id,
-                                    "updated member from peer (newer)"
-                                );
-                            }
-                        } else {
-                            db::create_member(conn, member)?;
-                            tracing::debug!(
-                                member_id = %member.id,
-                                user_id = %member.user_id,
-                                "synced member from peer"
-                            );
-                        }
-                    }
-
-                    // Merge messages (last-writer-wins on edited_at; handle soft-deletes).
-                    for message in &data.messages {
-                        if let Some(existing) = db::get_message_by_id(conn, &message.id)? {
-                            // Determine if the remote version is newer.
-                            let remote_ts = message.edited_at.as_deref().unwrap_or("");
-                            let local_ts = existing.edited_at.as_deref().unwrap_or("");
-                            let should_update = if message.deleted && !existing.deleted {
-                                // Remote deleted, local not — accept deletion if remote is newer or same.
-                                remote_ts >= local_ts
-                            } else {
-                                remote_ts > local_ts
-                            };
-                            if should_update {
-                                db::update_message_from_sync(conn, message)?;
-                                tracing::debug!(
-                                    message_id = %message.id,
-                                    channel_id = %message.channel_id,
-                                    deleted = message.deleted,
-                                    "updated message from peer (newer)"
-                                );
-                            }
-                        } else {
-                            db::create_message(conn, message)?;
-                            tracing::debug!(
-                                message_id = %message.id,
-                                channel_id = %message.channel_id,
-                                "synced message from peer"
-                            );
-                        }
-                    }
-
+                    merge_channels(conn, &data.channels)?;
+                    merge_roles(conn, &data.roles)?;
+                    merge_members(conn, &data.members)?;
+                    merge_messages(conn, &data.messages)?;
                     Ok::<(), rusqlite::Error>(())
                 })();
 
@@ -287,6 +195,81 @@ impl SyncManager {
         );
 
         Ok(())
+    }
+}
+
+/// Merge channels using last-writer-wins on updated_at.
+fn merge_channels(conn: &rusqlite::Connection, channels: &[db::Channel]) -> Result<(), rusqlite::Error> {
+    for channel in channels {
+        if let Some(existing) = db::get_channel_by_id(conn, &channel.id)? {
+            if channel.updated_at > existing.updated_at {
+                db::update_channel_from_sync(conn, channel)?;
+                tracing::debug!(channel_id = %channel.id, name = %channel.name, "updated channel from peer (newer)");
+            }
+        } else {
+            db::create_channel(conn, channel)?;
+            tracing::debug!(channel_id = %channel.id, name = %channel.name, "synced channel from peer");
+        }
+    }
+    Ok(())
+}
+
+/// Merge roles using last-writer-wins on updated_at.
+fn merge_roles(conn: &rusqlite::Connection, roles: &[db::Role]) -> Result<(), rusqlite::Error> {
+    for role in roles {
+        if let Some(existing) = db::get_role_by_id(conn, &role.id)? {
+            if role.updated_at > existing.updated_at {
+                db::update_role_from_sync(conn, role)?;
+                tracing::debug!(role_id = %role.id, name = %role.name, "updated role from peer (newer)");
+            }
+        } else {
+            db::create_role(conn, role)?;
+            tracing::debug!(role_id = %role.id, name = %role.name, "synced role from peer");
+        }
+    }
+    Ok(())
+}
+
+/// Merge members using last-writer-wins on updated_at.
+fn merge_members(conn: &rusqlite::Connection, members: &[db::Member]) -> Result<(), rusqlite::Error> {
+    for member in members {
+        if let Some(existing) = db::get_member_by_user_and_team(conn, &member.user_id, &member.team_id)? {
+            if member.updated_at > existing.updated_at {
+                db::update_member_from_sync(conn, member)?;
+                tracing::debug!(member_id = %member.id, user_id = %member.user_id, "updated member from peer (newer)");
+            }
+        } else {
+            db::create_member(conn, member)?;
+            tracing::debug!(member_id = %member.id, user_id = %member.user_id, "synced member from peer");
+        }
+    }
+    Ok(())
+}
+
+/// Merge messages using last-writer-wins on edited_at, handling soft-deletes.
+fn merge_messages(conn: &rusqlite::Connection, messages: &[db::Message]) -> Result<(), rusqlite::Error> {
+    for message in messages {
+        if let Some(existing) = db::get_message_by_id(conn, &message.id)? {
+            if should_update_message(message, &existing) {
+                db::update_message_from_sync(conn, message)?;
+                tracing::debug!(message_id = %message.id, channel_id = %message.channel_id, deleted = message.deleted, "updated message from peer (newer)");
+            }
+        } else {
+            db::create_message(conn, message)?;
+            tracing::debug!(message_id = %message.id, channel_id = %message.channel_id, "synced message from peer");
+        }
+    }
+    Ok(())
+}
+
+/// Determine if a remote message should overwrite a local message.
+fn should_update_message(remote: &db::Message, local: &db::Message) -> bool {
+    let remote_ts = remote.edited_at.as_deref().unwrap_or("");
+    let local_ts = local.edited_at.as_deref().unwrap_or("");
+    if remote.deleted && !local.deleted {
+        remote_ts >= local_ts
+    } else {
+        remote_ts > local_ts
     }
 }
 

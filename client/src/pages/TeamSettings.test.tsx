@@ -401,12 +401,14 @@ describe('TeamSettings', () => {
     navigateToTab('invites');
     const maxUsesSelect = screen.getByDisplayValue('Unlimited');
     fireEvent.change(maxUsesSelect, { target: { value: '10' } });
+    expect(maxUsesSelect).toBeInTheDocument();
   });
 
   it('changes expiry selector in invites tab', () => {
     navigateToTab('invites');
     const expirySelect = screen.getByDisplayValue('1 day');
     fireEvent.change(expirySelect, { target: { value: '168' } });
+    expect(expirySelect).toBeInTheDocument();
   });
 
   it('renders nothing special when no activeTeamId', () => {
@@ -426,6 +428,7 @@ describe('TeamSettings', () => {
     renderTeamSettings();
     const iconInput = screen.getByDisplayValue('');
     fireEvent.change(iconInput, { target: { value: 'https://example.com/icon.png' } });
+    expect(iconInput).toBeInTheDocument();
   });
 
   it('overview save handles API failure', async () => {

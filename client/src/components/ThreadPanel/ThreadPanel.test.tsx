@@ -354,6 +354,7 @@ describe('ThreadPanel', () => {
   it('handles scroll near top and at bottom', () => {
     const { container } = renderThreadPanel();
     const messagesDiv = container.querySelector('.thread-messages');
+    expect(messagesDiv).toBeTruthy();
     if (messagesDiv) {
       // Near top
       Object.defineProperty(messagesDiv, 'scrollTop', { value: 50, configurable: true });
@@ -441,6 +442,7 @@ describe('ThreadPanel', () => {
     useThreadStore.setState({ threadMessages: {} });
     const { container } = renderThreadPanel({ id: 'thread-loading-check' });
     const messagesDiv = container.querySelector('.thread-messages');
+    expect(messagesDiv).toBeTruthy();
     if (messagesDiv) {
       Object.defineProperty(messagesDiv, 'scrollTop', { value: 30, configurable: true });
       Object.defineProperty(messagesDiv, 'scrollHeight', { value: 1000, configurable: true });
@@ -602,6 +604,7 @@ describe('ThreadPanel', () => {
     });
     renderThreadPanel();
     const handler = getWsHandler(vi.mocked(ws.on), 'thread:message:new');
+    expect(handler).toBeDefined();
     if (handler) {
       await invokeWsHandler(handler, makeRawThreadMsg({
         id: 'tmsg-cached-new', author_id: 'user-2', username: 'bob',

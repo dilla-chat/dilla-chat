@@ -205,64 +205,13 @@ impl SFU {
                 let _ = old.pc.close().await;
             }
 
-            // Add existing peers' tracks to this new peer so they can hear/see others.
+            // Wire tracks between existing peers and the new peer.
             for (other_uid, other_ps) in room.iter() {
                 if other_uid == user_id {
                     continue;
                 }
-
-                // Add other's audio track to new peer.
-                if let Err(e) = pc
-                    .add_track(Arc::clone(&other_ps.local_track) as Arc<dyn TrackLocal + Send + Sync>)
-                    .await
-                {
-                    tracing::error!(
-                        "voice: failed to add audio track to new peer: {} (other={})",
-                        e,
-                        other_uid
-                    );
-                }
-
-                // Add existing screen share track so late joiners can see it.
-                if let Some(ref st) = other_ps.screen_track {
-                    if let Err(e) = pc
-                        .add_track(Arc::clone(st) as Arc<dyn TrackLocal + Send + Sync>)
-                        .await
-                    {
-                        tracing::error!(
-                            "voice: failed to add screen track to new peer: {} (other={})",
-                            e,
-                            other_uid
-                        );
-                    }
-                }
-
-                // Add existing webcam track so late joiners can see it.
-                if let Some(ref wt) = other_ps.webcam_track {
-                    if let Err(e) = pc
-                        .add_track(Arc::clone(wt) as Arc<dyn TrackLocal + Send + Sync>)
-                        .await
-                    {
-                        tracing::error!(
-                            "voice: failed to add webcam track to new peer: {} (other={})",
-                            e,
-                            other_uid
-                        );
-                    }
-                }
-
-                // Add the new peer's audio track to the existing peer so they hear the newcomer.
-                if let Err(e) = other_ps
-                    .pc
-                    .add_track(Arc::clone(&local_track) as Arc<dyn TrackLocal + Send + Sync>)
-                    .await
-                {
-                    tracing::error!(
-                        "voice: failed to add new track to existing peer: {} (other={})",
-                        e,
-                        other_uid
-                    );
-                }
+                add_existing_tracks_to_new_peer(&pc, other_ps, other_uid).await;
+                add_track_to_peer(&other_ps.pc, &local_track, "new audio", other_uid).await;
             }
 
             room.insert(user_id.to_string(), ps);
@@ -627,40 +576,17 @@ impl SFU {
             .get_mut(channel_id)
             .ok_or_else(|| format!("no room for channel {}", channel_id))?;
 
-        let screen_track_id = {
+        let track_id = {
             let ps = room
                 .get_mut(user_id)
                 .ok_or_else(|| format!("no peer state for user {}", user_id))?;
-
-            let st = match ps.screen_track.take() {
-                Some(st) => st,
-                None => return Ok(()), // No screen track to remove.
-            };
-            st.id().to_string()
+            match ps.screen_track.take() {
+                Some(st) => st.id().to_string(),
+                None => return Ok(()),
+            }
         };
 
-        // Remove the screen track from all other peers' connections.
-        for (other_uid, other_ps) in room.iter() {
-            if other_uid == user_id {
-                continue;
-            }
-            let senders = other_ps.pc.get_senders().await;
-            for sender in &senders {
-                if let Some(track) = sender.track().await {
-                    if track.id() == screen_track_id {
-                        if let Err(e) = other_ps.pc.remove_track(sender).await {
-                            tracing::error!(
-                                "voice: failed to remove screen track from peer: {} (other={})",
-                                e,
-                                other_uid
-                            );
-                        }
-                        break;
-                    }
-                }
-            }
-        }
-
+        remove_track_from_other_peers(room, user_id, &track_id, "screen").await;
         Ok(())
     }
 
@@ -738,39 +664,17 @@ impl SFU {
             .get_mut(channel_id)
             .ok_or_else(|| format!("no room for channel {}", channel_id))?;
 
-        let webcam_track_id = {
+        let track_id = {
             let ps = room
                 .get_mut(user_id)
                 .ok_or_else(|| format!("no peer state for user {}", user_id))?;
-
-            let wt = match ps.webcam_track.take() {
-                Some(wt) => wt,
+            match ps.webcam_track.take() {
+                Some(wt) => wt.id().to_string(),
                 None => return Ok(()),
-            };
-            wt.id().to_string()
+            }
         };
 
-        for (other_uid, other_ps) in room.iter() {
-            if other_uid == user_id {
-                continue;
-            }
-            let senders = other_ps.pc.get_senders().await;
-            for sender in &senders {
-                if let Some(track) = sender.track().await {
-                    if track.id() == webcam_track_id {
-                        if let Err(e) = other_ps.pc.remove_track(sender).await {
-                            tracing::error!(
-                                "voice: failed to remove webcam track from peer: {} (other={})",
-                                e,
-                                other_uid
-                            );
-                        }
-                        break;
-                    }
-                }
-            }
-        }
-
+        remove_track_from_other_peers(room, user_id, &track_id, "webcam").await;
         Ok(())
     }
 
@@ -900,7 +804,7 @@ async fn handle_leave_internal(
     channel_id: &str,
     user_id: &str,
 ) {
-    let (removed_ps, is_empty) = {
+    let is_empty = {
         let mut rooms_guard = rooms.write().await;
         let room = match rooms_guard.get_mut(channel_id) {
             Some(room) => room,
@@ -912,50 +816,108 @@ async fn handle_leave_internal(
             None => return,
         };
 
-        // Close the peer connection.
         let _ = ps.pc.close().await;
-
-        // Collect track IDs to remove from other peers.
-        let local_track_id = ps.local_track.id().to_string();
-        let screen_track_id = ps.screen_track.as_ref().map(|t| t.id().to_string());
-        let webcam_track_id = ps.webcam_track.as_ref().map(|t| t.id().to_string());
-
-        // Remove the leaving peer's tracks from all remaining peers.
-        for (_other_uid, other_ps) in room.iter() {
-            let senders = other_ps.pc.get_senders().await;
-            for sender in &senders {
-                if let Some(track) = sender.track().await {
-                    let tid = track.id();
-                    if tid == local_track_id
-                        || screen_track_id.as_deref() == Some(tid)
-                        || webcam_track_id.as_deref() == Some(tid)
-                    {
-                        if let Err(e) = other_ps.pc.remove_track(sender).await {
-                            tracing::error!(
-                                "voice: failed to remove track on leave: {}",
-                                e
-                            );
-                        }
-                    }
-                }
-            }
-        }
+        remove_peer_tracks_from_room(room, &ps).await;
 
         let empty = room.is_empty();
         if empty {
             rooms_guard.remove(channel_id);
         }
-
-        (true, empty)
+        empty
     };
 
-    if !removed_ps {
-        return;
-    }
-
     if !is_empty {
-        // Renegotiate remaining peers so they get updated SDP without the removed tracks.
         renegotiate_all_internal(rooms, on_event, channel_id).await;
+    }
+}
+
+/// Remove all tracks belonging to a departing peer from all remaining peers in a room.
+async fn remove_peer_tracks_from_room(room: &HashMap<String, PeerState>, ps: &PeerState) {
+    let local_track_id = ps.local_track.id().to_string();
+    let screen_track_id = ps.screen_track.as_ref().map(|t| t.id().to_string());
+    let webcam_track_id = ps.webcam_track.as_ref().map(|t| t.id().to_string());
+
+    let track_ids = [
+        Some(local_track_id),
+        screen_track_id,
+        webcam_track_id,
+    ];
+
+    for (_other_uid, other_ps) in room.iter() {
+        let senders = other_ps.pc.get_senders().await;
+        for sender in &senders {
+            if let Some(track) = sender.track().await {
+                let tid = track.id();
+                if track_ids.iter().any(|id| id.as_deref() == Some(tid)) {
+                    if let Err(e) = other_ps.pc.remove_track(sender).await {
+                        tracing::error!("voice: failed to remove track on leave: {}", e);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Add all existing tracks from an existing peer to a new peer connection.
+async fn add_existing_tracks_to_new_peer(
+    pc: &Arc<RTCPeerConnection>,
+    other_ps: &PeerState,
+    other_uid: &str,
+) {
+    add_track_to_peer(pc, &other_ps.local_track, "audio", other_uid).await;
+
+    if let Some(ref st) = other_ps.screen_track {
+        add_track_to_peer(pc, st, "screen", other_uid).await;
+    }
+    if let Some(ref wt) = other_ps.webcam_track {
+        add_track_to_peer(pc, wt, "webcam", other_uid).await;
+    }
+}
+
+/// Add a single track to a peer connection, logging errors.
+async fn add_track_to_peer(
+    pc: &Arc<RTCPeerConnection>,
+    track: &Arc<TrackLocalStaticRTP>,
+    kind: &str,
+    other_uid: &str,
+) {
+    if let Err(e) = pc
+        .add_track(Arc::clone(track) as Arc<dyn TrackLocal + Send + Sync>)
+        .await
+    {
+        tracing::error!("voice: failed to add {} track to peer: {} (other={})", kind, e, other_uid);
+    }
+}
+
+/// Remove a track by ID from all other peers in a room.
+async fn remove_track_from_other_peers(
+    room: &HashMap<String, PeerState>,
+    user_id: &str,
+    track_id: &str,
+    kind: &str,
+) {
+    for (other_uid, other_ps) in room.iter() {
+        if other_uid == user_id {
+            continue;
+        }
+        remove_track_from_peer(other_ps, other_uid, track_id, kind).await;
+    }
+}
+
+async fn remove_track_from_peer(
+    peer: &PeerState,
+    peer_uid: &str,
+    track_id: &str,
+    kind: &str,
+) {
+    let senders = peer.pc.get_senders().await;
+    for sender in &senders {
+        let Some(track) = sender.track().await else { continue };
+        if track.id() != track_id { continue; }
+        if let Err(e) = peer.pc.remove_track(sender).await {
+            tracing::error!("voice: failed to remove {} track from peer: {} (other={})", kind, e, peer_uid);
+        }
+        break;
     }
 }
 
@@ -1069,4 +1031,401 @@ fn parse_ice_servers(json: &serde_json::Value) -> Result<Vec<RTCIceServer>, Stri
     }
 
     Ok(servers)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── parse_ice_servers tests ──────────────────────────────────────────
+
+    #[test]
+    fn parse_ice_servers_single_stun() {
+        let json = serde_json::json!([
+            {"urls": ["stun:stun.example.com:3478"]}
+        ]);
+        let servers = parse_ice_servers(&json).unwrap();
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].urls, vec!["stun:stun.example.com:3478"]);
+        assert_eq!(servers[0].username, "");
+        assert_eq!(servers[0].credential, "");
+    }
+
+    #[test]
+    fn parse_ice_servers_with_credentials() {
+        let json = serde_json::json!([
+            {
+                "urls": ["turn:turn.example.com:443?transport=tcp"],
+                "username": "user123",
+                "credential": "pass456"
+            }
+        ]);
+        let servers = parse_ice_servers(&json).unwrap();
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].username, "user123");
+        assert_eq!(servers[0].credential, "pass456");
+    }
+
+    #[test]
+    fn parse_ice_servers_multiple_entries() {
+        let json = serde_json::json!([
+            {"urls": ["stun:stun1.example.com:3478"]},
+            {"urls": ["stun:stun2.example.com:3478"]},
+            {
+                "urls": ["turn:turn.example.com:443"],
+                "username": "u",
+                "credential": "c"
+            }
+        ]);
+        let servers = parse_ice_servers(&json).unwrap();
+        assert_eq!(servers.len(), 3);
+    }
+
+    #[test]
+    fn parse_ice_servers_url_as_string_not_array() {
+        let json = serde_json::json!([
+            {"urls": "stun:stun.example.com:3478"}
+        ]);
+        let servers = parse_ice_servers(&json).unwrap();
+        assert_eq!(servers[0].urls, vec!["stun:stun.example.com:3478"]);
+    }
+
+    #[test]
+    fn parse_ice_servers_empty_array() {
+        let json = serde_json::json!([]);
+        let servers = parse_ice_servers(&json).unwrap();
+        assert!(servers.is_empty());
+    }
+
+    #[test]
+    fn parse_ice_servers_not_array_returns_error() {
+        let json = serde_json::json!({"urls": "stun:stun.example.com"});
+        let result = parse_ice_servers(&json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not an array"));
+    }
+
+    #[test]
+    fn parse_ice_servers_missing_urls_gives_empty_vec() {
+        let json = serde_json::json!([
+            {"username": "u", "credential": "c"}
+        ]);
+        let servers = parse_ice_servers(&json).unwrap();
+        assert!(servers[0].urls.is_empty());
+    }
+
+    #[test]
+    fn parse_ice_servers_multiple_urls_in_one_entry() {
+        let json = serde_json::json!([
+            {
+                "urls": [
+                    "stun:stun.example.com:3478",
+                    "turn:turn.example.com:3478"
+                ]
+            }
+        ]);
+        let servers = parse_ice_servers(&json).unwrap();
+        assert_eq!(servers[0].urls.len(), 2);
+    }
+
+    // ── SFU construction and basic operation tests ───────────────────────
+
+    #[test]
+    fn sfu_new_creates_valid_instance() {
+        let sfu = SFU::new();
+        // The SFU should be constructable without panic
+        drop(sfu);
+    }
+
+    #[tokio::test]
+    async fn sfu_set_on_event_callback() {
+        let sfu = SFU::new();
+        let called = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let called_clone = called.clone();
+        sfu.set_on_event(move |_ch, _evt| {
+            called_clone.store(true, std::sync::atomic::Ordering::SeqCst);
+        })
+        .await;
+        // Callback stored without panic
+    }
+
+    #[tokio::test]
+    async fn sfu_handle_leave_nonexistent_channel() {
+        let sfu = SFU::new();
+        // Should not panic for non-existent channel
+        sfu.handle_leave("no-such-channel", "u1").await;
+    }
+
+    #[tokio::test]
+    async fn sfu_handle_leave_nonexistent_user() {
+        let sfu = SFU::new();
+        sfu.handle_leave("ch1", "no-such-user").await;
+    }
+
+    #[tokio::test]
+    async fn sfu_renegotiate_all_empty_room() {
+        let sfu = SFU::new();
+        sfu.renegotiate_all("nonexistent").await;
+    }
+
+    #[tokio::test]
+    async fn sfu_renegotiate_all_except_empty_room() {
+        let sfu = SFU::new();
+        sfu.renegotiate_all_except("nonexistent", "u1").await;
+    }
+
+    #[tokio::test]
+    async fn sfu_remove_screen_track_no_room_returns_error() {
+        let sfu = SFU::new();
+        let result = sfu.remove_screen_track("no-room", "u1").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn sfu_remove_webcam_track_no_room_returns_error() {
+        let sfu = SFU::new();
+        let result = sfu.remove_webcam_track("no-room", "u1").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn sfu_add_screen_track_no_room_returns_error() {
+        let sfu = SFU::new();
+        let result = sfu.add_screen_track("no-room", "u1").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn sfu_add_webcam_track_no_room_returns_error() {
+        let sfu = SFU::new();
+        let result = sfu.add_webcam_track("no-room", "u1").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn sfu_handle_answer_no_room_returns_error() {
+        let sfu = SFU::new();
+        // Use a minimal valid SDP for an answer
+        let sdp = "v=0\r\no=- 0 0 IN IP4 0.0.0.0\r\ns=-\r\nt=0 0\r\n".to_string();
+        let answer = RTCSessionDescription::answer(sdp).unwrap();
+        let result = sfu.handle_answer("no-room", "u1", answer).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn sfu_handle_ice_candidate_no_room_returns_error() {
+        let sfu = SFU::new();
+        let candidate = RTCIceCandidateInit {
+            candidate: "candidate:...".to_string(),
+            sdp_mid: Some("0".to_string()),
+            sdp_mline_index: Some(0),
+            username_fragment: None,
+        };
+        let result = sfu.handle_ice_candidate("no-room", "u1", candidate).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn sfu_renegotiate_no_room_returns_error() {
+        let sfu = SFU::new();
+        let result = sfu.renegotiate("no-room", "u1").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn sfu_ice_config_defaults_to_stun() {
+        let sfu = SFU::new();
+        let config = sfu.ice_config().await;
+        assert!(!config.ice_servers.is_empty());
+        assert!(config.ice_servers[0].urls[0].contains("stun"));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn sfu_handle_join_creates_peer_and_returns_offer() {
+        let sfu = SFU::new();
+        let result = sfu.handle_join("ch1", "u1").await;
+        assert!(result.is_ok(), "join should succeed: {:?}", result.err());
+        let offer = result.unwrap();
+        assert!(!offer.sdp.is_empty(), "offer SDP should not be empty");
+    }
+
+    // NOTE: Tests involving sfu.handle_join followed by sfu.handle_leave or
+    // re-join are skipped because webrtc-rs pc.close() can hang in test
+    // environments. The SFU join/leave logic is covered via the MockVoiceSFU
+    // in ws::tests instead.
+
+    #[tokio::test]
+    async fn voice_sfu_trait_handle_ice_candidate_no_peer_returns_error() {
+        use crate::ws::hub::VoiceSFU;
+        let sfu = SFU::new();
+        let result = VoiceSFU::handle_ice_candidate(&sfu, "ch1", "u1", "candidate:...", "0", 0).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn sfu_set_turn_provider_changes_ice_config() {
+        use crate::voice::turn::TURNCredentialProvider;
+
+        struct MockTurnProvider;
+
+        #[async_trait::async_trait]
+        impl TURNCredentialProvider for MockTurnProvider {
+            async fn get_ice_servers(&self) -> Result<serde_json::Value, String> {
+                Ok(serde_json::json!([
+                    {
+                        "urls": ["turn:mock-turn.example.com:3478"],
+                        "username": "mock-user",
+                        "credential": "mock-pass"
+                    }
+                ]))
+            }
+        }
+
+        let sfu = SFU::new();
+        sfu.set_turn_provider(Box::new(MockTurnProvider)).await;
+
+        let config = sfu.ice_config().await;
+        assert!(!config.ice_servers.is_empty());
+        assert!(config.ice_servers[0].urls[0].contains("mock-turn"));
+        assert_eq!(config.ice_servers[0].username, "mock-user");
+        assert_eq!(config.ice_servers[0].credential, "mock-pass");
+    }
+
+    #[tokio::test]
+    async fn sfu_ice_config_fallback_on_provider_error() {
+        use crate::voice::turn::TURNCredentialProvider;
+
+        struct FailingTurnProvider;
+
+        #[async_trait::async_trait]
+        impl TURNCredentialProvider for FailingTurnProvider {
+            async fn get_ice_servers(&self) -> Result<serde_json::Value, String> {
+                Err("provider error".to_string())
+            }
+        }
+
+        let sfu = SFU::new();
+        sfu.set_turn_provider(Box::new(FailingTurnProvider)).await;
+
+        // Should fall back to STUN.
+        let config = sfu.ice_config().await;
+        assert!(!config.ice_servers.is_empty());
+        assert!(config.ice_servers[0].urls[0].contains("stun"));
+    }
+
+    #[tokio::test]
+    async fn sfu_ice_config_fallback_on_invalid_json() {
+        use crate::voice::turn::TURNCredentialProvider;
+
+        struct BadJsonTurnProvider;
+
+        #[async_trait::async_trait]
+        impl TURNCredentialProvider for BadJsonTurnProvider {
+            async fn get_ice_servers(&self) -> Result<serde_json::Value, String> {
+                // Return a non-array JSON value.
+                Ok(serde_json::json!({"not": "an array"}))
+            }
+        }
+
+        let sfu = SFU::new();
+        sfu.set_turn_provider(Box::new(BadJsonTurnProvider)).await;
+
+        // Should fall back to STUN because parse_ice_servers returns error.
+        let config = sfu.ice_config().await;
+        assert!(!config.ice_servers.is_empty());
+        assert!(config.ice_servers[0].urls[0].contains("stun"));
+    }
+
+    #[tokio::test]
+    async fn voice_sfu_trait_handle_leave_no_peer() {
+        use crate::ws::hub::VoiceSFU;
+        let sfu = SFU::new();
+        VoiceSFU::handle_leave(&sfu, "ch1", "u1").await;
+        // Should not panic.
+    }
+
+    #[tokio::test]
+    async fn voice_sfu_trait_handle_answer_no_peer_returns_error() {
+        use crate::ws::hub::VoiceSFU;
+        let sfu = SFU::new();
+        let result = VoiceSFU::handle_answer(
+            &sfu,
+            "ch1",
+            "u1",
+            "v=0\r\no=- 0 0 IN IP4 0.0.0.0\r\ns=-\r\nt=0 0\r\n",
+        )
+        .await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn voice_sfu_trait_add_screen_track_no_room() {
+        use crate::ws::hub::VoiceSFU;
+        let sfu = SFU::new();
+        let result = VoiceSFU::add_screen_track(&sfu, "ch1", "u1").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn voice_sfu_trait_remove_screen_track_no_room() {
+        use crate::ws::hub::VoiceSFU;
+        let sfu = SFU::new();
+        let result = VoiceSFU::remove_screen_track(&sfu, "ch1", "u1").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn voice_sfu_trait_add_webcam_track_no_room() {
+        use crate::ws::hub::VoiceSFU;
+        let sfu = SFU::new();
+        let result = VoiceSFU::add_webcam_track(&sfu, "ch1", "u1").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn voice_sfu_trait_remove_webcam_track_no_room() {
+        use crate::ws::hub::VoiceSFU;
+        let sfu = SFU::new();
+        let result = VoiceSFU::remove_webcam_track(&sfu, "ch1", "u1").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn voice_sfu_trait_renegotiate_all_empty() {
+        use crate::ws::hub::VoiceSFU;
+        let sfu = SFU::new();
+        VoiceSFU::renegotiate_all(&sfu, "ch1").await;
+        // Should not panic.
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn voice_sfu_trait_handle_join_returns_sdp_string() {
+        use crate::ws::hub::VoiceSFU;
+        let sfu = SFU::new();
+        let result = VoiceSFU::handle_join(&sfu, "ch1", "u1").await;
+        assert!(result.is_ok());
+        let sdp_str = result.unwrap();
+        assert!(!sdp_str.is_empty());
+        // Should be valid JSON.
+        let _: serde_json::Value = serde_json::from_str(&sdp_str).unwrap();
+    }
+
+    #[test]
+    fn parse_ice_servers_urls_as_number_gives_empty() {
+        let json = serde_json::json!([
+            {"urls": 12345}
+        ]);
+        let servers = parse_ice_servers(&json).unwrap();
+        assert!(servers[0].urls.is_empty());
+    }
+
+    #[test]
+    fn parse_ice_servers_null_username_gives_empty_string() {
+        let json = serde_json::json!([
+            {"urls": ["stun:stun.example.com:3478"], "username": null, "credential": null}
+        ]);
+        let servers = parse_ice_servers(&json).unwrap();
+        assert_eq!(servers[0].username, "");
+        assert_eq!(servers[0].credential, "");
+    }
 }

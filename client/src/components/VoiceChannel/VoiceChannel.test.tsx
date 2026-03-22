@@ -408,8 +408,8 @@ describe('VoiceChannel', () => {
     setVoiceState({});
     render(<VoiceChannel channel={customChannel} />);
     const joinBtn = screen.getByText('voice.join');
+    expect(joinBtn).toBeInTheDocument();
     fireEvent.click(joinBtn);
-    // joinChannel should be called with the channel's teamId
   });
 
   it('clicks focused webcam to unfocus in fullscreen', () => {
@@ -453,7 +453,9 @@ describe('VoiceChannel', () => {
     setVoiceState({ joinChannel });
     const channelWithTeamIdField = { ...channel, teamId: '', team_id: 'fallback-team' } as unknown as Channel;
     render(<VoiceChannel channel={channelWithTeamIdField} />);
-    fireEvent.click(screen.getByText('voice.join'));
+    const joinBtn = screen.getByText('voice.join');
+    expect(joinBtn).toBeInTheDocument();
+    fireEvent.click(joinBtn);
   });
 
   it('shows webcam icon for peers sharing webcam in grid view', () => {

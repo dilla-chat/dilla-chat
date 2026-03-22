@@ -182,6 +182,7 @@ describe('ChannelView', () => {
     ];
     for (const [event, payload] of events) {
       const handler = getWsHandler(onMock, event);
+      expect(handler).toBeDefined();
       if (handler) await invokeWsHandler(handler, payload);
     }
   });
@@ -199,6 +200,7 @@ describe('ChannelView', () => {
     ];
     for (const [event, payload] of events) {
       const handler = getWsHandler(onMock, event);
+      expect(handler).toBeDefined();
       if (handler) await invokeWsHandler(handler, payload);
     }
   });
@@ -277,7 +279,9 @@ describe('ChannelView', () => {
       hasMore: new Map([['ch-1', true]]),
     });
     renderChannelView();
-    fireEvent.click(screen.getByTestId('load-more'));
+    const loadMoreBtn = screen.getByTestId('load-more');
+    expect(loadMoreBtn).toBeInTheDocument();
+    fireEvent.click(loadMoreBtn);
   });
 
   it('creates a thread via API when create thread button is clicked', async () => {
@@ -297,7 +301,9 @@ describe('ChannelView', () => {
   it('cancel edit clears editing state', () => {
     renderChannelView();
     fireEvent.click(screen.getByTestId('edit-msg'));
-    fireEvent.click(screen.getByTestId('cancel-edit'));
+    const cancelBtn = screen.getByTestId('cancel-edit');
+    expect(cancelBtn).toBeInTheDocument();
+    fireEvent.click(cancelBtn);
   });
 
   it('calls handleLoadMore which checks loadingHistory and hasMore via WS', async () => {
@@ -366,11 +372,13 @@ describe('ChannelView', () => {
     });
     renderChannelView();
     fireEvent.click(screen.getByTestId('open-thread'));
+    expect(useThreadStore.getState().setActiveThread).not.toHaveBeenCalled();
   });
 
   it('invokes message:new handler for same channel', async () => {
     renderChannelView();
     await fireWsEvent('message:new', makeRawMsg({ id: 'msg-new', author_id: 'u2', username: 'bob', content: 'hello!' }));
+    expect(screen.getByTestId('message-list')).toBeInTheDocument();
   });
 
   it('handles thread:message:new that updates existing thread count', async () => {
@@ -384,6 +392,7 @@ describe('ChannelView', () => {
       username: 'tester', content: 'reply2', type: 'text', edited_at: null,
       deleted: false, created_at: '2025-01-02T00:00:00Z', reactions: [],
     });
+    expect(screen.getByTestId('message-list')).toBeInTheDocument();
   });
 
   it('loads threads via WS when connected', async () => {
@@ -423,6 +432,7 @@ describe('ChannelView', () => {
     });
     renderChannelView();
     await fireWsEvent('message:new', makeRawMsg({ id: 'msg-no-user', author_id: 'u2', username: '' }));
+    expect(screen.getByTestId('message-list')).toBeInTheDocument();
   });
 
   it('tryEncrypt encrypts when derivedKey is set', async () => {

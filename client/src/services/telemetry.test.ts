@@ -70,16 +70,14 @@ describe('telemetry', () => {
       const { useTelemetryStore } = await import('../stores/telemetryStore');
       useTelemetryStore.setState({ enabled: false });
       const { initTelemetry } = await import('./telemetry');
-      // Should not throw and should not start SDK
-      await initTelemetry();
+      await expect(initTelemetry()).resolves.toBeUndefined();
     });
   });
 
   describe('stopTelemetry', () => {
     it('does nothing when SDK is not active', async () => {
       const { stopTelemetry } = await import('./telemetry');
-      // Should not throw
-      await stopTelemetry();
+      await expect(stopTelemetry()).resolves.toBeUndefined();
     });
   });
 
@@ -136,35 +134,30 @@ describe('telemetry', () => {
       // Now stop
       await stopTelemetry();
       // Double stop should be a no-op
-      await stopTelemetry();
+      await expect(stopTelemetry()).resolves.toBeUndefined();
     });
 
     it('traceWSEvent creates spans when SDK is active', async () => {
       await startTelemetry();
-      // Now SDK is active, traceWSEvent should create a span
-      traceWSEvent('send', 'message:new', { channel_id: 'ch-1' });
-      traceWSEvent('receive', 'presence:update');
-      traceWSEvent('send', 'typing:start', { channel_id: 'ch-1', team_id: 't1' });
-      // With disallowed attributes (should be filtered)
-      traceWSEvent('send', 'test', { channel_id: 'ch1', 'private_data': 'filtered' });
+      expect(() => traceWSEvent('send', 'message:new', { channel_id: 'ch-1' })).not.toThrow();
+      expect(() => traceWSEvent('receive', 'presence:update')).not.toThrow();
+      expect(() => traceWSEvent('send', 'typing:start', { channel_id: 'ch-1', team_id: 't1' })).not.toThrow();
+      expect(() => traceWSEvent('send', 'test', { channel_id: 'ch1', 'private_data': 'filtered' })).not.toThrow();
       await stopTelemetry();
     });
 
     it('recordException creates error spans when SDK is active', async () => {
       await startTelemetry();
-      recordException(new Error('test error'), 'TestComponent');
-      recordException(new TypeError('type error'));
+      expect(() => recordException(new Error('test error'), 'TestComponent')).not.toThrow();
+      expect(() => recordException(new TypeError('type error'))).not.toThrow();
       await stopTelemetry();
     });
 
     it('filterAttributes returns empty object for undefined attrs', async () => {
       await startTelemetry();
-      // traceWSEvent with no attrs triggers filterAttributes(undefined)
-      traceWSEvent('send', 'test');
-      // traceWSEvent with empty attrs triggers filterAttributes({})
-      traceWSEvent('send', 'test', {});
-      // traceWSEvent with mixed allowed/disallowed keys
-      traceWSEvent('send', 'test', {
+      expect(() => traceWSEvent('send', 'test')).not.toThrow();
+      expect(() => traceWSEvent('send', 'test', {})).not.toThrow();
+      expect(() => traceWSEvent('send', 'test', {
         'http.method': 'GET',
         'http.route': '/api/test',
         'http.status_code': '200',
@@ -186,7 +179,7 @@ describe('telemetry', () => {
         'web_vital.value': '2.5',
         'web_vital.rating': 'good',
         'disallowed_key': 'should be filtered',
-      });
+      })).not.toThrow();
       await stopTelemetry();
     });
   });
@@ -195,8 +188,7 @@ describe('telemetry', () => {
     it('starts telemetry when store is enabled', async () => {
       const { useTelemetryStore } = await import('../stores/telemetryStore');
       useTelemetryStore.setState({ enabled: true });
-      await initTelemetry();
-      // SDK should now be active since enabled was true
+      await expect(initTelemetry()).resolves.toBeUndefined();
       await stopTelemetry();
     });
 
@@ -206,11 +198,11 @@ describe('telemetry', () => {
       await initTelemetry();
       // Toggling enabled should trigger start
       useTelemetryStore.setState({ enabled: true });
-      // Wait for subscription to fire
       await new Promise(r => setTimeout(r, 10));
       // Toggling back should trigger stop
       useTelemetryStore.setState({ enabled: false });
       await new Promise(r => setTimeout(r, 10));
+      expect(useTelemetryStore.getState().enabled).toBe(false);
     });
   });
 });

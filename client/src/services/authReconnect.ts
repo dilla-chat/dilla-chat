@@ -47,9 +47,9 @@ export async function refreshServerTokens(
       const token = freshEntry?.token;
       if (!baseUrl || !token) continue;
 
-      const allServers = [...useAuthStore.getState().teams.values()]
+      const allServers: string[] = [...useAuthStore.getState().teams.values()]
         .map(e => e.baseUrl)
-        .filter(Boolean) as string[];
+        .filter((url): url is string => Boolean(url));
 
       try {
         await fetch(`${baseUrl}/api/v1/identity/blob`, {

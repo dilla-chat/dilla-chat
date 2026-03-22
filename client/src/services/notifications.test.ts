@@ -108,6 +108,7 @@ describe('NotificationService', () => {
     vi.spyOn(Notification, 'requestPermission').mockResolvedValue('denied');
     (Notification as unknown as ReturnType<typeof vi.fn>).mockClear();
     await notificationService.notify('Title', 'Body');
+    expect(Notification).not.toHaveBeenCalled();
     resetNotificationPermission();
   });
 
@@ -138,14 +139,14 @@ describe('NotificationService', () => {
   it('notify uses Tauri API when __TAURI_INTERNALS__ is present', async () => {
     setupTauriMocks();
     vi.spyOn(document, 'hasFocus').mockReturnValue(false);
-    await notificationService.notify('Title', 'Body');
+    await expect(notificationService.notify('Title', 'Body')).resolves.toBeUndefined();
     teardownTauriMocks();
   });
 
   it('notify uses Tauri API and requests permission when not granted', async () => {
     setupTauriMocks({ isPermissionGranted: false });
     vi.spyOn(document, 'hasFocus').mockReturnValue(false);
-    await notificationService.notify('Title', 'Body');
+    await expect(notificationService.notify('Title', 'Body')).resolves.toBeUndefined();
     teardownTauriMocks();
   });
 
@@ -164,8 +165,7 @@ describe('NotificationService', () => {
     const original = (globalThis as Record<string, unknown>).Notification;
     delete (globalThis as Record<string, unknown>).Notification;
     vi.spyOn(document, 'hasFocus').mockReturnValue(false);
-    // Should not throw
-    await notificationService.notify('Title', 'Body');
+    await expect(notificationService.notify('Title', 'Body')).resolves.toBeUndefined();
     (globalThis as Record<string, unknown>).Notification = original;
   });
 });

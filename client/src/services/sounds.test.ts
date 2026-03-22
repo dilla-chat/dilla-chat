@@ -1,4 +1,4 @@
-import { describe, it, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { playJoinSound, playLeaveSound } from './sounds';
 import { useUserSettingsStore } from '../stores/userSettingsStore';
 
@@ -10,26 +10,24 @@ describe('sounds', () => {
   describe('playJoinSound', () => {
     it('does nothing when sound notifications are disabled', () => {
       useUserSettingsStore.setState({ soundNotifications: false });
-      // Should not throw
-      playJoinSound();
+      expect(() => playJoinSound()).not.toThrow();
     });
 
     it('plays tones when sound notifications are enabled', () => {
       useUserSettingsStore.setState({ soundNotifications: true });
-      // Should not throw, uses mocked AudioContext from setup
-      playJoinSound();
+      expect(() => playJoinSound()).not.toThrow();
     });
   });
 
   describe('playLeaveSound', () => {
     it('does nothing when sound notifications are disabled', () => {
       useUserSettingsStore.setState({ soundNotifications: false });
-      playLeaveSound();
+      expect(() => playLeaveSound()).not.toThrow();
     });
 
     it('plays tones when sound notifications are enabled', () => {
       useUserSettingsStore.setState({ soundNotifications: true });
-      playLeaveSound();
+      expect(() => playLeaveSound()).not.toThrow();
     });
   });
 
@@ -37,7 +35,7 @@ describe('sounds', () => {
     it('playJoinSound fires second tone via setTimeout', () => {
       vi.useFakeTimers();
       useUserSettingsStore.setState({ soundNotifications: true });
-      playJoinSound();
+      expect(() => playJoinSound()).not.toThrow();
       vi.advanceTimersByTime(100);
       vi.useRealTimers();
     });
@@ -45,7 +43,7 @@ describe('sounds', () => {
     it('playLeaveSound fires second tone via setTimeout', () => {
       vi.useFakeTimers();
       useUserSettingsStore.setState({ soundNotifications: true });
-      playLeaveSound();
+      expect(() => playLeaveSound()).not.toThrow();
       vi.advanceTimersByTime(100);
       vi.useRealTimers();
     });

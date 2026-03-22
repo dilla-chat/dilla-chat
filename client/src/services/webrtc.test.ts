@@ -390,8 +390,7 @@ describe('WebRTCService', () => {
     });
 
     it('is safe to call when not connected', async () => {
-      // Should not throw
-      await webrtcService.disconnect();
+      await expect(webrtcService.disconnect()).resolves.toBeUndefined();
     });
   });
 
@@ -804,10 +803,8 @@ describe('WebRTCService', () => {
   describe('VAD', () => {
     it('startVAD and stopVAD work without error', async () => {
       await webrtcService.connect('ch-1', 'team-1');
-      // VAD started during connect. stopVAD should be safe.
-      webrtcService.stopVAD();
-      // Double stop is safe.
-      webrtcService.stopVAD();
+      expect(() => webrtcService.stopVAD()).not.toThrow();
+      expect(() => webrtcService.stopVAD()).not.toThrow();
     });
   });
 
@@ -832,20 +829,18 @@ describe('WebRTCService', () => {
     });
 
     it('is a no-op when not connected', async () => {
-      await webrtcService.handleICECandidate({ candidate: 'candidate:1' });
-      // No error, no mock calls
+      await expect(webrtcService.handleICECandidate({ candidate: 'candidate:1' })).resolves.toBeUndefined();
     });
   });
 
   describe('setInputVolume', () => {
     it('sets gain node value when connected', async () => {
       await webrtcService.connect('ch-1', 'team-1');
-      // Should not throw
-      webrtcService.setInputVolume(0.5);
+      expect(() => webrtcService.setInputVolume(0.5)).not.toThrow();
     });
 
     it('is a no-op when not connected', () => {
-      webrtcService.setInputVolume(0.5);
+      expect(() => webrtcService.setInputVolume(0.5)).not.toThrow();
     });
   });
 
@@ -1023,8 +1018,7 @@ describe('WebRTCService', () => {
   describe('push to talk', () => {
     it('mutes mic initially when PTT is enabled', async () => {
       useAudioSettingsStore.setState({ pushToTalk: true, pushToTalkKey: 'KeyV' });
-      await webrtcService.connect('ch-1', 'team-1');
-      // Mic should start muted in PTT mode
+      await expect(webrtcService.connect('ch-1', 'team-1')).resolves.toBeUndefined();
     });
 
     it('unmutes on key down and mutes on key up', async () => {
@@ -1055,35 +1049,31 @@ describe('WebRTCService', () => {
   describe('store subscriptions', () => {
     it('updates gain when input volume changes', async () => {
       await webrtcService.connect('ch-1', 'team-1');
-      // Simulate volume change
       useUserSettingsStore.setState({ inputVolume: 0.5 });
-      // Should update gain node (no error)
+      expect(useUserSettingsStore.getState().inputVolume).toBe(0.5);
     });
 
     it('updates speaker volume when output volume changes', async () => {
       await webrtcService.connect('ch-1', 'team-1');
-      // Add an audio element first
       const audio = document.createElement('audio');
       audio.dataset.streamId = 'test';
       document.body.appendChild(audio);
-      // Simulate output volume change
       useUserSettingsStore.setState({ outputVolume: 0.3 });
-      // The subscription fires and updates audio elements
+      expect(useUserSettingsStore.getState().outputVolume).toBe(0.3);
     });
   });
 
   describe('VAD with analyser', () => {
     it('starts and runs VAD timer', async () => {
       await webrtcService.connect('ch-1', 'team-1');
-      webrtcService.startVAD();
-      webrtcService.stopVAD();
-      webrtcService.stopVAD();
+      expect(() => webrtcService.startVAD()).not.toThrow();
+      expect(() => webrtcService.stopVAD()).not.toThrow();
+      expect(() => webrtcService.stopVAD()).not.toThrow();
     });
 
     it('startVAD is no-op without local stream', () => {
-      // Not connected, no local stream
-      webrtcService.startVAD();
-      webrtcService.stopVAD();
+      expect(() => webrtcService.startVAD()).not.toThrow();
+      expect(() => webrtcService.stopVAD()).not.toThrow();
     });
 
     it('VAD timer detects speaking and updates local level', async () => {
@@ -1217,13 +1207,12 @@ describe('WebRTCService', () => {
 
     it('stopScreenShare is safe when no screen stream', async () => {
       await webrtcService.connect('ch-1', 'team-1');
-      await webrtcService.stopScreenShare();
-      // No error
+      await expect(webrtcService.stopScreenShare()).resolves.toBeUndefined();
     });
 
     it('stopWebcam is safe when no webcam stream', async () => {
       await webrtcService.connect('ch-1', 'team-1');
-      await webrtcService.stopWebcam();
+      await expect(webrtcService.stopWebcam()).resolves.toBeUndefined();
     });
   });
 
@@ -1317,13 +1306,11 @@ describe('WebRTCService', () => {
   describe('WS voice:key-distribute handler', () => {
     it('ignores key distribution when E2E is not enabled', async () => {
       await webrtcService.connect('ch-1', 'team-1');
-      // E2E is not enabled (supportsE2EVoice returns false)
-      emitWS('voice:key-distribute', {
+      expect(() => emitWS('voice:key-distribute', {
         sender_id: 'peer-1',
         key_id: 1,
         encrypted_keys: { 'user-1': btoa('fakekey') },
-      });
-      // No error — handler returns early
+      })).not.toThrow();
     });
   });
 
@@ -1343,8 +1330,7 @@ describe('WebRTCService', () => {
 
   describe('handleICECandidate', () => {
     it('does nothing when not connected', async () => {
-      await webrtcService.handleICECandidate({ candidate: 'c1' });
-      // No error
+      await expect(webrtcService.handleICECandidate({ candidate: 'c1' })).resolves.toBeUndefined();
     });
 
     it('adds candidate when connected', async () => {
@@ -1362,8 +1348,7 @@ describe('WebRTCService', () => {
     });
 
     it('does nothing when not connected', () => {
-      webrtcService.setInputVolume(0.5);
-      // No error
+      expect(() => webrtcService.setInputVolume(0.5)).not.toThrow();
     });
   });
 
@@ -1466,6 +1451,8 @@ describe('WebRTCService', () => {
 
       // Give the async handler time to run
       await new Promise((r) => setTimeout(r, 10));
+
+      expect(useVoiceStore.getState().e2eVoice).toBeDefined();
 
       // Reset
       vi.mocked(supportsE2EVoice).mockReturnValue(false);

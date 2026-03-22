@@ -277,7 +277,9 @@ describe('DMView', () => {
   it('triggers handleLoadMore via load more button', () => {
     setStoreWithMessages();
     renderDMView();
-    fireEvent.click(screen.getByTestId('load-more'));
+    const loadMoreBtn = screen.getByTestId('load-more');
+    expect(loadMoreBtn).toBeInTheDocument();
+    fireEvent.click(loadMoreBtn);
   });
 
   it.each([

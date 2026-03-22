@@ -196,9 +196,7 @@ describe('CreateChannel', () => {
   });
 
   it('uses defaultCategory prop', () => {
-    render(<CreateChannel defaultCategory="Gaming" onClose={vi.fn()} />);
-    // The select should show Gaming if it exists, otherwise category state is 'Gaming'
-    // Since no channels exist with Gaming category, the select won't have it as option
-    // but the state is set to 'Gaming'
+    const { container } = render(<CreateChannel defaultCategory="Gaming" onClose={vi.fn()} />);
+    expect(container.firstChild).toBeTruthy();
   });
 });

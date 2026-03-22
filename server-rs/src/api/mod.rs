@@ -13,6 +13,7 @@ pub mod prekeys;
 pub mod presence;
 pub mod voice;
 pub mod federation;
+pub mod helpers;
 
 use crate::auth::{self, AuthService};
 use crate::config::Config;
@@ -1612,5 +1613,1729 @@ mod tests {
             .unwrap();
 
         assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // Invite endpoint tests
+    // ══════════════════════════════════════════════════════════════════
+
+    #[tokio::test]
+    async fn create_and_list_invites() {
+        let (state, _tmp) = test_app_state();
+        let (_user_id, team_id, token) = bootstrap_user_and_team(&state);
+
+        // Create invite.
+        let app = test_router(state.clone());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(&format!("/api/v1/teams/{}/invites", team_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({"max_uses": 10, "expires_in_hours": 24}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_to_json(resp.into_body()).await;
+        assert!(json["id"].is_string());
+        assert!(json["token"].is_string());
+        let invite_id = json["id"].as_str().unwrap().to_string();
+        let invite_token = json["token"].as_str().unwrap().to_string();
+
+        // List invites.
+        let app2 = test_router(state.clone());
+        let resp = app2
+            .oneshot(
+                Request::builder()
+                    .uri(&format!("/api/v1/teams/{}/invites", team_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_to_json(resp.into_body()).await;
+        let invites = json.as_array().unwrap();
+        assert!(invites.len() >= 1);
+
+        // Get invite info (public endpoint).
+        let app3 = test_router(state.clone());
+        let resp = app3
+            .oneshot(
+                Request::builder()
+                    .uri(&format!("/api/v1/invites/{}/info", invite_token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_to_json(resp.into_body()).await;
+        assert_eq!(json["team_id"], team_id);
+
+        // Revoke invite.
+        let app4 = test_router(state);
+        let resp = app4
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(&format!("/api/v1/teams/{}/invites/{}", team_id, invite_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn get_invite_info_invalid_token_returns_404() {
+        let (state, _tmp) = test_app_state();
+        let app = test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/invites/nonexistent-token/info")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn create_invite_no_expiry_or_max() {
+        let (state, _tmp) = test_app_state();
+        let (_user_id, team_id, token) = bootstrap_user_and_team(&state);
+        let app = test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(&format!("/api/v1/teams/{}/invites", team_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::json!({}).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_to_json(resp.into_body()).await;
+        assert!(json["token"].is_string());
+        assert!(json["max_uses"].is_null());
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // Role update/delete/reorder endpoint tests
+    // ══════════════════════════════════════════════════════════════════
+
+    #[tokio::test]
+    async fn update_role_changes_name_and_color() {
+        let (state, _tmp) = test_app_state();
+        let (_user_id, team_id, token) = bootstrap_user_and_team(&state);
+
+        // Create role.
+        let role_id = db::new_id();
+        state.db.with_conn(|conn| {
+            db::create_role(conn, &db::Role {
+                id: role_id.clone(),
+                team_id: team_id.clone(),
+                name: "moderator".into(),
+                color: "#FF0000".into(),
+                position: 1,
+                permissions: db::PERM_SEND_MESSAGES,
+                is_default: false,
+                created_at: db::now_str(),
+                updated_at: String::new(),
+            })
+        })
+        .unwrap();
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(&format!("/api/v1/teams/{}/roles/{}", team_id, role_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({"name": "admin2", "color": "#00FF00"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_to_json(resp.into_body()).await;
+        assert_eq!(json["name"], "admin2");
+        assert_eq!(json["color"], "#00FF00");
+    }
+
+    #[tokio::test]
+    async fn delete_role_removes_role() {
+        let (state, _tmp) = test_app_state();
+        let (_user_id, team_id, token) = bootstrap_user_and_team(&state);
+
+        // Create non-default role.
+        let role_id = db::new_id();
+        state.db.with_conn(|conn| {
+            db::create_role(conn, &db::Role {
+                id: role_id.clone(),
+                team_id: team_id.clone(),
+                name: "deleteme".into(),
+                color: "#999999".into(),
+                position: 5,
+                permissions: 0,
+                is_default: false,
+                created_at: db::now_str(),
+                updated_at: String::new(),
+            })
+        })
+        .unwrap();
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(&format!("/api/v1/teams/{}/roles/{}", team_id, role_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn delete_default_role_returns_error() {
+        let (state, _tmp) = test_app_state();
+        let (_user_id, team_id, token) = bootstrap_user_and_team(&state);
+
+        // The bootstrap creates a default role. Find it.
+        let default_role_id = state.db.with_conn(|conn| {
+            let roles = db::get_roles_by_team(conn, &team_id)?;
+            let default = roles.into_iter().find(|r| r.is_default).unwrap();
+            Ok(default.id)
+        }).unwrap();
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(&format!("/api/v1/teams/{}/roles/{}", team_id, default_role_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Should fail because it's the default role.
+        assert_ne!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn reorder_roles() {
+        let (state, _tmp) = test_app_state();
+        let (_user_id, team_id, token) = bootstrap_user_and_team(&state);
+
+        // Create two more roles.
+        let role_a = db::new_id();
+        let role_b = db::new_id();
+        state.db.with_conn(|conn| {
+            db::create_role(conn, &db::Role {
+                id: role_a.clone(),
+                team_id: team_id.clone(),
+                name: "role_a".into(),
+                color: "#111111".into(),
+                position: 1,
+                permissions: 0,
+                is_default: false,
+                created_at: db::now_str(),
+                updated_at: String::new(),
+            })?;
+            db::create_role(conn, &db::Role {
+                id: role_b.clone(),
+                team_id: team_id.clone(),
+                name: "role_b".into(),
+                color: "#222222".into(),
+                position: 2,
+                permissions: 0,
+                is_default: false,
+                created_at: db::now_str(),
+                updated_at: String::new(),
+            })
+        })
+        .unwrap();
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri(&format!("/api/v1/teams/{}/roles/reorder", team_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({"role_ids": [role_b, role_a]}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn reorder_roles_empty_returns_400() {
+        let (state, _tmp) = test_app_state();
+        let (_user_id, team_id, token) = bootstrap_user_and_team(&state);
+        let app = test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri(&format!("/api/v1/teams/{}/roles/reorder", team_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({"role_ids": []}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // DM extended endpoint tests
+    // ══════════════════════════════════════════════════════════════════
+
+    /// Helper: create a second user and DM for DM tests.
+    fn setup_dm(state: &AppState, user_id: &str, team_id: &str) -> (String, String) {
+        let now = db::now_str();
+        let user2_id = db::new_id();
+        state.db.with_conn(|conn| {
+            db::create_user(conn, &db::User {
+                id: user2_id.clone(),
+                username: "bob".into(),
+                display_name: "Bob".into(),
+                public_key: vec![1u8; 32],
+                avatar_url: String::new(),
+                status_text: String::new(),
+                status_type: "online".into(),
+                is_admin: false,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+            })?;
+            db::create_member(conn, &db::Member {
+                id: db::new_id(),
+                team_id: team_id.to_string(),
+                user_id: user2_id.clone(),
+                nickname: String::new(),
+                joined_at: now.clone(),
+                invited_by: user_id.to_string(),
+                updated_at: String::new(),
+            })?;
+            // Create DM channel.
+            let dm = db::DMChannel {
+                id: db::new_id(),
+                team_id: team_id.to_string(),
+                dm_type: "dm".into(),
+                name: String::new(),
+                created_at: now,
+            };
+            db::create_dm_channel(conn, &dm)?;
+            db::add_dm_members(conn, &dm.id, &[user_id.to_string(), user2_id.clone()])?;
+            Ok((dm.id, user2_id))
+        })
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn get_dm_returns_channel_and_members() {
+        let (state, _tmp) = test_app_state();
+        let (user_id, team_id, token) = bootstrap_user_and_team(&state);
+        let (dm_id, _user2) = setup_dm(&state, &user_id, &team_id);
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri(&format!("/api/v1/teams/{}/dms/{}", team_id, dm_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_to_json(resp.into_body()).await;
+        assert!(json["channel"].is_object());
+        assert!(json["members"].is_array());
+    }
+
+    #[tokio::test]
+    async fn dm_send_and_list_messages() {
+        let (state, _tmp) = test_app_state();
+        let (user_id, team_id, token) = bootstrap_user_and_team(&state);
+        let (dm_id, _user2) = setup_dm(&state, &user_id, &team_id);
+
+        // Send message.
+        let app = test_router(state.clone());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(&format!("/api/v1/teams/{}/dms/{}/messages", team_id, dm_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({"content": "hello DM"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_to_json(resp.into_body()).await;
+        assert_eq!(json["content"], "hello DM");
+        let message_id = json["id"].as_str().unwrap().to_string();
+
+        // List messages.
+        let app2 = test_router(state.clone());
+        let resp = app2
+            .oneshot(
+                Request::builder()
+                    .uri(&format!("/api/v1/teams/{}/dms/{}/messages", team_id, dm_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_to_json(resp.into_body()).await;
+        let messages = json.as_array().unwrap();
+        assert_eq!(messages.len(), 1);
+
+        // Edit message.
+        let app3 = test_router(state.clone());
+        let resp = app3
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri(&format!(
+                        "/api/v1/teams/{}/dms/{}/messages/{}",
+                        team_id, dm_id, message_id
+                    ))
+                    .header("authorization", format!("Bearer {}", token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({"content": "edited DM"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_to_json(resp.into_body()).await;
+        assert_eq!(json["content"], "edited DM");
+
+        // Delete message.
+        let app4 = test_router(state);
+        let resp = app4
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(&format!(
+                        "/api/v1/teams/{}/dms/{}/messages/{}",
+                        team_id, dm_id, message_id
+                    ))
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn dm_send_empty_content_returns_400() {
+        let (state, _tmp) = test_app_state();
+        let (user_id, team_id, token) = bootstrap_user_and_team(&state);
+        let (dm_id, _user2) = setup_dm(&state, &user_id, &team_id);
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(&format!("/api/v1/teams/{}/dms/{}/messages", team_id, dm_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({"content": ""}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn dm_edit_empty_content_returns_400() {
+        let (state, _tmp) = test_app_state();
+        let (user_id, team_id, token) = bootstrap_user_and_team(&state);
+        let (dm_id, _user2) = setup_dm(&state, &user_id, &team_id);
+
+        // Create a message first.
+        state.db.with_conn(|conn| {
+            db::create_dm_message(conn, &db::Message {
+                id: "msg1".into(),
+                channel_id: String::new(),
+                dm_channel_id: dm_id.clone(),
+                author_id: user_id.clone(),
+                content: "original".into(),
+                msg_type: "text".into(),
+                thread_id: String::new(),
+                edited_at: None,
+                deleted: false,
+                lamport_ts: 0,
+                created_at: db::now_str(),
+            })
+        }).unwrap();
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri(&format!("/api/v1/teams/{}/dms/{}/messages/msg1", team_id, dm_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({"content": ""}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn dm_add_and_remove_members() {
+        let (state, _tmp) = test_app_state();
+        let (user_id, team_id, token) = bootstrap_user_and_team(&state);
+        let (dm_id, _user2) = setup_dm(&state, &user_id, &team_id);
+
+        // Create a third user.
+        let now = db::now_str();
+        let user3_id = db::new_id();
+        state.db.with_conn(|conn| {
+            db::create_user(conn, &db::User {
+                id: user3_id.clone(),
+                username: "charlie".into(),
+                display_name: "Charlie".into(),
+                public_key: vec![3u8; 32],
+                avatar_url: String::new(),
+                status_text: String::new(),
+                status_type: "online".into(),
+                is_admin: false,
+                created_at: now.clone(),
+                updated_at: now,
+            })
+        })
+        .unwrap();
+
+        // Add member.
+        let app = test_router(state.clone());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(&format!("/api/v1/teams/{}/dms/{}/members", team_id, dm_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({"user_ids": [user3_id]}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Remove member.
+        let app2 = test_router(state);
+        let resp = app2
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(&format!(
+                        "/api/v1/teams/{}/dms/{}/members/{}",
+                        team_id, dm_id, user3_id
+                    ))
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn dm_add_members_empty_returns_400() {
+        let (state, _tmp) = test_app_state();
+        let (user_id, team_id, token) = bootstrap_user_and_team(&state);
+        let (dm_id, _user2) = setup_dm(&state, &user_id, &team_id);
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(&format!("/api/v1/teams/{}/dms/{}/members", team_id, dm_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({"user_ids": []}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // Presence endpoint tests
+    // ══════════════════════════════════════════════════════════════════
+
+    #[tokio::test]
+    async fn get_all_presence() {
+        let (state, _tmp) = test_app_state();
+        let (_user_id, team_id, token) = bootstrap_user_and_team(&state);
+        let app = test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri(&format!("/api/v1/teams/{}/presence", team_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn update_own_presence() {
+        let (state, _tmp) = test_app_state();
+        let (_user_id, team_id, token) = bootstrap_user_and_team(&state);
+        let app = test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri(&format!("/api/v1/teams/{}/presence", team_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({"status": "dnd", "custom_status": "busy"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn get_user_presence() {
+        let (state, _tmp) = test_app_state();
+        let (user_id, team_id, token) = bootstrap_user_and_team(&state);
+        let app = test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri(&format!("/api/v1/teams/{}/presence/{}", team_id, user_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // User endpoint tests
+    // ══════════════════════════════════════════════════════════════════
+
+    #[tokio::test]
+    async fn get_me_returns_current_user() {
+        let (state, _tmp) = test_app_state();
+        let (_user_id, _team_id, token) = bootstrap_user_and_team(&state);
+        let app = test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/users/me")
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_to_json(resp.into_body()).await;
+        assert_eq!(json["username"], "testuser");
+    }
+
+    #[tokio::test]
+    async fn update_me_changes_display_name() {
+        let (state, _tmp) = test_app_state();
+        let (_user_id, _team_id, token) = bootstrap_user_and_team(&state);
+        let app = test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/api/v1/users/me")
+                    .header("authorization", format!("Bearer {}", token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({"display_name": "New Name"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_to_json(resp.into_body()).await;
+        assert_eq!(json["display_name"], "New Name");
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // Federation endpoint tests
+    // ══════════════════════════════════════════════════════════════════
+
+    #[tokio::test]
+    async fn federation_status_without_mesh_returns_400() {
+        let (state, _tmp) = test_app_state();
+        let (_user_id, _team_id, token) = bootstrap_user_and_team(&state);
+        let app = test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/federation/status")
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Federation not enabled, so mesh is None -> 400.
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn federation_peers_without_mesh_returns_400() {
+        let (state, _tmp) = test_app_state();
+        let (_user_id, _team_id, token) = bootstrap_user_and_team(&state);
+        let app = test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/federation/peers")
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Federation not enabled, so mesh is None -> 400.
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // Voice endpoint tests
+    // ══════════════════════════════════════════════════════════════════
+
+    #[tokio::test]
+    async fn get_voice_room() {
+        let (state, _tmp) = test_app_state();
+        let (_user_id, team_id, token) = bootstrap_user_and_team(&state);
+
+        // Create a voice channel.
+        let now = db::now_str();
+        let channel_id = db::new_id();
+        state.db.with_conn(|conn| {
+            db::create_channel(conn, &db::Channel {
+                id: channel_id.clone(),
+                team_id: team_id.clone(),
+                name: "voice".into(),
+                topic: String::new(),
+                channel_type: "voice".into(),
+                position: 0,
+                category: String::new(),
+                created_by: _user_id.clone(),
+                created_at: now.clone(),
+                updated_at: now,
+            })
+        })
+        .unwrap();
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri(&format!("/api/v1/teams/{}/voice/{}", team_id, channel_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // Register endpoint tests
+    // ══════════════════════════════════════════════════════════════════
+
+    #[tokio::test]
+    async fn register_with_valid_invite() {
+        let (state, _tmp) = test_app_state();
+        let auth = state.auth.clone();
+
+        // First, bootstrap to create a team.
+        let signing_key1 = {
+            let mut key_bytes = [0u8; 32];
+            rand::RngCore::fill_bytes(&mut rand::rng(), &mut key_bytes);
+            SigningKey::from_bytes(&key_bytes)
+        };
+        let pk1 = signing_key1.verifying_key();
+        let pk1_b64 = base64::engine::general_purpose::STANDARD.encode(pk1.as_bytes());
+        let (nonce1, cid1) = auth.generate_challenge().unwrap();
+        let sig1 = signing_key1.sign(&nonce1);
+        let sig1_b64 = base64::engine::general_purpose::STANDARD.encode(sig1.to_bytes());
+        let bt = auth.generate_bootstrap_token().unwrap();
+
+        let app = test_router(state.clone());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/auth/bootstrap")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "challenge_id": cid1,
+                            "public_key": pk1_b64,
+                            "signature": sig1_b64,
+                            "username": "admin",
+                            "bootstrap_token": bt,
+                            "team_name": "Test Server",
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_to_json(resp.into_body()).await;
+        let team_id = json["team_id"].as_str().unwrap().to_string();
+        let admin_token = json["token"].as_str().unwrap().to_string();
+
+        // Create an invite.
+        let app2 = test_router(state.clone());
+        let resp = app2
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(&format!("/api/v1/teams/{}/invites", team_id))
+                    .header("authorization", format!("Bearer {}", admin_token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::json!({}).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_to_json(resp.into_body()).await;
+        let invite_token = json["token"].as_str().unwrap().to_string();
+
+        // Now register a new user with the invite.
+        let signing_key2 = {
+            let mut key_bytes = [0u8; 32];
+            rand::RngCore::fill_bytes(&mut rand::rng(), &mut key_bytes);
+            SigningKey::from_bytes(&key_bytes)
+        };
+        let pk2 = signing_key2.verifying_key();
+        let pk2_b64 = base64::engine::general_purpose::STANDARD.encode(pk2.as_bytes());
+        let (nonce2, cid2) = auth.generate_challenge().unwrap();
+        let sig2 = signing_key2.sign(&nonce2);
+        let sig2_b64 = base64::engine::general_purpose::STANDARD.encode(sig2.to_bytes());
+
+        let app3 = test_router(state);
+        let resp = app3
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/auth/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "challenge_id": cid2,
+                            "public_key": pk2_b64,
+                            "signature": sig2_b64,
+                            "username": "newuser",
+                            "invite_token": invite_token,
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_to_json(resp.into_body()).await;
+        assert!(json["token"].is_string());
+        assert_eq!(json["user"]["username"], "newuser");
+        assert_eq!(json["team_id"], team_id);
+    }
+
+    #[tokio::test]
+    async fn register_empty_username_returns_400() {
+        let (state, _tmp) = test_app_state();
+        let auth = state.auth.clone();
+
+        let signing_key = {
+            let mut key_bytes = [0u8; 32];
+            rand::RngCore::fill_bytes(&mut rand::rng(), &mut key_bytes);
+            SigningKey::from_bytes(&key_bytes)
+        };
+        let pk = signing_key.verifying_key();
+        let pk_b64 = base64::engine::general_purpose::STANDARD.encode(pk.as_bytes());
+        let (nonce, cid) = auth.generate_challenge().unwrap();
+        let sig = signing_key.sign(&nonce);
+        let sig_b64 = base64::engine::general_purpose::STANDARD.encode(sig.to_bytes());
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/auth/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "challenge_id": cid,
+                            "public_key": pk_b64,
+                            "signature": sig_b64,
+                            "username": "",
+                            "invite_token": "some-token",
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn register_empty_invite_token_returns_400() {
+        let (state, _tmp) = test_app_state();
+        let auth = state.auth.clone();
+
+        let signing_key = {
+            let mut key_bytes = [0u8; 32];
+            rand::RngCore::fill_bytes(&mut rand::rng(), &mut key_bytes);
+            SigningKey::from_bytes(&key_bytes)
+        };
+        let pk = signing_key.verifying_key();
+        let pk_b64 = base64::engine::general_purpose::STANDARD.encode(pk.as_bytes());
+        let (nonce, cid) = auth.generate_challenge().unwrap();
+        let sig = signing_key.sign(&nonce);
+        let sig_b64 = base64::engine::general_purpose::STANDARD.encode(sig.to_bytes());
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/auth/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "challenge_id": cid,
+                            "public_key": pk_b64,
+                            "signature": sig_b64,
+                            "username": "testuser",
+                            "invite_token": "",
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn bootstrap_empty_username_returns_400() {
+        let (state, _tmp) = test_app_state();
+        let auth = state.auth.clone();
+
+        let signing_key = {
+            let mut key_bytes = [0u8; 32];
+            rand::RngCore::fill_bytes(&mut rand::rng(), &mut key_bytes);
+            SigningKey::from_bytes(&key_bytes)
+        };
+        let pk = signing_key.verifying_key();
+        let pk_b64 = base64::engine::general_purpose::STANDARD.encode(pk.as_bytes());
+        let (nonce, cid) = auth.generate_challenge().unwrap();
+        let sig = signing_key.sign(&nonce);
+        let sig_b64 = base64::engine::general_purpose::STANDARD.encode(sig.to_bytes());
+        let bt = auth.generate_bootstrap_token().unwrap();
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/auth/bootstrap")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "challenge_id": cid,
+                            "public_key": pk_b64,
+                            "signature": sig_b64,
+                            "username": "",
+                            "bootstrap_token": bt,
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn bootstrap_empty_bootstrap_token_returns_400() {
+        let (state, _tmp) = test_app_state();
+        let auth = state.auth.clone();
+
+        let signing_key = {
+            let mut key_bytes = [0u8; 32];
+            rand::RngCore::fill_bytes(&mut rand::rng(), &mut key_bytes);
+            SigningKey::from_bytes(&key_bytes)
+        };
+        let pk = signing_key.verifying_key();
+        let pk_b64 = base64::engine::general_purpose::STANDARD.encode(pk.as_bytes());
+        let (nonce, cid) = auth.generate_challenge().unwrap();
+        let sig = signing_key.sign(&nonce);
+        let sig_b64 = base64::engine::general_purpose::STANDARD.encode(sig.to_bytes());
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/auth/bootstrap")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "challenge_id": cid,
+                            "public_key": pk_b64,
+                            "signature": sig_b64,
+                            "username": "admin",
+                            "bootstrap_token": "",
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // CORS tests
+    // ══════════════════════════════════════════════════════════════════
+
+    #[tokio::test]
+    async fn cors_allowed_origins_config() {
+        let (db, tmp) = test_db();
+        let auth = Arc::new(AuthService::new(db.clone(), ""));
+        let hub = Arc::new(Hub::new(db.clone()));
+        let presence = Arc::new(PresenceManager::new());
+        let mut cfg = test_config();
+        cfg.allowed_origins = vec!["http://localhost:3000".into()];
+        let config = Arc::new(cfg);
+
+        let state = AppState {
+            db,
+            auth,
+            hub,
+            presence,
+            config,
+            mesh: None,
+        };
+
+        // Use test_router which uses {param} syntax.
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        drop(tmp);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // Team member management endpoint tests
+    // ══════════════════════════════════════════════════════════════════
+
+    /// Helper: create a second team member.
+    fn add_team_member(state: &AppState, team_id: &str, admin_id: &str) -> String {
+        let now = db::now_str();
+        let user2_id = db::new_id();
+        state.db.with_conn(|conn| {
+            db::create_user(conn, &db::User {
+                id: user2_id.clone(),
+                username: "member2".into(),
+                display_name: "Member 2".into(),
+                public_key: vec![9u8; 32],
+                avatar_url: String::new(),
+                status_text: String::new(),
+                status_type: "online".into(),
+                is_admin: false,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+            })?;
+            db::create_member(conn, &db::Member {
+                id: db::new_id(),
+                team_id: team_id.to_string(),
+                user_id: user2_id.clone(),
+                nickname: String::new(),
+                joined_at: now,
+                invited_by: admin_id.to_string(),
+                updated_at: String::new(),
+            })
+        })
+        .unwrap();
+        user2_id
+    }
+
+    #[tokio::test]
+    async fn update_member_nickname() {
+        let (state, _tmp) = test_app_state();
+        let (user_id, team_id, token) = bootstrap_user_and_team(&state);
+        let user2_id = add_team_member(&state, &team_id, &user_id);
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(&format!("/api/v1/teams/{}/members/{}", team_id, user2_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({"nickname": "M2"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_to_json(resp.into_body()).await;
+        assert_eq!(json["nickname"], "M2");
+    }
+
+    #[tokio::test]
+    async fn kick_member_removes_from_team() {
+        let (state, _tmp) = test_app_state();
+        let (user_id, team_id, token) = bootstrap_user_and_team(&state);
+        let user2_id = add_team_member(&state, &team_id, &user_id);
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(&format!("/api/v1/teams/{}/members/{}", team_id, user2_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn kick_self_returns_400() {
+        let (state, _tmp) = test_app_state();
+        let (user_id, team_id, token) = bootstrap_user_and_team(&state);
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(&format!("/api/v1/teams/{}/members/{}", team_id, user_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn ban_and_unban_member() {
+        let (state, _tmp) = test_app_state();
+        let (user_id, team_id, token) = bootstrap_user_and_team(&state);
+        let user2_id = add_team_member(&state, &team_id, &user_id);
+
+        // Ban.
+        let app = test_router(state.clone());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(&format!("/api/v1/teams/{}/members/{}/ban", team_id, user2_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({"reason": "bad behavior"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Unban.
+        let app2 = test_router(state);
+        let resp = app2
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(&format!("/api/v1/teams/{}/members/{}/ban", team_id, user2_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn ban_self_returns_400() {
+        let (state, _tmp) = test_app_state();
+        let (user_id, team_id, token) = bootstrap_user_and_team(&state);
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(&format!("/api/v1/teams/{}/members/{}/ban", team_id, user_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({"reason": ""}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // Thread endpoint tests
+    // ══════════════════════════════════════════════════════════════════
+
+    #[tokio::test]
+    async fn create_and_list_threads() {
+        let (state, _tmp) = test_app_state();
+        let (_user_id, team_id, token) = bootstrap_user_and_team(&state);
+
+        // Create channel and message for thread.
+        let now = db::now_str();
+        let channel_id = db::new_id();
+        let message_id = db::new_id();
+        state.db.with_conn(|conn| {
+            db::create_channel(conn, &db::Channel {
+                id: channel_id.clone(),
+                team_id: team_id.clone(),
+                name: "threaded".into(),
+                topic: String::new(),
+                channel_type: "text".into(),
+                position: 0,
+                category: String::new(),
+                created_by: _user_id.clone(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+            })?;
+            db::create_message(conn, &db::Message {
+                id: message_id.clone(),
+                channel_id: channel_id.clone(),
+                dm_channel_id: String::new(),
+                author_id: _user_id.clone(),
+                content: "parent message".into(),
+                msg_type: "text".into(),
+                thread_id: String::new(),
+                edited_at: None,
+                deleted: false,
+                lamport_ts: 0,
+                created_at: now.clone(),
+            })
+        })
+        .unwrap();
+
+        // Create thread.
+        let app = test_router(state.clone());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(&format!("/api/v1/teams/{}/channels/{}/threads", team_id, channel_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({"parent_message_id": message_id, "title": "A thread"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_to_json(resp.into_body()).await;
+        assert_eq!(json["title"], "A thread");
+
+        // List threads.
+        let app2 = test_router(state);
+        let resp = app2
+            .oneshot(
+                Request::builder()
+                    .uri(&format!("/api/v1/teams/{}/channels/{}/threads", team_id, channel_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_to_json(resp.into_body()).await;
+        let threads = json.as_array().unwrap();
+        assert_eq!(threads.len(), 1);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // Reaction endpoint tests
+    // ══════════════════════════════════════════════════════════════════
+
+    #[tokio::test]
+    async fn thread_get_update_delete_and_messages() {
+        let (state, _tmp) = test_app_state();
+        let (_user_id, team_id, token) = bootstrap_user_and_team(&state);
+
+        let now = db::now_str();
+        let channel_id = db::new_id();
+        let message_id = db::new_id();
+        state.db.with_conn(|conn| {
+            db::create_channel(conn, &db::Channel {
+                id: channel_id.clone(),
+                team_id: team_id.clone(),
+                name: "thread-test".into(),
+                topic: String::new(),
+                channel_type: "text".into(),
+                position: 0,
+                category: String::new(),
+                created_by: _user_id.clone(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+            })?;
+            db::create_message(conn, &db::Message {
+                id: message_id.clone(),
+                channel_id: channel_id.clone(),
+                dm_channel_id: String::new(),
+                author_id: _user_id.clone(),
+                content: "thread parent".into(),
+                msg_type: "text".into(),
+                thread_id: String::new(),
+                edited_at: None,
+                deleted: false,
+                lamport_ts: 0,
+                created_at: now,
+            })
+        })
+        .unwrap();
+
+        // Create thread.
+        let app = test_router(state.clone());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(&format!("/api/v1/teams/{}/channels/{}/threads", team_id, channel_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({"parent_message_id": message_id, "title": "Test Thread"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_to_json(resp.into_body()).await;
+        let thread_id = json["id"].as_str().unwrap().to_string();
+
+        // Get thread.
+        let app2 = test_router(state.clone());
+        let resp = app2
+            .oneshot(
+                Request::builder()
+                    .uri(&format!("/api/v1/teams/{}/threads/{}", team_id, thread_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_to_json(resp.into_body()).await;
+        assert_eq!(json["title"], "Test Thread");
+
+        // Update thread.
+        let app3 = test_router(state.clone());
+        let resp = app3
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri(&format!("/api/v1/teams/{}/threads/{}", team_id, thread_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({"title": "Updated Thread"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_to_json(resp.into_body()).await;
+        assert_eq!(json["title"], "Updated Thread");
+
+        // Create thread message.
+        let app4 = test_router(state.clone());
+        let resp = app4
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(&format!("/api/v1/teams/{}/threads/{}/messages", team_id, thread_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({"content": "thread reply"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_to_json(resp.into_body()).await;
+        assert_eq!(json["content"], "thread reply");
+
+        // List thread messages.
+        let app5 = test_router(state.clone());
+        let resp = app5
+            .oneshot(
+                Request::builder()
+                    .uri(&format!("/api/v1/teams/{}/threads/{}/messages", team_id, thread_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_to_json(resp.into_body()).await;
+        let msgs = json.as_array().unwrap();
+        assert_eq!(msgs.len(), 1);
+
+        // Delete thread.
+        let app6 = test_router(state);
+        let resp = app6
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(&format!("/api/v1/teams/{}/threads/{}", team_id, thread_id))
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn add_and_list_reactions() {
+        let (state, _tmp) = test_app_state();
+        let (_user_id, team_id, token) = bootstrap_user_and_team(&state);
+
+        let now = db::now_str();
+        let channel_id = db::new_id();
+        let message_id = db::new_id();
+        state.db.with_conn(|conn| {
+            db::create_channel(conn, &db::Channel {
+                id: channel_id.clone(),
+                team_id: team_id.clone(),
+                name: "reactions-ch".into(),
+                topic: String::new(),
+                channel_type: "text".into(),
+                position: 0,
+                category: String::new(),
+                created_by: _user_id.clone(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+            })?;
+            db::create_message(conn, &db::Message {
+                id: message_id.clone(),
+                channel_id: channel_id.clone(),
+                dm_channel_id: String::new(),
+                author_id: _user_id.clone(),
+                content: "react to me".into(),
+                msg_type: "text".into(),
+                thread_id: String::new(),
+                edited_at: None,
+                deleted: false,
+                lamport_ts: 0,
+                created_at: now,
+            })
+        })
+        .unwrap();
+
+        // Add reaction.
+        let app = test_router(state.clone());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri(&format!(
+                        "/api/v1/teams/{}/channels/{}/messages/{}/reactions/thumbsup",
+                        team_id, channel_id, message_id
+                    ))
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // List reactions.
+        let app2 = test_router(state.clone());
+        let resp = app2
+            .oneshot(
+                Request::builder()
+                    .uri(&format!(
+                        "/api/v1/teams/{}/channels/{}/messages/{}/reactions",
+                        team_id, channel_id, message_id
+                    ))
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_to_json(resp.into_body()).await;
+        let reactions = json.as_array().unwrap();
+        assert_eq!(reactions.len(), 1);
+
+        // Remove reaction.
+        let app3 = test_router(state);
+        let resp = app3
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(&format!(
+                        "/api/v1/teams/{}/channels/{}/messages/{}/reactions/thumbsup",
+                        team_id, channel_id, message_id
+                    ))
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn verify_with_valid_user_returns_token() {
+        let (state, _tmp) = test_app_state();
+        let auth = state.auth.clone();
+
+        // Create a user with known keys.
+        let signing_key = {
+            let mut key_bytes = [0u8; 32];
+            rand::RngCore::fill_bytes(&mut rand::rng(), &mut key_bytes);
+            SigningKey::from_bytes(&key_bytes)
+        };
+        let pk = signing_key.verifying_key();
+        let pk_bytes = pk.as_bytes().to_vec();
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_user(conn, &db::User {
+                id: "verify-user".into(),
+                username: "verifyuser".into(),
+                display_name: "Verify".into(),
+                public_key: pk_bytes,
+                avatar_url: String::new(),
+                status_text: String::new(),
+                status_type: "online".into(),
+                is_admin: false,
+                created_at: now.clone(),
+                updated_at: now,
+            })
+        }).unwrap();
+
+        let pk_b64 = base64::engine::general_purpose::STANDARD.encode(pk.as_bytes());
+        let (nonce, cid) = auth.generate_challenge().unwrap();
+        let sig = signing_key.sign(&nonce);
+        let sig_b64 = base64::engine::general_purpose::STANDARD.encode(sig.to_bytes());
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/auth/verify")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "challenge_id": cid,
+                            "public_key": pk_b64,
+                            "signature": sig_b64,
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_to_json(resp.into_body()).await;
+        assert!(json["token"].is_string());
+        assert!(json["refresh_token"].is_string());
+        assert_eq!(json["user"]["username"], "verifyuser");
     }
 }
