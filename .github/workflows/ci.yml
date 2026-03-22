@@ -39,9 +39,10 @@ jobs:
           path: client/dist/
           retention-days: 7
 
-  # ── Server: test, build, upload artifact ───────────────────────────────────
+  # ── Server: test, build with embedded client ─────────────────────────────
   server-checks:
     permissions: { contents: read }
+    needs: client-checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -59,8 +60,10 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('server-rs/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
-      - name: Create dist placeholder for rust-embed
-        run: mkdir -p server-rs/dist && touch server-rs/dist/index.html
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: client-dist
+          path: server-rs/dist/
 
       - name: Test server
         working-directory: server-rs
@@ -134,3 +137,43 @@ jobs:
             client/src-tauri/target/**/release/bundle/**/*.AppImage
             client/src-tauri/target/**/release/bundle/**/*.deb
           retention-days: 7
+
+  # ── Nightly release: always-downloadable artifacts from main ──────────────
+  nightly-release:
+    permissions: { contents: write }
+    needs: [server-checks, desktop-build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: artifacts/
+          pattern: dilla-*
+          merge-multiple: true
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p release
+          find artifacts -type f \( -name "dilla-server" -o -name "*.dmg" -o -name "*.AppImage" -o -name "*.deb" \) -exec cp {} release/ \;
+          mv release/dilla-server release/dilla-server-linux-amd64 2>/dev/null || true
+
+      - name: Generate SHA256SUMS
+        working-directory: release
+        run: sha256sum * > SHA256SUMS.txt
+
+      - name: Update nightly release
+        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
+        with:
+          tag_name: nightly
+          name: Nightly Build
+          body: |
+            Latest build from `main` branch.
+
+            **Commit**: ${{ github.sha }}
+            **Date**: ${{ github.event.head_commit.timestamp }}
+
+            These builds are automatically updated on every push to main.
+            For stable releases, see the tagged versions.
+          prerelease: true
+          make_latest: false
+          files: release/*
