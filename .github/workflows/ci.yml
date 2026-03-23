@@ -39,8 +39,8 @@ jobs:
           path: client/dist/
           retention-days: 7
 
-  # ── Server: test, build with embedded client ─────────────────────────────
-  server-checks:
+  # ── Server: test + build for all platforms ────────────────────────────────
+  server-test:
     permissions: { contents: read }
     needs: client-checks
     runs-on: ubuntu-latest
@@ -69,15 +69,67 @@ jobs:
         working-directory: server-rs
         run: cargo test
 
+  server-build:
+    permissions: { contents: read }
+    needs: [client-checks, server-test]
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            name: linux-amd64
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            name: linux-arm64
+            cross: true
+          - target: x86_64-apple-darwin
+            os: macos-14
+            name: darwin-amd64
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            name: darwin-arm64
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            server-rs/target
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('server-rs/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.target }}-cargo-
+
+      - name: Install cross-compilation tools (aarch64-linux)
+        if: matrix.cross
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo '[target.aarch64-unknown-linux-gnu]' >> ~/.cargo/config.toml
+          echo 'linker = "aarch64-linux-gnu-gcc"' >> ~/.cargo/config.toml
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: client-dist
+          path: server-rs/dist/
+
       - name: Build server (release)
         working-directory: server-rs
-        run: cargo build --release
+        run: cargo build --release --target ${{ matrix.target }}
 
       - name: Upload server binary
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: dilla-server-linux-amd64
-          path: server-rs/target/release/dilla-server
+          name: dilla-server-${{ matrix.name }}
+          path: server-rs/target/${{ matrix.target }}/release/dilla-server
           retention-days: 7
 
   # ── Desktop: build Tauri app artifacts ─────────────────────────────────────
@@ -141,7 +193,7 @@ jobs:
   # ── Nightly release: always-downloadable artifacts from main ──────────────
   nightly-release:
     permissions: { contents: write }
-    needs: [server-checks, desktop-build]
+    needs: [server-build, desktop-build]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
@@ -151,11 +203,14 @@ jobs:
           pattern: dilla-*
           merge-multiple: true
 
-      - name: Flatten artifacts
+      - name: Flatten and rename artifacts
         run: |
           mkdir -p release
-          find artifacts -type f \( -name "dilla-server" -o -name "*.dmg" -o -name "*.AppImage" -o -name "*.deb" \) -exec cp {} release/ \;
-          mv release/dilla-server release/dilla-server-linux-amd64 2>/dev/null || true
+          for dir in artifacts/dilla-server-*/; do
+            name=$(basename "$dir")
+            cp "$dir"dilla-server "release/$name" 2>/dev/null || true
+          done
+          find artifacts -type f \( -name "*.dmg" -o -name "*.AppImage" -o -name "*.deb" \) -exec cp {} release/ \;
 
       - name: Generate SHA256SUMS
         working-directory: release
