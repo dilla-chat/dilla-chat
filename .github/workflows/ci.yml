@@ -203,14 +203,15 @@ jobs:
         with:
           path: artifacts/
           pattern: dilla-*
-          merge-multiple: true
 
       - name: Flatten and rename artifacts
         run: |
           mkdir -p release
           for dir in artifacts/dilla-server-*/; do
             name=$(basename "$dir")
-            cp "$dir"dilla-server "release/$name" 2>/dev/null || true
+            if [ -f "$dir/dilla-server" ]; then
+              cp "$dir/dilla-server" "release/$name"
+            fi
           done
           find artifacts -type f \( -name "*.dmg" -o -name "*.AppImage" -o -name "*.deb" \) -exec cp {} release/ \;
 
