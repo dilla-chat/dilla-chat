@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { useVoiceStore } from '../stores/voiceStore';
-import { useAuthStore } from '../stores/authStore';
-import { useUserSettingsStore } from '../stores/userSettingsStore';
-import { useAudioSettingsStore } from '../stores/audioSettingsStore';
+import { useVoiceStore } from '../../stores/voiceStore';
+import { useAuthStore } from '../../stores/authStore';
+import { useUserSettingsStore } from '../../stores/userSettingsStore';
+import { useAudioSettingsStore } from '../../stores/audioSettingsStore';
 
 // ─── Track WS listeners for test emission ───────────────────────────────────
 // vi.hoisted ensures these are available when vi.mock factories run (hoisted to top)
@@ -38,20 +38,20 @@ function emitWS(event: string, payload: unknown) {
 
 // ─── Mock dependencies ─────────────────────────────────────────────────────
 
-vi.mock('./websocket', () => ({ ws: mockWs }));
+vi.mock('../websocket', () => ({ ws: mockWs }));
 
-vi.mock('./api', () => ({
+vi.mock('../api', () => ({
   api: {
     getTURNCredentials: vi.fn().mockResolvedValue({ iceServers: [] }),
   },
 }));
 
-vi.mock('./sounds', () => ({
+vi.mock('../sounds', () => ({
   playJoinSound: vi.fn(),
   playLeaveSound: vi.fn(),
 }));
 
-vi.mock('./voiceCrypto', () => ({
+vi.mock('../voiceCrypto', () => ({
   supportsE2EVoice: vi.fn(() => false),
   VoiceKeyManager: class MockVoiceKeyManager {
     generateLocalKey = vi.fn().mockResolvedValue({ key: {}, rawKey: new Uint8Array(32), keyId: 1 });
@@ -235,7 +235,7 @@ function setupStores() {
 
 // We import the service at module level; it uses the mocked deps.
 // The singleton means we need to disconnect between tests.
-import { webrtcService } from './webrtc';
+import { webrtcService } from './WebRTCService';
 
 beforeEach(() => {
   vi.stubGlobal('AudioContext', EnhancedMockAudioContext);
@@ -320,7 +320,7 @@ describe('WebRTCService', () => {
     });
 
     it('falls back to STUN when TURN credentials fail', async () => {
-      const { api } = await import('./api');
+      const { api } = await import('../api');
       vi.mocked(api.getTURNCredentials).mockRejectedValueOnce(new Error('no TURN'));
 
       await webrtcService.connect('ch-1', 'team-1');
@@ -341,7 +341,7 @@ describe('WebRTCService', () => {
     });
 
     it('filters TURN servers and sets relay policy when TURN available', async () => {
-      const { api } = await import('./api');
+      const { api } = await import('../api');
       vi.mocked(api.getTURNCredentials).mockResolvedValueOnce({
         iceServers: [
           { urls: 'stun:stun.example.com:3478' },
@@ -1119,7 +1119,7 @@ describe('WebRTCService', () => {
       webrtcService.startVAD();
 
       // After startVAD, override the analyser on the service to simulate loud audio
-      const analyser = (webrtcService as any).analyser;
+      const analyser = (webrtcService as any).vad.analyser;
       if (analyser) {
         analyser.getByteFrequencyData.mockImplementation((arr: Uint8Array) => {
           for (let i = 0; i < arr.length; i++) arr[i] = 200;
@@ -1147,8 +1147,8 @@ describe('WebRTCService', () => {
         peers: { 'remote-user': { odisplayName: 'Remote', muted: false, deafened: false, speaking: false, voiceLevel: 0, screenSharing: false, webcamSharing: false } },
       });
 
-      // Access the private remoteAnalysers map and add an entry
-      const analysers = (webrtcService as unknown as { remoteAnalysers: Map<string, { userId: string; analyser: { getByteFrequencyData: (arr: Uint8Array) => void }; data: Uint8Array }> }).remoteAnalysers;
+      // Access the private remoteAnalysers map on the VAD sub-object and add an entry
+      const analysers = ((webrtcService as any).vad as unknown as { remoteAnalysers: Map<string, { userId: string; analyser: { getByteFrequencyData: (arr: Uint8Array) => void }; data: Uint8Array }> }).remoteAnalysers;
       const fakeData = new Uint8Array(128);
       analysers.set('remote-user', {
         userId: 'remote-user',
@@ -1159,7 +1159,7 @@ describe('WebRTCService', () => {
       });
 
       // Start the remote VAD
-      (webrtcService as unknown as { startRemoteVAD: () => void }).startRemoteVAD();
+      ((webrtcService as any).vad as unknown as { startRemoteVAD: () => void }).startRemoteVAD();
 
       // Advance the timer to trigger the interval
       vi.advanceTimersByTime(150);
@@ -1169,19 +1169,20 @@ describe('WebRTCService', () => {
       expect(peer.voiceLevel).toBeGreaterThan(0);
 
       // Stop and cleanup
-      (webrtcService as unknown as { stopRemoteVAD: () => void }).stopRemoteVAD();
+      ((webrtcService as any).vad as unknown as { stopRemoteVAD: () => void }).stopRemoteVAD();
       vi.useRealTimers();
     });
 
     it('does not start twice if already running', async () => {
       await webrtcService.connect('ch-1', 'team-1');
-      const startFn = (webrtcService as unknown as { startRemoteVAD: () => void }).startRemoteVAD.bind(webrtcService);
+      const vad = (webrtcService as any).vad;
+      const startFn = vad.startRemoteVAD.bind(vad);
       startFn();
-      const timer1 = (webrtcService as unknown as { remoteVadTimer: unknown }).remoteVadTimer;
+      const timer1 = vad.remoteVadTimer;
       startFn(); // second call should be no-op
-      const timer2 = (webrtcService as unknown as { remoteVadTimer: unknown }).remoteVadTimer;
+      const timer2 = vad.remoteVadTimer;
       expect(timer1).toBe(timer2);
-      (webrtcService as unknown as { stopRemoteVAD: () => void }).stopRemoteVAD();
+      ((webrtcService as any).vad as unknown as { stopRemoteVAD: () => void }).stopRemoteVAD();
     });
   });
 
@@ -1373,7 +1374,7 @@ describe('WebRTCService', () => {
     }
 
     it('sets up E2E encryption when supported', async () => {
-      const { supportsE2EVoice } = await import('./voiceCrypto');
+      const { supportsE2EVoice } = await import('../voiceCrypto');
       vi.mocked(supportsE2EVoice).mockReturnValue(true);
       setupE2EMocks();
 
@@ -1389,15 +1390,15 @@ describe('WebRTCService', () => {
     });
 
     it('distributes voice key when peer joins', async () => {
-      const { supportsE2EVoice } = await import('./voiceCrypto');
+      const { supportsE2EVoice } = await import('../voiceCrypto');
       vi.mocked(supportsE2EVoice).mockReturnValue(true);
       setupE2EMocks();
 
       await webrtcService.connect('ch-1', 'team-1');
 
       // Manually set voiceKeyManager to have a raw key
-      (webrtcService as any).voiceKeyManager.getLocalRawKey = vi.fn(() => new Uint8Array(32));
-      (webrtcService as any).voiceKeyManager.getLocalKeyId = vi.fn(() => 1);
+      (webrtcService as any).encryption.voiceKeyManager.getLocalRawKey = vi.fn(() => new Uint8Array(32));
+      (webrtcService as any).encryption.voiceKeyManager.getLocalKeyId = vi.fn(() => 1);
 
       // Add a peer so key distribution has a target
       useVoiceStore.setState({
@@ -1417,14 +1418,14 @@ describe('WebRTCService', () => {
     });
 
     it('distributeVoiceKey skips when rawKey is null', async () => {
-      const { supportsE2EVoice } = await import('./voiceCrypto');
+      const { supportsE2EVoice } = await import('../voiceCrypto');
       vi.mocked(supportsE2EVoice).mockReturnValue(true);
       setupE2EMocks();
 
       await webrtcService.connect('ch-1', 'team-1');
 
       // Ensure getLocalRawKey returns null
-      (webrtcService as any).voiceKeyManager.getLocalRawKey = vi.fn(() => null);
+      (webrtcService as any).encryption.voiceKeyManager.getLocalRawKey = vi.fn(() => null);
 
       mockWs.voiceKeyDistribute.mockClear();
       emitWS('voice:user-joined', { user_id: 'peer-3', username: 'new-user' });
@@ -1436,7 +1437,7 @@ describe('WebRTCService', () => {
     });
 
     it('handles received voice key when E2E enabled', async () => {
-      const { supportsE2EVoice } = await import('./voiceCrypto');
+      const { supportsE2EVoice } = await import('../voiceCrypto');
       vi.mocked(supportsE2EVoice).mockReturnValue(true);
       setupE2EMocks();
 
@@ -1464,7 +1465,7 @@ describe('WebRTCService', () => {
       await webrtcService.connect('ch-1', 'team-1');
       // Manually set an encrypt worker
       const fakeWorker = { terminate: vi.fn(), postMessage: vi.fn() };
-      (webrtcService as any).encryptWorker = fakeWorker;
+      (webrtcService as any).encryption.encryptWorker = fakeWorker;
 
       await webrtcService.disconnect();
       expect(fakeWorker.terminate).toHaveBeenCalled();
@@ -1473,7 +1474,7 @@ describe('WebRTCService', () => {
     it('terminates decrypt workers if present', async () => {
       await webrtcService.connect('ch-1', 'team-1');
       const fakeWorker = { terminate: vi.fn(), postMessage: vi.fn() };
-      (webrtcService as any).decryptWorkers.set('peer-1', fakeWorker);
+      (webrtcService as any).encryption.decryptWorkers.set('peer-1', fakeWorker);
 
       await webrtcService.disconnect();
       expect(fakeWorker.terminate).toHaveBeenCalled();

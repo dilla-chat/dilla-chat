@@ -1,5 +1,13 @@
 pub mod models;
-mod queries;
+#[cfg(test)]
+pub(crate) mod test_helpers;
+mod user_queries;
+mod team_queries;
+mod channel_queries;
+mod member_queries;
+mod message_queries;
+mod role_queries;
+mod misc_queries;
 mod dm_queries;
 mod thread_queries;
 mod reaction_queries;
@@ -11,7 +19,13 @@ use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub use models::*;
-pub use queries::*;
+pub use user_queries::*;
+pub use team_queries::*;
+pub use channel_queries::*;
+pub use member_queries::*;
+pub use message_queries::*;
+pub use role_queries::*;
+pub use misc_queries::*;
 pub use dm_queries::*;
 pub use thread_queries::*;
 pub use reaction_queries::*;
