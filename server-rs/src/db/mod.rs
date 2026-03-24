@@ -186,6 +186,26 @@ impl Database {
     }
 }
 
+/// Map a database row to a Message struct.
+/// Shared by message_queries, dm_queries, and thread_queries.
+/// Expects columns: id, channel_id, dm_channel_id, author_id, content, type,
+///                   thread_id, edited_at, deleted, lamport_ts, created_at
+pub(crate) fn row_to_message(row: &rusqlite::Row) -> Result<Message, rusqlite::Error> {
+    Ok(Message {
+        id: row.get(0)?,
+        channel_id: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+        dm_channel_id: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+        author_id: row.get(3)?,
+        content: row.get(4)?,
+        msg_type: row.get(5)?,
+        thread_id: row.get::<_, Option<String>>(6)?.unwrap_or_default(),
+        edited_at: row.get(7)?,
+        deleted: row.get::<_, i32>(8)? != 0,
+        lamport_ts: row.get(9)?,
+        created_at: row.get(10)?,
+    })
+}
+
 /// Ensure the data directory exists.
 pub fn ensure_data_dir(dir: &str) -> std::io::Result<()> {
     std::fs::create_dir_all(dir)

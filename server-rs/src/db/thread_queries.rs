@@ -1,5 +1,5 @@
 use super::models::*;
-use super::now_str;
+use super::{now_str, row_to_message};
 use rusqlite::{params, Connection, OptionalExtension};
 
 pub fn create_thread(conn: &Connection, thread: &Thread) -> Result<(), rusqlite::Error> {
@@ -147,21 +147,6 @@ fn row_to_thread(row: &rusqlite::Row) -> Result<Thread, rusqlite::Error> {
     })
 }
 
-fn row_to_message(row: &rusqlite::Row) -> Result<Message, rusqlite::Error> {
-    Ok(Message {
-        id: row.get(0)?,
-        channel_id: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
-        dm_channel_id: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
-        author_id: row.get(3)?,
-        content: row.get(4)?,
-        msg_type: row.get(5)?,
-        thread_id: row.get::<_, Option<String>>(6)?.unwrap_or_default(),
-        edited_at: row.get(7)?,
-        deleted: row.get::<_, i32>(8)? != 0,
-        lamport_ts: row.get(9)?,
-        created_at: row.get(10)?,
-    })
-}
 
 #[cfg(test)]
 mod tests {
