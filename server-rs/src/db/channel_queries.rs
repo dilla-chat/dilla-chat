@@ -30,7 +30,7 @@ pub fn get_channels_by_team(
         "SELECT id, team_id, name, topic, type, position, category, created_by, created_at, updated_at
          FROM channels WHERE team_id = ?1 ORDER BY position ASC, created_at ASC",
     )?;
-    let rows = stmt.query_map([team_id], |row| row_to_channel(row))?;
+    let rows = stmt.query_map([team_id], row_to_channel)?;
     rows.collect()
 }
 
@@ -41,7 +41,7 @@ pub fn get_channel_by_id(
     conn.query_row(
         "SELECT id, team_id, name, topic, type, position, category, created_by, created_at, updated_at FROM channels WHERE id = ?1",
         [id],
-        |row| row_to_channel(row),
+        row_to_channel,
     )
     .optional()
 }

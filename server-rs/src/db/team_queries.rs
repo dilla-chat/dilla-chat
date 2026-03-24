@@ -25,7 +25,7 @@ pub fn get_team(conn: &Connection, id: &str) -> Result<Option<Team>, rusqlite::E
     conn.query_row(
         "SELECT id, name, description, icon_url, created_by, max_file_size, allow_member_invites, created_at, updated_at FROM teams WHERE id = ?1",
         [id],
-        |row| row_to_team(row),
+        row_to_team,
     )
     .optional()
 }
@@ -34,7 +34,7 @@ pub fn get_first_team(conn: &Connection) -> Result<Option<Team>, rusqlite::Error
     conn.query_row(
         "SELECT id, name, description, icon_url, created_by, max_file_size, allow_member_invites, created_at, updated_at FROM teams ORDER BY created_at ASC LIMIT 1",
         [],
-        |row| row_to_team(row),
+        row_to_team,
     )
     .optional()
 }
@@ -49,7 +49,7 @@ pub fn get_teams_by_user(
          JOIN members m ON m.team_id = t.id
          WHERE m.user_id = ?1",
     )?;
-    let rows = stmt.query_map([user_id], |row| row_to_team(row))?;
+    let rows = stmt.query_map([user_id], row_to_team)?;
     rows.collect()
 }
 

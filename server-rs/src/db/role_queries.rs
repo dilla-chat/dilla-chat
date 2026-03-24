@@ -34,7 +34,7 @@ pub fn get_roles_by_team(
         "SELECT id, team_id, name, color, position, permissions, is_default, created_at, updated_at
          FROM roles WHERE team_id = ?1 ORDER BY position ASC",
     )?;
-    let rows = stmt.query_map([team_id], |row| row_to_role(row))?;
+    let rows = stmt.query_map([team_id], row_to_role)?;
     rows.collect()
 }
 
@@ -42,7 +42,7 @@ pub fn get_role_by_id(conn: &Connection, id: &str) -> Result<Option<Role>, rusql
     conn.query_row(
         "SELECT id, team_id, name, color, position, permissions, is_default, created_at, updated_at FROM roles WHERE id = ?1",
         [id],
-        |row| row_to_role(row),
+        row_to_role,
     )
     .optional()
 }
@@ -68,7 +68,7 @@ pub fn get_default_role_for_team(
     conn.query_row(
         "SELECT id, team_id, name, color, position, permissions, is_default, created_at, updated_at FROM roles WHERE team_id = ?1 AND is_default = 1",
         [team_id],
-        |row| row_to_role(row),
+        row_to_role,
     )
     .optional()
 }

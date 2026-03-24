@@ -96,7 +96,7 @@ pub async fn create_join_token(
     })
     .await
     .map_err(|e| AppError::Internal(format!("task join: {}", e)))?
-    .map_err(|e| AppError::Internal(e))?;
+    .map_err(AppError::Internal)?;
 
     Ok(Json(json!({
         "token": token,
@@ -118,7 +118,7 @@ pub async fn get_join_info(
     let join_mgr = mesh.join_manager().clone();
     let info = join_mgr
         .validate_join_token(&token)
-        .map_err(|e| AppError::BadRequest(e))?;
+        .map_err(AppError::BadRequest)?;
 
     Ok(Json(json!(info)))
 }

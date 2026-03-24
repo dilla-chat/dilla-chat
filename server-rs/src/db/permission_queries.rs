@@ -49,7 +49,7 @@ pub fn get_member_roles(
          WHERE mr.member_id = ?1
          ORDER BY r.position ASC",
     )?;
-    let rows = stmt.query_map([member_id], |row| row_to_role(row))?;
+    let rows = stmt.query_map([member_id], row_to_role)?;
     rows.collect()
 }
 

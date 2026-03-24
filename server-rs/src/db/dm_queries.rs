@@ -17,7 +17,7 @@ pub fn get_dm_channel(
     conn.query_row(
         "SELECT id, team_id, type, name, created_at FROM dm_channels WHERE id = ?1",
         [id],
-        |row| row_to_dm_channel(row),
+        row_to_dm_channel,
     )
     .optional()
 }
@@ -35,7 +35,7 @@ pub fn get_dm_channel_by_members(
          JOIN dm_members dm2 ON dm2.channel_id = dc.id AND dm2.user_id = ?3
          WHERE dc.team_id = ?1 AND dc.type = 'dm'",
         params![team_id, user_id_1, user_id_2],
-        |row| row_to_dm_channel(row),
+        row_to_dm_channel,
     )
     .optional()
 }
@@ -52,7 +52,7 @@ pub fn get_user_dm_channels(
          WHERE dc.team_id = ?1 AND dm.user_id = ?2
          ORDER BY dc.created_at DESC",
     )?;
-    let rows = stmt.query_map(params![team_id, user_id], |row| row_to_dm_channel(row))?;
+    let rows = stmt.query_map(params![team_id, user_id], row_to_dm_channel)?;
     rows.collect()
 }
 
@@ -142,7 +142,7 @@ pub fn get_dm_messages(
              FROM messages WHERE dm_channel_id = ?1
              ORDER BY created_at DESC LIMIT ?2",
         )?;
-        let rows = stmt.query_map(params![dm_channel_id, limit], |row| row_to_message(row))?;
+        let rows = stmt.query_map(params![dm_channel_id, limit], row_to_message)?;
         rows.collect::<Result<Vec<_>, _>>()?
     } else {
         let mut stmt = conn.prepare(
@@ -167,7 +167,7 @@ pub fn get_last_dm_message(
         "SELECT id, channel_id, dm_channel_id, author_id, content, type, thread_id, edited_at, deleted, lamport_ts, created_at
          FROM messages WHERE dm_channel_id = ?1 ORDER BY created_at DESC LIMIT 1",
         [dm_channel_id],
-        |row| row_to_message(row),
+        row_to_message,
     )
     .optional()
 }

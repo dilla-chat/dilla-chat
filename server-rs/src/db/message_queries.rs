@@ -29,7 +29,7 @@ pub fn get_message_by_id(
         "SELECT id, channel_id, dm_channel_id, author_id, content, type, thread_id, edited_at, deleted, lamport_ts, created_at
          FROM messages WHERE id = ?1",
         [id],
-        |row| row_to_message(row),
+        row_to_message,
     )
     .optional()
 }
@@ -46,7 +46,7 @@ pub fn get_messages_by_channel(
              FROM messages WHERE channel_id = ?1 AND (thread_id IS NULL OR thread_id = '')
              ORDER BY created_at DESC LIMIT ?2",
         )?;
-        let rows = stmt.query_map(params![channel_id, limit], |row| row_to_message(row))?;
+        let rows = stmt.query_map(params![channel_id, limit], row_to_message)?;
         rows.collect::<Result<Vec<_>, _>>()?
     } else {
         let mut stmt = conn.prepare(

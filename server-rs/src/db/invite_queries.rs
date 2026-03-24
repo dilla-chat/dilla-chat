@@ -30,7 +30,7 @@ pub fn get_invite_by_token(
     conn.query_row(
         "SELECT id, team_id, created_by, token, max_uses, uses, expires_at, revoked, created_at FROM invites WHERE token = ?1",
         [token],
-        |row| row_to_invite(row),
+        row_to_invite,
     )
     .optional()
 }
@@ -42,7 +42,7 @@ pub fn get_invite_by_id(
     conn.query_row(
         "SELECT id, team_id, created_by, token, max_uses, uses, expires_at, revoked, created_at FROM invites WHERE id = ?1",
         [id],
-        |row| row_to_invite(row),
+        row_to_invite,
     )
     .optional()
 }
@@ -66,7 +66,7 @@ pub fn get_active_invites_by_team(
          FROM invites WHERE team_id = ?1 AND revoked = 0
          ORDER BY created_at DESC",
     )?;
-    let rows = stmt.query_map([team_id], |row| row_to_invite(row))?;
+    let rows = stmt.query_map([team_id], row_to_invite)?;
     rows.collect()
 }
 

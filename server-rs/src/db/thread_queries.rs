@@ -26,7 +26,7 @@ pub fn get_thread(conn: &Connection, id: &str) -> Result<Option<Thread>, rusqlit
         "SELECT id, channel_id, parent_message_id, team_id, creator_id, title, message_count, last_message_at, created_at
          FROM threads WHERE id = ?1",
         [id],
-        |row| row_to_thread(row),
+        row_to_thread,
     )
     .optional()
 }
@@ -39,7 +39,7 @@ pub fn get_thread_by_parent_message(
         "SELECT id, channel_id, parent_message_id, team_id, creator_id, title, message_count, last_message_at, created_at
          FROM threads WHERE parent_message_id = ?1",
         [parent_message_id],
-        |row| row_to_thread(row),
+        row_to_thread,
     )
     .optional()
 }
@@ -52,7 +52,7 @@ pub fn get_channel_threads(
         "SELECT id, channel_id, parent_message_id, team_id, creator_id, title, message_count, last_message_at, created_at
          FROM threads WHERE channel_id = ?1 ORDER BY created_at DESC",
     )?;
-    let rows = stmt.query_map([channel_id], |row| row_to_thread(row))?;
+    let rows = stmt.query_map([channel_id], row_to_thread)?;
     rows.collect()
 }
 
@@ -116,7 +116,7 @@ pub fn get_thread_messages(
              FROM messages WHERE thread_id = ?1
              ORDER BY created_at DESC LIMIT ?2",
         )?;
-        let rows = stmt.query_map(params![thread_id, limit], |row| row_to_message(row))?;
+        let rows = stmt.query_map(params![thread_id, limit], row_to_message)?;
         rows.collect::<Result<Vec<_>, _>>()?
     } else {
         let mut stmt = conn.prepare(
