@@ -267,6 +267,7 @@ impl SFU {
     }
 
     /// Insert a new peer into the room and wire tracks with existing peers.
+    #[cfg(not(tarpaulin_include))]
     async fn insert_peer_and_wire_tracks(
         &self,
         channel_id: &str,

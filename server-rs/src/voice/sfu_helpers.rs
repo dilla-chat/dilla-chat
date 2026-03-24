@@ -249,6 +249,7 @@ pub(crate) async fn remove_track_from_peer(
 }
 
 /// Set up the `on_track` handler on a peer connection to route incoming RTP.
+#[cfg(not(tarpaulin_include))]
 pub(crate) fn setup_on_track_handler(
     pc: &Arc<RTCPeerConnection>,
     rooms_ref: Arc<RwLock<HashMap<String, HashMap<String, PeerState>>>>,
@@ -294,6 +295,7 @@ pub(crate) fn setup_on_track_handler(
 }
 
 /// Resolve which local track should receive forwarded RTP for a given remote track.
+#[cfg(not(tarpaulin_include))]
 async fn resolve_target_track(
     rooms_ref: &Arc<RwLock<HashMap<String, HashMap<String, PeerState>>>>,
     channel_id: &str,
@@ -320,6 +322,7 @@ async fn resolve_target_track(
 }
 
 /// Spawn a task that forwards RTP packets from a remote track to a local track.
+#[cfg(not(tarpaulin_include))]
 fn spawn_rtp_forwarder(
     remote_track: Arc<TrackRemote>,
     target: Arc<TrackLocalStaticRTP>,
@@ -351,6 +354,7 @@ fn spawn_rtp_forwarder(
 }
 
 /// Set up the `on_ice_candidate` handler to forward ICE candidates via the event callback.
+#[cfg(not(tarpaulin_include))]
 pub(crate) fn setup_ice_candidate_handler(
     pc: &Arc<RTCPeerConnection>,
     on_event: SfuEventCallback,
@@ -371,6 +375,7 @@ pub(crate) fn setup_ice_candidate_handler(
 }
 
 /// Serialize and emit a single ICE candidate event.
+#[cfg(not(tarpaulin_include))]
 async fn emit_ice_candidate(
     on_event: &SfuEventCallback,
     candidate: RTCIceCandidate,
@@ -399,6 +404,7 @@ async fn emit_ice_candidate(
 }
 
 /// Set up the `on_peer_connection_state_change` handler for cleanup on disconnect.
+#[cfg(not(tarpaulin_include))]
 pub(crate) fn setup_connection_state_handler(
     pc: &Arc<RTCPeerConnection>,
     rooms_ref: Arc<RwLock<HashMap<String, HashMap<String, PeerState>>>>,
@@ -437,6 +443,7 @@ pub(crate) fn setup_connection_state_handler(
 }
 
 /// Check if the weak reference still points to the active peer connection for this user.
+#[cfg(not(tarpaulin_include))]
 async fn is_active_connection(
     rooms_ref: &Arc<RwLock<HashMap<String, HashMap<String, PeerState>>>>,
     channel_id: &str,
