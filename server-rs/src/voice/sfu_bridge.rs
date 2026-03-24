@@ -105,7 +105,6 @@ pub(crate) fn parse_ice_servers(json: &serde_json::Value) -> Result<Vec<RTCIceSe
             urls,
             username,
             credential,
-            ..Default::default()
         });
     }
 

@@ -65,44 +65,13 @@ impl JoinManager {
         }
     }
 
-    /// Generate a federation join token.
+    /// Generate a federation join token with an empty peer list.
     ///
-    /// The token is a JWT containing the team ID, team name, the list of known
-    /// peers, the creator's user ID, and a 24-hour expiry.
+    /// The token is a JWT containing the team ID, team name, the creator's
+    /// user ID, and a 24-hour expiry. Delegates to
+    /// [`generate_join_token_with_peers`] with an empty vec.
     pub fn generate_join_token(&self, creator_id: &str) -> Result<String, String> {
-        let db = self.db.clone();
-        let creator_id = creator_id.to_string();
-
-        // Fetch team info synchronously (called from spawn_blocking context).
-        let (team_id, team_name) = db
-            .with_conn(|conn| {
-                let team = db::get_first_team(conn)?;
-                match team {
-                    Some(t) => Ok((t.id, t.name)),
-                    None => Err(rusqlite::Error::QueryReturnedNoRows),
-                }
-            })
-            .map_err(|e| format!("db error: {}", e))?;
-
-        // Collect known peer addresses.
-        // Note: This is called from a sync context; the transport peer list
-        // must be gathered before calling this method if needed.
-        let now = chrono::Utc::now().timestamp();
-        let claims = JoinClaims {
-            team_id,
-            team_name,
-            peers: Vec::new(), // Populated by caller via set_peers if needed.
-            creator: creator_id,
-            iat: now,
-            exp: now + 24 * 3600, // 24 hours.
-        };
-
-        encode(
-            &Header::default(),
-            &claims,
-            &EncodingKey::from_secret(&self.secret),
-        )
-        .map_err(|e| format!("jwt encode: {}", e))
+        self.generate_join_token_with_peers(creator_id, Vec::new())
     }
 
     /// Generate a join token with explicit peer list.

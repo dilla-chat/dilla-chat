@@ -7,22 +7,27 @@ use webrtc::api::APIBuilder;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
 use webrtc::ice_transport::ice_server::RTCIceServer;
 use webrtc::peer_connection::configuration::RTCConfiguration;
-use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 use webrtc::peer_connection::RTCPeerConnection;
-use webrtc::rtp_transceiver::rtp_codec::{RTCRtpCodecCapability, RTCRtpCodecParameters, RTPCodecType};
+use webrtc::rtp_transceiver::rtp_codec::{
+    RTCRtpCodecCapability, RTCRtpCodecParameters, RTPCodecType,
+};
 use webrtc::rtp_transceiver::rtp_transceiver_direction::RTCRtpTransceiverDirection;
 use webrtc::rtp_transceiver::RTCRtpTransceiverInit;
 use webrtc::track::track_local::track_local_static_rtp::TrackLocalStaticRTP;
-use webrtc::track::track_local::{TrackLocal, TrackLocalWriter};
+use webrtc::track::track_local::TrackLocal;
 
 use super::sfu_bridge::parse_ice_servers;
 use super::sfu_helpers::{
     add_existing_tracks_to_new_peer, add_track_to_peer, handle_leave_internal,
     renegotiate_all_except_internal, renegotiate_all_internal, renegotiate_internal,
-    remove_track_from_other_peers,
+    remove_track_from_other_peers, setup_connection_state_handler, setup_ice_candidate_handler,
+    setup_on_track_handler,
 };
 use super::turn::TURNCredentialProvider;
+
+/// Type alias for the SFU event callback to reduce type complexity.
+pub(crate) type SfuEventCallback = Arc<RwLock<Option<Box<dyn Fn(String, SFUEvent) + Send + Sync>>>>;
 
 /// Events emitted by the SFU to be forwarded to clients via WebSocket.
 #[derive(Debug, Clone)]
@@ -31,12 +36,12 @@ pub enum SFUEvent {
     ICECandidate {
         channel_id: String,
         user_id: String,
-        candidate: RTCIceCandidateInit,
+        candidate: Box<RTCIceCandidateInit>,
     },
     Renegotiate {
         channel_id: String,
         user_id: String,
-        offer: RTCSessionDescription,
+        offer: Box<RTCSessionDescription>,
     },
 }
 
@@ -49,11 +54,12 @@ pub(crate) struct PeerState {
 }
 
 /// The SFU (Selective Forwarding Unit) manages WebRTC peer connections for voice channels.
+#[allow(clippy::upper_case_acronyms)]
 pub struct SFU {
     /// channel_id -> user_id -> PeerState
     pub(crate) rooms: Arc<RwLock<HashMap<String, HashMap<String, PeerState>>>>,
     pub(crate) api: webrtc::api::API,
-    pub(crate) on_event: Arc<RwLock<Option<Box<dyn Fn(String, SFUEvent) + Send + Sync>>>>,
+    pub(crate) on_event: SfuEventCallback,
     pub(crate) turn_provider: Arc<RwLock<Option<Box<dyn TURNCredentialProvider>>>>,
 }
 
@@ -199,224 +205,30 @@ impl SFU {
             webcam_track: None,
         };
 
-        // Lock rooms and set up track routing.
-        {
-            let mut rooms = self.rooms.write().await;
-            let room = rooms
-                .entry(channel_id.to_string())
-                .or_insert_with(HashMap::new);
+        // Insert peer into room and wire tracks with existing peers.
+        self.insert_peer_and_wire_tracks(channel_id, user_id, &pc, &local_track, ps)
+            .await;
 
-            // Close existing connection if any (rejoin).
-            if let Some(old) = room.remove(user_id) {
-                let _ = old.pc.close().await;
-            }
-
-            // Wire tracks between existing peers and the new peer.
-            for (other_uid, other_ps) in room.iter() {
-                if other_uid == user_id {
-                    continue;
-                }
-                add_existing_tracks_to_new_peer(&pc, other_ps, other_uid).await;
-                add_track_to_peer(&other_ps.pc, &local_track, "new audio", other_uid).await;
-            }
-
-            room.insert(user_id.to_string(), ps);
-        }
-
-        // Set up OnTrack handler: route incoming RTP by track ID prefix.
-        {
-            let rooms_ref = Arc::clone(&self.rooms);
-            let ch_id = channel_id.to_string();
-            let u_id = user_id.to_string();
-
-            pc.on_track(Box::new(move |remote_track, _receiver, _transceiver| {
-                let rooms_ref = Arc::clone(&rooms_ref);
-                let ch_id = ch_id.clone();
-                let u_id = u_id.clone();
-
-                Box::pin(async move {
-                    let track_id = remote_track.id();
-                    let codec_mime = remote_track.codec().capability.mime_type.clone();
-                    let kind = remote_track.kind();
-
-                    tracing::info!(
-                        "voice: track received channel={} user={} codec={} kind={:?} id={}",
-                        ch_id,
-                        u_id,
-                        codec_mime,
-                        kind,
-                        track_id
-                    );
-
-                    // Determine which local track to forward to.
-                    let target_track: Option<Arc<TrackLocalStaticRTP>> = {
-                        let rooms = rooms_ref.read().await;
-                        let ps = rooms
-                            .get(&ch_id)
-                            .and_then(|room| room.get(&u_id));
-
-                        match ps {
-                            Some(ps) => {
-                                if track_id.starts_with("webcam-") {
-                                    ps.webcam_track.clone()
-                                } else if track_id.starts_with("screen-") {
-                                    ps.screen_track.clone()
-                                } else if kind == RTPCodecType::Video {
-                                    // Fallback for video without prefix.
-                                    ps.screen_track
-                                        .clone()
-                                        .or_else(|| ps.webcam_track.clone())
-                                } else {
-                                    Some(Arc::clone(&ps.local_track))
-                                }
-                            }
-                            None => None,
-                        }
-                    };
-
-                    let target = match target_track {
-                        Some(t) => t,
-                        None => {
-                            tracing::warn!(
-                                "voice: no local track for incoming track kind={:?} id={} user={}",
-                                kind,
-                                track_id,
-                                u_id
-                            );
-                            return;
-                        }
-                    };
-
-                    // Forward RTP packets from remote track to local track.
-                    tokio::spawn(async move {
-                        let mut buf = vec![0u8; 1500];
-                        loop {
-                            match remote_track.read(&mut buf).await {
-                                Ok((rtp_packet, _attributes)) => {
-                                    if let Err(e) = target.write_rtp(&rtp_packet).await {
-                                        let err_str = format!("{}", e);
-                                        if err_str.contains("ErrClosedPipe")
-                                            || err_str.contains("closed pipe")
-                                        {
-                                            return;
-                                        }
-                                        tracing::debug!(
-                                            "voice: track write error user={}: {}",
-                                            u_id,
-                                            err_str
-                                        );
-                                        return;
-                                    }
-                                }
-                                Err(e) => {
-                                    let err_str = e.to_string();
-                                    if !err_str.contains("EOF") {
-                                        tracing::debug!(
-                                            "voice: track read ended user={}: {}",
-                                            u_id,
-                                            e
-                                        );
-                                    }
-                                    return;
-                                }
-                            }
-                        }
-                    });
-                })
-            }));
-        }
-
-        // Forward ICE candidates to the client.
-        {
-            let on_event = Arc::clone(&self.on_event);
-            let ch_id = channel_id.to_string();
-            let u_id = user_id.to_string();
-
-            pc.on_ice_candidate(Box::new(move |candidate| {
-                let on_event = Arc::clone(&on_event);
-                let ch_id = ch_id.clone();
-                let u_id = u_id.clone();
-
-                Box::pin(async move {
-                    let candidate = match candidate {
-                        Some(c) => c,
-                        None => return,
-                    };
-
-                    let candidate_init = match candidate.to_json() {
-                        Ok(init) => init,
-                        Err(e) => {
-                            tracing::error!("voice: failed to serialize ICE candidate: {}", e);
-                            return;
-                        }
-                    };
-
-                    let handler = on_event.read().await;
-                    if let Some(ref f) = *handler {
-                        f(
-                            ch_id.clone(),
-                            SFUEvent::ICECandidate {
-                                channel_id: ch_id,
-                                user_id: u_id,
-                                candidate: candidate_init,
-                            },
-                        );
-                    }
-                })
-            }));
-        }
-
-        // Handle connection state changes.
-        {
-            let rooms_ref = Arc::clone(&self.rooms);
-            let ch_id = channel_id.to_string();
-            let u_id = user_id.to_string();
-            let pc_weak = Arc::downgrade(&pc);
-            let on_event = Arc::clone(&self.on_event);
-
-            pc.on_peer_connection_state_change(Box::new(move |state| {
-                let rooms_ref = Arc::clone(&rooms_ref);
-                let ch_id = ch_id.clone();
-                let u_id = u_id.clone();
-                let pc_weak = pc_weak.clone();
-                let on_event = Arc::clone(&on_event);
-
-                Box::pin(async move {
-                    tracing::info!(
-                        "voice: connection state changed channel={} user={} state={:?}",
-                        ch_id,
-                        u_id,
-                        state
-                    );
-
-                    if state == RTCPeerConnectionState::Failed
-                        || state == RTCPeerConnectionState::Closed
-                    {
-                        // Only clean up if this is still the active connection for this user.
-                        let should_cleanup = {
-                            let rooms = rooms_ref.read().await;
-                            if let Some(room) = rooms.get(&ch_id) {
-                                if let Some(ps) = room.get(&u_id) {
-                                    if let Some(current_pc) = pc_weak.upgrade() {
-                                        Arc::ptr_eq(&ps.pc, &current_pc)
-                                    } else {
-                                        false
-                                    }
-                                } else {
-                                    false
-                                }
-                            } else {
-                                false
-                            }
-                        };
-
-                        if should_cleanup {
-                            handle_leave_internal(&rooms_ref, &on_event, &ch_id, &u_id).await;
-                        }
-                    }
-                })
-            }));
-        }
+        // Set up WebRTC callback handlers.
+        setup_on_track_handler(
+            &pc,
+            Arc::clone(&self.rooms),
+            channel_id.to_string(),
+            user_id.to_string(),
+        );
+        setup_ice_candidate_handler(
+            &pc,
+            Arc::clone(&self.on_event),
+            channel_id.to_string(),
+            user_id.to_string(),
+        );
+        setup_connection_state_handler(
+            &pc,
+            Arc::clone(&self.rooms),
+            Arc::clone(&self.on_event),
+            channel_id.to_string(),
+            user_id.to_string(),
+        );
 
         // Add a recv-only audio transceiver so the server can receive audio from the client.
         if let Err(e) = pc
@@ -452,6 +264,38 @@ impl SFU {
         });
 
         Ok(offer)
+    }
+
+    /// Insert a new peer into the room and wire tracks with existing peers.
+    #[cfg(not(tarpaulin_include))]
+    async fn insert_peer_and_wire_tracks(
+        &self,
+        channel_id: &str,
+        user_id: &str,
+        pc: &Arc<RTCPeerConnection>,
+        local_track: &Arc<TrackLocalStaticRTP>,
+        ps: PeerState,
+    ) {
+        let mut rooms = self.rooms.write().await;
+        let room = rooms
+            .entry(channel_id.to_string())
+            .or_insert_with(HashMap::new);
+
+        // Close existing connection if any (rejoin).
+        if let Some(old) = room.remove(user_id) {
+            let _ = old.pc.close().await;
+        }
+
+        // Wire tracks between existing peers and the new peer.
+        for (other_uid, other_ps) in room.iter() {
+            if other_uid == user_id {
+                continue;
+            }
+            add_existing_tracks_to_new_peer(pc, other_ps, other_uid).await;
+            add_track_to_peer(&other_ps.pc, local_track, "new audio", other_uid).await;
+        }
+
+        room.insert(user_id.to_string(), ps);
     }
 
     /// Handle an SDP answer from a client.

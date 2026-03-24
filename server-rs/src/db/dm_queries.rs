@@ -1,5 +1,5 @@
 use super::models::*;
-use super::now_str;
+use super::{now_str, row_to_message};
 use rusqlite::{params, Connection, OptionalExtension};
 
 pub fn create_dm_channel(conn: &Connection, dm: &DMChannel) -> Result<(), rusqlite::Error> {
@@ -17,7 +17,7 @@ pub fn get_dm_channel(
     conn.query_row(
         "SELECT id, team_id, type, name, created_at FROM dm_channels WHERE id = ?1",
         [id],
-        |row| row_to_dm_channel(row),
+        row_to_dm_channel,
     )
     .optional()
 }
@@ -35,7 +35,7 @@ pub fn get_dm_channel_by_members(
          JOIN dm_members dm2 ON dm2.channel_id = dc.id AND dm2.user_id = ?3
          WHERE dc.team_id = ?1 AND dc.type = 'dm'",
         params![team_id, user_id_1, user_id_2],
-        |row| row_to_dm_channel(row),
+        row_to_dm_channel,
     )
     .optional()
 }
@@ -52,7 +52,7 @@ pub fn get_user_dm_channels(
          WHERE dc.team_id = ?1 AND dm.user_id = ?2
          ORDER BY dc.created_at DESC",
     )?;
-    let rows = stmt.query_map(params![team_id, user_id], |row| row_to_dm_channel(row))?;
+    let rows = stmt.query_map(params![team_id, user_id], row_to_dm_channel)?;
     rows.collect()
 }
 
@@ -142,7 +142,7 @@ pub fn get_dm_messages(
              FROM messages WHERE dm_channel_id = ?1
              ORDER BY created_at DESC LIMIT ?2",
         )?;
-        let rows = stmt.query_map(params![dm_channel_id, limit], |row| row_to_message(row))?;
+        let rows = stmt.query_map(params![dm_channel_id, limit], row_to_message)?;
         rows.collect::<Result<Vec<_>, _>>()?
     } else {
         let mut stmt = conn.prepare(
@@ -167,7 +167,7 @@ pub fn get_last_dm_message(
         "SELECT id, channel_id, dm_channel_id, author_id, content, type, thread_id, edited_at, deleted, lamport_ts, created_at
          FROM messages WHERE dm_channel_id = ?1 ORDER BY created_at DESC LIMIT 1",
         [dm_channel_id],
-        |row| row_to_message(row),
+        row_to_message,
     )
     .optional()
 }
@@ -182,21 +182,6 @@ fn row_to_dm_channel(row: &rusqlite::Row) -> Result<DMChannel, rusqlite::Error> 
     })
 }
 
-fn row_to_message(row: &rusqlite::Row) -> Result<Message, rusqlite::Error> {
-    Ok(Message {
-        id: row.get(0)?,
-        channel_id: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
-        dm_channel_id: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
-        author_id: row.get(3)?,
-        content: row.get(4)?,
-        msg_type: row.get(5)?,
-        thread_id: row.get::<_, Option<String>>(6)?.unwrap_or_default(),
-        edited_at: row.get(7)?,
-        deleted: row.get::<_, i32>(8)? != 0,
-        lamport_ts: row.get(9)?,
-        created_at: row.get(10)?,
-    })
-}
 
 #[cfg(test)]
 mod tests {

@@ -206,6 +206,7 @@ impl AuthService {
 
     /// Validate a refresh token and return the user_id.
     /// Rejects access tokens (those without token_type == "refresh").
+    #[allow(dead_code)] // Public API for future use (token refresh endpoint)
     pub fn validate_refresh_token(&self, token: &str) -> Result<String, AppError> {
         let mut validation = Validation::default();
         validation.algorithms = vec![jsonwebtoken::Algorithm::HS256];
@@ -227,6 +228,7 @@ impl AuthService {
     }
 
     /// Validate a refresh token and issue a new access token.
+    #[allow(dead_code)] // Public API for future use (token refresh endpoint)
     pub fn refresh_access_token(&self, refresh_token: &str) -> Result<String, AppError> {
         let user_id = self.validate_refresh_token(refresh_token)?;
         self.generate_jwt(&user_id)

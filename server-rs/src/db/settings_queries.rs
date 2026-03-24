@@ -2,6 +2,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 // ── Settings queries ────────────────────────────────────────────────────────
 
+#[allow(dead_code)] // Public API for future use (server settings management)
 pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>, rusqlite::Error> {
     conn.query_row(
         "SELECT value FROM settings WHERE key = ?1",
@@ -11,6 +12,7 @@ pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>, rusql
     .optional()
 }
 
+#[allow(dead_code)] // Public API for future use (server settings management)
 pub fn set_setting(
     conn: &Connection,
     key: &str,

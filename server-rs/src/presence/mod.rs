@@ -4,6 +4,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
+/// Type alias for presence event callbacks to reduce type complexity.
+type PresenceCallback = RwLock<Option<Box<dyn Fn(&str, &str, &str) + Send + Sync>>>;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Status {
@@ -46,10 +49,8 @@ pub struct PresenceManager {
     presences: Arc<RwLock<HashMap<String, UserPresence>>>,
     #[allow(dead_code)]
     stop_tx: Option<tokio::sync::mpsc::Sender<()>>,
-    pub on_broadcast:
-        RwLock<Option<Box<dyn Fn(&str, &str, &str) + Send + Sync>>>,
-    pub on_federation:
-        RwLock<Option<Box<dyn Fn(&str, &str, &str) + Send + Sync>>>,
+    pub on_broadcast: PresenceCallback,
+    pub on_federation: PresenceCallback,
 }
 
 impl PresenceManager {
@@ -122,7 +123,6 @@ impl PresenceManager {
                 let c = entry.custom_status.clone();
                 drop(map);
                 self.broadcast(user_id, &s, &c).await;
-                return;
             }
         }
     }

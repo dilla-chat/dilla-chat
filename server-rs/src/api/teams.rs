@@ -5,6 +5,7 @@ use axum::{
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+use crate::api::helpers::{json_ok, json_ok_true, map_not_found, require_permission, require_team_member, spawn_db};
 use crate::api::AppState;
 use crate::auth::UserId;
 use crate::db;
@@ -39,17 +40,12 @@ pub async fn list(
     Extension(UserId(user_id)): Extension<UserId>,
     State(state): State<AppState>,
 ) -> Result<Json<Value>, AppError> {
-    let db = state.db.clone();
-    let uid = user_id.clone();
-
-    let teams = tokio::task::spawn_blocking(move || {
-        db.with_conn(|conn| db::get_teams_by_user(conn, &uid))
+    let teams = spawn_db(state.db.clone(), move |conn| {
+        db::get_teams_by_user(conn, &user_id)
     })
-    .await
-    .map_err(|e| AppError::Internal(format!("task join: {}", e)))?
-    .map_err(|e| AppError::Internal(format!("db: {}", e)))?;
+    .await?;
 
-    Ok(Json(json!(teams)))
+    json_ok(teams)
 }
 
 pub async fn create(
@@ -61,76 +57,69 @@ pub async fn create(
         return Err(AppError::BadRequest("name is required".into()));
     }
 
-    let db = state.db.clone();
-    let uid = user_id.clone();
+    let team = spawn_db(state.db.clone(), move |conn| {
+        let now = db::now_str();
+        let team_id = db::new_id();
 
-    let team = tokio::task::spawn_blocking(move || {
-        db.with_conn(|conn| {
-            let now = db::now_str();
-            let team_id = db::new_id();
+        let team = db::Team {
+            id: team_id.clone(),
+            name: body.name.clone(),
+            description: body.description.clone(),
+            icon_url: String::new(),
+            created_by: user_id.clone(),
+            max_file_size: 25 * 1024 * 1024,
+            allow_member_invites: true,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+        };
+        db::create_team(conn, &team)?;
 
-            let team = db::Team {
-                id: team_id.clone(),
-                name: body.name.clone(),
-                description: body.description.clone(),
-                icon_url: String::new(),
-                created_by: uid.clone(),
-                max_file_size: 25 * 1024 * 1024,
-                allow_member_invites: true,
-                created_at: now.clone(),
-                updated_at: now.clone(),
-            };
-            db::create_team(conn, &team)?;
+        // Add creator as member.
+        let member = db::Member {
+            id: db::new_id(),
+            team_id: team_id.clone(),
+            user_id: user_id.clone(),
+            nickname: String::new(),
+            joined_at: now.clone(),
+            invited_by: String::new(),
+            updated_at: String::new(),
+        };
+        db::create_member(conn, &member)?;
 
-            // Add creator as member.
-            let member = db::Member {
-                id: db::new_id(),
-                team_id: team_id.clone(),
-                user_id: uid.clone(),
-                nickname: String::new(),
-                joined_at: now.clone(),
-                invited_by: String::new(),
-                updated_at: String::new(),
-            };
-            db::create_member(conn, &member)?;
+        // Create default role.
+        let role = db::Role {
+            id: db::new_id(),
+            team_id: team_id.clone(),
+            name: "everyone".into(),
+            color: "#99AAB5".into(),
+            position: 0,
+            permissions: db::PERM_SEND_MESSAGES | db::PERM_CREATE_INVITES,
+            is_default: true,
+            created_at: now.clone(),
+            updated_at: String::new(),
+        };
+        db::create_role(conn, &role)?;
 
-            // Create default role.
-            let role = db::Role {
-                id: db::new_id(),
-                team_id: team_id.clone(),
-                name: "everyone".into(),
-                color: "#99AAB5".into(),
-                position: 0,
-                permissions: db::PERM_SEND_MESSAGES | db::PERM_CREATE_INVITES,
-                is_default: true,
-                created_at: now.clone(),
-                updated_at: String::new(),
-            };
-            db::create_role(conn, &role)?;
+        // Create #general channel.
+        let channel = db::Channel {
+            id: db::new_id(),
+            team_id: team_id.clone(),
+            name: "general".into(),
+            topic: "General discussion".into(),
+            channel_type: "text".into(),
+            position: 0,
+            category: String::new(),
+            created_by: user_id.clone(),
+            created_at: now.clone(),
+            updated_at: now.clone(),
+        };
+        db::create_channel(conn, &channel)?;
 
-            // Create #general channel.
-            let channel = db::Channel {
-                id: db::new_id(),
-                team_id: team_id.clone(),
-                name: "general".into(),
-                topic: "General discussion".into(),
-                channel_type: "text".into(),
-                position: 0,
-                category: String::new(),
-                created_by: uid.clone(),
-                created_at: now.clone(),
-                updated_at: now.clone(),
-            };
-            db::create_channel(conn, &channel)?;
-
-            Ok(team)
-        })
+        Ok(team)
     })
-    .await
-    .map_err(|e| AppError::Internal(format!("task join: {}", e)))?
-    .map_err(|e| AppError::Internal(format!("db: {}", e)))?;
+    .await?;
 
-    Ok(Json(json!(team)))
+    json_ok(team)
 }
 
 pub async fn get_team(
@@ -138,35 +127,15 @@ pub async fn get_team(
     State(state): State<AppState>,
     Path(team_id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
-    let db = state.db.clone();
-    let tid = team_id.clone();
-    let uid = user_id.clone();
-
-    let team = tokio::task::spawn_blocking(move || {
-        db.with_conn(|conn| {
-            // Verify membership.
-            let member = db::get_member_by_user_and_team(conn, &uid, &tid)?;
-            if member.is_none() {
-                return Err(rusqlite::Error::InvalidParameterName(
-                    "not a member of this team".into(),
-                ));
-            }
-            db::get_team(conn, &tid)
-        })
+    let team = spawn_db(state.db.clone(), move |conn| {
+        require_team_member(conn, &user_id, &team_id)?;
+        db::get_team(conn, &team_id)?
+            .ok_or(rusqlite::Error::QueryReturnedNoRows)
     })
     .await
-    .map_err(|e| AppError::Internal(format!("task join: {}", e)))?;
+    .map_err(map_not_found("team"))?;
 
-    let team = match team {
-        Ok(Some(t)) => t,
-        Ok(None) => return Err(AppError::NotFound("team not found".into())),
-        Err(rusqlite::Error::InvalidParameterName(msg)) => {
-            return Err(AppError::Forbidden(msg));
-        }
-        Err(e) => return Err(AppError::Internal(format!("db: {}", e))),
-    };
-
-    Ok(Json(json!(team)))
+    json_ok(team)
 }
 
 pub async fn update(
@@ -175,44 +144,29 @@ pub async fn update(
     Path(team_id): Path<String>,
     Json(body): Json<UpdateTeamRequest>,
 ) -> Result<Json<Value>, AppError> {
-    let db = state.db.clone();
-    let tid = team_id.clone();
-    let uid = user_id.clone();
+    let team = spawn_db(state.db.clone(), move |conn| {
+        require_permission(conn, &user_id, &team_id, db::PERM_MANAGE_TEAM)?;
 
-    let result = tokio::task::spawn_blocking(move || {
-        db.with_conn(|conn| {
-            if !db::user_has_permission(conn, &uid, &tid, db::PERM_MANAGE_TEAM)? {
-                return Err(rusqlite::Error::InvalidParameterName(
-                    "insufficient permissions".into(),
-                ));
-            }
+        let mut team = db::get_team(conn, &team_id)?
+            .ok_or(rusqlite::Error::QueryReturnedNoRows)?;
 
-            let mut team = db::get_team(conn, &tid)?
-                .ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)?;
+        if let Some(ref name) = body.name {
+            team.name = name.clone();
+        }
+        if let Some(ref desc) = body.description {
+            team.description = desc.clone();
+        }
+        if let Some(ref icon) = body.icon_url {
+            team.icon_url = icon.clone();
+        }
 
-            if let Some(ref name) = body.name {
-                team.name = name.clone();
-            }
-            if let Some(ref desc) = body.description {
-                team.description = desc.clone();
-            }
-            if let Some(ref icon) = body.icon_url {
-                team.icon_url = icon.clone();
-            }
-
-            db::update_team(conn, &team)?;
-            Ok(team)
-        })
+        db::update_team(conn, &team)?;
+        Ok(team)
     })
     .await
-    .map_err(|e| AppError::Internal(format!("task join: {}", e)))?;
+    .map_err(map_not_found("team"))?;
 
-    match result {
-        Ok(team) => Ok(Json(json!(team))),
-        Err(rusqlite::Error::InvalidParameterName(msg)) => Err(AppError::Forbidden(msg)),
-        Err(rusqlite::Error::QueryReturnedNoRows) => Err(AppError::NotFound("team not found".into())),
-        Err(e) => Err(AppError::Internal(format!("db: {}", e))),
-    }
+    json_ok(team)
 }
 
 pub async fn list_members(
@@ -220,41 +174,24 @@ pub async fn list_members(
     State(state): State<AppState>,
     Path(team_id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
-    let db = state.db.clone();
-    let tid = team_id.clone();
-    let uid = user_id.clone();
+    let members = spawn_db(state.db.clone(), move |conn| {
+        require_team_member(conn, &user_id, &team_id)?;
 
-    let result = tokio::task::spawn_blocking(move || {
-        db.with_conn(|conn| {
-            // Verify membership.
-            let member = db::get_member_by_user_and_team(conn, &uid, &tid)?;
-            if member.is_none() {
-                return Err(rusqlite::Error::InvalidParameterName(
-                    "not a member of this team".into(),
-                ));
-            }
-
-            let members = db::get_members_by_team(conn, &tid)?;
-            let result: Vec<Value> = members
-                .into_iter()
-                .map(|(m, u)| {
-                    json!({
-                        "member": m,
-                        "user": u,
-                    })
+        let members = db::get_members_by_team(conn, &team_id)?;
+        let result: Vec<Value> = members
+            .into_iter()
+            .map(|(m, u)| {
+                json!({
+                    "member": m,
+                    "user": u,
                 })
-                .collect();
-            Ok(result)
-        })
+            })
+            .collect();
+        Ok(result)
     })
-    .await
-    .map_err(|e| AppError::Internal(format!("task join: {}", e)))?;
+    .await?;
 
-    match result {
-        Ok(members) => Ok(Json(json!(members))),
-        Err(rusqlite::Error::InvalidParameterName(msg)) => Err(AppError::Forbidden(msg)),
-        Err(e) => Err(AppError::Internal(format!("db: {}", e))),
-    }
+    json_ok(members)
 }
 
 pub async fn update_member(
@@ -263,43 +200,26 @@ pub async fn update_member(
     Path((team_id, target_user_id)): Path<(String, String)>,
     Json(body): Json<UpdateMemberRequest>,
 ) -> Result<Json<Value>, AppError> {
-    let db = state.db.clone();
-    let tid = team_id.clone();
-    let uid = user_id.clone();
+    let member = spawn_db(state.db.clone(), move |conn| {
+        // Users can update their own nickname; admins can update anyone's.
+        if user_id != target_user_id {
+            require_permission(conn, &user_id, &team_id, db::PERM_MANAGE_MEMBERS)?;
+        }
 
-    let result = tokio::task::spawn_blocking(move || {
-        db.with_conn(|conn| {
-            // Users can update their own nickname; admins can update anyone's.
-            if uid != target_user_id
-                && !db::user_has_permission(conn, &uid, &tid, db::PERM_MANAGE_MEMBERS)?
-            {
-                return Err(rusqlite::Error::InvalidParameterName(
-                    "insufficient permissions".into(),
-                ));
-            }
+        let mut member = db::get_member_by_user_and_team(conn, &target_user_id, &team_id)?
+            .ok_or(rusqlite::Error::QueryReturnedNoRows)?;
 
-            let mut member = db::get_member_by_user_and_team(conn, &target_user_id, &tid)?
-                .ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)?;
+        if let Some(ref nick) = body.nickname {
+            member.nickname = nick.clone();
+        }
 
-            if let Some(ref nick) = body.nickname {
-                member.nickname = nick.clone();
-            }
-
-            db::update_member(conn, &member)?;
-            Ok(member)
-        })
+        db::update_member(conn, &member)?;
+        Ok(member)
     })
     .await
-    .map_err(|e| AppError::Internal(format!("task join: {}", e)))?;
+    .map_err(map_not_found("member"))?;
 
-    match result {
-        Ok(member) => Ok(Json(json!(member))),
-        Err(rusqlite::Error::InvalidParameterName(msg)) => Err(AppError::Forbidden(msg)),
-        Err(rusqlite::Error::QueryReturnedNoRows) => {
-            Err(AppError::NotFound("member not found".into()))
-        }
-        Err(e) => Err(AppError::Internal(format!("db: {}", e))),
-    }
+    json_ok(member)
 }
 
 pub async fn kick_member(
@@ -311,43 +231,26 @@ pub async fn kick_member(
         return Err(AppError::BadRequest("cannot kick yourself".into()));
     }
 
-    let db = state.db.clone();
-    let tid = team_id.clone();
-    let uid = user_id.clone();
+    spawn_db(state.db.clone(), move |conn| {
+        require_permission(conn, &user_id, &team_id, db::PERM_MANAGE_MEMBERS)?;
 
-    let result = tokio::task::spawn_blocking(move || {
-        db.with_conn(|conn| {
-            if !db::user_has_permission(conn, &uid, &tid, db::PERM_MANAGE_MEMBERS)? {
-                return Err(rusqlite::Error::InvalidParameterName(
-                    "insufficient permissions".into(),
-                ));
-            }
+        // Check target is actually a member.
+        let member = db::get_member_by_user_and_team(conn, &target_user_id, &team_id)?;
+        if member.is_none() {
+            return Err(rusqlite::Error::QueryReturnedNoRows);
+        }
 
-            // Check target is actually a member.
-            let member = db::get_member_by_user_and_team(conn, &target_user_id, &tid)?;
-            if member.is_none() {
-                return Err(rusqlite::Error::QueryReturnedNoRows);
-            }
-
-            // Clear roles and remove member.
-            if let Some(m) = member {
-                db::clear_member_roles(conn, &m.id)?;
-            }
-            db::delete_member(conn, &target_user_id, &tid)?;
-            Ok(())
-        })
+        // Clear roles and remove member.
+        if let Some(m) = member {
+            db::clear_member_roles(conn, &m.id)?;
+        }
+        db::delete_member(conn, &target_user_id, &team_id)?;
+        Ok(())
     })
     .await
-    .map_err(|e| AppError::Internal(format!("task join: {}", e)))?;
+    .map_err(map_not_found("member"))?;
 
-    match result {
-        Ok(()) => Ok(Json(json!({ "ok": true }))),
-        Err(rusqlite::Error::InvalidParameterName(msg)) => Err(AppError::Forbidden(msg)),
-        Err(rusqlite::Error::QueryReturnedNoRows) => {
-            Err(AppError::NotFound("member not found".into()))
-        }
-        Err(e) => Err(AppError::Internal(format!("db: {}", e))),
-    }
+    json_ok_true()
 }
 
 pub async fn ban_member(
@@ -360,52 +263,37 @@ pub async fn ban_member(
         return Err(AppError::BadRequest("cannot ban yourself".into()));
     }
 
-    let db = state.db.clone();
-    let tid = team_id.clone();
-    let uid = user_id.clone();
+    let ban = spawn_db(state.db.clone(), move |conn| {
+        require_permission(conn, &user_id, &team_id, db::PERM_MANAGE_MEMBERS)?;
 
-    let result = tokio::task::spawn_blocking(move || {
-        db.with_conn(|conn| {
-            if !db::user_has_permission(conn, &uid, &tid, db::PERM_MANAGE_MEMBERS)? {
-                return Err(rusqlite::Error::InvalidParameterName(
-                    "insufficient permissions".into(),
-                ));
-            }
+        // Check if already banned.
+        if db::get_ban(conn, &team_id, &target_user_id)?.is_some() {
+            return Err(rusqlite::Error::InvalidParameterName(
+                "user is already banned".into(),
+            ));
+        }
 
-            // Check if already banned.
-            if db::get_ban(conn, &tid, &target_user_id)?.is_some() {
-                return Err(rusqlite::Error::InvalidParameterName(
-                    "user is already banned".into(),
-                ));
-            }
+        // Create ban.
+        let ban = db::Ban {
+            team_id: team_id.clone(),
+            user_id: target_user_id.clone(),
+            banned_by: user_id.clone(),
+            reason: body.reason.clone(),
+            created_at: db::now_str(),
+        };
+        db::create_ban(conn, &ban)?;
 
-            // Create ban.
-            let ban = db::Ban {
-                team_id: tid.clone(),
-                user_id: target_user_id.clone(),
-                banned_by: uid.clone(),
-                reason: body.reason.clone(),
-                created_at: db::now_str(),
-            };
-            db::create_ban(conn, &ban)?;
+        // Remove from team.
+        if let Some(m) = db::get_member_by_user_and_team(conn, &target_user_id, &team_id)? {
+            db::clear_member_roles(conn, &m.id)?;
+        }
+        db::delete_member(conn, &target_user_id, &team_id)?;
 
-            // Remove from team.
-            if let Some(m) = db::get_member_by_user_and_team(conn, &target_user_id, &tid)? {
-                db::clear_member_roles(conn, &m.id)?;
-            }
-            db::delete_member(conn, &target_user_id, &tid)?;
-
-            Ok(ban)
-        })
+        Ok(ban)
     })
-    .await
-    .map_err(|e| AppError::Internal(format!("task join: {}", e)))?;
+    .await?;
 
-    match result {
-        Ok(ban) => Ok(Json(json!(ban))),
-        Err(rusqlite::Error::InvalidParameterName(msg)) => Err(AppError::Forbidden(msg)),
-        Err(e) => Err(AppError::Internal(format!("db: {}", e))),
-    }
+    json_ok(ban)
 }
 
 pub async fn unban_member(
@@ -413,36 +301,17 @@ pub async fn unban_member(
     State(state): State<AppState>,
     Path((team_id, target_user_id)): Path<(String, String)>,
 ) -> Result<Json<Value>, AppError> {
-    let db = state.db.clone();
-    let tid = team_id.clone();
-    let uid = user_id.clone();
+    spawn_db(state.db.clone(), move |conn| {
+        require_permission(conn, &user_id, &team_id, db::PERM_MANAGE_MEMBERS)?;
 
-    let result = tokio::task::spawn_blocking(move || {
-        db.with_conn(|conn| {
-            if !db::user_has_permission(conn, &uid, &tid, db::PERM_MANAGE_MEMBERS)? {
-                return Err(rusqlite::Error::InvalidParameterName(
-                    "insufficient permissions".into(),
-                ));
-            }
+        if db::get_ban(conn, &team_id, &target_user_id)?.is_none() {
+            return Err(rusqlite::Error::QueryReturnedNoRows);
+        }
 
-            let ban = db::get_ban(conn, &tid, &target_user_id)?;
-            if ban.is_none() {
-                return Err(rusqlite::Error::QueryReturnedNoRows);
-            }
-
-            db::delete_ban(conn, &tid, &target_user_id)?;
-            Ok(())
-        })
+        db::delete_ban(conn, &team_id, &target_user_id)
     })
     .await
-    .map_err(|e| AppError::Internal(format!("task join: {}", e)))?;
+    .map_err(map_not_found("ban"))?;
 
-    match result {
-        Ok(()) => Ok(Json(json!({ "ok": true }))),
-        Err(rusqlite::Error::InvalidParameterName(msg)) => Err(AppError::Forbidden(msg)),
-        Err(rusqlite::Error::QueryReturnedNoRows) => {
-            Err(AppError::NotFound("ban not found".into()))
-        }
-        Err(e) => Err(AppError::Internal(format!("db: {}", e))),
-    }
+    json_ok_true()
 }

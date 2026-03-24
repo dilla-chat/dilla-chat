@@ -1,5 +1,5 @@
 use super::models::*;
-use super::now_str;
+use super::{now_str, row_to_message};
 use rusqlite::{params, Connection, OptionalExtension};
 
 pub fn create_thread(conn: &Connection, thread: &Thread) -> Result<(), rusqlite::Error> {
@@ -26,7 +26,7 @@ pub fn get_thread(conn: &Connection, id: &str) -> Result<Option<Thread>, rusqlit
         "SELECT id, channel_id, parent_message_id, team_id, creator_id, title, message_count, last_message_at, created_at
          FROM threads WHERE id = ?1",
         [id],
-        |row| row_to_thread(row),
+        row_to_thread,
     )
     .optional()
 }
@@ -39,7 +39,7 @@ pub fn get_thread_by_parent_message(
         "SELECT id, channel_id, parent_message_id, team_id, creator_id, title, message_count, last_message_at, created_at
          FROM threads WHERE parent_message_id = ?1",
         [parent_message_id],
-        |row| row_to_thread(row),
+        row_to_thread,
     )
     .optional()
 }
@@ -52,7 +52,7 @@ pub fn get_channel_threads(
         "SELECT id, channel_id, parent_message_id, team_id, creator_id, title, message_count, last_message_at, created_at
          FROM threads WHERE channel_id = ?1 ORDER BY created_at DESC",
     )?;
-    let rows = stmt.query_map([channel_id], |row| row_to_thread(row))?;
+    let rows = stmt.query_map([channel_id], row_to_thread)?;
     rows.collect()
 }
 
@@ -116,7 +116,7 @@ pub fn get_thread_messages(
              FROM messages WHERE thread_id = ?1
              ORDER BY created_at DESC LIMIT ?2",
         )?;
-        let rows = stmt.query_map(params![thread_id, limit], |row| row_to_message(row))?;
+        let rows = stmt.query_map(params![thread_id, limit], row_to_message)?;
         rows.collect::<Result<Vec<_>, _>>()?
     } else {
         let mut stmt = conn.prepare(
@@ -147,21 +147,6 @@ fn row_to_thread(row: &rusqlite::Row) -> Result<Thread, rusqlite::Error> {
     })
 }
 
-fn row_to_message(row: &rusqlite::Row) -> Result<Message, rusqlite::Error> {
-    Ok(Message {
-        id: row.get(0)?,
-        channel_id: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
-        dm_channel_id: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
-        author_id: row.get(3)?,
-        content: row.get(4)?,
-        msg_type: row.get(5)?,
-        thread_id: row.get::<_, Option<String>>(6)?.unwrap_or_default(),
-        edited_at: row.get(7)?,
-        deleted: row.get::<_, i32>(8)? != 0,
-        lamport_ts: row.get(9)?,
-        created_at: row.get(10)?,
-    })
-}
 
 #[cfg(test)]
 mod tests {

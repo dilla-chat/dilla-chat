@@ -69,6 +69,16 @@ pub fn json_ok_true() -> Result<Json<Value>, AppError> {
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
+/// Return a closure that remaps `AppError::NotFound` to a custom entity message.
+///
+/// Usage: `.map_err(map_not_found("message"))`
+pub fn map_not_found(entity: &'static str) -> impl FnOnce(AppError) -> AppError {
+    move |e| match e {
+        AppError::NotFound(_) => AppError::NotFound(format!("{} not found", entity)),
+        other => other,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -138,6 +148,28 @@ mod tests {
         assert!(result.is_ok());
         let json = result.unwrap();
         assert_eq!(json.0, serde_json::json!([1, 2, 3]));
+    }
+
+    // ── map_not_found tests ──────────────────────────────────────────────
+
+    #[test]
+    fn map_not_found_remaps_not_found() {
+        let mapper = map_not_found("channel");
+        let err = mapper(AppError::NotFound("not found".into()));
+        match err {
+            AppError::NotFound(msg) => assert_eq!(msg, "channel not found"),
+            other => panic!("expected NotFound, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn map_not_found_passes_through_other_errors() {
+        let mapper = map_not_found("channel");
+        let err = mapper(AppError::Forbidden("denied".into()));
+        match err {
+            AppError::Forbidden(msg) => assert_eq!(msg, "denied"),
+            other => panic!("expected Forbidden, got {:?}", other),
+        }
     }
 
     // ── json_ok_true tests ──────────────────────────────────────────────

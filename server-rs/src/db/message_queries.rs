@@ -1,5 +1,5 @@
 use super::models::*;
-use super::now_str;
+use super::{now_str, row_to_message};
 use rusqlite::{params, Connection, OptionalExtension};
 
 pub fn create_message(conn: &Connection, msg: &Message) -> Result<(), rusqlite::Error> {
@@ -29,7 +29,7 @@ pub fn get_message_by_id(
         "SELECT id, channel_id, dm_channel_id, author_id, content, type, thread_id, edited_at, deleted, lamport_ts, created_at
          FROM messages WHERE id = ?1",
         [id],
-        |row| row_to_message(row),
+        row_to_message,
     )
     .optional()
 }
@@ -46,7 +46,7 @@ pub fn get_messages_by_channel(
              FROM messages WHERE channel_id = ?1 AND (thread_id IS NULL OR thread_id = '')
              ORDER BY created_at DESC LIMIT ?2",
         )?;
-        let rows = stmt.query_map(params![channel_id, limit], |row| row_to_message(row))?;
+        let rows = stmt.query_map(params![channel_id, limit], row_to_message)?;
         rows.collect::<Result<Vec<_>, _>>()?
     } else {
         let mut stmt = conn.prepare(
@@ -83,21 +83,6 @@ pub fn soft_delete_message(conn: &Connection, id: &str) -> Result<(), rusqlite::
     Ok(())
 }
 
-fn row_to_message(row: &rusqlite::Row) -> Result<Message, rusqlite::Error> {
-    Ok(Message {
-        id: row.get(0)?,
-        channel_id: row.get(1)?,
-        dm_channel_id: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
-        author_id: row.get(3)?,
-        content: row.get(4)?,
-        msg_type: row.get(5)?,
-        thread_id: row.get::<_, Option<String>>(6)?.unwrap_or_default(),
-        edited_at: row.get(7)?,
-        deleted: row.get::<_, i32>(8)? != 0,
-        lamport_ts: row.get(9)?,
-        created_at: row.get(10)?,
-    })
-}
 
 #[cfg(test)]
 mod tests {

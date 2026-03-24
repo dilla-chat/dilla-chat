@@ -26,7 +26,7 @@ pub fn get_user_by_id(conn: &Connection, id: &str) -> Result<Option<User>, rusql
     conn.query_row(
         "SELECT id, username, display_name, public_key, avatar_url, status_text, status_type, is_admin, created_at, updated_at FROM users WHERE id = ?1",
         [id],
-        |row| row_to_user(row),
+        row_to_user,
     )
     .optional()
 }
@@ -38,7 +38,7 @@ pub fn get_user_by_username(
     conn.query_row(
         "SELECT id, username, display_name, public_key, avatar_url, status_text, status_type, is_admin, created_at, updated_at FROM users WHERE username = ?1",
         [username],
-        |row| row_to_user(row),
+        row_to_user,
     )
     .optional()
 }
@@ -50,7 +50,7 @@ pub fn get_user_by_public_key(
     conn.query_row(
         "SELECT id, username, display_name, public_key, avatar_url, status_text, status_type, is_admin, created_at, updated_at FROM users WHERE public_key = ?1",
         [public_key],
-        |row| row_to_user(row),
+        row_to_user,
     )
     .optional()
 }

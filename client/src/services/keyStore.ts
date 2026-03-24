@@ -297,30 +297,21 @@ export interface IdentityKeys {
   dhKeyPair: X25519KeyPair;       // X25519 identity DH keypair
 }
 
-/**
- * Generate a new identity, encrypt and store it.
- * Returns the public key hex and a recovery key.
- */
-export async function createIdentity(
-  serverUrl: string,
-  prfDerivedKey: Uint8Array,
-  prfSalt: Uint8Array,
-  credentials: PasskeyCredential[],
-): Promise<{ publicKeyB64: string; publicKeyHex: string; recoveryKey: Uint8Array; identity: IdentityKeys }> {
-  // Generate Ed25519 identity keypair
+/** Shared identity generation: keypairs, recovery key, MEK encryption */
+async function generateAndEncryptIdentity(): Promise<{
+  ed25519: { privateKey: CryptoKey; publicKey: CryptoKey; publicKeyBytes: Uint8Array };
+  dhKeyPair: X25519KeyPair;
+  recoveryKey: Uint8Array;
+  encrypted: Uint8Array;
+  mek: Uint8Array;
+}> {
   const ed25519 = await generateEd25519KeyPair();
-
-  // Generate X25519 identity DH keypair
   const dhKeyPair = await generateX25519KeyPair();
-
-  // Generate recovery key
   const recoveryKey = randomBytes(32);
 
-  // Export private keys for encryption
   const signingKeyPkcs8 = await exportEd25519PrivateKey(ed25519.privateKey);
   const dhPrivatePkcs8 = await exportX25519PrivateKey(dhKeyPair.privateKey);
 
-  // Payload: signing key + DH key + public key (all serialized)
   const payload = JSON.stringify({
     signing_key_pkcs8: Array.from(signingKeyPkcs8),
     dh_private_pkcs8: Array.from(dhPrivatePkcs8),
@@ -328,35 +319,21 @@ export async function createIdentity(
     public_key: Array.from(ed25519.publicKeyBytes),
   });
 
-  // Generate MEK and encrypt payload
   const mek = randomBytes(32);
   const encrypted = await aesGcmEncrypt(mek, encoder.encode(payload));
 
-  // Wrap MEK with passkey PRF
-  const keySlot = await wrapMekWithPrf(mek, prfDerivedKey, serverUrl, prfSalt, credentials);
+  return { ed25519, dhKeyPair, recoveryKey, encrypted, mek };
+}
 
-  // Wrap MEK with recovery key
-  const recoverySlot = await wrapMekWithRecovery(mek, recoveryKey);
-
-  // Build V3 key file
-  const keyFile: EncryptedKeyFileV3 = {
-    version: 3,
-    mek_nonce: Array.from(encrypted.slice(0, 12)),
-    mek_ciphertext: Array.from(encrypted.slice(12)),
-    public_key: Array.from(ed25519.publicKeyBytes),
-    key_slots: [keySlot],
-    recovery_slot: recoverySlot,
-  };
-
-  // Store in IndexedDB
-  await idbPut('identity.key', keyFile);
-
-  // Also store the DH key info alongside identity
+/** Build the final result returned by both createIdentity variants */
+function buildIdentityResult(
+  ed25519: { privateKey: CryptoKey; publicKey: CryptoKey; publicKeyBytes: Uint8Array },
+  dhKeyPair: X25519KeyPair,
+  recoveryKey: Uint8Array,
+): { publicKeyB64: string; publicKeyHex: string; recoveryKey: Uint8Array; identity: IdentityKeys } {
   const publicKeyHex = Array.from(ed25519.publicKeyBytes)
-    .map(b => b.toString(16).padStart(2, '0'))
+    .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
-
-  // Standard base64 for server API
   const publicKeyB64 = btoa(String.fromCodePoint(...ed25519.publicKeyBytes));
 
   return {
@@ -370,6 +347,36 @@ export async function createIdentity(
       dhKeyPair,
     },
   };
+}
+
+/**
+ * Generate a new identity, encrypt and store it.
+ * Returns the public key hex and a recovery key.
+ */
+export async function createIdentity(
+  serverUrl: string,
+  prfDerivedKey: Uint8Array,
+  prfSalt: Uint8Array,
+  credentials: PasskeyCredential[],
+): Promise<{ publicKeyB64: string; publicKeyHex: string; recoveryKey: Uint8Array; identity: IdentityKeys }> {
+  const { ed25519, dhKeyPair, recoveryKey, encrypted, mek } = await generateAndEncryptIdentity();
+
+  // Wrap MEK with passkey PRF
+  const keySlot = await wrapMekWithPrf(mek, prfDerivedKey, serverUrl, prfSalt, credentials);
+  const recoverySlot = await wrapMekWithRecovery(mek, recoveryKey);
+
+  const keyFile: EncryptedKeyFileV3 = {
+    version: 3,
+    mek_nonce: Array.from(encrypted.slice(0, 12)),
+    mek_ciphertext: Array.from(encrypted.slice(12)),
+    public_key: Array.from(ed25519.publicKeyBytes),
+    key_slots: [keySlot],
+    recovery_slot: recoverySlot,
+  };
+
+  await idbPut('identity.key', keyFile);
+
+  return buildIdentityResult(ed25519, dhKeyPair, recoveryKey);
 }
 
 /**
@@ -404,22 +411,7 @@ export async function createIdentityWithPassphrase(
   passphrase: string,
   credentials: PasskeyCredential[],
 ): Promise<{ publicKeyB64: string; publicKeyHex: string; recoveryKey: Uint8Array; identity: IdentityKeys }> {
-  const ed25519 = await generateEd25519KeyPair();
-  const dhKeyPair = await generateX25519KeyPair();
-  const recoveryKey = randomBytes(32);
-
-  const signingKeyPkcs8 = await exportEd25519PrivateKey(ed25519.privateKey);
-  const dhPrivatePkcs8 = await exportX25519PrivateKey(dhKeyPair.privateKey);
-
-  const payload = JSON.stringify({
-    signing_key_pkcs8: Array.from(signingKeyPkcs8),
-    dh_private_pkcs8: Array.from(dhPrivatePkcs8),
-    dh_public_key: Array.from(dhKeyPair.publicKeyBytes),
-    public_key: Array.from(ed25519.publicKeyBytes),
-  });
-
-  const mek = randomBytes(32);
-  const encrypted = await aesGcmEncrypt(mek, encoder.encode(payload));
+  const { ed25519, dhKeyPair, recoveryKey, encrypted, mek } = await generateAndEncryptIdentity();
 
   // Wrap MEK with passphrase instead of PRF
   const passwordSlot = await wrapMekWithPassphrase(mek, passphrase, serverUrl, credentials);
@@ -437,22 +429,7 @@ export async function createIdentityWithPassphrase(
 
   await idbPut('identity.key', keyFile);
 
-  const publicKeyHex = Array.from(ed25519.publicKeyBytes)
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-  const publicKeyB64 = btoa(String.fromCodePoint(...ed25519.publicKeyBytes));
-
-  return {
-    publicKeyB64,
-    publicKeyHex,
-    recoveryKey,
-    identity: {
-      signingKey: ed25519.privateKey,
-      signingPublicKey: ed25519.publicKey,
-      publicKeyBytes: ed25519.publicKeyBytes,
-      dhKeyPair,
-    },
-  };
+  return buildIdentityResult(ed25519, dhKeyPair, recoveryKey);
 }
 
 /**

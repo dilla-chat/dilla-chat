@@ -26,7 +26,7 @@ pub fn get_attachment(
         "SELECT id, message_id, filename_encrypted, content_type_encrypted, size, storage_path, created_at
          FROM attachments WHERE id = ?1",
         [id],
-        |row| row_to_attachment(row),
+        row_to_attachment,
     )
     .optional()
 }
@@ -40,7 +40,7 @@ pub fn get_message_attachments(
         "SELECT id, message_id, filename_encrypted, content_type_encrypted, size, storage_path, created_at
          FROM attachments WHERE message_id = ?1",
     )?;
-    let rows = stmt.query_map([message_id], |row| row_to_attachment(row))?;
+    let rows = stmt.query_map([message_id], row_to_attachment)?;
     rows.collect()
 }
 
