@@ -37,19 +37,14 @@ pub const EVENT_DM_TYPING_START: &str = "dm:typing:start";
 pub const EVENT_DM_TYPING_STOP: &str = "dm:typing:stop";
 
 // ── Server → Client event types ─────────────────────────────────────────────
-// These constants define the WebSocket protocol and are used by both server and
-// client (TypeScript). Some are not yet referenced in Rust code but are part of
-// the protocol definition and must be kept.
-#[allow(dead_code)]
 pub const EVENT_MESSAGE_NEW: &str = "message:new";
-#[allow(dead_code)]
 pub const EVENT_MESSAGE_UPDATED: &str = "message:updated";
-#[allow(dead_code)]
 pub const EVENT_MESSAGE_DELETED: &str = "message:deleted";
-#[allow(dead_code)]
 pub const EVENT_TYPING_INDICATOR: &str = "typing:indicator";
-#[allow(dead_code)]
 pub const EVENT_PRESENCE_CHANGED: &str = "presence:changed";
+pub const EVENT_PONG: &str = "pong";
+
+// Not yet referenced in Rust handlers but part of the WS protocol definition.
 #[allow(dead_code)]
 pub const EVENT_MEMBER_JOINED: &str = "member:joined";
 #[allow(dead_code)]
@@ -62,53 +57,35 @@ pub const EVENT_CHANNEL_UPDATED: &str = "channel:updated";
 pub const EVENT_CHANNEL_DELETED: &str = "channel:deleted";
 #[allow(dead_code)]
 pub const EVENT_ERROR: &str = "error";
-#[allow(dead_code)]
-pub const EVENT_PONG: &str = "pong";
 
 // Thread server events
+pub const EVENT_THREAD_MESSAGE_NEW: &str = "thread:message:new";
+pub const EVENT_THREAD_MESSAGE_UPDATED: &str = "thread:message:updated";
+pub const EVENT_THREAD_MESSAGE_DELETED: &str = "thread:message:deleted";
+pub const EVENT_THREAD_UPDATED: &str = "thread:updated";
 #[allow(dead_code)]
 pub const EVENT_THREAD_CREATED: &str = "thread:created";
-#[allow(dead_code)]
-pub const EVENT_THREAD_MESSAGE_NEW: &str = "thread:message:new";
-#[allow(dead_code)]
-pub const EVENT_THREAD_MESSAGE_UPDATED: &str = "thread:message:updated";
-#[allow(dead_code)]
-pub const EVENT_THREAD_MESSAGE_DELETED: &str = "thread:message:deleted";
-#[allow(dead_code)]
-pub const EVENT_THREAD_UPDATED: &str = "thread:updated";
 
 // Reaction server events
-#[allow(dead_code)]
 pub const EVENT_REACTION_ADDED: &str = "reaction:added";
-#[allow(dead_code)]
 pub const EVENT_REACTION_REMOVED: &str = "reaction:removed";
 
 // Voice server events
-#[allow(dead_code)]
 pub const EVENT_VOICE_OFFER: &str = "voice:offer";
+pub const EVENT_VOICE_USER_JOINED: &str = "voice:user-joined";
+pub const EVENT_VOICE_USER_LEFT: &str = "voice:user-left";
+pub const EVENT_VOICE_STATE: &str = "voice:state";
+pub const EVENT_VOICE_MUTE_UPDATE: &str = "voice:mute-update";
+pub const EVENT_VOICE_SCREEN_UPDATE: &str = "voice:screen-update";
+pub const EVENT_VOICE_WEBCAM_UPDATE: &str = "voice:webcam-update";
 #[allow(dead_code)]
 pub const EVENT_VOICE_ICE_OUT: &str = "voice:ice-candidate";
 #[allow(dead_code)]
-pub const EVENT_VOICE_USER_JOINED: &str = "voice:user-joined";
-#[allow(dead_code)]
-pub const EVENT_VOICE_USER_LEFT: &str = "voice:user-left";
-#[allow(dead_code)]
 pub const EVENT_VOICE_SPEAKING: &str = "voice:speaking";
-#[allow(dead_code)]
-pub const EVENT_VOICE_STATE: &str = "voice:state";
-#[allow(dead_code)]
-pub const EVENT_VOICE_MUTE_UPDATE: &str = "voice:mute-update";
-#[allow(dead_code)]
-pub const EVENT_VOICE_SCREEN_UPDATE: &str = "voice:screen-update";
-#[allow(dead_code)]
-pub const EVENT_VOICE_WEBCAM_UPDATE: &str = "voice:webcam-update";
 
 // DM server events
-#[allow(dead_code)]
 pub const EVENT_DM_MESSAGE_NEW: &str = "dm:message:new";
-#[allow(dead_code)]
 pub const EVENT_DM_MESSAGE_UPDATED: &str = "dm:message:updated";
-#[allow(dead_code)]
 pub const EVENT_DM_MESSAGE_DELETED: &str = "dm:message:deleted";
 #[allow(dead_code)]
 pub const EVENT_DM_CREATED: &str = "dm:created";
