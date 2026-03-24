@@ -16,11 +16,33 @@ async fn verify_dm_membership(hub: &Hub, dm_channel_id: &str, user_id: &str) -> 
     .unwrap_or(false)
 }
 
+/// Run a blocking database closure via `spawn_blocking`, flattening the join error.
+async fn dm_spawn_db<F, T>(hub: &Hub, f: F) -> Result<T, rusqlite::Error>
+where
+    F: FnOnce(&rusqlite::Connection) -> Result<T, rusqlite::Error> + Send + 'static,
+    T: Send + 'static,
+{
+    let db = hub.db.clone();
+    tokio::task::spawn_blocking(move || db.with_conn(f))
+        .await
+        .unwrap()
+}
+
 /// Send an event to all members of a DM channel.
 async fn broadcast_to_dm_members(hub: &Hub, members: &[db::DMMember], data: Vec<u8>) {
     for member in members {
         hub.send_to_user(&member.user_id, data.clone()).await;
     }
+}
+
+/// Log a DM access denial warning.
+fn log_dm_denied(user_id: &str, dm_channel_id: &str, action: &str) {
+    tracing::warn!(
+        user_id = user_id,
+        dm_channel_id = %dm_channel_id,
+        "{} denied — user is not a member of this DM channel",
+        action
+    );
 }
 
 pub(in crate::ws) async fn handle_dm_message_send(
@@ -30,15 +52,10 @@ pub(in crate::ws) async fn handle_dm_message_send(
     p: DMMessageSendPayload,
 ) {
     if !verify_dm_membership(hub, &p.dm_channel_id, user_id).await {
-        tracing::warn!(
-            user_id = user_id,
-            dm_channel_id = %p.dm_channel_id,
-            "dm:message:send denied — user is not a member of this DM channel"
-        );
+        log_dm_denied(user_id, &p.dm_channel_id, "dm:message:send");
         return;
     }
 
-    let db = hub.db.clone();
     let dm_id = p.dm_channel_id.clone();
     let uid = user_id.to_string();
     let content = p.content.clone();
@@ -48,28 +65,25 @@ pub(in crate::ws) async fn handle_dm_message_send(
         p.msg_type.clone()
     };
 
-    let result = tokio::task::spawn_blocking(move || {
-        db.with_conn(|conn| {
-            let msg = db::Message {
-                id: db::new_id(),
-                channel_id: String::new(),
-                dm_channel_id: dm_id.clone(),
-                author_id: uid,
-                content,
-                msg_type,
-                thread_id: String::new(),
-                edited_at: None,
-                deleted: false,
-                lamport_ts: 0,
-                created_at: db::now_str(),
-            };
-            db::create_message(conn, &msg)?;
-            let members = db::get_dm_members(conn, &dm_id)?;
-            Ok((msg, members))
-        })
+    let result = dm_spawn_db(hub, move |conn| {
+        let msg = db::Message {
+            id: db::new_id(),
+            channel_id: String::new(),
+            dm_channel_id: dm_id.clone(),
+            author_id: uid,
+            content,
+            msg_type,
+            thread_id: String::new(),
+            edited_at: None,
+            deleted: false,
+            lamport_ts: 0,
+            created_at: db::now_str(),
+        };
+        db::create_message(conn, &msg)?;
+        let members = db::get_dm_members(conn, &dm_id)?;
+        Ok((msg, members))
     })
-    .await
-    .unwrap();
+    .await;
 
     match result {
         Ok((msg, members)) => {
@@ -100,34 +114,26 @@ pub(in crate::ws) async fn handle_dm_message_send(
 
 pub(in crate::ws) async fn handle_dm_message_edit(hub: &Hub, user_id: &str, p: DMMessageEditPayload) {
     if !verify_dm_membership(hub, &p.dm_channel_id, user_id).await {
-        tracing::warn!(
-            user_id = user_id,
-            dm_channel_id = %p.dm_channel_id,
-            "dm:message:edit denied — user is not a member of this DM channel"
-        );
+        log_dm_denied(user_id, &p.dm_channel_id, "dm:message:edit");
         return;
     }
 
-    let db = hub.db.clone();
     let mid = p.message_id.clone();
     let content = p.content.clone();
     let uid = user_id.to_string();
     let dm_id = p.dm_channel_id.clone();
 
-    let result = tokio::task::spawn_blocking(move || {
-        db.with_conn(|conn| {
-            let msg = db::get_message_by_id(conn, &mid)?;
-            match msg {
-                Some(m) if m.author_id == uid => {}
-                _ => return Err(rusqlite::Error::QueryReturnedNoRows),
-            };
-            db::update_message_content(conn, &mid, &content)?;
-            let members = db::get_dm_members(conn, &dm_id)?;
-            Ok(members)
-        })
+    let result = dm_spawn_db(hub, move |conn| {
+        let msg = db::get_message_by_id(conn, &mid)?;
+        match msg {
+            Some(m) if m.author_id == uid => {}
+            _ => return Err(rusqlite::Error::QueryReturnedNoRows),
+        };
+        db::update_message_content(conn, &mid, &content)?;
+        let members = db::get_dm_members(conn, &dm_id)?;
+        Ok(members)
     })
-    .await
-    .unwrap();
+    .await;
 
     if let Ok(members) = result {
         let evt = Event::new(
@@ -149,33 +155,25 @@ pub(in crate::ws) async fn handle_dm_message_edit(hub: &Hub, user_id: &str, p: D
 
 pub(in crate::ws) async fn handle_dm_message_delete(hub: &Hub, user_id: &str, p: DMMessageDeletePayload) {
     if !verify_dm_membership(hub, &p.dm_channel_id, user_id).await {
-        tracing::warn!(
-            user_id = user_id,
-            dm_channel_id = %p.dm_channel_id,
-            "dm:message:delete denied — user is not a member of this DM channel"
-        );
+        log_dm_denied(user_id, &p.dm_channel_id, "dm:message:delete");
         return;
     }
 
-    let db = hub.db.clone();
     let mid = p.message_id.clone();
     let uid = user_id.to_string();
     let dm_id = p.dm_channel_id.clone();
 
-    let result = tokio::task::spawn_blocking(move || {
-        db.with_conn(|conn| {
-            let msg = db::get_message_by_id(conn, &mid)?;
-            match msg {
-                Some(m) if m.author_id == uid => {}
-                _ => return Err(rusqlite::Error::QueryReturnedNoRows),
-            };
-            db::soft_delete_message(conn, &mid)?;
-            let members = db::get_dm_members(conn, &dm_id)?;
-            Ok(members)
-        })
+    let result = dm_spawn_db(hub, move |conn| {
+        let msg = db::get_message_by_id(conn, &mid)?;
+        match msg {
+            Some(m) if m.author_id == uid => {}
+            _ => return Err(rusqlite::Error::QueryReturnedNoRows),
+        };
+        db::soft_delete_message(conn, &mid)?;
+        let members = db::get_dm_members(conn, &dm_id)?;
+        Ok(members)
     })
-    .await
-    .unwrap();
+    .await;
 
     if let Ok(members) = result {
         let evt = Event::new(

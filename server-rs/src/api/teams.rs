@@ -5,7 +5,7 @@ use axum::{
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::api::helpers::{json_ok, json_ok_true, require_permission, require_team_member, spawn_db};
+use crate::api::helpers::{json_ok, json_ok_true, map_not_found, require_permission, require_team_member, spawn_db};
 use crate::api::AppState;
 use crate::auth::UserId;
 use crate::db;
@@ -133,10 +133,7 @@ pub async fn get_team(
             .ok_or(rusqlite::Error::QueryReturnedNoRows)
     })
     .await
-    .map_err(|e| match e {
-        AppError::NotFound(_) => AppError::NotFound("team not found".into()),
-        other => other,
-    })?;
+    .map_err(map_not_found("team"))?;
 
     json_ok(team)
 }
@@ -167,10 +164,7 @@ pub async fn update(
         Ok(team)
     })
     .await
-    .map_err(|e| match e {
-        AppError::NotFound(_) => AppError::NotFound("team not found".into()),
-        other => other,
-    })?;
+    .map_err(map_not_found("team"))?;
 
     json_ok(team)
 }
@@ -223,10 +217,7 @@ pub async fn update_member(
         Ok(member)
     })
     .await
-    .map_err(|e| match e {
-        AppError::NotFound(_) => AppError::NotFound("member not found".into()),
-        other => other,
-    })?;
+    .map_err(map_not_found("member"))?;
 
     json_ok(member)
 }
@@ -257,10 +248,7 @@ pub async fn kick_member(
         Ok(())
     })
     .await
-    .map_err(|e| match e {
-        AppError::NotFound(_) => AppError::NotFound("member not found".into()),
-        other => other,
-    })?;
+    .map_err(map_not_found("member"))?;
 
     json_ok_true()
 }
@@ -323,10 +311,7 @@ pub async fn unban_member(
         db::delete_ban(conn, &team_id, &target_user_id)
     })
     .await
-    .map_err(|e| match e {
-        AppError::NotFound(_) => AppError::NotFound("ban not found".into()),
-        other => other,
-    })?;
+    .map_err(map_not_found("ban"))?;
 
     json_ok_true()
 }

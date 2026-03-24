@@ -4,7 +4,7 @@ use axum::{
 };
 use serde_json::{json, Value};
 
-use crate::api::helpers::{json_ok, json_ok_true, require_team_member, spawn_db};
+use crate::api::helpers::{json_ok, json_ok_true, map_not_found, require_team_member, spawn_db};
 use crate::api::AppState;
 use crate::auth::UserId;
 use crate::db;
@@ -26,10 +26,7 @@ pub async fn add(
         db::add_reaction(conn, &message_id, &user_id, &emoji)
     })
     .await
-    .map_err(|e| match e {
-        AppError::NotFound(_) => AppError::NotFound("message not found".into()),
-        other => other,
-    })?;
+    .map_err(map_not_found("message"))?;
 
     let event_data = serde_json::to_vec(&json!({
         "type": "reaction:added",

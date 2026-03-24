@@ -5,7 +5,7 @@ use axum::{
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::api::helpers::{json_ok, json_ok_true, require_permission, require_team_member, spawn_db};
+use crate::api::helpers::{json_ok, json_ok_true, map_not_found, require_permission, require_team_member, spawn_db};
 use crate::api::AppState;
 use crate::auth::UserId;
 use crate::db;
@@ -62,20 +62,6 @@ fn get_thread_for_team(
     Ok(thread)
 }
 
-fn not_found_thread(e: AppError) -> AppError {
-    match e {
-        AppError::NotFound(_) => AppError::NotFound("thread not found".into()),
-        other => other,
-    }
-}
-
-fn not_found_parent(e: AppError) -> AppError {
-    match e {
-        AppError::NotFound(_) => AppError::NotFound("parent message not found".into()),
-        other => other,
-    }
-}
-
 pub async fn create(
     Extension(UserId(user_id)): Extension<UserId>,
     State(state): State<AppState>,
@@ -115,7 +101,7 @@ pub async fn create(
         Ok(thread)
     })
     .await
-    .map_err(not_found_parent)?;
+    .map_err(map_not_found("parent message"))?;
 
     let event_data = serde_json::to_vec(&json!({
         "type": "thread:created",
@@ -154,7 +140,7 @@ pub async fn get_thread(
         get_thread_for_team(conn, &thread_id, &team_id)
     })
     .await
-    .map_err(not_found_thread)?;
+    .map_err(map_not_found("thread"))?;
 
     json_ok(thread)
 }
@@ -182,7 +168,7 @@ pub async fn update(
         Ok(thread)
     })
     .await
-    .map_err(not_found_thread)?;
+    .map_err(map_not_found("thread"))?;
 
     json_ok(thread)
 }
@@ -204,7 +190,7 @@ pub async fn delete_thread(
         Ok(())
     })
     .await
-    .map_err(not_found_thread)?;
+    .map_err(map_not_found("thread"))?;
 
     json_ok_true()
 }
@@ -241,7 +227,7 @@ pub async fn create_message(
         Ok((msg, thread.channel_id))
     })
     .await
-    .map_err(not_found_thread)?;
+    .map_err(map_not_found("thread"))?;
 
     let event_data = serde_json::to_vec(&json!({
         "type": "thread:message:new",
@@ -274,7 +260,7 @@ pub async fn list_messages(
         db::get_thread_messages(conn, &thread_id, &query.before, limit)
     })
     .await
-    .map_err(not_found_thread)?;
+    .map_err(map_not_found("thread"))?;
 
     json_ok(messages)
 }
