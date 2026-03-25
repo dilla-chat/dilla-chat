@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { api } from '../services/api';
-import { hasIdentity } from '../services/keyStore';
+import { hasIdentity, getPublicKey as getStoredPublicKey } from '../services/keyStore';
 import { fromBase64, generateEd25519KeyPair, ed25519Sign } from '../services/cryptoCore';
 import ServerAddressInput from '../components/ServerAddressInput/ServerAddressInput';
 import {
@@ -32,6 +32,7 @@ export default function SetupAdmin() {
   const [teamName, setTeamName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [fingerprint, setFingerprint] = useState('');
   const [serverStatus] = useServerHealthCheck(serverAddress, isBrowser ? 'online' : 'unknown');
 
   // Redirect to create-identity if no identity exists yet,
@@ -41,6 +42,13 @@ export default function SetupAdmin() {
       if (!exists) {
         const returnUrl = window.location.pathname + window.location.search;
         navigate(`/create-identity?returnTo=${encodeURIComponent(returnUrl)}`);
+      }
+    });
+    // Load fingerprint from stored public key
+    getStoredPublicKey().then((pk) => {
+      if (pk) {
+        const hex = Array.from(pk).map(b => b.toString(16).padStart(2, '0')).join('');
+        setFingerprint(hex.slice(0, 16) + '...');
       }
     });
   }, [navigate]);
