@@ -1,10 +1,16 @@
 .resize-handle {
-  width: 3px;
+  width: 4px;
   cursor: col-resize;
   flex-shrink: 0;
   position: relative;
   z-index: 10;
   background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
+  outline: none;
+  min-width: 0;
   transition: background-color 0.15s ease;
 }
 
