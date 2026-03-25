@@ -212,7 +212,17 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
       doSyncInit();
     }
 
-    return () => { unsub(); };
+    // Safety net: if data still hasn't loaded after 3 seconds (e.g. WS never
+    // connected, sync:init stuck, or bootstrap race condition), fall back to REST.
+    const fallbackTimer = setTimeout(() => {
+      if (!dataLoaded.current.has(teamId)) {
+        console.warn(`[AppLayout] Data not loaded after 3 s for team ${teamId}, forcing REST fallback`);
+        dataLoaded.current.add(teamId);
+        loadDataViaREST(teamId, setters);
+      }
+    }, 3_000);
+
+    return () => { unsub(); clearTimeout(fallbackTimer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- WS event handlers intentionally capture latest closures; adding applySyncData/loadDataViaREST would cause reconnection loops
   }, [activeTeamId]);
 
