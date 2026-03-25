@@ -3,8 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { api } from '../services/api';
-import { getPublicKey as getStoredPublicKey, signChallenge } from '../services/keyStore';
-import { fromBase64 } from '../services/cryptoCore';
+import { getPublicKey as getStoredPublicKey } from '../services/keyStore';
+import { fromBase64, generateEd25519KeyPair, ed25519Sign } from '../services/cryptoCore';
 import ServerAddressInput from '../components/ServerAddressInput/ServerAddressInput';
 import {
   normalizeServerUrl,
@@ -38,22 +38,27 @@ export default function SetupAdmin() {
     setError('');
     if (!serverAddress || !bootstrapToken || !username) return;
 
-    // Get public key from store or IndexedDB
-    let pubKey: string;
-    if (publicKey) {
-      pubKey = publicKey;
-    } else {
-      const stored = await getStoredPublicKey();
-      if (!stored) {
-        setError('No identity found. Please create an identity first.');
-        return;
-      }
-      pubKey = btoa(String.fromCodePoint(...stored));
-      setPublicKey(pubKey);
-    }
-
     setLoading(true);
     try {
+      // Get or generate an Ed25519 keypair for the challenge-response.
+      // On first-time setup the user may not have created an identity yet,
+      // so we generate an ephemeral keypair if needed.
+      let pubKey: string;
+      let signingKey: CryptoKey;
+
+      const { derivedKey: dk } = useAuthStore.getState();
+      if (dk) {
+        // Identity already unlocked — use existing key
+        signingKey = dk.signingKey;
+        pubKey = publicKey || btoa(String.fromCodePoint(...(await getStoredPublicKey() ?? [])));
+      } else {
+        // No identity yet — generate a fresh Ed25519 keypair for bootstrap
+        const kp = await generateEd25519KeyPair();
+        signingKey = kp.privateKey;
+        pubKey = btoa(String.fromCodePoint(...kp.publicKeyBytes));
+        setPublicKey(pubKey);
+      }
+
       const normalizedUrl = normalizeServerUrl(serverAddress);
       const tempId = normalizedUrl;
       api.addTeam(tempId, normalizedUrl);
@@ -61,13 +66,7 @@ export default function SetupAdmin() {
       // Challenge-response: request challenge, sign it, then bootstrap
       const { challenge_id, nonce } = await api.requestChallenge(tempId, pubKey);
       const nonceBytes = fromBase64(nonce);
-      const { derivedKey: dk } = useAuthStore.getState();
-      if (!dk) {
-        setError('Identity not unlocked. Please create an identity first.');
-        setLoading(false);
-        return;
-      }
-      const sig = await signChallenge(dk.signingKey, nonceBytes);
+      const sig = await ed25519Sign(signingKey, nonceBytes);
       const sigB64 = btoa(String.fromCodePoint(...sig));
 
       const result = await api.bootstrap(
