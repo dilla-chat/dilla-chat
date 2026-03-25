@@ -138,6 +138,10 @@ jobs:
         working-directory: server-rs
         run: cross build --release --target ${{ matrix.target }}
 
+      - name: Ad-hoc codesign (macOS)
+        if: runner.os == 'macOS'
+        run: codesign --force --deep --sign - server-rs/target/${{ matrix.target }}/release/dilla-server
+
       - name: Upload server binary
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -195,6 +199,20 @@ jobs:
           projectPath: client
           tauriScript: npx tauri
           args: ${{ matrix.args }}
+
+      - name: Ad-hoc codesign .app and .dmg (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          # Sign the .app bundle inside the .dmg build directory
+          find client/src-tauri/target -name "*.app" -path "*/release/bundle/*" | while read app; do
+            echo "Signing $app"
+            codesign --force --deep --sign - "$app"
+          done
+          # Re-sign .dmg files (they embed the .app)
+          find client/src-tauri/target -name "*.dmg" -path "*/release/bundle/*" | while read dmg; do
+            echo "Signing $dmg"
+            codesign --force --sign - "$dmg"
+          done
 
       - name: Upload desktop artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
