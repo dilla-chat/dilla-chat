@@ -246,6 +246,17 @@ impl MeshNode {
 
     // ── Broadcast helpers ──────────────────────────────────────────────────
 
+    /// Generic helper: build a `FederationEvent` and broadcast it to all peers.
+    async fn broadcast_event(&self, event_type: &str, payload: serde_json::Value) {
+        let event = FederationEvent {
+            event_type: event_type.to_string(),
+            node_name: self.node_name.clone(),
+            timestamp: self.sync_mgr.tick(),
+            payload,
+        };
+        self.transport.broadcast(&event).await;
+    }
+
     /// Broadcast a new message to all federation peers.
     pub async fn broadcast_message(&self, msg: &ReplicationMessage) {
         let payload = match serde_json::to_value(msg) {
@@ -255,15 +266,7 @@ impl MeshNode {
                 return;
             }
         };
-
-        let event = FederationEvent {
-            event_type: FED_EVENT_MESSAGE_NEW.to_string(),
-            node_name: self.node_name.clone(),
-            timestamp: self.sync_mgr.tick(),
-            payload,
-        };
-
-        self.transport.broadcast(&event).await;
+        self.broadcast_event(FED_EVENT_MESSAGE_NEW, payload).await;
     }
 
     /// Broadcast a message edit to all federation peers.
@@ -273,33 +276,27 @@ impl MeshNode {
         channel_id: &str,
         content: &str,
     ) {
-        let event = FederationEvent {
-            event_type: FED_EVENT_MESSAGE_EDIT.to_string(),
-            node_name: self.node_name.clone(),
-            timestamp: self.sync_mgr.tick(),
-            payload: json!({
+        self.broadcast_event(
+            FED_EVENT_MESSAGE_EDIT,
+            json!({
                 "message_id": message_id,
                 "channel_id": channel_id,
                 "content": content,
             }),
-        };
-
-        self.transport.broadcast(&event).await;
+        )
+        .await;
     }
 
     /// Broadcast a message deletion to all federation peers.
     pub async fn broadcast_message_delete(&self, message_id: &str, channel_id: &str) {
-        let event = FederationEvent {
-            event_type: FED_EVENT_MESSAGE_DELETE.to_string(),
-            node_name: self.node_name.clone(),
-            timestamp: self.sync_mgr.tick(),
-            payload: json!({
+        self.broadcast_event(
+            FED_EVENT_MESSAGE_DELETE,
+            json!({
                 "message_id": message_id,
                 "channel_id": channel_id,
             }),
-        };
-
-        self.transport.broadcast(&event).await;
+        )
+        .await;
     }
 
     /// Broadcast a presence change to all federation peers.
@@ -309,18 +306,15 @@ impl MeshNode {
         status_type: &str,
         custom_status: &str,
     ) {
-        let event = FederationEvent {
-            event_type: FED_EVENT_PRESENCE_CHANGED.to_string(),
-            node_name: self.node_name.clone(),
-            timestamp: self.sync_mgr.tick(),
-            payload: json!({
+        self.broadcast_event(
+            FED_EVENT_PRESENCE_CHANGED,
+            json!({
                 "user_id": user_id,
                 "status_type": status_type,
                 "custom_status": custom_status,
             }),
-        };
-
-        self.transport.broadcast(&event).await;
+        )
+        .await;
     }
 
     /// Broadcast that a user joined a voice channel to all federation peers.
@@ -330,33 +324,27 @@ impl MeshNode {
         user_id: &str,
         username: &str,
     ) {
-        let event = FederationEvent {
-            event_type: FED_EVENT_VOICE_USER_JOINED.to_string(),
-            node_name: self.node_name.clone(),
-            timestamp: self.sync_mgr.tick(),
-            payload: json!({
+        self.broadcast_event(
+            FED_EVENT_VOICE_USER_JOINED,
+            json!({
                 "channel_id": channel_id,
                 "user_id": user_id,
                 "username": username,
             }),
-        };
-
-        self.transport.broadcast(&event).await;
+        )
+        .await;
     }
 
     /// Broadcast that a user left a voice channel to all federation peers.
     pub async fn broadcast_voice_user_left(&self, channel_id: &str, user_id: &str) {
-        let event = FederationEvent {
-            event_type: FED_EVENT_VOICE_USER_LEFT.to_string(),
-            node_name: self.node_name.clone(),
-            timestamp: self.sync_mgr.tick(),
-            payload: json!({
+        self.broadcast_event(
+            FED_EVENT_VOICE_USER_LEFT,
+            json!({
                 "channel_id": channel_id,
                 "user_id": user_id,
             }),
-        };
-
-        self.transport.broadcast(&event).await;
+        )
+        .await;
     }
 
     // ── Event dispatch ─────────────────────────────────────────────────────
