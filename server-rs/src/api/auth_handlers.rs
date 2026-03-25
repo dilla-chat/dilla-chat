@@ -181,12 +181,15 @@ pub async fn bootstrap(
     let team_name = resolve_team_name(&body.team_name, &state.config.team_name);
 
     let (user, team_id) = spawn_db(state.db.clone(), move |conn| {
-        validate_bootstrap_token(conn, &bootstrap_token)?;
+        // Wrap in transaction so partial failures roll back cleanly.
+        let tx = conn.unchecked_transaction()?;
 
-        let (user, _member) = create_user_and_member(conn, &username, &pk, "", "", true);
-        db::create_user(conn, &user)?;
+        validate_bootstrap_token(&tx, &bootstrap_token)?;
 
-        let team_id = create_bootstrap_team(conn, &team_name, &user.id)?;
+        let (user, _member) = create_user_and_member(&tx, &username, &pk, "", "", true);
+        db::create_user(&tx, &user)?;
+
+        let team_id = create_bootstrap_team(&tx, &team_name, &user.id)?;
 
         let member = db::Member {
             id: db::new_id(),
@@ -194,13 +197,14 @@ pub async fn bootstrap(
             user_id: user.id.clone(),
             nickname: String::new(),
             joined_at: db::now_str(),
-            invited_by: String::new(),
+            invited_by: user.id.clone(), // self-invited for bootstrap
             updated_at: String::new(),
         };
-        db::create_member(conn, &member)?;
+        db::create_member(&tx, &member)?;
 
-        create_bootstrap_defaults(conn, &team_id, &user.id)?;
+        create_bootstrap_defaults(&tx, &team_id, &user.id)?;
 
+        tx.commit()?;
         Ok((user, team_id))
     })
     .await
