@@ -5,6 +5,7 @@ const mockNavigate = vi.fn();
 
 vi.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
+  useSearchParams: () => [new URLSearchParams()],
 }));
 
 vi.mock('iconoir-react', () =>
