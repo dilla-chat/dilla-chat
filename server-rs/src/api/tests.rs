@@ -3024,3 +3024,62 @@ async fn verify_with_valid_user_returns_token() {
     assert!(json["refresh_token"].is_string());
     assert_eq!(json["user"]["username"], "verifyuser");
 }
+
+// ── SPA fallback tests ─────────────────────────────────────────────────
+
+#[tokio::test]
+async fn spa_route_does_not_return_auth_error() {
+    let (state, _tmp) = test_app_state();
+    let app = create_router(state);
+
+    // /setup is a client-side route — it should NOT hit the auth middleware.
+    let req = Request::builder()
+        .uri("/setup?token=abc123")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+
+    // Without embedded dist/, we get 404 (no index.html) — but crucially NOT 401.
+    assert_ne!(
+        resp.status(),
+        StatusCode::UNAUTHORIZED,
+        "/setup should not require auth — it's a SPA route served by the webapp fallback"
+    );
+}
+
+#[tokio::test]
+async fn unknown_path_does_not_return_auth_error() {
+    let (state, _tmp) = test_app_state();
+    let app = create_router(state);
+
+    let req = Request::builder()
+        .uri("/some/random/page")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+
+    assert_ne!(
+        resp.status(),
+        StatusCode::UNAUTHORIZED,
+        "non-API paths should fall through to webapp, not auth middleware"
+    );
+}
+
+#[tokio::test]
+async fn api_route_without_auth_returns_unauthorized() {
+    let (state, _tmp) = test_app_state();
+    let app = create_router(state);
+
+    // Protected API route without a token should return 401.
+    let req = Request::builder()
+        .uri("/api/v1/users/me")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+
+    assert_eq!(
+        resp.status(),
+        StatusCode::UNAUTHORIZED,
+        "protected API routes should require auth"
+    );
+}

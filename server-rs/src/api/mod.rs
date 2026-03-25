@@ -244,6 +244,7 @@ pub fn create_router(state: AppState) -> Router {
         .merge(protected)
         .layer(Extension(state.auth.clone()))
         .layer(cors)
+        .fallback_service(crate::webapp::webapp_fallback())
         .with_state(state)
 }
 
