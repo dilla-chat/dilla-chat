@@ -266,13 +266,14 @@ describe('ApiService', () => {
       api.addTeam('t-reg', 'https://reg.io');
       globalThis.fetch = mockFetchResponse({ user: {}, token: 'tok' });
 
-      await api.register('t-reg', 'alice', 'Alice', 'pk', 'inv-token');
+      await api.register('t-reg', 'ch-1', 'pk', 'sig123', 'alice', 'inv-token');
 
       const body = JSON.parse(lastFetchCall().init.body as string);
       expect(body).toEqual({
-        username: 'alice',
-        display_name: 'Alice',
+        challenge_id: 'ch-1',
         public_key: 'pk',
+        signature: 'sig123',
+        username: 'alice',
         invite_token: 'inv-token',
       });
     });
@@ -640,13 +641,14 @@ describe('ApiService', () => {
       api.addTeam('t-boot', 'https://boot.io');
       globalThis.fetch = mockFetchResponse({ user: {}, token: 'tok', team: {} });
 
-      await api.bootstrap('t-boot', 'alice', 'Alice', 'pk', 'btoken', 'My Team');
+      await api.bootstrap('t-boot', 'ch-1', 'pk', 'sig123', 'alice', 'btoken', 'My Team');
 
       const body = JSON.parse(lastFetchCall().init.body as string);
       expect(body).toEqual({
-        username: 'alice',
-        display_name: 'Alice',
+        challenge_id: 'ch-1',
         public_key: 'pk',
+        signature: 'sig123',
+        username: 'alice',
         bootstrap_token: 'btoken',
         team_name: 'My Team',
       });
@@ -656,7 +658,7 @@ describe('ApiService', () => {
       api.addTeam('t-boot2', 'https://boot2.io');
       globalThis.fetch = mockFetchResponse({ user: {}, token: 'tok', team: {} });
 
-      await api.bootstrap('t-boot2', 'alice', 'Alice', 'pk', 'btoken');
+      await api.bootstrap('t-boot2', 'ch-2', 'pk', 'sig456', 'alice', 'btoken');
 
       const body = JSON.parse(lastFetchCall().init.body as string);
       expect(body.team_name).toBeUndefined();

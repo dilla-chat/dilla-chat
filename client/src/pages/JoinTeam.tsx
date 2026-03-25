@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuthStore, type User } from '../stores/authStore';
 import { api } from '../services/api';
-import { exportIdentityBlob, hasIdentity } from '../services/keyStore';
+import { exportIdentityBlob, hasIdentity, signChallenge } from '../services/keyStore';
+import { fromBase64 } from '../services/cryptoCore';
 import ServerAddressInput from '../components/ServerAddressInput/ServerAddressInput';
 import {
   normalizeServerUrl,
@@ -98,7 +99,13 @@ export default function JoinTeam() {
       const tempId = normalizedUrl;
       api.addTeam(tempId, normalizedUrl);
 
-      const result = await api.register(tempId, username, displayName || username, publicKey, inviteToken) as { user: User; token: string; team?: Record<string, unknown> | null };
+      // Challenge-response: request challenge, sign it, then register
+      const { challenge_id, nonce } = await api.requestChallenge(tempId, publicKey);
+      const nonceBytes = fromBase64(nonce);
+      const sig = await signChallenge(derivedKey.signingKey, nonceBytes);
+      const sigB64 = btoa(String.fromCodePoint(...sig));
+
+      const result = await api.register(tempId, challenge_id, publicKey, sigB64, username, inviteToken) as { user: User; token: string; team?: Record<string, unknown> | null };
       const realTeamId = (result.team?.id as string) || tempId;
 
       if (realTeamId !== tempId) {

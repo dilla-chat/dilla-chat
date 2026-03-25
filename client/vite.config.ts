@@ -7,6 +7,16 @@ export default defineConfig({
   server: {
     port: 8888,
     allowedHosts: ['dilla.thim.dev'],
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      '/ws': {
+        target: 'ws://localhost:8080',
+        ws: true,
+      },
+    },
   },
   optimizeDeps: {
     exclude: ['@jitsi/rnnoise-wasm'],

@@ -19,6 +19,7 @@ vi.mock('../services/api', () => ({
     addTeam: vi.fn(),
     removeTeam: vi.fn(),
     setToken: vi.fn(),
+    requestChallenge: vi.fn().mockResolvedValue({ challenge_id: 'ch-1', nonce: 'AAAA' }),
     register: vi.fn(),
     getInviteInfo: vi.fn(),
     uploadPrekeyBundle: vi.fn(),
@@ -39,6 +40,11 @@ vi.mock('../services/crypto', () => ({
 vi.mock('../services/keyStore', () => ({
   exportIdentityBlob: vi.fn().mockResolvedValue(null),
   hasIdentity: vi.fn().mockResolvedValue(true),
+  signChallenge: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
+}));
+
+vi.mock('../services/cryptoCore', () => ({
+  fromBase64: vi.fn().mockReturnValue(new Uint8Array([0])),
 }));
 
 vi.mock('./PublicShell', () => ({
@@ -61,7 +67,7 @@ describe('JoinTeam', () => {
     mockNavigate.mockClear();
     useAuthStore.setState({
       isAuthenticated: true,
-      derivedKey: 'test-key',
+      derivedKey: { signingKey: 'mock-signing-key' },
       publicKey: 'test-pub-key',
       teams: new Map(),
       addTeam: vi.fn(),

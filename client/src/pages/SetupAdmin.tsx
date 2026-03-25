@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { api } from '../services/api';
-import { getPublicKey as getStoredPublicKey } from '../services/keyStore';
+import { getPublicKey as getStoredPublicKey, signChallenge } from '../services/keyStore';
+import { fromBase64 } from '../services/cryptoCore';
 import ServerAddressInput from '../components/ServerAddressInput/ServerAddressInput';
 import {
   normalizeServerUrl,
@@ -57,11 +58,24 @@ export default function SetupAdmin() {
       const tempId = normalizedUrl;
       api.addTeam(tempId, normalizedUrl);
 
+      // Challenge-response: request challenge, sign it, then bootstrap
+      const { challenge_id, nonce } = await api.requestChallenge(tempId, pubKey);
+      const nonceBytes = fromBase64(nonce);
+      const { derivedKey: dk } = useAuthStore.getState();
+      if (!dk) {
+        setError('Identity not unlocked. Please create an identity first.');
+        setLoading(false);
+        return;
+      }
+      const sig = await signChallenge(dk.signingKey, nonceBytes);
+      const sigB64 = btoa(String.fromCodePoint(...sig));
+
       const result = await api.bootstrap(
         tempId,
-        username,
-        displayName || username,
+        challenge_id,
         pubKey,
+        sigB64,
+        username,
         bootstrapToken,
         teamName || undefined,
       );
