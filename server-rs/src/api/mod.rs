@@ -68,11 +68,11 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/auth/register", post(auth_handlers::register))
         .route("/api/v1/auth/bootstrap", post(auth_handlers::bootstrap))
         .route(
-            "/api/v1/invites/:token/info",
+            "/api/v1/invites/{token}/info",
             get(invites::get_invite_info),
         )
         .route(
-            "/api/v1/federation/join/:token",
+            "/api/v1/federation/join/{token}",
             get(federation::get_join_info),
         );
 
@@ -90,135 +90,135 @@ pub fn create_router(state: AppState) -> Router {
             "/api/v1/prekeys",
             post(prekeys::upload).delete(prekeys::delete_own),
         )
-        .route("/api/v1/prekeys/:user_id", get(prekeys::get_bundle))
+        .route("/api/v1/prekeys/{user_id}", get(prekeys::get_bundle))
         // Teams
         .route("/api/v1/teams", get(teams::list).post(teams::create))
         .route(
-            "/api/v1/teams/:team_id",
+            "/api/v1/teams/{team_id}",
             get(teams::get_team).patch(teams::update),
         )
         // Members
         .route(
-            "/api/v1/teams/:team_id/members",
+            "/api/v1/teams/{team_id}/members",
             get(teams::list_members),
         )
         .route(
-            "/api/v1/teams/:team_id/members/:user_id",
+            "/api/v1/teams/{team_id}/members/{user_id}",
             patch(teams::update_member).delete(teams::kick_member),
         )
         .route(
-            "/api/v1/teams/:team_id/members/:user_id/ban",
+            "/api/v1/teams/{team_id}/members/{user_id}/ban",
             post(teams::ban_member).delete(teams::unban_member),
         )
         // Channels
         .route(
-            "/api/v1/teams/:team_id/channels",
+            "/api/v1/teams/{team_id}/channels",
             get(channels::list).post(channels::create),
         )
         .route(
-            "/api/v1/teams/:team_id/channels/:channel_id",
+            "/api/v1/teams/{team_id}/channels/{channel_id}",
             get(channels::get_channel)
                 .patch(channels::update)
                 .delete(channels::delete_channel),
         )
         // Messages
         .route(
-            "/api/v1/teams/:team_id/channels/:channel_id/messages",
+            "/api/v1/teams/{team_id}/channels/{channel_id}/messages",
             get(messages::list).post(messages::create),
         )
         .route(
-            "/api/v1/teams/:team_id/channels/:channel_id/messages/:message_id",
+            "/api/v1/teams/{team_id}/channels/{channel_id}/messages/{message_id}",
             patch(messages::edit).delete(messages::delete_msg),
         )
         // Roles
         .route(
-            "/api/v1/teams/:team_id/roles",
+            "/api/v1/teams/{team_id}/roles",
             get(roles::list).post(roles::create),
         )
         .route(
-            "/api/v1/teams/:team_id/roles/reorder",
+            "/api/v1/teams/{team_id}/roles/reorder",
             put(roles::reorder),
         )
         .route(
-            "/api/v1/teams/:team_id/roles/:role_id",
+            "/api/v1/teams/{team_id}/roles/{role_id}",
             patch(roles::update).delete(roles::delete_role),
         )
         // Invites
         .route(
-            "/api/v1/teams/:team_id/invites",
+            "/api/v1/teams/{team_id}/invites",
             get(invites::list).post(invites::create),
         )
         .route(
-            "/api/v1/teams/:team_id/invites/:invite_id",
+            "/api/v1/teams/{team_id}/invites/{invite_id}",
             delete(invites::revoke),
         )
         // DMs
         .route(
-            "/api/v1/teams/:team_id/dms",
+            "/api/v1/teams/{team_id}/dms",
             get(dms::list).post(dms::create_or_get),
         )
-        .route("/api/v1/teams/:team_id/dms/:dm_id", get(dms::get_dm))
+        .route("/api/v1/teams/{team_id}/dms/{dm_id}", get(dms::get_dm))
         .route(
-            "/api/v1/teams/:team_id/dms/:dm_id/messages",
+            "/api/v1/teams/{team_id}/dms/{dm_id}/messages",
             get(dms::list_messages).post(dms::send_message),
         )
         .route(
-            "/api/v1/teams/:team_id/dms/:dm_id/messages/:message_id",
+            "/api/v1/teams/{team_id}/dms/{dm_id}/messages/{message_id}",
             put(dms::edit_message).delete(dms::delete_message),
         )
         .route(
-            "/api/v1/teams/:team_id/dms/:dm_id/members",
+            "/api/v1/teams/{team_id}/dms/{dm_id}/members",
             post(dms::add_members),
         )
         .route(
-            "/api/v1/teams/:team_id/dms/:dm_id/members/:user_id",
+            "/api/v1/teams/{team_id}/dms/{dm_id}/members/{user_id}",
             delete(dms::remove_member),
         )
         // Threads
         .route(
-            "/api/v1/teams/:team_id/channels/:channel_id/threads",
+            "/api/v1/teams/{team_id}/channels/{channel_id}/threads",
             get(threads::list).post(threads::create),
         )
         .route(
-            "/api/v1/teams/:team_id/threads/:thread_id",
+            "/api/v1/teams/{team_id}/threads/{thread_id}",
             get(threads::get_thread)
                 .put(threads::update)
                 .delete(threads::delete_thread),
         )
         .route(
-            "/api/v1/teams/:team_id/threads/:thread_id/messages",
+            "/api/v1/teams/{team_id}/threads/{thread_id}/messages",
             get(threads::list_messages).post(threads::create_message),
         )
         // Reactions
         .route(
-            "/api/v1/teams/:team_id/channels/:channel_id/messages/:message_id/reactions/:emoji",
+            "/api/v1/teams/{team_id}/channels/{channel_id}/messages/{message_id}/reactions/{emoji}",
             put(reactions::add).delete(reactions::remove),
         )
         .route(
-            "/api/v1/teams/:team_id/channels/:channel_id/messages/:message_id/reactions",
+            "/api/v1/teams/{team_id}/channels/{channel_id}/messages/{message_id}/reactions",
             get(reactions::list),
         )
         // Uploads
         .route(
-            "/api/v1/teams/:team_id/upload",
+            "/api/v1/teams/{team_id}/upload",
             post(uploads::upload),
         )
         .route(
-            "/api/v1/teams/:team_id/attachments/:attachment_id",
+            "/api/v1/teams/{team_id}/attachments/{attachment_id}",
             get(uploads::download).delete(uploads::delete_attachment),
         )
         // Presence
         .route(
-            "/api/v1/teams/:team_id/presence",
+            "/api/v1/teams/{team_id}/presence",
             get(presence::get_all).put(presence::update_own),
         )
         .route(
-            "/api/v1/teams/:team_id/presence/:user_id",
+            "/api/v1/teams/{team_id}/presence/{user_id}",
             get(presence::get_user),
         )
         // Voice
         .route(
-            "/api/v1/teams/:team_id/voice/:channel_id",
+            "/api/v1/teams/{team_id}/voice/{channel_id}",
             get(voice::get_room),
         )
         // Federation
