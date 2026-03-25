@@ -236,12 +236,16 @@ pub fn create_router(state: AppState) -> Router {
             post(federation::create_join_token),
         )
         // WebSocket
-        .route("/ws", get(ws_handler))
         .layer(middleware::from_fn(auth::auth_middleware));
+
+    // WebSocket route — outside auth middleware (does its own token auth via query params)
+    let ws_route = Router::new()
+        .route("/ws", get(ws_handler));
 
     Router::new()
         .merge(public)
         .merge(protected)
+        .merge(ws_route)
         .layer(Extension(state.auth.clone()))
         .layer(cors)
         .fallback_service(crate::webapp::webapp_fallback())
