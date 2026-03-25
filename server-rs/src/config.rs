@@ -34,6 +34,11 @@ pub struct Config {
     pub trusted_proxies: Vec<String>,
     pub insecure: bool,
 
+    // Client telemetry relay
+    pub telemetry_adapter: String,
+    pub sentry_dsn: String,
+    pub environment: String,
+
     // OpenTelemetry
     pub otel_enabled: bool,
     pub otel_protocol: String,
@@ -127,6 +132,9 @@ impl Config {
             allowed_origins,
             trusted_proxies,
             insecure: env_bool("DILLA_INSECURE", false),
+            telemetry_adapter: env_str("DILLA_TELEMETRY_ADAPTER", "none"),
+            sentry_dsn: env_str("DILLA_SENTRY_DSN", ""),
+            environment: env_str("DILLA_ENVIRONMENT", "production"),
             otel_enabled: env_bool("DILLA_OTEL_ENABLED", false),
             otel_protocol: env_str("DILLA_OTEL_PROTOCOL", "http"),
             otel_endpoint: env_str("DILLA_OTEL_ENDPOINT", "localhost:4317"),

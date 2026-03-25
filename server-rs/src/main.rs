@@ -6,6 +6,7 @@ mod error;
 mod federation;
 mod observability;
 mod presence;
+mod telemetry;
 mod voice;
 mod webapp;
 mod ws;
@@ -40,6 +41,7 @@ async fn main() {
     // Create WebSocket hub.
     let mut hub = ws::Hub::new(database.clone());
     hub.voice_sfu = Some(sfu as Arc<dyn ws::hub::VoiceSFU>);
+    hub.telemetry_relay = init_telemetry_relay(&cfg);
     let hub = Arc::new(hub);
 
     // Spawn hub dispatch loop.
@@ -255,6 +257,42 @@ async fn init_federation_mesh(
     }
 
     Some(mesh_node)
+}
+
+fn init_telemetry_relay(cfg: &Config) -> Option<Arc<telemetry::TelemetryRelay>> {
+    match cfg.telemetry_adapter.as_str() {
+        "sentry" => {
+            if cfg.sentry_dsn.is_empty() {
+                tracing::warn!("telemetry adapter set to 'sentry' but DILLA_SENTRY_DSN is empty");
+                return None;
+            }
+            match telemetry::sentry::SentryConfig::from_dsn(&cfg.sentry_dsn) {
+                Ok(sentry_config) => {
+                    let adapter = telemetry::sentry::SentryAdapter::new(sentry_config);
+                    let relay = telemetry::TelemetryRelay::new(
+                        Some(Arc::new(adapter)),
+                        cfg.node_name.clone(),
+                        env!("CARGO_PKG_VERSION").to_string(),
+                        cfg.environment.clone(),
+                    );
+                    tracing::info!("telemetry relay: sentry");
+                    Some(Arc::new(relay))
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, "failed to parse Sentry DSN");
+                    None
+                }
+            }
+        }
+        "none" | "" => {
+            tracing::debug!("telemetry relay: disabled");
+            None
+        }
+        other => {
+            tracing::warn!(adapter = other, "unknown telemetry adapter, relay disabled");
+            None
+        }
+    }
 }
 
 async fn start_server(cfg: &Config, app: axum::Router) {

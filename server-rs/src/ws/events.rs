@@ -28,6 +28,8 @@ pub const EVENT_REQUEST: &str = "request";
 pub const EVENT_PING: &str = "ping";
 pub const EVENT_REACTION_ADD: &str = "reaction:add";
 pub const EVENT_REACTION_REMOVE: &str = "reaction:remove";
+pub const EVENT_TELEMETRY_ERROR: &str = "telemetry:error";
+pub const EVENT_TELEMETRY_BREADCRUMB: &str = "telemetry:breadcrumb";
 
 // DM events
 pub const EVENT_DM_MESSAGE_SEND: &str = "dm:message:send";

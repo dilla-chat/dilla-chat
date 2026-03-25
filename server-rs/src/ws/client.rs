@@ -155,6 +155,28 @@ pub(crate) async fn handle_event(
         EVENT_DM_TYPING_START | EVENT_DM_TYPING_STOP => {
             handle_dm_typing(hub, user_id, username, event.payload).await;
         }
+        EVENT_TELEMETRY_ERROR => {
+            if let Some(ref relay) = hub.telemetry_relay {
+                if let Ok(tel_event) = serde_json::from_value::<crate::telemetry::adapter::TelemetryEvent>(event.payload) {
+                    let relay = relay.clone();
+                    let uid = user_id.to_string();
+                    tokio::spawn(async move {
+                        relay.forward_error(&uid, tel_event).await;
+                    });
+                }
+            }
+        }
+        EVENT_TELEMETRY_BREADCRUMB => {
+            if let Some(ref relay) = hub.telemetry_relay {
+                if let Ok(breadcrumb) = serde_json::from_value::<crate::telemetry::adapter::Breadcrumb>(event.payload) {
+                    let relay = relay.clone();
+                    let uid = user_id.to_string();
+                    tokio::spawn(async move {
+                        relay.forward_breadcrumb(&uid, breadcrumb).await;
+                    });
+                }
+            }
+        }
         _ => {
             tracing::debug!(event_type = event.event_type, "unhandled event type");
         }
