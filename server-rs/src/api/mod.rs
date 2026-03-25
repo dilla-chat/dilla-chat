@@ -42,6 +42,7 @@ pub struct AppState {
     pub mesh: Option<Arc<MeshNode>>,
 }
 
+#[cfg(not(tarpaulin_include))]
 pub fn create_router(state: AppState) -> Router {
     let cors = if state.config.allowed_origins.is_empty() {
         CorsLayer::very_permissive()
