@@ -32,7 +32,7 @@ async fn main() {
 
     let database = init_database(&cfg);
     let auth_svc = Arc::new(AuthService::new(database.clone(), &cfg.db_passphrase));
-    check_first_start(&database, &auth_svc);
+    check_first_start(&database, &auth_svc, cfg.port);
 
     let sfu = Arc::new(voice::SFU::new());
     configure_turn_provider(&sfu, &cfg).await;
@@ -96,15 +96,14 @@ fn init_database(cfg: &Config) -> Database {
     database
 }
 
-fn check_first_start(database: &Database, auth_svc: &AuthService) {
+fn check_first_start(database: &Database, auth_svc: &AuthService, port: u16) {
     match database.has_users() {
         Ok(false) => {
             match auth_svc.generate_bootstrap_token() {
                 Ok(token) => {
                     println!();
                     println!("  *** First-time setup ***");
-                    println!("  Open your client UI and navigate to /setup, or use this link:");
-                    println!("  http://localhost:5173/setup?token={}", token);
+                    println!("  Open http://<your-host>:{}/setup in a browser", port);
                     println!("  Bootstrap token: {}", token);
                     println!();
                 }
@@ -526,7 +525,7 @@ mod tests {
 
         // Should not panic and should not generate a bootstrap token
         // (the Ok(true) branch that does nothing).
-        check_first_start(&db, &auth_svc);
+        check_first_start(&db, &auth_svc, 8080);
     }
 
     #[tokio::test]
@@ -535,7 +534,7 @@ mod tests {
         let auth_svc = AuthService::new(db.clone(), "");
 
         // No users -> first start path.
-        check_first_start(&db, &auth_svc);
+        check_first_start(&db, &auth_svc, 8080);
         // Should have printed bootstrap info and created a token.
     }
 }
