@@ -6,6 +6,7 @@ import { usePresenceStore, type UserPresence } from '../stores/presenceStore';
 import { useVoiceStore } from '../stores/voiceStore';
 import { api, type VoicePeer } from '../services/api';
 import { ws } from '../services/websocket';
+import { telemetryClient } from '../services/telemetryClient';
 
 /** Normalize members from server snake_case to client camelCase */
 function normalizeMembers(data: Record<string, unknown>[]) {
@@ -242,6 +243,7 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
     console.log(`[AppLayout] Connecting WebSocket for team ${activeTeamId} → ${wsUrl}`);
     ws.connect(activeTeamId, wsUrl, connInfo.token);
     wsConnected.current.add(activeTeamId);
+    telemetryClient.setTeamId(activeTeamId);
   }, [activeTeamId]);
 
   return { authChecked, dataLoaded };

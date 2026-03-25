@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Hashtag, ChatBubble, Group, SoundHigh, Lock, Settings } from 'iconoir-react';
 import TeamSidebar from '../components/TeamSidebar/TeamSidebar';
 import ChannelList from '../components/ChannelList/ChannelList';
@@ -29,11 +29,13 @@ import { useTeamSync } from '../hooks/useTeamSync';
 import { useCryptoRestore } from '../hooks/useCryptoRestore';
 import { useIdentityBackup } from '../hooks/useIdentityBackup';
 import { usePresenceEvents } from '../hooks/usePresenceEvents';
+import { telemetryClient } from '../services/telemetryClient';
 import './AppLayout.css';
 
 export default function AppLayout() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
   const { activeTeamId, activeChannelId, channels, setActiveChannel, teams: teamMap } = useTeamStore();
   const { teams, derivedKey } = useAuthStore();
   const { activeDMId, setActiveDM, dmChannels } = useDMStore();
@@ -55,6 +57,16 @@ export default function AppLayout() {
   useCryptoRestore();
   useIdentityBackup(activeTeamId, dataLoaded);
   usePresenceEvents(activeTeamId);
+
+  // Install global error handlers for telemetry
+  useEffect(() => {
+    telemetryClient.install();
+  }, []);
+
+  // Record route changes as telemetry breadcrumbs
+  useEffect(() => {
+    telemetryClient.addBreadcrumb('navigation', location.pathname);
+  }, [location.pathname]);
 
   const [createChannelCategory, setCreateChannelCategory] = useState<string | undefined>(undefined);
   const [showCreateChannel, setShowCreateChannel] = useState(false);

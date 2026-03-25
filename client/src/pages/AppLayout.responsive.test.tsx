@@ -32,6 +32,7 @@ vi.mock('../services/cryptoCore', () => ({ fromBase64: vi.fn() }));
 
 vi.mock('react-router-dom', () => ({
   useNavigate: () => vi.fn(),
+  useLocation: () => ({ pathname: '/app' }),
 }));
 
 const mockTeamMap = new Map([
