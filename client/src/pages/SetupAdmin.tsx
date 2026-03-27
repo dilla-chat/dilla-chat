@@ -19,7 +19,7 @@ export default function SetupAdmin() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { publicKey, derivedKey, addTeam, setPublicKey } = useAuthStore();
+  const { derivedKey, addTeam, setPublicKey } = useAuthStore();
 
   const isBrowser = !(globalThis as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
   const [serverAddress, setServerAddress] = useState(
