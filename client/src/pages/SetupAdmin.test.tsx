@@ -139,6 +139,41 @@ describe('SetupAdmin', () => {
     expect(setupBtn).toBeDisabled();
   });
 
+  it('redirects to create-identity when no identity exists', async () => {
+    const { hasIdentity } = await import('../services/keyStore');
+    vi.mocked(hasIdentity).mockResolvedValueOnce(false);
+    render(<SetupAdmin />);
+    await act(async () => {});
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.stringContaining('/create-identity'),
+    );
+  });
+
+  it('submits setup and navigates on success', async () => {
+    const { api } = await import('../services/api');
+    vi.mocked(api.bootstrap).mockResolvedValueOnce({
+      token: 'jwt-tok',
+      user: { id: 'u1', username: 'admin' },
+      team: { id: 'team-1', name: 'MyTeam' },
+    });
+
+    render(<SetupAdmin />);
+    await act(async () => {});
+
+    fireEvent.change(screen.getByPlaceholderText('setup.bootstrapToken'), { target: { value: 'tok123' } });
+    fireEvent.change(screen.getByPlaceholderText('Username'), { target: { value: 'admin' } });
+    fireEvent.change(screen.getByPlaceholderText('Team Name'), { target: { value: 'MyTeam' } });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'setup.setup' }));
+    });
+
+    // Wait for async handleSetup to complete
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+
+    expect(api.bootstrap).toHaveBeenCalled();
+  });
+
   it('updates input values on change', async () => {
     render(<SetupAdmin />);
     await act(async () => {});
