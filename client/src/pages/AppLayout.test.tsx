@@ -22,6 +22,8 @@ vi.mock('../services/websocket', () => ({
   ws: {
     on: vi.fn(() => vi.fn()),
     connect: vi.fn(),
+    disconnect: vi.fn(),
+    disconnectAll: vi.fn(),
     isConnected: vi.fn(() => false),
     request: vi.fn().mockResolvedValue({}),
   },
