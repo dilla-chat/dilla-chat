@@ -8,17 +8,24 @@ import { api, type VoicePeer } from '../services/api';
 import { ws } from '../services/websocket';
 import { telemetryClient } from '../services/telemetryClient';
 
-/** Normalize members from server snake_case to client camelCase */
+/** Normalize members from server snake_case to client camelCase.
+ *  sync:init returns `{ member: {...}, user: {...} }` wrappers;
+ *  REST returns flat objects. Handle both. */
 function normalizeMembers(data: Record<string, unknown>[]) {
-  return data.map((m) => ({
-    id: m.id as string,
-    userId: (m.userId ?? m.user_id) as string,
-    username: m.username as string,
-    displayName: (m.displayName ?? m.display_name ?? '') as string,
-    nickname: (m.nickname ?? '') as string,
-    roles: (m.roles ?? []) as Role[],
-    statusType: (m.statusType ?? m.status_type ?? '') as string,
-  }));
+  return data.map((raw) => {
+    // Unwrap nested { member, user } format from sync:init
+    const mem = (raw.member ?? raw) as Record<string, unknown>;
+    const usr = (raw.user ?? raw) as Record<string, unknown>;
+    return {
+      id: (mem.id ?? raw.id) as string,
+      userId: (mem.user_id ?? mem.userId ?? usr.id ?? raw.user_id ?? raw.userId) as string,
+      username: (usr.username ?? raw.username ?? '') as string,
+      displayName: (usr.display_name ?? usr.displayName ?? raw.display_name ?? raw.displayName ?? '') as string,
+      nickname: (mem.nickname ?? raw.nickname ?? '') as string,
+      roles: (mem.roles ?? raw.roles ?? []) as Role[],
+      statusType: (usr.status_type ?? usr.statusType ?? raw.status_type ?? raw.statusType ?? '') as string,
+    };
+  });
 }
 
 interface SyncStoreSetters {
@@ -152,7 +159,8 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
     api.setAuthErrorHandler(() => {
       if (authErrorFired.current) return;
       authErrorFired.current = true;
-      console.warn('Auth token expired — redirecting to login');
+      console.warn('Auth token expired — disconnecting WS and redirecting to login');
+      ws.disconnectAll();
       navigate('/login');
     });
   }, [navigate]);

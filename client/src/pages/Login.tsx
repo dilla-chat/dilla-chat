@@ -70,7 +70,7 @@ export default function Login() {
 
         const pubKeyBytes = await getPublicKey();
         const fingerprint = pubKeyBytes
-          ? Array.from(pubKeyBytes.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join('')
+          ? Array.from(pubKeyBytes).map(b => b.toString(16).padStart(2, '0')).join('')
           : '';
 
         const servers = [...new Set(info.keySlots.map((s: KeySlot) => s.server_url).filter(Boolean))];
@@ -277,7 +277,7 @@ export default function Login() {
             {identityInfo.username && (
               <div className="login-identity-name">{identityInfo.username}</div>
             )}
-            <div className="login-identity-fingerprint">{identityInfo.fingerprint}...</div>
+            <div className="login-identity-fingerprint">{identityInfo.fingerprint}</div>
             {identityInfo.servers.length > 0 && (
               <div className="login-identity-servers">
                 {identityInfo.servers.map(s => new URL(s).hostname).join(', ')}

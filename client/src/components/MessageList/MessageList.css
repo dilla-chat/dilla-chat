@@ -47,9 +47,7 @@
   margin-top: 1rem;
 }
 
-.message-group:hover {
-  background: var(--bg-modifier-hover);
-}
+/* hover highlight moved to .message-item level for per-message actions */
 
 .message-group-avatar {
   flex-shrink: 0;
@@ -214,7 +212,7 @@
   display: none;
   position: absolute;
   top: -16px;
-  right: 4px;
+  right: -32px;
   background: var(--glass-bg-floating);
   -webkit-backdrop-filter: blur(var(--glass-blur-light));
   backdrop-filter: blur(var(--glass-blur-light));
@@ -229,6 +227,14 @@
 .message-item:hover .message-actions,
 .message-item:focus-within .message-actions {
   display: flex;
+}
+
+.message-item:hover {
+  background: var(--bg-modifier-hover);
+  border-radius: 4px;
+  margin: 0 -4px;
+  padding-left: 4px;
+  padding-right: 4px;
 }
 
 .message-action-btn {

@@ -10,6 +10,8 @@ vi.mock('../services/websocket', () => ({
     editMessage: vi.fn(),
     deleteMessage: vi.fn(),
     startTyping: vi.fn(),
+    joinChannel: vi.fn(),
+    leaveChannel: vi.fn(),
   },
 }));
 
@@ -120,7 +122,7 @@ describe('ChannelView', () => {
   it('subscribes to message and thread WebSocket events on mount', () => {
     renderChannelView();
     const eventNames = vi.mocked(ws.on).mock.calls.map((c) => c[0]);
-    for (const evt of ['message:new', 'message:edited', 'message:deleted', 'typing:start', 'thread:created', 'thread:updated', 'thread:message:new', 'thread:message:updated', 'thread:message:deleted']) {
+    for (const evt of ['message:new', 'message:updated', 'message:deleted', 'typing:indicator', 'thread:created', 'thread:updated', 'thread:message:new', 'thread:message:updated', 'thread:message:deleted']) {
       expect(eventNames).toContain(evt);
     }
   });
@@ -160,9 +162,9 @@ describe('ChannelView', () => {
 
   it.each([
     { event: 'message:new', payload: { id: 'msg-x', channel_id: 'ch-other', author_id: 'u2', username: 'bob', content: 'hi', type: 'text', thread_id: null, edited_at: null, deleted: false, created_at: '2025-01-01T00:00:00Z', reactions: [] } },
-    { event: 'message:edited', payload: { message_id: 'msg-1', channel_id: 'ch-1', content: 'edited', author_id: 'u1' } },
+    { event: 'message:updated', payload: { message_id: 'msg-1', channel_id: 'ch-1', content: 'edited', author_id: 'u1' } },
     { event: 'message:deleted', payload: { message_id: 'msg-1', channel_id: 'ch-1' } },
-    { event: 'typing:start', payload: { channel_id: 'ch-1', user_id: 'u2', username: 'bob' } },
+    { event: 'typing:indicator', payload: { channel_id: 'ch-1', user_id: 'u2', username: 'bob' } },
   ])('invokes WS handler for $event', async ({ event, payload }) => {
     renderChannelView();
     const handler = getWsHandler(vi.mocked(ws.on), event);
@@ -193,8 +195,8 @@ describe('ChannelView', () => {
     const events: [string, Record<string, unknown>][] = [
       ['message:new', { id: 'msg-x', channel_id: 'other-ch', author_id: 'u2', username: 'bob', content: 'hi', type: 'text', thread_id: null, edited_at: null, deleted: false, created_at: '2025-01-01T00:00:00Z', reactions: [] }],
       ['message:deleted', { message_id: 'msg-x', channel_id: 'other-ch' }],
-      ['typing:start', { channel_id: 'other-ch', user_id: 'u2', username: 'bob' }],
-      ['message:edited', { message_id: 'msg-x', channel_id: 'other-ch', content: 'edited', author_id: 'u1' }],
+      ['typing:indicator', { channel_id: 'other-ch', user_id: 'u2', username: 'bob' }],
+      ['message:updated', { message_id: 'msg-x', channel_id: 'other-ch', content: 'edited', author_id: 'u1' }],
       ['thread:created', { id: 'th-other', channel_id: 'other-ch', parent_message_id: 'msg-x' }],
       ['thread:updated', { id: 'th-other', channel_id: 'other-ch' }],
     ];

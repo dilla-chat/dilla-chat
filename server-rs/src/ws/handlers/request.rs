@@ -67,7 +67,21 @@ pub(in crate::ws) async fn handle_request(hub: &Hub, user_id: &str, team_id: &st
 
             ws_spawn_db(db, move |conn| {
                 let messages = db::get_messages_by_channel(conn, &channel_id, &before, limit)?;
-                Ok(serde_json::to_value(messages).unwrap())
+                // Enrich each message with the author's username
+                let enriched: Vec<serde_json::Value> = messages
+                    .into_iter()
+                    .map(|msg| {
+                        let username = db::get_user_by_id(conn, &msg.author_id)
+                            .ok()
+                            .flatten()
+                            .map(|u| u.username)
+                            .unwrap_or_default();
+                        let mut val = serde_json::to_value(&msg).unwrap();
+                        val.as_object_mut().unwrap().insert("username".to_string(), serde_json::json!(username));
+                        val
+                    })
+                    .collect();
+                Ok(serde_json::json!(enriched))
             })
             .await
         }

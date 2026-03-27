@@ -84,25 +84,21 @@ async function tryEncrypt(
   }
 }
 
-/** Resolve display name from a member record (handles snake_case fields from server). */
-function resolveUsername(member: Member | undefined): string {
-  if (!member) return 'Unknown';
+/** Resolve display name from a member record — prefer displayName over username. */
+function resolveDisplayName(member: Member | undefined): string | null {
+  if (!member) return null;
   const raw = member as unknown as Record<string, string>;
-  return member.username || member.displayName || raw.display_name || 'Unknown';
+  return member.displayName || raw.display_name || member.username || null;
 }
 
 function serverToMessage(msg: ServerMessage, decryptedContent: string, teamMembers?: Member[]): Message {
-  let username: string;
-  if (msg.username) {
-    username = msg.username;
-  } else if (teamMembers) {
+  let username: string = msg.username || 'Unknown';
+  if (teamMembers) {
     const raw = teamMembers as unknown as Array<Record<string, string>>;
     const member = teamMembers.find((m, i) =>
       (m.userId || raw[i].user_id) === msg.author_id || m.id === msg.author_id
     );
-    username = resolveUsername(member);
-  } else {
-    username = 'Unknown';
+    username = resolveDisplayName(member) ?? username;
   }
   return {
     id: msg.id,
@@ -144,8 +140,14 @@ export default function ChannelView({ channel }: Readonly<Props>) {
   const currentUser = teamEntry?.user ?? null;
   const currentUserId = currentUser?.id ?? '';
 
-
-
+  // Subscribe to channel broadcasts so the server delivers real-time events
+  useEffect(() => {
+    if (!activeTeamId) return;
+    ws.joinChannel(activeTeamId, channel.id);
+    return () => {
+      ws.leaveChannel(activeTeamId, channel.id);
+    };
+  }, [activeTeamId, channel.id]);
 
   // Load initial message history via WS (with REST fallback)
   useEffect(() => {
@@ -190,7 +192,7 @@ export default function ChannelView({ channel }: Readonly<Props>) {
       addMessage(channel.id, serverToMessage(payload, content, teamMembers));
     });
 
-    const unsubEdit = ws.on('message:edited', async (payload: { message_id: string; channel_id: string; content: string; author_id: string }) => {
+    const unsubEdit = ws.on('message:updated', async (payload: { message_id: string; channel_id: string; content: string; author_id: string }) => {
       if (payload.channel_id !== channel.id) return;
       // Invalidate cache so new ciphertext is decrypted fresh
       await deleteCachedMessage(payload.message_id);
@@ -203,7 +205,7 @@ export default function ChannelView({ channel }: Readonly<Props>) {
       deleteMessage(channel.id, payload.message_id);
     });
 
-    const unsubTyping = ws.on('typing:start', (payload: { channel_id: string; user_id: string; username: string }) => {
+    const unsubTyping = ws.on('typing:indicator', (payload: { channel_id: string; user_id: string; username: string }) => {
       if (payload.channel_id !== channel.id) return;
       setTyping(channel.id, {
         userId: payload.user_id,
@@ -344,7 +346,8 @@ export default function ChannelView({ channel }: Readonly<Props>) {
 
   const handleSend = useCallback(
     async (content: string) => {
-      if (!activeTeamId) return;
+      if (!activeTeamId) { console.warn('[ChannelView] no activeTeamId, dropping message'); return; }
+      console.log('[ChannelView] sending message', { activeTeamId, channelId: channel.id, content: content.slice(0, 20), wsConnected: ws.isConnected(activeTeamId) });
       const encrypted = await tryEncrypt(content, channel.id, derivedKey);
       ws.sendMessage(activeTeamId, channel.id, encrypted);
     },
