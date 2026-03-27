@@ -61,7 +61,7 @@ pub(in crate::ws) async fn handle_message_send(
         author_id: user_id.to_string(),
         content: p.content.clone(),
         msg_type: msg_type.clone(),
-        thread_id: p.thread_id.clone(),
+        thread_id: p.thread_id.clone().unwrap_or_default(),
         edited_at: None,
         deleted: false,
         lamport_ts: 0,
@@ -88,7 +88,7 @@ pub(in crate::ws) async fn handle_message_send(
             username: username.to_string(),
             content: p.content,
             msg_type,
-            thread_id: p.thread_id,
+            thread_id: p.thread_id.unwrap_or_default(),
             created_at: now,
         },
     );

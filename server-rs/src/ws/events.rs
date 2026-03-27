@@ -132,7 +132,7 @@ pub struct MessageSendPayload {
     #[serde(rename = "type", default)]
     pub msg_type: String,
     #[serde(default)]
-    pub thread_id: String,
+    pub thread_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

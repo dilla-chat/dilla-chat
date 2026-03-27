@@ -15,6 +15,7 @@ import {
 } from '../services/keyStore';
 import { fromBase64 } from '../services/cryptoCore';
 import type { PasskeyRegistrationResult } from '../services/webauthn';
+import { friendlyError } from '../utils/errorMessages';
 import PublicShell from './PublicShell';
 
 type Step = 'form' | 'passphrase' | 'recovery' | 'done';
@@ -109,7 +110,7 @@ export default function CreateIdentity() {
       setRecoveryKey(encodeRecoveryKeyKS(recoveryKeyBytes));
       setStep('recovery');
     } catch (e) {
-      setError(String(e));
+      setError(friendlyError(e, t));
     } finally {
       setLoading(false);
     }
@@ -148,7 +149,7 @@ export default function CreateIdentity() {
       setRecoveryKey(encodeRecoveryKeyKS(recoveryKeyBytes));
       setStep('recovery');
     } catch (e) {
-      setError(String(e));
+      setError(friendlyError(e, t));
     } finally {
       setLoading(false);
     }

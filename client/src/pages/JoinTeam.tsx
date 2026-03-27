@@ -12,6 +12,7 @@ import {
   uploadPrekeyBundle,
   activateTeamAndNavigate,
 } from '../utils/serverConnection';
+import { friendlyError } from '../utils/errorMessages';
 import PublicShell from './PublicShell';
 
 export default function JoinTeam() {
@@ -82,7 +83,7 @@ export default function JoinTeam() {
       const info = await api.getInviteInfo(normalizeServerUrl(serverAddress), inviteToken) as { team_name?: string; created_by?: string };
       setTeamInfo(info);
     } catch (e) {
-      setError(String(e));
+      setError(friendlyError(e, t));
     }
   };
 
@@ -137,7 +138,7 @@ export default function JoinTeam() {
 
       await activateTeamAndNavigate(realTeamId, navigate);
     } catch (e) {
-      setError(String(e));
+      setError(friendlyError(e, t));
     } finally {
       setLoading(false);
     }

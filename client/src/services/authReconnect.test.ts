@@ -192,4 +192,60 @@ describe('tryReconnectToCurrentServer', () => {
     const result = await tryReconnectToCurrentServer('pubkey123');
     expect(result).toBe(false);
   });
+
+  it('returns false when verifyChallenge rejects (unknown public key)', async () => {
+    const { tryReconnectToCurrentServer } = await import('./authReconnect');
+    const { api } = await import('./api');
+
+    vi.mocked(api.verifyChallenge).mockRejectedValueOnce(
+      new Error('no account found for this public key — register first'),
+    );
+
+    const result = await tryReconnectToCurrentServer('unknown-pubkey');
+    expect(result).toBe(false);
+    expect(api.removeTeam).toHaveBeenCalledWith('__reconnect__');
+  });
+});
+
+describe('refreshServerTokens after auth error cleared teams', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useAuthStore.setState({
+      teams: new Map(),
+      servers: new Map(),
+      isAuthenticated: false,
+    });
+  });
+
+  it('returns 0 when teams map is empty (auth error previously cleared it)', async () => {
+    const { refreshServerTokens } = await import('./authReconnect');
+    const { api } = await import('./api');
+
+    const emptyTeams = new Map();
+    const count = await refreshServerTokens(emptyTeams, 'pubkey123');
+
+    expect(count).toBe(0);
+    expect(api.requestChallenge).not.toHaveBeenCalled();
+  });
+
+  it('removes team when verifyChallenge returns 401 (unknown key after server reset)', async () => {
+    const { refreshServerTokens } = await import('./authReconnect');
+    const { api } = await import('./api');
+
+    vi.mocked(api.verifyChallenge).mockRejectedValueOnce(
+      new Error('no account found for this public key — register first'),
+    );
+
+    useAuthStore.getState().addTeam('t-stale', 'old-jwt', {}, {}, 'https://server.com');
+
+    const teams = new Map([
+      ['t-stale', { token: 'old-jwt', user: {}, teamInfo: {}, baseUrl: 'https://server.com' }],
+    ]);
+
+    const count = await refreshServerTokens(teams, 'new-pubkey');
+
+    expect(count).toBe(0);
+    expect(api.removeTeam).toHaveBeenCalledWith('t-stale');
+    expect(useAuthStore.getState().teams.has('t-stale')).toBe(false);
+  });
 });

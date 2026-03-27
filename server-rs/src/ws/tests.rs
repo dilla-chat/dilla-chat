@@ -388,7 +388,7 @@ fn message_send_payload_defaults_type_and_thread() {
     let json = r#"{"channel_id":"ch1","content":"hello"}"#;
     let p: MessageSendPayload = serde_json::from_str(json).unwrap();
     assert_eq!(p.msg_type, "");
-    assert_eq!(p.thread_id, "");
+    assert_eq!(p.thread_id, None);
 }
 
 #[test]

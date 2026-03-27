@@ -15,6 +15,7 @@ export async function refreshServerTokens(
   const keys = getIdentityKeys();
   let successCount = 0;
 
+  console.log(`[authReconnect] refreshing tokens for ${teams.size} teams`);
   for (const [teamId, entry] of teams) {
     const baseUrl = entry.baseUrl;
     if (!baseUrl) continue;
@@ -31,7 +32,8 @@ export async function refreshServerTokens(
       const { addTeam: updateTeam } = useAuthStore.getState();
       updateTeam(teamId, result.token, entry.user, entry.teamInfo, baseUrl);
       successCount++;
-    } catch {
+    } catch (err) {
+      console.error(`[authReconnect] refresh failed for team ${teamId}:`, err);
       const { removeTeam } = useAuthStore.getState();
       removeTeam(teamId);
       api.removeTeam(teamId);
@@ -77,16 +79,21 @@ export async function tryReconnectToCurrentServer(pubKey: string): Promise<boole
 
   try {
     api.addTeam(tempId, baseUrl);
+    console.log('[authReconnect] trying reconnect to', baseUrl, 'with pubKey', pubKey.slice(0, 20) + '...');
     const { challenge_id, nonce } = await api.requestChallenge(tempId, pubKey);
     const nonceBytes = fromBase64(nonce);
     const sigBytes = await signChallenge(keys.signingKey, nonceBytes);
     const signature = toBase64(sigBytes);
     const result = await api.verifyChallenge(tempId, challenge_id, pubKey, signature);
+    console.log('[authReconnect] verify succeeded, listing teams');
 
     const serverTeams = await api.listTeams(baseUrl, result.token);
     api.removeTeam(tempId);
 
-    if (!serverTeams || serverTeams.length === 0) return false;
+    if (!serverTeams || serverTeams.length === 0) {
+      console.warn('[authReconnect] no teams found on server');
+      return false;
+    }
 
     const { addTeam: storeAddTeam } = useAuthStore.getState();
     for (const team of serverTeams) {
@@ -98,7 +105,8 @@ export async function tryReconnectToCurrentServer(pubKey: string): Promise<boole
     }
 
     return useAuthStore.getState().teams.size > 0;
-  } catch {
+  } catch (err) {
+    console.error('[authReconnect] reconnect failed:', err);
     api.removeTeam(tempId);
     return false;
   }

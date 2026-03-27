@@ -128,11 +128,20 @@ export class WebSocketService {
       this.reconnectTimers.delete(teamId);
     }
 
+    this.stopHeartbeat(teamId);
+
     const socket = this.connections.get(teamId);
     if (socket) {
       socket.onclose = null;
       socket.close();
       this.connections.delete(teamId);
+    }
+  }
+
+  /** Disconnect all teams — used on auth failure / logout. */
+  disconnectAll(): void {
+    for (const teamId of [...this.connectionParams.keys()]) {
+      this.disconnect(teamId);
     }
   }
 

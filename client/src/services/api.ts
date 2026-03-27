@@ -95,7 +95,10 @@ class ApiService {
     }
     const res = await fetch(`${baseUrl}${path}`, { ...options, headers });
     if (!res.ok) {
-      if (res.status === 401 && this.onAuthError) {
+      // Only trigger auth error for authenticated requests (bearer token was sent).
+      // Public endpoints like /auth/verify return 401 for bad credentials — that's
+      // not an expired-token situation and must NOT redirect to login.
+      if (res.status === 401 && this.onAuthError && token) {
         this.onAuthError();
       }
       const body = await res.text();

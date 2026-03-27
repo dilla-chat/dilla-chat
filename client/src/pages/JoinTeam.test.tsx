@@ -151,7 +151,7 @@ describe('JoinTeam', () => {
   });
 
   it('shows error on failed invite check', async () => {
-    vi.mocked(api.getInviteInfo).mockRejectedValueOnce(new Error('Invalid invite'));
+    vi.mocked(api.getInviteInfo).mockRejectedValueOnce(new Error('invite not found'));
     globalThis.fetch = vi.fn().mockResolvedValue({ ok: true });
 
     render(<JoinTeam />);
@@ -180,7 +180,7 @@ describe('JoinTeam', () => {
     fireEvent.click(joinBtn);
 
     await waitFor(() => {
-      expect(screen.getByText(/Invalid invite/)).toBeInTheDocument();
+      expect(screen.getByText(/errors\.invalidInviteToken/)).toBeInTheDocument();
     });
   });
 
@@ -443,7 +443,7 @@ describe('JoinTeam', () => {
       team_name: 'Team',
       created_by: 'admin',
     });
-    vi.mocked(api.register).mockRejectedValueOnce(new Error('Registration failed'));
+    vi.mocked(api.register).mockRejectedValueOnce(new Error('username or public key already registered'));
     globalThis.fetch = vi.fn().mockResolvedValue({ ok: true });
 
     render(<JoinTeam />);
@@ -476,7 +476,7 @@ describe('JoinTeam', () => {
     fireEvent.click(screen.getByText('join.join'));
 
     await waitFor(() => {
-      expect(screen.getByText(/Registration failed/)).toBeInTheDocument();
+      expect(screen.getByText(/errors\.usernameAlreadyTaken/)).toBeInTheDocument();
     });
   });
 

@@ -67,7 +67,8 @@ export async function startTelemetry(): Promise<void> {
   ]);
 
   const serverOrigin = import.meta.env.VITE_API_URL || globalThis.location.origin;
-  const telemetryUrl = `${serverOrigin}/api/v1/telemetry?type=traces`;
+  const telemetryUrl = import.meta.env.VITE_TELEMETRY_URL
+    || `${serverOrigin}/api/v1/telemetry?type=traces`;
 
   const resource = resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'dilla-client',
@@ -122,6 +123,12 @@ export async function stopTelemetry(): Promise<void> {
  * Called once from main.tsx before React renders.
  */
 export async function initTelemetry(): Promise<void> {
+  // Only start OTel if an explicit telemetry endpoint is configured.
+  // The default /api/v1/telemetry route does not exist on the Rust server —
+  // client telemetry travels via WebSocket (telemetry:error / telemetry:breadcrumb).
+  const hasExplicitEndpoint = !!import.meta.env.VITE_TELEMETRY_URL;
+  if (!hasExplicitEndpoint) return;
+
   if (isEnabled()) {
     await startTelemetry();
   }

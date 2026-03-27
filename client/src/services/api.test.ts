@@ -93,10 +93,11 @@ describe('ApiService', () => {
   // ── Auth error handler ────────────────────────────────────────────────────
 
   describe('setAuthErrorHandler', () => {
-    it('calls handler on 401 response', async () => {
+    it('calls handler on 401 response for authenticated request', async () => {
       const handler = vi.fn();
       api.setAuthErrorHandler(handler);
       api.addTeam('t-auth', 'https://auth.io');
+      api.setToken('t-auth', 'some-jwt-token');
 
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: false,
@@ -106,6 +107,22 @@ describe('ApiService', () => {
 
       await expect(api.getChannels('t-auth')).rejects.toThrow('Unauthorized');
       expect(handler).toHaveBeenCalledOnce();
+    });
+
+    it('does not call handler on 401 from public auth endpoint (no token)', async () => {
+      const handler = vi.fn();
+      api.setAuthErrorHandler(handler);
+      api.addTeam('t-auth2', 'https://auth.io');
+      // No setToken — simulates public auth/verify call
+
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        text: () => Promise.resolve('invalid signature'),
+      });
+
+      await expect(api.getChannels('t-auth2')).rejects.toThrow('invalid signature');
+      expect(handler).not.toHaveBeenCalled();
     });
 
     it('does not call handler on non-401 errors', async () => {

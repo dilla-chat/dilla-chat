@@ -335,5 +335,21 @@
     "featureE2E": "End-to-End Encrypted",
     "featureSelfHosted": "Self-Hosted",
     "featureFederated": "Federated"
+  },
+  "errors": {
+    "usernameAlreadyTaken": "That username is already taken. Please choose a different one.",
+    "publicKeyAlreadyRegistered": "This identity is already registered on this server.",
+    "invalidBootstrapToken": "Invalid or expired bootstrap token.",
+    "bootstrapTokenUsed": "This bootstrap token has already been used.",
+    "invalidInviteToken": "Invalid or expired invite token.",
+    "inviteMaxUses": "This invite link has reached its maximum number of uses.",
+    "inviteExpired": "This invite link has expired.",
+    "inviteRevoked": "This invite link has been revoked.",
+    "invalidSignature": "Authentication failed. Please try again.",
+    "challengeExpired": "Login session expired. Please try again.",
+    "noAccount": "No account found for this identity. Please register first.",
+    "serverUnreachable": "Could not reach the server. Check the address and try again.",
+    "networkError": "Network error. Please check your connection.",
+    "unknown": "Something went wrong. Please try again."
   }
 }
