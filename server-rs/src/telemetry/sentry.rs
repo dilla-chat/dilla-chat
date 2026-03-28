@@ -323,10 +323,7 @@ mod tests {
         };
         let adapter = SentryAdapter {
             config,
-            client: reqwest::Client::builder()
-                .danger_accept_invalid_certs(true)
-                .build()
-                .unwrap(),
+            client: reqwest::Client::new(),
         };
 
         // Use http:// since our mock doesn't do TLS
