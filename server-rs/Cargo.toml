@@ -60,7 +60,7 @@ async-trait = "0.1"
 # OpenTelemetry
 opentelemetry = "0.31"
 opentelemetry_sdk = { version = "0.31", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.31", default-features = false, features = ["http-proto", "trace", "metrics", "logs", "internal-logs"] }
+opentelemetry-otlp = { version = "0.31", default-features = false, features = ["http-proto", "reqwest-client", "trace", "metrics", "logs", "internal-logs"] }
 tracing-opentelemetry = "0.32"
 
 # Regex (route sanitisation)
@@ -70,7 +70,14 @@ regex = "1"
 tokio-tungstenite = { version = "0.29", features = ["connect"] }
 
 # HTTP client (for TURN API calls)
-reqwest = { version = "0.13", features = ["json"] }
+reqwest = { version = "0.13", features = ["json", "rustls"] }
+
+# Force TLS on the reqwest 0.12 that opentelemetry-otlp pulls in
+reqwest_012 = { package = "reqwest", version = "0.12", features = ["rustls-tls"] }
+
+# OTel HTTP client deps
+opentelemetry-http = "0.31"
+http = "1"
 
 [dev-dependencies]
 tempfile = "3"

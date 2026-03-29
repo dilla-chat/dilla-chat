@@ -46,6 +46,18 @@ struct Challenge {
 /// If no passphrase is set (insecure mode), generate a random ephemeral secret
 /// that is NOT persisted (lost on restart).
 fn derive_jwt_secret(db_passphrase: &str) -> Vec<u8> {
+    // Check for explicit JWT secret override (useful when DB is unencrypted
+    // but you still want stable tokens across restarts).
+    if let Ok(jwt_secret) = std::env::var("DILLA_JWT_SECRET") {
+        if !jwt_secret.is_empty() {
+            let hk = Hkdf::<Sha256>::new(None, jwt_secret.as_bytes());
+            let mut secret = vec![0u8; 32];
+            hk.expand(b"dilla-jwt-signing-key-v1", &mut secret)
+                .expect("HKDF-SHA256 expand for 32 bytes should never fail");
+            return secret;
+        }
+    }
+
     if db_passphrase.is_empty() {
         // Insecure mode: ephemeral random secret (lost on restart)
         let mut raw = vec![0u8; 32];

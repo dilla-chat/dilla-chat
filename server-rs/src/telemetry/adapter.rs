@@ -1,5 +1,25 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
+
+/// Deserialize a timestamp that may be a number (epoch seconds) or an ISO 8601 string.
+fn deserialize_timestamp<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let val = serde_json::Value::deserialize(deserializer)?;
+    match &val {
+        serde_json::Value::Number(n) => Ok(n.as_u64().unwrap_or(0)),
+        serde_json::Value::String(s) => {
+            // Try parsing as ISO 8601 → epoch seconds
+            if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+                Ok(dt.timestamp() as u64)
+            } else {
+                Ok(s.parse::<u64>().unwrap_or(0))
+            }
+        }
+        _ => Ok(0),
+    }
+}
 
 /// A breadcrumb captured by the client before an error occurred.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,7 +62,7 @@ pub struct TelemetryEvent {
     pub breadcrumbs: Vec<Breadcrumb>,
     #[serde(default)]
     pub context: ClientContext,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_timestamp")]
     pub timestamp: u64,
 
     // Server-enriched fields

@@ -31,6 +31,10 @@ async fn main() {
     // Initialize logging.
     observability::init_logging(&cfg);
 
+    // Initialize OpenTelemetry (traces + metrics) if enabled.
+    let _otel = observability::init_otel(&cfg)
+        .expect("failed to initialize OpenTelemetry");
+
     let database = init_database(&cfg);
     let auth_svc = Arc::new(AuthService::new(database.clone(), &cfg.db_passphrase));
     check_first_start(&database, &auth_svc, cfg.port);
@@ -67,6 +71,18 @@ async fn main() {
 
     // Create router and start server.
     let app = api::create_router(state);
+
+    // Wire OTel HTTP middleware if enabled.
+    let app = if cfg.otel_enabled {
+        let metrics = std::sync::Arc::new(observability::Metrics::new());
+        app.layer(axum::middleware::from_fn_with_state(
+            metrics,
+            observability::http_middleware,
+        ))
+    } else {
+        app
+    };
+
     start_server(&cfg, app).await;
 }
 

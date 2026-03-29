@@ -81,6 +81,57 @@ impl OtelProviders {
 /// Returns empty (noop) providers when `config.otel_enabled` is false.
 /// Uses OTLP/HTTP exporter pointed at `config.otel_http_endpoint` (falls back
 /// to `config.otel_endpoint`).
+/// HTTP client wrapper that runs reqwest on the Tokio runtime so it works
+/// inside the batch processor's non-Tokio thread.
+#[derive(Debug, Clone)]
+struct TokioHttpClient {
+    inner: reqwest::Client,
+    handle: tokio::runtime::Handle,
+}
+
+impl TokioHttpClient {
+    async fn do_send(
+        client: reqwest::Client,
+        request: http::Request<bytes::Bytes>,
+    ) -> Result<http::Response<bytes::Bytes>, opentelemetry_http::HttpError> {
+        let (parts, body) = request.into_parts();
+        let req = http::Request::from_parts(parts, body.to_vec());
+        let req: reqwest::Request = req.try_into()?;
+        let resp = client.execute(req).await?;
+        let status = resp.status();
+        let headers = resp.headers().clone();
+        let body = resp.bytes().await?;
+        let mut http_resp = http::Response::builder().status(status);
+        for (k, v) in headers.iter() {
+            http_resp = http_resp.header(k, v);
+        }
+        Ok(http_resp.body(body)?)
+    }
+}
+
+#[async_trait::async_trait]
+impl opentelemetry_http::HttpClient for TokioHttpClient {
+    async fn send(
+        &self,
+        request: http::Request<Vec<u8>>,
+    ) -> Result<http::Response<bytes::Bytes>, opentelemetry_http::HttpError> {
+        let (parts, body) = request.into_parts();
+        let bytes_req = http::Request::from_parts(parts, bytes::Bytes::from(body));
+        let client = self.inner.clone();
+        let handle = self.handle.clone();
+        handle.spawn(Self::do_send(client, bytes_req)).await.unwrap()
+    }
+
+    async fn send_bytes(
+        &self,
+        request: http::Request<bytes::Bytes>,
+    ) -> Result<http::Response<bytes::Bytes>, opentelemetry_http::HttpError> {
+        let client = self.inner.clone();
+        let handle = self.handle.clone();
+        handle.spawn(Self::do_send(client, request)).await.unwrap()
+    }
+}
+
 #[allow(dead_code)]
 pub fn init_otel(config: &Config) -> Result<OtelProviders, Box<dyn std::error::Error>> {
     use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
@@ -127,10 +178,18 @@ pub fn init_otel(config: &Config) -> Result<OtelProviders, Box<dyn std::error::E
         );
     }
 
+    // Build a Tokio-aware HTTP client so reqwest works in batch processor threads.
+    let http_client = TokioHttpClient {
+        inner: reqwest::Client::new(),
+        handle: tokio::runtime::Handle::current(),
+    };
+
     // --- Trace exporter (OTLP/HTTP) ---
+    let trace_endpoint = format!("{}/v1/traces", full_endpoint);
     let mut trace_builder = opentelemetry_otlp::SpanExporter::builder()
         .with_http()
-        .with_endpoint(&full_endpoint);
+        .with_http_client(http_client)
+        .with_endpoint(&trace_endpoint);
 
     if !headers.is_empty() {
         trace_builder = trace_builder.with_headers(headers.clone());
@@ -138,6 +197,8 @@ pub fn init_otel(config: &Config) -> Result<OtelProviders, Box<dyn std::error::E
 
     let trace_exporter = trace_builder.build()?;
 
+    // Use a Tokio-aware batch config by entering the runtime handle
+    // before building the provider (reqwest needs a Tokio reactor).
     let tracer_provider = SdkTracerProvider::builder()
         .with_batch_exporter(trace_exporter)
         .with_resource(resource.clone())
@@ -151,9 +212,15 @@ pub fn init_otel(config: &Config) -> Result<OtelProviders, Box<dyn std::error::E
     );
 
     // --- Metric exporter (OTLP/HTTP) ---
+    let metric_http_client = TokioHttpClient {
+        inner: reqwest::Client::new(),
+        handle: tokio::runtime::Handle::current(),
+    };
+    let metric_endpoint = format!("{}/v1/metrics", full_endpoint);
     let mut metric_builder = opentelemetry_otlp::MetricExporter::builder()
         .with_http()
-        .with_endpoint(&full_endpoint);
+        .with_http_client(metric_http_client)
+        .with_endpoint(&metric_endpoint);
 
     if !headers.is_empty() {
         metric_builder = metric_builder.with_headers(headers);
@@ -178,6 +245,16 @@ pub fn init_otel(config: &Config) -> Result<OtelProviders, Box<dyn std::error::E
         service = %service_name,
         "observability: OTel enabled"
     );
+
+    // Emit a test span to verify the pipeline works end-to-end.
+    {
+        use opentelemetry::trace::{TracerProvider, Tracer, Span};
+        let test_tracer = tracer_provider.tracer("dilla-server-init");
+        let mut test_span = test_tracer.start("otel-init-test");
+        test_span.set_attribute(KeyValue::new("test", "init"));
+        test_span.end();
+        tracing::info!("emitted test span via provider to verify OTel pipeline");
+    }
 
     Ok(OtelProviders {
         tracer_provider: Some(tracer_provider),

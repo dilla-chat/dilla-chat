@@ -235,13 +235,17 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
     // eslint-disable-next-line react-hooks/exhaustive-deps -- WS event handlers intentionally capture latest closures; adding applySyncData/loadDataViaREST would cause reconnection loops
   }, [activeTeamId]);
 
-  // Connect WebSocket when team becomes active
+  // Connect WebSocket when team becomes active or token changes
+  const activeToken = activeTeamId ? teams.get(activeTeamId)?.token : null;
   useEffect(() => {
-    if (!activeTeamId) return;
-    if (wsConnected.current.has(activeTeamId)) return;
+    if (!activeTeamId || !activeToken) return;
 
     const connInfo = api.getConnectionInfo(activeTeamId);
     if (!connInfo?.token) return;
+
+    // Reconnect if token changed (e.g. after auth reconnect refreshed it)
+    if (wsConnected.current.has(activeTeamId) && ws.isConnected(activeTeamId)) return;
+    wsConnected.current.delete(activeTeamId);
 
     const wsUrl = connInfo.baseUrl
       .replace(/^http:/, 'ws:')
@@ -252,7 +256,7 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
     ws.connect(activeTeamId, wsUrl, connInfo.token);
     wsConnected.current.add(activeTeamId);
     telemetryClient.setTeamId(activeTeamId);
-  }, [activeTeamId]);
+  }, [activeTeamId, activeToken]);
 
   return { authChecked, dataLoaded };
 }
