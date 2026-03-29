@@ -35,6 +35,24 @@ pub struct Transport {
     stop_rx: tokio::sync::watch::Receiver<bool>,
 }
 
+/// Build the WebSocket URL for a federation peer.
+///
+/// If the address already contains `://`, it is used as-is (with a warning for
+/// unencrypted `ws://`). Otherwise, defaults to `wss://{address}/federation`.
+fn build_peer_url(address: &str) -> String {
+    if address.contains("://") {
+        if address.starts_with("ws://") {
+            tracing::warn!(
+                "Federation peer {} uses unencrypted ws:// — consider using wss://",
+                address
+            );
+        }
+        address.to_string()
+    } else {
+        format!("wss://{}/federation", address)
+    }
+}
+
 #[allow(dead_code)]
 impl Transport {
     pub fn new() -> Self {
@@ -66,14 +84,7 @@ impl Transport {
             }
         }
 
-        let url = if address.contains("://") {
-            if address.starts_with("ws://") {
-                tracing::warn!("Federation peer {} uses unencrypted ws:// — consider using wss://", address);
-            }
-            address.to_string()
-        } else {
-            format!("wss://{}/federation", address)
-        };
+        let url = build_peer_url(address);
 
         let (ws_stream, _) = connect_async(&url)
             .await
@@ -338,5 +349,42 @@ impl Transport {
             }
             tracing::info!(peer = %peer_addr, "federation peer disconnected");
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_peer_url_bare_address() {
+        assert_eq!(
+            build_peer_url("example.com:8081"),
+            "wss://example.com:8081/federation"
+        );
+    }
+
+    #[test]
+    fn test_build_peer_url_ws_passthrough() {
+        assert_eq!(
+            build_peer_url("ws://example.com:8081/federation"),
+            "ws://example.com:8081/federation"
+        );
+    }
+
+    #[test]
+    fn test_build_peer_url_wss_passthrough() {
+        assert_eq!(
+            build_peer_url("wss://secure.example.com/federation"),
+            "wss://secure.example.com/federation"
+        );
+    }
+
+    #[test]
+    fn test_build_peer_url_bare_hostname_only() {
+        assert_eq!(
+            build_peer_url("node2.local"),
+            "wss://node2.local/federation"
+        );
     }
 }

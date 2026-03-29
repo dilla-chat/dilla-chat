@@ -629,4 +629,71 @@ mod tests {
         let input = "/550e8400-e29b-41d4-a716-446655440000";
         assert_eq!(sanitize_route(input), "/{id}");
     }
+
+    #[tokio::test]
+    async fn test_tokio_http_client_send() {
+        use opentelemetry_http::HttpClient;
+        use tokio::io::AsyncWriteExt;
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        // Spawn a minimal HTTP server that returns 200 OK.
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 4096];
+            let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut buf).await;
+            let response = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+            socket.write_all(response.as_bytes()).await.unwrap();
+            socket.shutdown().await.unwrap();
+        });
+
+        let client = TokioHttpClient {
+            inner: reqwest::Client::new(),
+            handle: tokio::runtime::Handle::current(),
+        };
+
+        let request = http::Request::builder()
+            .method("POST")
+            .uri(format!("http://127.0.0.1:{}/test", port))
+            .body(vec![1, 2, 3])
+            .unwrap();
+
+        let resp = client.send(request).await.unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn test_tokio_http_client_send_bytes() {
+        use opentelemetry_http::HttpClient;
+        use tokio::io::AsyncWriteExt;
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 4096];
+            let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut buf).await;
+            let response = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+            socket.write_all(response.as_bytes()).await.unwrap();
+            socket.shutdown().await.unwrap();
+        });
+
+        let client = TokioHttpClient {
+            inner: reqwest::Client::new(),
+            handle: tokio::runtime::Handle::current(),
+        };
+
+        let request = http::Request::builder()
+            .method("POST")
+            .uri(format!("http://127.0.0.1:{}/test", port))
+            .body(bytes::Bytes::from(vec![1, 2, 3]))
+            .unwrap();
+
+        let resp = client.send_bytes(request).await.unwrap();
+        assert_eq!(resp.status(), 200);
+    }
 }
