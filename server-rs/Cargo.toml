@@ -44,6 +44,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 # Rate limiting
 governor = "0.10"
+tower_governor = "0.6"
 
 # TLS
 tokio-rustls = "0.26"

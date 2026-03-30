@@ -253,10 +253,23 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
       .replace(/^https:/, 'wss:')
       + '/ws';
 
-    console.log(`[AppLayout] Connecting WebSocket for team ${activeTeamId} → ${wsUrl}`);
-    ws.connect(activeTeamId, wsUrl, connInfo.token);
-    wsConnected.current.add(activeTeamId);
-    telemetryClient.setTeamId(activeTeamId);
+    // Request a single-use ticket for WS auth (avoids JWT in URL).
+    // Falls back to token if ticket request fails.
+    (async () => {
+      let wsAuth: string;
+      let authParam: string;
+      try {
+        wsAuth = await api.getWsTicket(activeTeamId);
+        authParam = `ticket=${encodeURIComponent(wsAuth)}`;
+      } catch {
+        wsAuth = connInfo.token!;
+        authParam = `token=${encodeURIComponent(wsAuth)}`;
+      }
+      console.log(`[AppLayout] Connecting WebSocket for team ${activeTeamId} → ${wsUrl}`);
+      ws.connectWithParams(activeTeamId, wsUrl, authParam);
+      wsConnected.current.add(activeTeamId);
+      telemetryClient.setTeamId(activeTeamId);
+    })();
   }, [activeTeamId, activeToken]);
 
   // Rotate channel encryption keys when a member leaves (kicked/banned).

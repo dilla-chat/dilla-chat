@@ -29,6 +29,7 @@ use axum::{
     Json, Router,
 };
 use std::sync::{Arc, OnceLock};
+use tower_governor::{governor::GovernorConfigBuilder, key_extractor::SmartIpKeyExtractor, GovernorLayer};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::set_header::SetResponseHeaderLayer;
 
@@ -46,8 +47,23 @@ pub struct AppState {
 
 #[cfg(not(tarpaulin_include))]
 pub fn create_router(state: AppState) -> Router {
-    // TODO(NEW-10): trusted_proxies config should be used for X-Forwarded-For
-    // resolution to correctly identify client IPs behind reverse proxies.
+    // Rate limiter for auth endpoints: 10 requests per 6-second window per IP.
+    // SmartIpKeyExtractor checks X-Forwarded-For, X-Real-IP, Forwarded
+    // headers before falling back to peer IP (solves NEW-10 trusted_proxies).
+    let auth_rate_config = Arc::new(
+        GovernorConfigBuilder::default()
+            .per_second(6)
+            .burst_size(10)
+            .key_extractor(SmartIpKeyExtractor)
+            .finish()
+            .unwrap(),
+    );
+
+    let auth_rate_limiter = auth_rate_config.limiter().clone();
+    std::thread::spawn(move || loop {
+        std::thread::sleep(std::time::Duration::from_secs(60));
+        auth_rate_limiter.retain_recent();
+    });
 
     let cors = if state.config.allowed_origins.is_empty() {
         if state.config.insecure {
@@ -70,14 +86,19 @@ pub fn create_router(state: AppState) -> Router {
     };
 
     // Public routes (no auth required).
-    let public = Router::new()
-        .route("/api/v1/health", get(health))
-        .route("/api/v1/version", get(version))
-        .route("/api/v1/config", get(get_config))
+    // Auth endpoints are rate-limited per-IP to prevent brute force.
+    let auth_routes = Router::new()
         .route("/api/v1/auth/challenge", post(auth_handlers::challenge))
         .route("/api/v1/auth/verify", post(auth_handlers::verify))
         .route("/api/v1/auth/register", post(auth_handlers::register))
         .route("/api/v1/auth/bootstrap", post(auth_handlers::bootstrap))
+        .layer(GovernorLayer { config: auth_rate_config });
+
+    let public = Router::new()
+        .route("/api/v1/health", get(health))
+        .route("/api/v1/version", get(version))
+        .route("/api/v1/config", get(get_config))
+        .merge(auth_routes)
         .route(
             "/api/v1/invites/{token}/info",
             get(invites::get_invite_info),
@@ -245,16 +266,14 @@ pub fn create_router(state: AppState) -> Router {
             "/api/v1/federation/join-token",
             post(federation::create_join_token),
         )
+        // WebSocket ticket (returns a single-use ticket for WS connection)
+        .route("/api/v1/auth/ws-ticket", post(ws_ticket))
         // WebSocket
         .layer(middleware::from_fn(auth::auth_middleware));
 
     // WebSocket route — outside auth middleware (does its own token auth via query params)
     let ws_route = Router::new()
         .route("/ws", get(ws_handler));
-
-    // TODO(NEW-07): Add rate limiting to public auth routes using governor/tower-governor
-    // once tower-governor is added as a dependency. Target: 10 requests/minute per IP
-    // on /api/v1/auth/* endpoints.
 
     Router::new()
         .merge(public)
@@ -300,23 +319,46 @@ async fn get_config(
     }))
 }
 
+/// Generate a single-use WebSocket ticket (requires auth).
+async fn ws_ticket(
+    Extension(auth_svc): Extension<Arc<AuthService>>,
+    axum::extract::Extension(auth::UserId(user_id)): axum::extract::Extension<auth::UserId>,
+) -> Json<serde_json::Value> {
+    let ticket = auth_svc.generate_ws_ticket(&user_id);
+    Json(serde_json::json!({ "ticket": ticket }))
+}
+
 async fn ws_handler(
     ws: axum::extract::WebSocketUpgrade,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
     Extension(auth_svc): Extension<Arc<AuthService>>,
     axum::extract::State(state): axum::extract::State<AppState>,
 ) -> impl axum::response::IntoResponse {
-    let token = params.get("token").cloned().unwrap_or_default();
     let team_id = params.get("team").cloned().unwrap_or_default();
 
-    let user_id = match auth_svc.validate_jwt(&token) {
-        Ok(uid) => uid,
-        Err(_) => {
-            return axum::response::Response::builder()
-                .status(401)
-                .body(axum::body::Body::from("invalid token"))
-                .unwrap()
-                .into_response();
+    // Try ticket first (preferred — short-lived, single-use), then fall back to JWT.
+    let user_id = if let Some(ticket) = params.get("ticket") {
+        match auth_svc.validate_ws_ticket(ticket) {
+            Ok(uid) => uid,
+            Err(_) => {
+                return axum::response::Response::builder()
+                    .status(401)
+                    .body(axum::body::Body::from("invalid or expired ticket"))
+                    .unwrap()
+                    .into_response();
+            }
+        }
+    } else {
+        let token = params.get("token").cloned().unwrap_or_default();
+        match auth_svc.validate_jwt(&token) {
+            Ok(uid) => uid,
+            Err(_) => {
+                return axum::response::Response::builder()
+                    .status(401)
+                    .body(axum::body::Body::from("invalid token"))
+                    .unwrap()
+                    .into_response();
+            }
         }
     };
 

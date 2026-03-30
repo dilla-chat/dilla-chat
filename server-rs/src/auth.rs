@@ -42,6 +42,13 @@ struct Challenge {
     created_at: Instant,
 }
 
+/// A short-lived, single-use WebSocket ticket.
+/// Used instead of passing JWT tokens in WebSocket URLs.
+struct WsTicket {
+    user_id: String,
+    created_at: Instant,
+}
+
 /// Derive the JWT signing secret from the DB passphrase using HKDF-SHA256.
 /// If no passphrase is set (insecure mode), generate a random ephemeral secret
 /// that is NOT persisted (lost on restart).
@@ -77,6 +84,7 @@ pub struct AuthService {
     db: Database,
     jwt_secret: Vec<u8>,
     challenges: Arc<RwLock<HashMap<String, Challenge>>>,
+    ws_tickets: Arc<RwLock<HashMap<String, WsTicket>>>,
 }
 
 impl AuthService {
@@ -87,6 +95,7 @@ impl AuthService {
             db: database,
             jwt_secret,
             challenges: Arc::new(RwLock::new(HashMap::new())),
+            ws_tickets: Arc::new(RwLock::new(HashMap::new())),
         };
 
         // Spawn background challenge cleanup.
@@ -256,6 +265,39 @@ impl AuthService {
         Ok(token)
     }
 
+    /// Generate a single-use WebSocket ticket for the given user.
+    /// Ticket expires in 30 seconds and is consumed on first use.
+    pub fn generate_ws_ticket(&self, user_id: &str) -> String {
+        let mut bytes = vec![0u8; 32];
+        rand::rng().fill_bytes(&mut bytes);
+        let ticket = hex::encode(&bytes);
+        self.ws_tickets.write().unwrap().insert(
+            ticket.clone(),
+            WsTicket {
+                user_id: user_id.to_string(),
+                created_at: Instant::now(),
+            },
+        );
+        ticket
+    }
+
+    /// Validate and consume a WebSocket ticket. Returns the user_id if valid.
+    /// Tickets are single-use (consumed on validation) and expire after 30 seconds.
+    pub fn validate_ws_ticket(&self, ticket: &str) -> Result<String, AppError> {
+        let ws_ticket = self
+            .ws_tickets
+            .write()
+            .unwrap()
+            .remove(ticket)
+            .ok_or_else(|| AppError::Unauthorized("invalid or expired ws ticket".into()))?;
+
+        if ws_ticket.created_at.elapsed() > Duration::from_secs(30) {
+            return Err(AppError::Unauthorized("ws ticket expired".into()));
+        }
+
+        Ok(ws_ticket.user_id)
+    }
+
     pub fn generate_invite_token(&self) -> String {
         let mut bytes = vec![0u8; 16];
         rand::rng().fill_bytes(&mut bytes);
@@ -317,6 +359,7 @@ mod tests {
             db,
             jwt_secret: raw,
             challenges: Arc::new(RwLock::new(HashMap::new())),
+            ws_tickets: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -328,6 +371,7 @@ mod tests {
             db,
             jwt_secret,
             challenges: Arc::new(RwLock::new(HashMap::new())),
+            ws_tickets: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -810,11 +854,13 @@ mod tests {
             db: db.clone(),
             jwt_secret: secret_a,
             challenges: Arc::new(RwLock::new(HashMap::new())),
+            ws_tickets: Arc::new(RwLock::new(HashMap::new())),
         };
         let auth2 = AuthService {
             db,
             jwt_secret: secret_b,
             challenges: Arc::new(RwLock::new(HashMap::new())),
+            ws_tickets: Arc::new(RwLock::new(HashMap::new())),
         };
         let token = auth1.generate_jwt("cross-user").unwrap();
         let user_id = auth2.validate_jwt(&token).unwrap();

@@ -32,8 +32,13 @@ export class WebSocketService {
   }
 
   connect(teamId: string, url: string, token: string): void {
+    this.connectWithParams(teamId, url, `token=${encodeURIComponent(token)}`);
+  }
+
+  /** Connect with custom auth query params (e.g. ticket= or token=). */
+  connectWithParams(teamId: string, url: string, authParam: string): void {
     this.disconnect(teamId);
-    this.connectionParams.set(teamId, { url, token });
+    this.connectionParams.set(teamId, { url, token: authParam });
     this.reconnectAttempts.set(teamId, 0);
     this.createConnection(teamId);
   }
@@ -42,7 +47,7 @@ export class WebSocketService {
     const params = this.connectionParams.get(teamId);
     if (!params) return;
 
-    const wsUrl = `${params.url}?token=${encodeURIComponent(params.token)}&team=${encodeURIComponent(teamId)}`;
+    const wsUrl = `${params.url}?${params.token}&team=${encodeURIComponent(teamId)}`;
     const socket = new WebSocket(wsUrl);
 
     socket.onopen = () => {

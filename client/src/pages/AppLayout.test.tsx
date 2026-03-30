@@ -15,6 +15,7 @@ vi.mock('../services/api', () => ({
     getRoles: vi.fn().mockResolvedValue([]),
     getPresences: vi.fn().mockResolvedValue({}),
     removeTeam: vi.fn(),
+    getWsTicket: vi.fn().mockResolvedValue('test-ws-ticket'),
   },
 }));
 
@@ -22,6 +23,7 @@ vi.mock('../services/websocket', () => ({
   ws: {
     on: vi.fn(() => vi.fn()),
     connect: vi.fn(),
+    connectWithParams: vi.fn(),
     disconnect: vi.fn(),
     disconnectAll: vi.fn(),
     isConnected: vi.fn(() => false),
@@ -346,7 +348,7 @@ describe('AppLayout behavioral', () => {
     vi.mocked(api.getConnectionInfo).mockReturnValue({ baseUrl: 'http://localhost:8080', token: 'tok' });
     render(<AppLayout />);
     await waitFor(() => {
-      expect(ws.connect).toHaveBeenCalledWith('team1', 'ws://localhost:8080/ws', 'tok');
+      expect(ws.connectWithParams).toHaveBeenCalledWith('team1', 'ws://localhost:8080/ws', 'ticket=test-ws-ticket');
     });
   });
 
@@ -601,7 +603,7 @@ describe('AppLayout behavioral', () => {
     vi.mocked(api.getConnectionInfo).mockReturnValue(null);
     render(<AppLayout />);
     await waitFor(() => {
-      expect(ws.connect).not.toHaveBeenCalled();
+      expect(ws.connectWithParams).not.toHaveBeenCalled();
     });
   });
 
@@ -834,11 +836,11 @@ describe('AppLayout behavioral', () => {
     vi.mocked(api.getConnectionInfo).mockReturnValue({ baseUrl: 'http://localhost:8080', token: 'tok' });
     const { rerender } = render(<AppLayout />);
     await waitFor(() => {
-      expect(ws.connect).toHaveBeenCalledWith('team1', 'ws://localhost:8080/ws', 'tok');
+      expect(ws.connectWithParams).toHaveBeenCalledWith('team1', 'ws://localhost:8080/ws', 'ticket=test-ws-ticket');
     });
 
     // Simulate token change (e.g. after auth refresh)
-    vi.mocked(ws.connect).mockClear();
+    vi.mocked(ws.connectWithParams).mockClear();
     vi.mocked(ws.isConnected).mockReturnValue(false);
     vi.mocked(api.getConnectionInfo).mockReturnValue({ baseUrl: 'http://localhost:8080', token: 'new-tok' });
 
@@ -858,7 +860,7 @@ describe('AppLayout behavioral', () => {
 
     rerender(<AppLayout />);
     await waitFor(() => {
-      expect(ws.connect).toHaveBeenCalledWith('team1', 'ws://localhost:8080/ws', 'new-tok');
+      expect(ws.connectWithParams).toHaveBeenCalledWith('team1', 'ws://localhost:8080/ws', 'ticket=test-ws-ticket');
     });
   });
 
@@ -880,7 +882,7 @@ describe('AppLayout behavioral', () => {
     render(<AppLayout />);
     // WS should not connect when there's no token
     await waitFor(() => {
-      expect(ws.connect).not.toHaveBeenCalled();
+      expect(ws.connectWithParams).not.toHaveBeenCalled();
     });
   });
 
@@ -888,7 +890,7 @@ describe('AppLayout behavioral', () => {
     vi.mocked(api.getConnectionInfo).mockReturnValue({ baseUrl: 'https://example.com', token: 'tok' });
     render(<AppLayout />);
     await waitFor(() => {
-      expect(ws.connect).toHaveBeenCalledWith('team1', 'wss://example.com/ws', 'tok');
+      expect(ws.connectWithParams).toHaveBeenCalledWith('team1', 'wss://example.com/ws', 'ticket=test-ws-ticket');
     });
   });
 

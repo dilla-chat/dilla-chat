@@ -203,6 +203,15 @@ class ApiService {
     });
   }
 
+  /** Request a short-lived, single-use WebSocket ticket (preferred over passing JWT in URL). */
+  async getWsTicket(teamId: string): Promise<string> {
+    const conn = this.getConnection(teamId);
+    const result = await this.request<{ ticket: string }>(
+      conn.baseUrl, '/api/v1/auth/ws-ticket', { method: 'POST' }, conn.token,
+    );
+    return result.ticket;
+  }
+
   // User profile
   async getMe(baseUrl: string, token: string): Promise<unknown> {
     const data = await this.request(baseUrl, '/api/v1/users/me', { method: 'GET' }, token);

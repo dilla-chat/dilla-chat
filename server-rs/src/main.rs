@@ -323,7 +323,8 @@ async fn start_server(cfg: &Config, app: axum::Router) {
         }
     };
 
-    if let Err(e) = axum::serve(listener, app)
+    // Use into_make_service_with_connect_info so rate limiter can access peer IP.
+    if let Err(e) = axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>())
         .with_graceful_shutdown(shutdown_signal())
         .await
     {
