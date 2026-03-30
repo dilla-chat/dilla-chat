@@ -484,6 +484,60 @@ describe('GroupSession (Sender Keys)', () => {
   });
 });
 
+describe('GroupSession key rotation', () => {
+  it('removeMember deletes a member sender key', async () => {
+    const alice = await GroupSession.create('ch1', 'alice');
+    const bob = await GroupSession.create('ch1', 'bob');
+
+    alice.processDistribution(bob.createDistributionMessage());
+    expect(alice.memberSenderKeys.has('bob')).toBe(true);
+
+    alice.removeMember('bob');
+    expect(alice.memberSenderKeys.has('bob')).toBe(false);
+  });
+
+  it('rotateMyKey generates new chain and signing key', async () => {
+    const alice = await GroupSession.create('ch1', 'alice');
+    const oldChain = new Uint8Array(alice.mySenderKey.chainKey);
+    const oldSigningKey = new Uint8Array(alice.mySenderKey.signingPublicKey);
+
+    await alice.rotateMyKey();
+
+    // Chain key and signing key should both be different
+    expect(alice.mySenderKey.chainKey).not.toEqual(oldChain);
+    expect(alice.mySenderKey.signingPublicKey).not.toEqual(oldSigningKey);
+    // Message number resets
+    expect(alice.mySenderKey.messageNumber).toBe(0);
+  });
+
+  it('rotated key can still encrypt/decrypt for remaining members', async () => {
+    const alice = await GroupSession.create('ch1', 'alice');
+    const bob = await GroupSession.create('ch1', 'bob');
+    const charlie = await GroupSession.create('ch1', 'charlie');
+
+    // Exchange keys
+    alice.processDistribution(bob.createDistributionMessage());
+    alice.processDistribution(charlie.createDistributionMessage());
+    bob.processDistribution(alice.createDistributionMessage());
+    charlie.processDistribution(alice.createDistributionMessage());
+
+    // Charlie leaves — alice rotates
+    alice.removeMember('charlie');
+    await alice.rotateMyKey();
+
+    // Bob gets the new distribution
+    bob.processDistribution(alice.createDistributionMessage());
+
+    // Alice can encrypt and Bob can decrypt
+    const msg = await alice.encrypt(encoder.encode('after rotation'));
+    const pt = await bob.decrypt(msg);
+    expect(new TextDecoder().decode(pt)).toBe('after rotation');
+
+    // Charlie can NOT decrypt with old key
+    await expect(charlie.decrypt(msg)).rejects.toThrow();
+  });
+});
+
 // ─── Safety Numbers ──────────────────────────────────────────────────────────
 
 describe('Safety Numbers', () => {

@@ -142,6 +142,15 @@ export const cryptoService = {
     await persistSessions(derivedKey);
   },
 
+  /** Rotate the sender key for a channel after a member leaves.
+   *  Returns the new distribution message to send to remaining members. */
+  async rotateChannelKey(channelId: string, removedUserId: string, derivedKey: string): Promise<string | null> {
+    const mgr = getManager();
+    const result = await mgr.rotateChannelKey(channelId, removedUserId);
+    await persistSessions(derivedKey);
+    return result;
+  },
+
   async getSenderKeyDistribution(channelId: string, derivedKey: string): Promise<string> {
     const mgr = getManager();
     const userId = toBase64(getIdentityKeys().publicKeyBytes);

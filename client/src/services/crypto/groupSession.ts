@@ -80,6 +80,36 @@ export class GroupSession {
     });
   }
 
+  /** Remove a member's sender key (e.g. when they leave or are kicked). */
+  removeMember(senderId: string): void {
+    this.memberSenderKeys.delete(senderId);
+  }
+
+  /** Rotate our own sender key — generates new chain key and signing key.
+   *  Call this when a member leaves so they can't decrypt future messages. */
+  async rotateMyKey(): Promise<void> {
+    const signingKey = await generateEd25519KeyPair();
+    const chainKey = randomBytes(32);
+    const signingPrivatePkcs8 = await exportEd25519PrivateKey(signingKey.privateKey);
+
+    this.mySenderKey = {
+      senderId: this.mySenderKey.senderId,
+      chainKey,
+      signingPrivatePkcs8,
+      signingPublicKey: signingKey.publicKeyBytes,
+      messageNumber: 0,
+    };
+
+    // Update our own entry in memberSenderKeys for self-decryption
+    this.memberSenderKeys.set(this.mySenderKey.senderId, {
+      senderId: this.mySenderKey.senderId,
+      chainKey: new Uint8Array(chainKey),
+      signingPrivatePkcs8: null,
+      signingPublicKey: new Uint8Array(signingKey.publicKeyBytes),
+      messageNumber: 0,
+    });
+  }
+
   async encrypt(plaintext: Uint8Array): Promise<GroupMessageData> {
     const [nextChain, messageKey] = await kdfChain(this.mySenderKey.chainKey);
     this.mySenderKey.chainKey = nextChain;

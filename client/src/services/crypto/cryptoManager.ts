@@ -93,6 +93,17 @@ export class CryptoManager {
     return decoder.decode(plaintext);
   }
 
+  /** Remove a member from a channel's group session and rotate our sender key.
+   *  Returns a new distribution message to send to remaining members, or null
+   *  if no group session exists for this channel. */
+  async rotateChannelKey(channelId: string, removedUserId: string): Promise<string | null> {
+    const session = this.groupSessions.get(channelId);
+    if (!session) return null;
+    session.removeMember(removedUserId);
+    await session.rotateMyKey();
+    return JSON.stringify(session.createDistributionMessage());
+  }
+
   processSenderKey(channelId: string, distributionJson: string): void {
     const dist: SenderKeyDistribution = JSON.parse(distributionJson);
     const session = this.groupSessions.get(channelId);
