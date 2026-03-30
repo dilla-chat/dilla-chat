@@ -298,6 +298,20 @@ impl AuthService {
         Ok(ws_ticket.user_id)
     }
 
+    /// Clean up expired WebSocket tickets (older than 30 seconds).
+    /// Call periodically from a background task.
+    pub fn cleanup_expired_ws_tickets(&self) -> usize {
+        let mut tickets = self.ws_tickets.write().unwrap();
+        let before = tickets.len();
+        tickets.retain(|_, t| t.created_at.elapsed() < Duration::from_secs(30));
+        before - tickets.len()
+    }
+
+    /// Get the number of pending WebSocket tickets.
+    pub fn ws_ticket_count(&self) -> usize {
+        self.ws_tickets.read().unwrap().len()
+    }
+
     pub fn generate_invite_token(&self) -> String {
         let mut bytes = vec![0u8; 16];
         rand::rng().fill_bytes(&mut bytes);
@@ -812,6 +826,56 @@ mod tests {
             },
         );
         assert!(auth.validate_ws_ticket("expired-ticket").is_err());
+    }
+
+    #[test]
+    fn test_ws_ticket_count() {
+        let auth = test_auth_service();
+        assert_eq!(auth.ws_ticket_count(), 0);
+        auth.generate_ws_ticket("u1");
+        assert_eq!(auth.ws_ticket_count(), 1);
+        auth.generate_ws_ticket("u2");
+        assert_eq!(auth.ws_ticket_count(), 2);
+    }
+
+    #[test]
+    fn test_cleanup_expired_ws_tickets() {
+        let auth = test_auth_service();
+
+        // Insert a fresh ticket
+        auth.generate_ws_ticket("fresh-user");
+
+        // Insert an expired ticket manually
+        auth.ws_tickets.write().unwrap().insert(
+            "expired-1".to_string(),
+            WsTicket {
+                user_id: "expired-user".to_string(),
+                created_at: Instant::now() - Duration::from_secs(60),
+            },
+        );
+
+        assert_eq!(auth.ws_ticket_count(), 2);
+        let removed = auth.cleanup_expired_ws_tickets();
+        assert_eq!(removed, 1);
+        assert_eq!(auth.ws_ticket_count(), 1);
+    }
+
+    #[test]
+    fn test_cleanup_no_expired_tickets() {
+        let auth = test_auth_service();
+        auth.generate_ws_ticket("u1");
+        auth.generate_ws_ticket("u2");
+        let removed = auth.cleanup_expired_ws_tickets();
+        assert_eq!(removed, 0);
+        assert_eq!(auth.ws_ticket_count(), 2);
+    }
+
+    #[test]
+    fn test_ws_ticket_unique() {
+        let auth = test_auth_service();
+        let t1 = auth.generate_ws_ticket("u1");
+        let t2 = auth.generate_ws_ticket("u1");
+        assert_ne!(t1, t2);
     }
 
     // ── DILLA_JWT_SECRET env var override tests ─────────────────────────
