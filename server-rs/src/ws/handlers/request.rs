@@ -1,6 +1,7 @@
 use crate::db;
 use crate::ws::events::*;
 use crate::ws::hub::Hub;
+use super::channel_belongs_to_team;
 
 /// Run a blocking database closure via `spawn_blocking`, flattening the join error.
 async fn ws_spawn_db<F>(db: db::Database, f: F) -> Result<serde_json::Value, rusqlite::Error>
@@ -74,6 +75,9 @@ pub(in crate::ws) async fn handle_request(hub: &Hub, user_id: &str, team_id: &st
             let (before, limit) = payload_pagination(&req.payload);
 
             ws_spawn_db(db, move |conn| {
+                if !channel_belongs_to_team(conn, &channel_id, &tid) {
+                    return Ok(serde_json::json!([]));
+                }
                 let messages = db::get_messages_by_channel(conn, &channel_id, &before, limit)?;
                 // Enrich each message with the author's username
                 let enriched: Vec<serde_json::Value> = messages
@@ -93,6 +97,9 @@ pub(in crate::ws) async fn handle_request(hub: &Hub, user_id: &str, team_id: &st
             let channel_id = payload_str(&req.payload, "channel_id");
 
             ws_spawn_db(db, move |conn| {
+                if !channel_belongs_to_team(conn, &channel_id, &tid) {
+                    return Ok(serde_json::json!([]));
+                }
                 let threads = db::get_channel_threads(conn, &channel_id)?;
                 Ok(serde_json::to_value(threads).unwrap())
             })
@@ -103,6 +110,11 @@ pub(in crate::ws) async fn handle_request(hub: &Hub, user_id: &str, team_id: &st
             let (before, limit) = payload_pagination(&req.payload);
 
             ws_spawn_db(db, move |conn| {
+                let thread = db::get_thread(conn, &thread_id)?;
+                match thread {
+                    Some(ref t) if channel_belongs_to_team(conn, &t.channel_id, &tid) => {}
+                    _ => return Ok(serde_json::json!([])),
+                }
                 let messages = db::get_thread_messages(conn, &thread_id, &before, limit)?;
                 Ok(serde_json::to_value(messages).unwrap())
             })
@@ -136,6 +148,9 @@ pub(in crate::ws) async fn handle_request(hub: &Hub, user_id: &str, team_id: &st
             let (before, limit) = payload_pagination(&req.payload);
 
             ws_spawn_db(db, move |conn| {
+                if !db::is_dm_member(conn, &dm_id, &uid)? {
+                    return Ok(serde_json::json!([]));
+                }
                 let messages = db::get_dm_messages(conn, &dm_id, &before, limit)?;
                 Ok(serde_json::to_value(messages).unwrap())
             })

@@ -43,6 +43,17 @@ pub async fn update_me(
     State(state): State<AppState>,
     Json(body): Json<UpdateMeRequest>,
 ) -> Result<Json<Value>, AppError> {
+    if let Some(ref dn) = body.display_name {
+        if dn.len() > 64 {
+            return Err(AppError::BadRequest("display_name too long (max 64 chars)".into()));
+        }
+    }
+    if let Some(ref st) = body.status_text {
+        if st.len() > 128 {
+            return Err(AppError::BadRequest("status_text too long (max 128 chars)".into()));
+        }
+    }
+
     let db = state.db.clone();
     let uid = user_id.clone();
 

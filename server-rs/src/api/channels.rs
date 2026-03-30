@@ -58,6 +58,14 @@ pub async fn create(
         return Err(AppError::BadRequest("name is required".into()));
     }
 
+    if body.name.len() > 100 {
+        return Err(AppError::BadRequest("name too long (max 100 chars)".into()));
+    }
+
+    if body.topic.len() > 1024 {
+        return Err(AppError::BadRequest("topic too long (max 1024 chars)".into()));
+    }
+
     let channel = spawn_db(state.db.clone(), move |conn| {
         require_permission(conn, &user_id, &team_id, db::PERM_MANAGE_CHANNELS)?;
 
@@ -106,6 +114,17 @@ pub async fn update(
     Path((team_id, channel_id)): Path<(String, String)>,
     Json(body): Json<UpdateChannelRequest>,
 ) -> Result<Json<Value>, AppError> {
+    if let Some(ref name) = body.name {
+        if name.len() > 100 {
+            return Err(AppError::BadRequest("name too long (max 100 chars)".into()));
+        }
+    }
+    if let Some(ref topic) = body.topic {
+        if topic.len() > 1024 {
+            return Err(AppError::BadRequest("topic too long (max 1024 chars)".into()));
+        }
+    }
+
     let channel = spawn_db(state.db.clone(), move |conn| {
         require_permission(conn, &user_id, &team_id, db::PERM_MANAGE_CHANNELS)?;
 

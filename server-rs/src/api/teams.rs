@@ -60,6 +60,14 @@ pub async fn create(
         return Err(AppError::BadRequest("name is required".into()));
     }
 
+    if body.name.len() > 100 {
+        return Err(AppError::BadRequest("name too long (max 100 chars)".into()));
+    }
+
+    if body.description.len() > 1024 {
+        return Err(AppError::BadRequest("description too long (max 1024 chars)".into()));
+    }
+
     let team = spawn_db(state.db.clone(), move |conn| {
         let now = db::now_str();
         let team_id = db::new_id();
@@ -147,6 +155,17 @@ pub async fn update(
     Path(team_id): Path<String>,
     Json(body): Json<UpdateTeamRequest>,
 ) -> Result<Json<Value>, AppError> {
+    if let Some(ref name) = body.name {
+        if name.len() > 100 {
+            return Err(AppError::BadRequest("name too long (max 100 chars)".into()));
+        }
+    }
+    if let Some(ref desc) = body.description {
+        if desc.len() > 1024 {
+            return Err(AppError::BadRequest("description too long (max 1024 chars)".into()));
+        }
+    }
+
     let team = spawn_db(state.db.clone(), move |conn| {
         require_permission(conn, &user_id, &team_id, db::PERM_MANAGE_TEAM)?;
 

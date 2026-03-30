@@ -1,8 +1,15 @@
 use crate::db;
 use crate::ws::events::*;
 use crate::ws::hub::Hub;
+use super::verify_channel_team;
 
-pub(in crate::ws) async fn handle_reaction_add(hub: &Hub, user_id: &str, p: ReactionPayload) {
+pub(in crate::ws) async fn handle_reaction_add(hub: &Hub, user_id: &str, team_id: &str, p: ReactionPayload) {
+    // Verify the channel (from message) belongs to the user's team.
+    if !verify_channel_team(&hub.db, &p.channel_id, team_id).await {
+        tracing::warn!(user_id = user_id, channel_id = %p.channel_id, "reaction:add denied — channel does not belong to user's team");
+        return;
+    }
+
     let db = hub.db.clone();
     let mid = p.message_id.clone();
     let uid = user_id.to_string();
@@ -35,7 +42,13 @@ pub(in crate::ws) async fn handle_reaction_add(hub: &Hub, user_id: &str, p: Reac
     }
 }
 
-pub(in crate::ws) async fn handle_reaction_remove(hub: &Hub, user_id: &str, p: ReactionPayload) {
+pub(in crate::ws) async fn handle_reaction_remove(hub: &Hub, user_id: &str, team_id: &str, p: ReactionPayload) {
+    // Verify the channel (from message) belongs to the user's team.
+    if !verify_channel_team(&hub.db, &p.channel_id, team_id).await {
+        tracing::warn!(user_id = user_id, channel_id = %p.channel_id, "reaction:remove denied — channel does not belong to user's team");
+        return;
+    }
+
     let db = hub.db.clone();
     let mid = p.message_id.clone();
     let uid = user_id.to_string();

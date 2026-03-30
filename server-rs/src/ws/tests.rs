@@ -725,7 +725,7 @@ async fn reaction_add_stores_and_broadcasts() {
     register_and_subscribe(&hub, c1, "ch1").await;
 
     let p = ReactionPayload { message_id: msg_id, channel_id: "ch1".to_string(), emoji: "thumbsup".to_string() };
-    super::handlers::handle_reaction_add(&hub, "u1", p).await;
+    super::handlers::handle_reaction_add(&hub, "u1", "t1", p).await;
     settle().await;
 
     let evt = recv_event(&mut rx1).await;
@@ -746,7 +746,7 @@ async fn reaction_remove_deletes_and_broadcasts() {
     register_and_subscribe(&hub, c1, "ch1").await;
 
     let p = ReactionPayload { message_id: msg_id, channel_id: "ch1".to_string(), emoji: "thumbsup".to_string() };
-    super::handlers::handle_reaction_remove(&hub, "u1", p).await;
+    super::handlers::handle_reaction_remove(&hub, "u1", "t1", p).await;
     settle().await;
 
     let evt = recv_event(&mut rx1).await;
@@ -769,7 +769,7 @@ async fn thread_message_send_creates_and_broadcasts() {
     register_and_subscribe(&hub, c1, "ch1").await;
 
     let p = ThreadMessageSendPayload { thread_id: thread_id.clone(), content: "thread reply".to_string(), nonce: String::new() };
-    super::handlers::handle_thread_message_send(&hub, "u1", p).await;
+    super::handlers::handle_thread_message_send(&hub, "u1", "t1", p).await;
     settle().await;
 
     let evt = recv_event(&mut rx1).await;
@@ -923,6 +923,7 @@ async fn voice_join_without_room_manager_returns_early() {
 async fn voice_join_adds_peer_and_broadcasts() {
     let hub = test_hub_with_voice_and_sfu();
     let _h = spawn_hub(&hub);
+    seed_team_channel(&hub.db, "t1", "u1", "voice-ch");
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
     let (c2, mut rx2) = make_client("c2", "u2", "bob", "t1");
@@ -951,6 +952,7 @@ async fn voice_join_adds_peer_and_broadcasts() {
 async fn voice_join_sends_voice_state_to_joiner() {
     let hub = test_hub_with_voice_and_sfu();
     let _h = spawn_hub(&hub);
+    seed_team_channel(&hub.db, "t1", "u1", "voice-ch");
 
     let rm = hub.voice_room_manager.as_ref().unwrap();
     rm.add_peer("voice-ch", "u-existing", "existing-user", "t1").await;
@@ -973,6 +975,7 @@ async fn voice_join_sends_voice_state_to_joiner() {
 async fn voice_join_with_failing_sfu_does_not_crash() {
     let hub = test_hub_with_voice_and_failing_sfu();
     let _h = spawn_hub(&hub);
+    seed_team_channel(&hub.db, "t1", "u1", "voice-ch");
 
     let (c1, _rx1) = make_client("c1", "u1", "alice", "t1");
     register(&hub, c1).await;
@@ -1655,6 +1658,7 @@ async fn voice_join_emits_voice_joined_hub_event() {
     let hub = test_hub_with_voice_and_sfu();
     let mut event_rx = hub.event_tx().subscribe();
     let _h = spawn_hub(&hub);
+    seed_team_channel(&hub.db, "t1", "u1", "voice-ch");
 
     let (c1, _rx1) = make_client("c1", "u1", "alice", "t1");
     register(&hub, c1).await;
@@ -1980,7 +1984,7 @@ async fn handle_reaction_event_add_directly() {
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
     register_and_subscribe(&hub, c1, "ch1").await;
 
-    super::client::handle_reaction_event(&hub, "u1", EVENT_REACTION_ADD, serde_json::json!({"message_id": msg_id, "channel_id": "ch1", "emoji": "heart"})).await;
+    super::client::handle_reaction_event(&hub, "u1", "t1", EVENT_REACTION_ADD, serde_json::json!({"message_id": msg_id, "channel_id": "ch1", "emoji": "heart"})).await;
     settle().await;
 
     assert_eq!(recv_event(&mut rx1).await.event_type, EVENT_REACTION_ADDED);
@@ -1998,7 +2002,7 @@ async fn handle_reaction_event_remove_directly() {
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
     register_and_subscribe(&hub, c1, "ch1").await;
 
-    super::client::handle_reaction_event(&hub, "u1", EVENT_REACTION_REMOVE, serde_json::json!({"message_id": msg_id, "channel_id": "ch1", "emoji": "heart"})).await;
+    super::client::handle_reaction_event(&hub, "u1", "t1", EVENT_REACTION_REMOVE, serde_json::json!({"message_id": msg_id, "channel_id": "ch1", "emoji": "heart"})).await;
     settle().await;
 
     assert_eq!(recv_event(&mut rx1).await.event_type, EVENT_REACTION_REMOVED);
@@ -2007,7 +2011,7 @@ async fn handle_reaction_event_remove_directly() {
 #[tokio::test]
 async fn handle_reaction_event_invalid_payload_does_not_panic() {
     let hub = test_hub();
-    super::client::handle_reaction_event(&hub, "u1", EVENT_REACTION_ADD, serde_json::json!("invalid")).await;
+    super::client::handle_reaction_event(&hub, "u1", "t1", EVENT_REACTION_ADD, serde_json::json!("invalid")).await;
 }
 
 // ── handle_thread_event direct tests ─────────────────────────────────────
@@ -2023,7 +2027,7 @@ async fn handle_thread_event_send_directly() {
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
     register_and_subscribe(&hub, c1, "ch1").await;
 
-    super::client::handle_thread_event(&hub, "u1", EVENT_THREAD_MESSAGE_SEND, serde_json::json!({"thread_id": thread_id, "content": "via dispatch"})).await;
+    super::client::handle_thread_event(&hub, "u1", "t1", EVENT_THREAD_MESSAGE_SEND, serde_json::json!({"thread_id": thread_id, "content": "via dispatch"})).await;
     settle().await;
 
     assert_eq!(recv_event(&mut rx1).await.event_type, EVENT_THREAD_MESSAGE_NEW);
@@ -2032,13 +2036,13 @@ async fn handle_thread_event_send_directly() {
 #[tokio::test]
 async fn handle_thread_event_unknown_type_does_not_panic() {
     let hub = test_hub();
-    super::client::handle_thread_event(&hub, "u1", "thread:unknown:action", serde_json::json!({"thread_id": "t1", "content": "test"})).await;
+    super::client::handle_thread_event(&hub, "u1", "t1", "thread:unknown:action", serde_json::json!({"thread_id": "t1", "content": "test"})).await;
 }
 
 #[tokio::test]
 async fn handle_thread_event_invalid_payload_does_not_panic() {
     let hub = test_hub();
-    super::client::handle_thread_event(&hub, "u1", EVENT_THREAD_MESSAGE_SEND, serde_json::json!(42)).await;
+    super::client::handle_thread_event(&hub, "u1", "t1", EVENT_THREAD_MESSAGE_SEND, serde_json::json!(42)).await;
 }
 
 // ── handle_voice_event direct tests ──────────────────────────────────────
@@ -2047,6 +2051,7 @@ async fn handle_thread_event_invalid_payload_does_not_panic() {
 async fn handle_voice_event_join_directly() {
     let hub = test_hub_with_voice_and_sfu();
     let _h = spawn_hub(&hub);
+    seed_team_channel(&hub.db, "t1", "u1", "voice-dispatch");
 
     let (c1, _rx1) = make_client("c1", "u1", "alice", "t1");
     register(&hub, c1).await;
@@ -2403,6 +2408,7 @@ async fn dispatch_handle_event_thread_message_send() {
 async fn dispatch_handle_event_voice_join() {
     let hub = test_hub_with_voice_and_sfu();
     let _h = spawn_hub(&hub);
+    seed_team_channel(&hub.db, "t1", "u1", "dispatch-voice");
 
     let (c1, _rx1) = make_client("c1", "u1", "alice", "t1");
     register(&hub, c1).await;

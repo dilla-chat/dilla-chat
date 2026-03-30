@@ -137,10 +137,10 @@ pub(crate) async fn handle_event(
             }
         }
         EVENT_REACTION_ADD | EVENT_REACTION_REMOVE => {
-            handle_reaction_event(hub, user_id, &event.event_type, event.payload).await;
+            handle_reaction_event(hub, user_id, team_id, &event.event_type, event.payload).await;
         }
         EVENT_THREAD_MESSAGE_SEND | EVENT_THREAD_MESSAGE_EDIT | EVENT_THREAD_MESSAGE_REMOVE => {
-            handle_thread_event(hub, user_id, &event.event_type, event.payload).await;
+            handle_thread_event(hub, user_id, team_id, &event.event_type, event.payload).await;
         }
         EVENT_VOICE_JOIN | EVENT_VOICE_LEAVE | EVENT_VOICE_ANSWER
         | EVENT_VOICE_ICE_CANDIDATE | EVENT_VOICE_MUTE | EVENT_VOICE_DEAFEN
@@ -215,21 +215,21 @@ pub(crate) async fn handle_ping(hub: &Hub, user_id: &str) {
     }
 }
 
-pub(crate) async fn handle_reaction_event(hub: &Hub, user_id: &str, event_type: &str, payload: serde_json::Value) {
+pub(crate) async fn handle_reaction_event(hub: &Hub, user_id: &str, team_id: &str, event_type: &str, payload: serde_json::Value) {
     if let Ok(p) = serde_json::from_value::<ReactionPayload>(payload) {
         if event_type == EVENT_REACTION_ADD {
-            handle_reaction_add(hub, user_id, p).await;
+            handle_reaction_add(hub, user_id, team_id, p).await;
         } else {
-            handle_reaction_remove(hub, user_id, p).await;
+            handle_reaction_remove(hub, user_id, team_id, p).await;
         }
     }
 }
 
-pub(crate) async fn handle_thread_event(hub: &Hub, user_id: &str, event_type: &str, payload: serde_json::Value) {
+pub(crate) async fn handle_thread_event(hub: &Hub, user_id: &str, team_id: &str, event_type: &str, payload: serde_json::Value) {
     match event_type {
         EVENT_THREAD_MESSAGE_SEND => {
             if let Ok(p) = serde_json::from_value::<ThreadMessageSendPayload>(payload) {
-                handle_thread_message_send(hub, user_id, p).await;
+                handle_thread_message_send(hub, user_id, team_id, p).await;
             }
         }
         EVENT_THREAD_MESSAGE_EDIT => {

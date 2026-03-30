@@ -1,5 +1,6 @@
 use crate::ws::events::*;
 use crate::ws::hub::Hub;
+use super::verify_channel_team;
 
 pub(in crate::ws) async fn handle_voice_join(
     hub: &Hub,
@@ -9,6 +10,12 @@ pub(in crate::ws) async fn handle_voice_join(
     team_id: &str,
     p: VoiceJoinPayload,
 ) {
+    // Verify the channel belongs to the user's team before joining voice.
+    if !verify_channel_team(&hub.db, &p.channel_id, team_id).await {
+        tracing::warn!(user_id = user_id, channel_id = %p.channel_id, "voice:join denied — channel does not belong to user's team");
+        return;
+    }
+
     let room_mgr = match &hub.voice_room_manager {
         Some(rm) => rm,
         None => return,

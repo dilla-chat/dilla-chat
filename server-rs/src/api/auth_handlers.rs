@@ -116,6 +116,10 @@ pub async fn register(
         return Err(AppError::BadRequest("username is required".into()));
     }
 
+    if body.username.len() > 32 {
+        return Err(AppError::BadRequest("username too long (max 32 chars)".into()));
+    }
+
     if body.invite_token.is_empty() {
         return Err(AppError::BadRequest("invite_token is required".into()));
     }
@@ -169,6 +173,10 @@ pub async fn bootstrap(
 
     if body.username.is_empty() {
         return Err(AppError::BadRequest("username is required".into()));
+    }
+
+    if body.username.len() > 32 {
+        return Err(AppError::BadRequest("username too long (max 32 chars)".into()));
     }
 
     if body.bootstrap_token.is_empty() {

@@ -141,8 +141,21 @@ pub async fn download(
                 ));
             }
 
-            db::get_attachment(conn, &aid)?
-                .ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)
+            let att = db::get_attachment(conn, &aid)?
+                .ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)?;
+
+            // Verify the attachment belongs to the requested team.
+            if !att.message_id.is_empty() {
+                let msg = db::get_message_by_id(conn, &att.message_id)?
+                    .ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)?;
+                let channel = db::get_channel_by_id(conn, &msg.channel_id)?
+                    .ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)?;
+                if channel.team_id != tid {
+                    return Err(rusqlite::Error::QueryReturnedNoRows);
+                }
+            }
+
+            Ok(att)
         })
     })
     .await
@@ -178,6 +191,7 @@ pub async fn download(
     let response = Response::builder()
         .header(header::CONTENT_TYPE, content_type)
         .header(header::CONTENT_LENGTH, attachment.size)
+        .header("Content-Disposition", "attachment; filename=\"download\"")
         .body(body)
         .map_err(|e| AppError::Internal(format!("build response: {}", e)))?;
 
