@@ -7,8 +7,11 @@ import {
   clearChannelCache,
   clearAllMessageCache,
 } from './messageCache';
+import { useAuthStore } from '../stores/authStore';
 
 beforeEach(async () => {
+  // Set derivedKey so cache encryption works
+  useAuthStore.setState({ derivedKey: 'test-cache-key-for-encryption' });
   await clearAllMessageCache();
 });
 
