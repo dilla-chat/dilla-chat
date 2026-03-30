@@ -894,6 +894,19 @@ describe('AppLayout behavioral', () => {
     });
   });
 
+  it('falls back to JWT token when WS ticket request fails', async () => {
+    vi.mocked(api.getConnectionInfo).mockReturnValue({ baseUrl: 'http://localhost:8080', token: 'jwt-fallback' });
+    vi.mocked(api.getWsTicket).mockRejectedValueOnce(new Error('ticket endpoint unavailable'));
+    render(<AppLayout />);
+    await waitFor(() => {
+      expect(ws.connectWithParams).toHaveBeenCalledWith(
+        'team1',
+        'ws://localhost:8080/ws',
+        'token=jwt-fallback',
+      );
+    });
+  });
+
   it('syncs own presence from sync:init presences', async () => {
     vi.mocked(ws.isConnected).mockReturnValue(true);
     vi.mocked(ws.request).mockResolvedValue({
