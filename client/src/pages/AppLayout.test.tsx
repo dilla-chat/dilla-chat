@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 
 const mockNavigate = vi.fn();
 
@@ -29,7 +29,13 @@ vi.mock('../services/websocket', () => ({
   },
 }));
 
-vi.mock('../services/crypto', () => ({ initCrypto: vi.fn() }));
+vi.mock('../services/crypto', () => ({
+  initCrypto: vi.fn(),
+  cryptoService: {
+    rotateChannelKey: vi.fn().mockResolvedValue('{"sender_id":"self","chain_key":[1],"signing_public_key":[2]}'),
+    processSenderKey: vi.fn().mockResolvedValue(undefined),
+  },
+}));
 vi.mock('../services/keyStore', () => ({ unlockWithPrf: vi.fn(), exportIdentityBlob: vi.fn() }));
 vi.mock('../services/cryptoCore', () => ({ fromBase64: vi.fn() }));
 
@@ -1374,5 +1380,77 @@ describe('AppLayout mobile', () => {
     const settingsBtns = screen.getAllByTestId('user-settings-btn');
     fireEvent.click(settingsBtns[settingsBtns.length - 1]);
     expect(mockNavigate).toHaveBeenCalledWith('/app/user-settings');
+  });
+});
+
+describe('AppLayout sender key rotation on member:left', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useTeamStore.setState({
+      activeTeamId: 'team1',
+      activeChannelId: 'ch1',
+      channels: new Map([['team1', [{ id: 'ch1', name: 'general', teamId: 'team1', topic: '', channel_type: 'text', position: 0, category: '', created_by: '', created_at: '', updated_at: '' }]]]),
+      members: new Map([['team1', []]]),
+    });
+    useAuthStore.setState({
+      teams: new Map([['team1', { token: 'tok', user: { id: 'u1', username: 'tester' }, teamInfo: {}, baseUrl: 'http://localhost' }]]),
+      derivedKey: 'test-derived-key',
+    });
+  });
+
+  it('rotates channel keys when member:left event is received', async () => {
+    const { cryptoService } = await import('../services/crypto');
+    render(<AppLayout />);
+    await act(async () => {});
+
+    // Find the member:left handler registered via ws.on
+    const onCalls = vi.mocked(ws.on).mock.calls;
+    const memberLeftCall = onCalls.find(([event]) => event === 'member:left');
+    expect(memberLeftCall).toBeDefined();
+
+    const handler = memberLeftCall![1];
+
+    // Trigger member:left
+    await act(async () => {
+      await handler({ team_id: 'team1', user_id: 'kicked-user' });
+    });
+
+    // Wait for async rotation
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+
+    expect(cryptoService.rotateChannelKey).toHaveBeenCalledWith('ch1', 'kicked-user', 'test-derived-key');
+  });
+
+  it('ignores member:left for different team', async () => {
+    const { cryptoService } = await import('../services/crypto');
+    render(<AppLayout />);
+    await act(async () => {});
+
+    const onCalls = vi.mocked(ws.on).mock.calls;
+    const memberLeftCall = onCalls.find(([event]) => event === 'member:left');
+    const handler = memberLeftCall![1];
+
+    await act(async () => {
+      await handler({ team_id: 'other-team', user_id: 'kicked-user' });
+    });
+
+    expect(cryptoService.rotateChannelKey).not.toHaveBeenCalled();
+  });
+
+  it('skips rotation when derivedKey is null', async () => {
+    const { cryptoService } = await import('../services/crypto');
+    useAuthStore.setState({ derivedKey: null });
+    render(<AppLayout />);
+    await act(async () => {});
+
+    const onCalls = vi.mocked(ws.on).mock.calls;
+    const memberLeftCall = onCalls.find(([event]) => event === 'member:left');
+    const handler = memberLeftCall![1];
+
+    await act(async () => {
+      await handler({ team_id: 'team1', user_id: 'kicked-user' });
+    });
+
+    expect(cryptoService.rotateChannelKey).not.toHaveBeenCalled();
   });
 });
