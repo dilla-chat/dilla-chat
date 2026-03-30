@@ -774,6 +774,46 @@ mod tests {
         assert!(!has_users);
     }
 
+    // ── WebSocket ticket tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_generate_ws_ticket() {
+        let auth = test_auth_service();
+        let ticket = auth.generate_ws_ticket("user-42");
+        assert_eq!(ticket.len(), 64); // 32 bytes hex
+        assert!(auth.ws_tickets.read().unwrap().contains_key(&ticket));
+    }
+
+    #[test]
+    fn test_validate_ws_ticket_success() {
+        let auth = test_auth_service();
+        let ticket = auth.generate_ws_ticket("user-42");
+        let user_id = auth.validate_ws_ticket(&ticket).unwrap();
+        assert_eq!(user_id, "user-42");
+        // Ticket is consumed — second use should fail
+        assert!(auth.validate_ws_ticket(&ticket).is_err());
+    }
+
+    #[test]
+    fn test_validate_ws_ticket_invalid() {
+        let auth = test_auth_service();
+        assert!(auth.validate_ws_ticket("nonexistent-ticket").is_err());
+    }
+
+    #[test]
+    fn test_validate_ws_ticket_expired() {
+        let auth = test_auth_service();
+        // Insert a ticket that's already expired
+        auth.ws_tickets.write().unwrap().insert(
+            "expired-ticket".to_string(),
+            WsTicket {
+                user_id: "user-1".to_string(),
+                created_at: Instant::now() - Duration::from_secs(60),
+            },
+        );
+        assert!(auth.validate_ws_ticket("expired-ticket").is_err());
+    }
+
     // ── DILLA_JWT_SECRET env var override tests ─────────────────────────
 
     #[test]

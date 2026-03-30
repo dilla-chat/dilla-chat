@@ -112,6 +112,15 @@ describe('WebSocketService', () => {
     });
   });
 
+  describe('connectWithParams', () => {
+    it('stores connection params and creates connection', () => {
+      const connParams = (service as unknown as { connectionParams: Map<string, { url: string; token: string }> }).connectionParams;
+      service.connectWithParams('t2', 'ws://test/ws', 'ticket=abc123');
+      expect(connParams.has('t2')).toBe(true);
+      expect(connParams.get('t2')!.token).toBe('ticket=abc123');
+    });
+  });
+
   describe('event handlers', () => {
     it('on/off registers and removes handlers', () => {
       const handler = vi.fn();
