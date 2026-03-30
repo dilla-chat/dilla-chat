@@ -28,6 +28,16 @@ fn validate_auth_message(message_text: &str, expected_secret: &str) -> bool {
     }
 }
 
+/// Build the outbound authentication message JSON.
+fn build_auth_message(join_secret: &str) -> String {
+    serde_json::json!({ "join_token": join_secret }).to_string()
+}
+
+/// Check if federation authentication is required (non-empty secret).
+fn requires_auth(join_secret: &str) -> bool {
+    !join_secret.is_empty()
+}
+
 type WsSink = SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>;
 
 /// Represents a connection to a remote federation peer.
@@ -117,9 +127,9 @@ impl Transport {
         let (mut sink, stream) = ws_stream.split();
 
         // Send join token as the first message (outbound authentication).
-        if !self.join_secret.is_empty() {
-            let auth_msg = serde_json::json!({ "join_token": self.join_secret });
-            sink.send(Message::Text(auth_msg.to_string().into()))
+        if requires_auth(&self.join_secret) {
+            let auth_msg = build_auth_message(&self.join_secret);
+            sink.send(Message::Text(auth_msg.into()))
                 .await
                 .map_err(|e| format!("failed to send auth to peer {}: {}", address, e))?;
         }
@@ -159,7 +169,7 @@ impl Transport {
         let sink = Arc::new(tokio::sync::Mutex::new(sink));
 
         // Authenticate: expect a join_token as the first message within AUTH_TIMEOUT_SECS.
-        if !self.join_secret.is_empty() {
+        if requires_auth(&self.join_secret) {
             let auth_result = tokio::time::timeout(
                 tokio::time::Duration::from_secs(AUTH_TIMEOUT_SECS),
                 stream.next(),
@@ -471,5 +481,34 @@ mod tests {
         let msg = r#"{"join_token":""}"#;
         assert!(!validate_auth_message(msg, "secret"));
         assert!(validate_auth_message(msg, ""));
+    }
+
+    #[test]
+    fn test_build_auth_message() {
+        let msg = build_auth_message("my-secret");
+        let parsed: serde_json::Value = serde_json::from_str(&msg).unwrap();
+        assert_eq!(parsed["join_token"], "my-secret");
+    }
+
+    #[test]
+    fn test_build_auth_message_roundtrip() {
+        let secret = "test-join-secret-123";
+        let msg = build_auth_message(secret);
+        assert!(validate_auth_message(&msg, secret));
+    }
+
+    #[test]
+    fn test_requires_auth_with_secret() {
+        assert!(requires_auth("my-secret"));
+    }
+
+    #[test]
+    fn test_requires_auth_empty() {
+        assert!(!requires_auth(""));
+    }
+
+    #[test]
+    fn test_auth_timeout_constant() {
+        assert_eq!(AUTH_TIMEOUT_SECS, 5);
     }
 }
