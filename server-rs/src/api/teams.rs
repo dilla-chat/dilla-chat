@@ -5,11 +5,14 @@ use axum::{
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+use std::sync::Arc;
+
 use crate::api::helpers::{json_ok, json_ok_true, map_not_found, require_permission, require_team_member, spawn_db};
 use crate::api::AppState;
 use crate::auth::UserId;
 use crate::db;
 use crate::error::AppError;
+use crate::ws::Hub;
 
 #[derive(Deserialize)]
 pub struct CreateTeamRequest {
@@ -231,11 +234,14 @@ pub async fn kick_member(
         return Err(AppError::BadRequest("cannot kick yourself".into()));
     }
 
+    let tid = team_id.clone();
+    let tuid = target_user_id.clone();
+
     spawn_db(state.db.clone(), move |conn| {
-        require_permission(conn, &user_id, &team_id, db::PERM_MANAGE_MEMBERS)?;
+        require_permission(conn, &user_id, &tid, db::PERM_MANAGE_MEMBERS)?;
 
         // Check target is actually a member.
-        let member = db::get_member_by_user_and_team(conn, &target_user_id, &team_id)?;
+        let member = db::get_member_by_user_and_team(conn, &tuid, &tid)?;
         if member.is_none() {
             return Err(rusqlite::Error::QueryReturnedNoRows);
         }
@@ -244,11 +250,14 @@ pub async fn kick_member(
         if let Some(m) = member {
             db::clear_member_roles(conn, &m.id)?;
         }
-        db::delete_member(conn, &target_user_id, &team_id)?;
+        db::delete_member(conn, &tuid, &tid)?;
         Ok(())
     })
     .await
     .map_err(map_not_found("member"))?;
+
+    // Broadcast member:left so clients can rotate encryption keys.
+    broadcast_member_left(&state.hub, &team_id, &target_user_id).await;
 
     json_ok_true()
 }
@@ -263,11 +272,14 @@ pub async fn ban_member(
         return Err(AppError::BadRequest("cannot ban yourself".into()));
     }
 
+    let tid = team_id.clone();
+    let tuid = target_user_id.clone();
+
     let ban = spawn_db(state.db.clone(), move |conn| {
-        require_permission(conn, &user_id, &team_id, db::PERM_MANAGE_MEMBERS)?;
+        require_permission(conn, &user_id, &tid, db::PERM_MANAGE_MEMBERS)?;
 
         // Check if already banned.
-        if db::get_ban(conn, &team_id, &target_user_id)?.is_some() {
+        if db::get_ban(conn, &tid, &tuid)?.is_some() {
             return Err(rusqlite::Error::InvalidParameterName(
                 "user is already banned".into(),
             ));
@@ -275,8 +287,8 @@ pub async fn ban_member(
 
         // Create ban.
         let ban = db::Ban {
-            team_id: team_id.clone(),
-            user_id: target_user_id.clone(),
+            team_id: tid.clone(),
+            user_id: tuid.clone(),
             banned_by: user_id.clone(),
             reason: body.reason.clone(),
             created_at: db::now_str(),
@@ -284,14 +296,17 @@ pub async fn ban_member(
         db::create_ban(conn, &ban)?;
 
         // Remove from team.
-        if let Some(m) = db::get_member_by_user_and_team(conn, &target_user_id, &team_id)? {
+        if let Some(m) = db::get_member_by_user_and_team(conn, &tuid, &tid)? {
             db::clear_member_roles(conn, &m.id)?;
         }
-        db::delete_member(conn, &target_user_id, &team_id)?;
+        db::delete_member(conn, &tuid, &tid)?;
 
         Ok(ban)
     })
     .await?;
+
+    // Broadcast member:left so clients can rotate encryption keys.
+    broadcast_member_left(&state.hub, &team_id, &target_user_id).await;
 
     json_ok(ban)
 }
@@ -314,4 +329,23 @@ pub async fn unban_member(
     .map_err(map_not_found("ban"))?;
 
     json_ok_true()
+}
+
+/// Broadcast a `member:left` event to all connected clients so they can
+/// rotate channel encryption keys for the removed member.
+async fn broadcast_member_left(hub: &Arc<Hub>, team_id: &str, user_id: &str) {
+    use crate::ws::events::Event;
+
+    let evt = Event::new(
+        "member:left",
+        serde_json::json!({
+            "team_id": team_id,
+            "user_id": user_id,
+        }),
+    );
+    if let Ok(evt) = evt {
+        if let Ok(data) = evt.to_bytes() {
+            hub.broadcast_to_all(data).await;
+        }
+    }
 }

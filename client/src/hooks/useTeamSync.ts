@@ -7,6 +7,7 @@ import { useVoiceStore } from '../stores/voiceStore';
 import { api, type VoicePeer } from '../services/api';
 import { ws } from '../services/websocket';
 import { telemetryClient } from '../services/telemetryClient';
+import { cryptoService } from '../services/crypto';
 
 /** Normalize members from server snake_case to client camelCase.
  *  sync:init returns `{ member: {...}, user: {...} }` wrappers;
@@ -257,6 +258,35 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
     wsConnected.current.add(activeTeamId);
     telemetryClient.setTeamId(activeTeamId);
   }, [activeTeamId, activeToken]);
+
+  // Rotate channel encryption keys when a member leaves (kicked/banned).
+  useEffect(() => {
+    if (!activeTeamId) return;
+    const teamId = activeTeamId;
+
+    const unsub = ws.on('member:left', async (payload: { team_id?: string; user_id?: string }) => {
+      if (payload?.team_id !== teamId || !payload?.user_id) return;
+      const derivedKey = useAuthStore.getState().derivedKey;
+      if (!derivedKey) return;
+
+      // Rotate sender keys for all channels the user had access to.
+      const teamChannels = useTeamStore.getState().channels.get(teamId) ?? [];
+      for (const channel of teamChannels) {
+        try {
+          const dist = await cryptoService.rotateChannelKey(channel.id, payload.user_id, derivedKey);
+          if (dist) {
+            // Redistribute new sender key to remaining members via the channel
+            await cryptoService.processSenderKey(channel.id, dist, derivedKey);
+          }
+        } catch {
+          // Non-fatal — session may not exist for this channel
+        }
+      }
+      console.log(`[AppLayout] Rotated channel keys after member ${payload.user_id} left team ${teamId}`);
+    });
+
+    return () => { unsub(); };
+  }, [activeTeamId]);
 
   return { authChecked, dataLoaded };
 }
