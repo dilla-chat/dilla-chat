@@ -84,7 +84,8 @@ export default function DMView({ dm, currentUserId, showMembers = false }: Reado
       const cached = await getCachedMessage(messageId);
       if (cached !== null) return cached;
 
-      if (!derivedKey || !activeTeamId) return content;
+      if (!derivedKey || !activeTeamId)
+        return '\u{1F512} *Encrypted message \u2014 unlock your identity to read*';
       try {
         const plaintext = await cryptoService.decryptDM(activeTeamId, senderId, content, dm.id, derivedKey);
         await cacheMessage(messageId, dm.id, plaintext);

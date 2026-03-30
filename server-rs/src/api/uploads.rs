@@ -73,6 +73,11 @@ pub async fn upload(
         )));
     }
 
+    // Validate team_id to prevent path traversal.
+    if tid.contains("..") || tid.contains('/') || tid.contains('\\') {
+        return Err(AppError::BadRequest("invalid team id".into()));
+    }
+
     // Write file to disk.
     let attachment_id = db::new_id();
     let upload_dir = PathBuf::from(&state.config.upload_dir).join(&tid);

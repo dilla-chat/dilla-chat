@@ -90,19 +90,18 @@ export class VoiceEncryptionManager {
   ): Promise<void> {
     const derivedKey = useAuthStore.getState().derivedKey;
 
+    if (!derivedKey || !teamId || !channelId) {
+      console.warn('[Voice] Missing derivedKey/teamId/channelId — rejecting voice key from', senderId);
+      return;
+    }
+
     let keyBase64: string;
     try {
-      if (derivedKey && teamId && channelId) {
-        // Decrypt the voice key using the sender's Signal Protocol session
-        keyBase64 = await cryptoService.decryptDM(teamId, senderId, encryptedKey, channelId, derivedKey);
-      } else {
-        // Fallback: assume unencrypted (backward compat with old clients)
-        keyBase64 = encryptedKey;
-      }
+      // Decrypt the voice key using the sender's Signal Protocol session
+      keyBase64 = await cryptoService.decryptDM(teamId, senderId, encryptedKey, channelId, derivedKey);
     } catch (err) {
-      console.warn('[Voice] Failed to decrypt voice key from', senderId, err);
-      // Try treating as unencrypted for backward compatibility
-      keyBase64 = encryptedKey;
+      console.error('[Voice] Failed to decrypt voice key from', senderId, err);
+      return;
     }
 
     const rawKey = new Uint8Array(

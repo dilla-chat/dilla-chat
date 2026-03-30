@@ -144,6 +144,10 @@ export class GroupSession {
     if (!valid) throw new Error('Group message signature verification failed');
 
     // Advance chain to correct message number
+    const MAX_CHAIN_ADVANCE = 2000;
+    if (message.message_number - state.messageNumber > MAX_CHAIN_ADVANCE) {
+      throw new Error('Message gap too large — possible corruption or attack');
+    }
     while (state.messageNumber < message.message_number) {
       const [nextChain] = await kdfChain(state.chainKey);
       state.chainKey = nextChain;

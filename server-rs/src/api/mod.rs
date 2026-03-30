@@ -23,12 +23,14 @@ use crate::presence::PresenceManager;
 use crate::ws::Hub;
 use axum::{
     extract::Extension,
+    http::HeaderValue,
     middleware,
     routing::{delete, get, patch, post, put},
     Json, Router,
 };
 use std::sync::{Arc, OnceLock};
 use tower_http::cors::{Any, CorsLayer};
+use tower_http::set_header::SetResponseHeaderLayer;
 
 pub static VERSION: OnceLock<String> = OnceLock::new();
 
@@ -44,8 +46,16 @@ pub struct AppState {
 
 #[cfg(not(tarpaulin_include))]
 pub fn create_router(state: AppState) -> Router {
+    // TODO(NEW-10): trusted_proxies config should be used for X-Forwarded-For
+    // resolution to correctly identify client IPs behind reverse proxies.
+
     let cors = if state.config.allowed_origins.is_empty() {
-        CorsLayer::very_permissive()
+        if state.config.insecure {
+            CorsLayer::very_permissive()
+        } else {
+            // Restrictive default: same-origin only when no origins configured.
+            CorsLayer::new()
+        }
     } else {
         let origins: Vec<_> = state
             .config
@@ -242,12 +252,28 @@ pub fn create_router(state: AppState) -> Router {
     let ws_route = Router::new()
         .route("/ws", get(ws_handler));
 
+    // TODO(NEW-07): Add rate limiting to public auth routes using governor/tower-governor
+    // once tower-governor is added as a dependency. Target: 10 requests/minute per IP
+    // on /api/v1/auth/* endpoints.
+
     Router::new()
         .merge(public)
         .merge(protected)
         .merge(ws_route)
         .layer(Extension(state.auth.clone()))
         .layer(cors)
+        .layer(SetResponseHeaderLayer::overriding(
+            axum::http::header::X_CONTENT_TYPE_OPTIONS,
+            HeaderValue::from_static("nosniff"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            axum::http::header::X_FRAME_OPTIONS,
+            HeaderValue::from_static("DENY"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            axum::http::header::REFERRER_POLICY,
+            HeaderValue::from_static("strict-origin-when-cross-origin"),
+        ))
         .fallback_service(crate::webapp::webapp_fallback())
         .with_state(state)
 }

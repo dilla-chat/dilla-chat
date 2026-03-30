@@ -536,6 +536,19 @@ describe('GroupSession key rotation', () => {
     // Charlie can NOT decrypt with old key
     await expect(charlie.decrypt(msg)).rejects.toThrow();
   });
+
+  it('rejects message with gap larger than MAX_CHAIN_ADVANCE', async () => {
+    const alice = await GroupSession.create('ch1', 'alice');
+    const bob = await GroupSession.create('ch1', 'bob');
+
+    bob.processDistribution(alice.createDistributionMessage());
+
+    const msg = await alice.encrypt(encoder.encode('normal'));
+    // Tamper with message_number to be way beyond what bob expects
+    msg.message_number = 3000;
+
+    await expect(bob.decrypt(msg)).rejects.toThrow('Message gap too large');
+  });
 });
 
 // ─── Safety Numbers ──────────────────────────────────────────────────────────

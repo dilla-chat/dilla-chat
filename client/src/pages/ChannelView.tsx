@@ -42,7 +42,7 @@ async function tryDecrypt(
 
   // Strip legacy dev prefix from old messages
   const clean = content.startsWith(DEV_PREFIX) ? content.slice(DEV_PREFIX.length) : content;
-  if (!derivedKey) return clean;
+  if (!derivedKey) return '\u{1F512} *Encrypted message \u2014 unlock your identity to read*';
   try {
     // Use decryptChannel which ensures the channel session is initialized
     const userId = getIdentityKeys().publicKeyBytes;

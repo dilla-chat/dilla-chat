@@ -119,11 +119,11 @@ fn check_first_start(database: &Database, auth_svc: &AuthService, port: u16) {
         Ok(false) => {
             match auth_svc.generate_bootstrap_token() {
                 Ok(token) => {
-                    println!();
-                    println!("  *** First-time setup ***");
-                    println!("  Open http://<your-host>:{}/setup in a browser", port);
-                    println!("  Bootstrap token: {}", token);
-                    println!();
+                    eprintln!();
+                    eprintln!("  *** First-time setup ***");
+                    eprintln!("  Open http://<your-host>:{}/setup in a browser", port);
+                    eprintln!("  Bootstrap token: {}", token);
+                    eprintln!();
                 }
                 Err(e) => {
                     tracing::error!("failed to generate bootstrap token: {}", e);
