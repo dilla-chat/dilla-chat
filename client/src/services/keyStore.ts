@@ -153,10 +153,11 @@ async function unwrapMekWithRecovery(
 ): Promise<Uint8Array> {
   const actualHash = await sha256Hash(recoveryKey);
   const expectedHash = new Uint8Array(slot.recovery_key_hash);
-  if (actualHash.length !== expectedHash.length ||
-      !actualHash.every((v, i) => v === expectedHash[i])) {
-    throw new Error('Invalid recovery key');
+  let diff = actualHash.length ^ expectedHash.length;
+  for (let i = 0; i < Math.max(actualHash.length, expectedHash.length); i++) {
+    diff |= (actualHash[i] ?? 0) ^ (expectedHash[i] ?? 0);
   }
+  if (diff !== 0) throw new Error('Invalid recovery key');
   const aesKey = await deriveAesFromRecovery(recoveryKey);
   const data = new Uint8Array([...slot.wrapped_nonce, ...slot.wrapped_mek]);
   return aesGcmDecrypt(aesKey, data);

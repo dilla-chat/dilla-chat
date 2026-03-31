@@ -56,7 +56,7 @@ fn generate_nonce() -> String {
 
 fn cors_headers() -> Vec<Header> {
     vec![
-        Header::from_bytes("Access-Control-Allow-Origin", "*").unwrap(),
+        Header::from_bytes("Access-Control-Allow-Origin", "null").unwrap(),
         Header::from_bytes("Access-Control-Allow-Methods", "POST, OPTIONS").unwrap(),
         Header::from_bytes("Access-Control-Allow-Headers", "Content-Type").unwrap(),
     ]

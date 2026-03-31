@@ -137,6 +137,9 @@ impl Hub {
         let mut direct_rx = self.direct_rx.lock().await;
         let mut broadcast_all_rx = self.broadcast_all_rx.lock().await;
 
+        // Periodic cleanup interval for typing_throttle (every 60 seconds).
+        let mut cleanup_interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
+
         loop {
             tokio::select! {
                 Some(client) = register_rx.recv() => {
@@ -219,6 +222,12 @@ impl Hub {
                     for client in clients.values() {
                         let _ = client.sender.send(data.clone());
                     }
+                }
+                _ = cleanup_interval.tick() => {
+                    // Remove typing throttle entries older than 10 seconds.
+                    let now = chrono::Utc::now().timestamp();
+                    let mut throttle = self.typing_throttle.write().await;
+                    throttle.retain(|_, ts| now - *ts < 10);
                 }
             }
         }
