@@ -1,8 +1,9 @@
-import { useRef, useEffect, useCallback, useState, type UIEvent } from 'react';
+import { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Emoji, Plus, Reply, Threads, EditPencil, Trash, ChatBubble } from 'iconoir-react';
+import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import { useMessageStore, type Message } from '../../stores/messageStore';
 import Reactions from '../Reactions/Reactions';
 import FilePreview from '../FilePreview/FilePreview';
@@ -35,6 +36,8 @@ const markdownComponents = {
   ),
 };
 
+const START_INDEX = 100000;
+
 export default function MessageList({
   channelId,
   channelName = '',
@@ -50,10 +53,7 @@ export default function MessageList({
 }: Readonly<Props>) {
   const { t } = useTranslation();
   const { messages, loadingHistory, hasMore } = useMessageStore();
-  const containerRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const shouldAutoScroll = useRef(true);
-  const prevScrollHeight = useRef(0);
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
   const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<string | null>(null);
 
   const channelMessages = messages.get(channelId) ?? [];
@@ -61,69 +61,62 @@ export default function MessageList({
   const canLoadMore = hasMore.get(channelId) ?? true;
   const groups = groupMessages(channelMessages);
 
-  // Auto-scroll to bottom when new messages arrive
-  useEffect(() => {
-    if (shouldAutoScroll.current && bottomRef.current) {
-      bottomRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [channelMessages.length]);
+  const firstItemIndex = useMemo(() => START_INDEX - groups.length, [groups.length]);
 
   // Scroll to bottom on channel change
   useEffect(() => {
-    shouldAutoScroll.current = true;
-    if (bottomRef.current) {
-      bottomRef.current.scrollIntoView();
+    if (virtuosoRef.current) {
+      virtuosoRef.current.scrollToIndex({ index: groups.length - 1, behavior: 'auto' });
     }
-  }, [channelId]);
+  }, [channelId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Preserve scroll position when prepending history
-  useEffect(() => {
-    const container = containerRef.current;
-    if (container && prevScrollHeight.current > 0) {
-      const newScrollHeight = container.scrollHeight;
-      container.scrollTop = newScrollHeight - prevScrollHeight.current;
-      prevScrollHeight.current = 0;
+  const handleStartReached = useCallback(() => {
+    if (canLoadMore && !isLoading) {
+      onLoadMore();
     }
-  }, [channelMessages.length]);
-
-  const handleScroll = useCallback(
-    (e: UIEvent<HTMLDivElement>) => {
-      const el = e.currentTarget;
-      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50;
-      shouldAutoScroll.current = atBottom;
-
-      // Load more when scrolled to top
-      if (el.scrollTop < 100 && canLoadMore && !isLoading) {
-        prevScrollHeight.current = el.scrollHeight;
-        onLoadMore();
-      }
-    },
-    [canLoadMore, isLoading, onLoadMore],
-  );
+  }, [canLoadMore, isLoading, onLoadMore]);
 
   return (
-    <div className="message-list" ref={containerRef} onScroll={handleScroll} role="log" aria-live="polite">
-      {isLoading && <MessageSkeleton count={5} />}
-      {!canLoadMore && channelMessages.length > 0 && (
-        <div className="message-list-beginning" style={{ fontFamily: 'var(--font-display)' }}>
-          {t('channels.welcomeTitle', 'Welcome to ~{{name}}', { name: channelName })}
-        </div>
-      )}
-
-      {groups.map((group) => {
+    <Virtuoso
+      ref={virtuosoRef}
+      style={{ flex: 1 }}
+      className="message-list"
+      role="log"
+      aria-live="polite"
+      firstItemIndex={firstItemIndex}
+      initialTopMostItemIndex={groups.length - 1}
+      data={groups}
+      followOutput="smooth"
+      startReached={handleStartReached}
+      components={{
+        Header: () => (
+          <>
+            {isLoading && <MessageSkeleton count={5} />}
+            {!canLoadMore && channelMessages.length > 0 && (
+              <div
+                className="message-list-beginning"
+                style={{ fontFamily: 'var(--font-display)' }}
+              >
+                {t('channels.welcomeTitle', 'Welcome to ~{{name}}', { name: channelName })}
+              </div>
+            )}
+          </>
+        ),
+      }}
+      itemContent={(_index, group) => {
         const firstMsg = group.messages[0];
         const isSystem = firstMsg.type === 'system';
 
         if (isSystem) {
           return (
-            <div key={firstMsg.id} className="message-system">
+            <div className="message-system">
               <span className="message-system-text">{firstMsg.content}</span>
             </div>
           );
         }
 
         return (
-          <div key={firstMsg.id} className="message-group">
+          <div className="message-group">
             <div className="message-group-avatar">
               <div
                 className="message-avatar"
@@ -173,10 +166,17 @@ export default function MessageList({
                       {onReaction && (
                         <button
                           className="message-action-btn"
-                          onClick={() => setEmojiPickerMsgId(emojiPickerMsgId === msg.id ? null : msg.id)}
+                          onClick={() =>
+                            setEmojiPickerMsgId(
+                              emojiPickerMsgId === msg.id ? null : msg.id,
+                            )
+                          }
                           title={t('reactions.addReaction', 'Add Reaction')}
                         >
-                        <span className="message-action-icon"><Emoji width={16} height={16} strokeWidth={2} /><Plus width={10} height={10} strokeWidth={2} /></span>
+                          <span className="message-action-icon">
+                            <Emoji width={16} height={16} strokeWidth={2} />
+                            <Plus width={10} height={10} strokeWidth={2} />
+                          </span>
                         </button>
                       )}
                       {onReply && (
@@ -228,11 +228,14 @@ export default function MessageList({
                       />
                     </div>
                   )}
-                  {!msg.deleted && (msg as Message & { attachments?: Attachment[] }).attachments && (
-                    <FilePreview
-                      attachments={(msg as Message & { attachments?: Attachment[] }).attachments!}
-                    />
-                  )}
+                  {!msg.deleted &&
+                    (msg as Message & { attachments?: Attachment[] }).attachments && (
+                      <FilePreview
+                        attachments={
+                          (msg as Message & { attachments?: Attachment[] }).attachments!
+                        }
+                      />
+                    )}
                   {!msg.deleted && msg.reactions && msg.reactions.length > 0 && (
                     <Reactions
                       reactions={msg.reactions}
@@ -246,11 +249,15 @@ export default function MessageList({
                       className="message-thread-indicator"
                       onClick={() => onOpenThread?.(msg.id)}
                     >
-                      <span className="thread-indicator-icon"><ChatBubble width={16} height={16} strokeWidth={2} /></span>
+                      <span className="thread-indicator-icon">
+                        <ChatBubble width={16} height={16} strokeWidth={2} />
+                      </span>
                       <span className="thread-indicator-count">
                         {threadInfo[msg.id].count === 1
                           ? t('thread.reply', '1 reply')
-                          : t('thread.replies', '{{count}} replies', { count: threadInfo[msg.id].count })}
+                          : t('thread.replies', '{{count}} replies', {
+                              count: threadInfo[msg.id].count,
+                            })}
                       </span>
                       {threadInfo[msg.id].lastReplyAt && (
                         <span className="thread-indicator-time">
@@ -266,9 +273,7 @@ export default function MessageList({
             </div>
           </div>
         );
-      })}
-
-      <div ref={bottomRef} />
-    </div>
+      }}
+    />
   );
 }
