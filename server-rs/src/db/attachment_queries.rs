@@ -1,4 +1,5 @@
 use super::models::*;
+use super::nullable;
 use rusqlite::{params, Connection, OptionalExtension};
 
 pub fn create_attachment(conn: &Connection, att: &Attachment) -> Result<(), rusqlite::Error> {
@@ -7,7 +8,7 @@ pub fn create_attachment(conn: &Connection, att: &Attachment) -> Result<(), rusq
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![
             att.id,
-            att.message_id,
+            nullable(&att.message_id),
             att.filename_encrypted,
             att.content_type_encrypted,
             att.size,
@@ -52,7 +53,7 @@ pub fn delete_attachment(conn: &Connection, id: &str) -> Result<(), rusqlite::Er
 fn row_to_attachment(row: &rusqlite::Row) -> Result<Attachment, rusqlite::Error> {
     Ok(Attachment {
         id: row.get(0)?,
-        message_id: row.get(1)?,
+        message_id: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
         filename_encrypted: row.get(2)?,
         content_type_encrypted: row.get::<_, Option<Vec<u8>>>(3)?.unwrap_or_default(),
         size: row.get(4)?,

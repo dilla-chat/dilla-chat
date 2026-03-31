@@ -105,6 +105,26 @@ pub async fn get_identity_blob(
     })))
 }
 
+pub async fn delete_me(
+    Extension(UserId(user_id)): Extension<UserId>,
+    State(state): State<AppState>,
+) -> Result<Json<Value>, AppError> {
+    let db = state.db.clone();
+    let uid = user_id.clone();
+
+    let result = tokio::task::spawn_blocking(move || {
+        db.with_conn(|conn| db::delete_user(conn, &uid))
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("task join: {}", e)))?;
+
+    match result {
+        Ok(()) => Ok(Json(json!({ "ok": true }))),
+        Err(rusqlite::Error::InvalidParameterName(msg)) => Err(AppError::BadRequest(msg)),
+        Err(e) => Err(AppError::Internal(format!("db: {}", e))),
+    }
+}
+
 pub async fn put_identity_blob(
     Extension(UserId(user_id)): Extension<UserId>,
     State(state): State<AppState>,

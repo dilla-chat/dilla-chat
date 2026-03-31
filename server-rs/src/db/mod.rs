@@ -48,6 +48,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
     ("004_threads.sql", include_str!("../../migrations/004_threads.sql")),
     ("005_reactions_attachments.sql", include_str!("../../migrations/005_reactions_attachments.sql")),
     ("006_federation_sync.sql", include_str!("../../migrations/006_federation_sync.sql")),
+    ("007_nullable_fks.sql", include_str!("../../migrations/007_nullable_fks.sql")),
 ];
 
 /// Default number of read connections in the pool.
@@ -74,6 +75,7 @@ fn open_connection(db_path: &Path, passphrase: &str) -> Result<Connection, rusql
     }
     conn.execute_batch("PRAGMA journal_mode = WAL;")?;
     conn.execute_batch("PRAGMA busy_timeout = 5000;")?;
+    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
     conn.execute_batch("SELECT 1;")?;
     Ok(conn)
 }
@@ -216,7 +218,44 @@ pub fn new_id() -> String {
     uuid::Uuid::new_v4().to_string()
 }
 
+/// Convert an empty string to `None` for nullable FK columns.
+/// Use in `params![]` so that empty strings are stored as SQL NULL,
+/// which correctly skips foreign key checks.
+pub fn nullable(s: &str) -> Option<&str> {
+    if s.is_empty() { None } else { Some(s) }
+}
+
 /// Format current time as SQLite datetime string.
 pub fn now_str() -> String {
     chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string()
+}
+
+#[cfg(test)]
+mod nullable_tests {
+    use super::*;
+
+    #[test]
+    fn nullable_returns_none_for_empty() {
+        assert_eq!(nullable(""), None);
+    }
+
+    #[test]
+    fn nullable_returns_some_for_non_empty() {
+        assert_eq!(nullable("hello"), Some("hello"));
+    }
+
+    #[test]
+    fn foreign_keys_enabled_on_new_connections() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        let fk_enabled: i32 = db
+            .with_conn(|c| c.query_row("PRAGMA foreign_keys", [], |r| r.get(0)))
+            .unwrap();
+        assert_eq!(fk_enabled, 1, "foreign_keys should be ON for write conn");
+
+        let fk_read: i32 = db
+            .with_read(|c| c.query_row("PRAGMA foreign_keys", [], |r| r.get(0)))
+            .unwrap();
+        assert_eq!(fk_read, 1, "foreign_keys should be ON for read conns");
+    }
 }

@@ -1,5 +1,5 @@
 use super::models::*;
-use super::{now_str, row_to_message};
+use super::{nullable, now_str, row_to_message};
 use rusqlite::{params, Connection, OptionalExtension};
 
 pub fn create_message(conn: &Connection, msg: &Message) -> Result<(), rusqlite::Error> {
@@ -8,12 +8,12 @@ pub fn create_message(conn: &Connection, msg: &Message) -> Result<(), rusqlite::
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         params![
             msg.id,
-            msg.channel_id,
-            if msg.dm_channel_id.is_empty() { None } else { Some(&msg.dm_channel_id) },
+            nullable(&msg.channel_id),
+            nullable(&msg.dm_channel_id),
             msg.author_id,
             msg.content,
             msg.msg_type,
-            if msg.thread_id.is_empty() { None } else { Some(&msg.thread_id) },
+            nullable(&msg.thread_id),
             msg.lamport_ts,
             msg.created_at,
         ],
@@ -43,7 +43,7 @@ pub fn get_messages_by_channel(
     let mut messages = if before.is_empty() {
         let mut stmt = conn.prepare(
             "SELECT id, channel_id, dm_channel_id, author_id, content, type, thread_id, edited_at, deleted, lamport_ts, created_at
-             FROM messages WHERE channel_id = ?1 AND (thread_id IS NULL OR thread_id = '')
+             FROM messages WHERE channel_id = ?1 AND thread_id IS NULL
              ORDER BY created_at DESC LIMIT ?2",
         )?;
         let rows = stmt.query_map(params![channel_id, limit], row_to_message)?;
@@ -51,7 +51,7 @@ pub fn get_messages_by_channel(
     } else {
         let mut stmt = conn.prepare(
             "SELECT id, channel_id, dm_channel_id, author_id, content, type, thread_id, edited_at, deleted, lamport_ts, created_at
-             FROM messages WHERE channel_id = ?1 AND (thread_id IS NULL OR thread_id = '') AND created_at < ?2
+             FROM messages WHERE channel_id = ?1 AND thread_id IS NULL AND created_at < ?2
              ORDER BY created_at DESC LIMIT ?3",
         )?;
         let rows = stmt.query_map(params![channel_id, before, limit], |row| {

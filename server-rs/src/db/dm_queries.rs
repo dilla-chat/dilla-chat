@@ -1,11 +1,11 @@
 use super::models::*;
-use super::{now_str, row_to_message};
+use super::{nullable, now_str, row_to_message};
 use rusqlite::{params, Connection, OptionalExtension};
 
 pub fn create_dm_channel(conn: &Connection, dm: &DMChannel) -> Result<(), rusqlite::Error> {
     conn.execute(
         "INSERT INTO dm_channels (id, team_id, type, name, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![dm.id, dm.team_id, dm.dm_type, dm.name, dm.created_at],
+        params![dm.id, nullable(&dm.team_id), dm.dm_type, dm.name, dm.created_at],
     )?;
     Ok(())
 }
@@ -116,7 +116,7 @@ pub fn is_dm_member(
 pub fn create_dm_message(conn: &Connection, msg: &Message) -> Result<(), rusqlite::Error> {
     conn.execute(
         "INSERT INTO messages (id, channel_id, dm_channel_id, author_id, content, type, lamport_ts, created_at)
-         VALUES (?1, '', ?2, ?3, ?4, ?5, ?6, ?7)",
+         VALUES (?1, NULL, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![
             msg.id,
             msg.dm_channel_id,
