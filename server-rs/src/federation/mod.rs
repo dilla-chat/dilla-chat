@@ -109,7 +109,7 @@ pub struct MeshNode {
 impl MeshNode {
     /// Create a new MeshNode with the given configuration, database, and hub references.
     pub fn new(config: MeshConfig, db: Database, hub: Arc<Hub>) -> Self {
-        let transport = Arc::new(Transport::new());
+        let transport = Arc::new(Transport::with_join_secret(config.join_secret.clone()));
         let sync_mgr = Arc::new(SyncManager::new(
             db.clone(),
             Arc::clone(&transport),

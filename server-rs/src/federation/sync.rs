@@ -1,12 +1,51 @@
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
+use tokio::sync::RwLock;
 
 use crate::db::{self, Database};
 
 use super::transport::Transport;
 use super::{FederationEvent, FED_EVENT_STATE_SYNC_REQ, FED_EVENT_STATE_SYNC_RESP};
+
+/// Maximum number of messages to load per channel during state sync.
+const MAX_SYNC_MESSAGES_PER_CHANNEL: usize = 1000;
+
+/// Maximum number of channels allowed in a state sync response.
+const MAX_SYNC_CHANNELS: usize = 100;
+
+/// Maximum total messages allowed in a state sync response.
+const MAX_SYNC_TOTAL_MESSAGES: usize = 10_000;
+
+/// Minimum interval between sync requests from the same peer (seconds).
+const SYNC_RATE_LIMIT_SECS: i64 = 300;
+
+/// Validate a state sync response doesn't exceed size limits.
+pub(crate) fn validate_sync_response_size(num_channels: usize, num_messages: usize) -> Result<(), String> {
+    if num_channels > MAX_SYNC_CHANNELS {
+        return Err(format!(
+            "sync response rejected: {} channels exceeds limit of {}",
+            num_channels, MAX_SYNC_CHANNELS
+        ));
+    }
+    if num_messages > MAX_SYNC_TOTAL_MESSAGES {
+        return Err(format!(
+            "sync response rejected: {} messages exceeds limit of {}",
+            num_messages, MAX_SYNC_TOTAL_MESSAGES
+        ));
+    }
+    Ok(())
+}
+
+/// Check if a sync request from a peer should be rate-limited.
+pub(crate) fn is_sync_rate_limited(last_request_ts: Option<i64>, now: i64) -> bool {
+    match last_request_ts {
+        Some(ts) if (now - ts) < SYNC_RATE_LIMIT_SECS => true,
+        _ => false,
+    }
+}
 
 /// Data transferred during a state synchronization exchange.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,6 +67,8 @@ pub struct SyncManager {
     db: Database,
     transport: Arc<Transport>,
     node_name: String,
+    /// Tracks the last sync request timestamp per peer for rate limiting.
+    last_sync_request: RwLock<HashMap<String, i64>>,
 }
 
 #[allow(dead_code)]
@@ -38,6 +79,7 @@ impl SyncManager {
             db,
             transport,
             node_name,
+            last_sync_request: RwLock::new(HashMap::new()),
         }
     }
 
@@ -85,10 +127,33 @@ impl SyncManager {
 
     /// Handle an incoming state sync request from a peer.
     ///
-    /// Fetches all channels, messages, members, and roles from the local database
-    /// and sends them back to the requesting peer.
+    /// Fetches channels, messages (up to MAX_SYNC_MESSAGES_PER_CHANNEL per channel),
+    /// members, and roles from the local database and sends them back to the
+    /// requesting peer. Rate-limited to one request per 5 minutes per peer.
     pub async fn handle_state_sync_request(&self, peer_addr: &str) -> Result<(), String> {
+        // Rate limit: max 1 sync request per SYNC_RATE_LIMIT_SECS per peer.
+        {
+            let now = chrono::Utc::now().timestamp();
+            let mut last_sync = self.last_sync_request.write().await;
+            if let Some(&last_ts) = last_sync.get(peer_addr) {
+                if now - last_ts < SYNC_RATE_LIMIT_SECS {
+                    tracing::warn!(
+                        peer = %peer_addr,
+                        "state sync request rate-limited (last request {}s ago, min {}s)",
+                        now - last_ts,
+                        SYNC_RATE_LIMIT_SECS
+                    );
+                    return Err(format!(
+                        "sync rate-limited: must wait {}s between requests",
+                        SYNC_RATE_LIMIT_SECS
+                    ));
+                }
+            }
+            last_sync.insert(peer_addr.to_string(), now);
+        }
+
         let db = self.db.clone();
+        let max_msgs = MAX_SYNC_MESSAGES_PER_CHANNEL;
 
         let sync_data = tokio::task::spawn_blocking(move || {
             db.with_conn(|conn| {
@@ -113,10 +178,10 @@ impl SyncManager {
                 let member_pairs = db::get_members_by_team(conn, &team.id)?;
                 let members: Vec<db::Member> = member_pairs.into_iter().map(|(m, _)| m).collect();
 
-                // Collect recent messages across all channels.
+                // Collect recent messages across all channels, limited per channel.
                 let mut messages = Vec::new();
                 for ch in &channels {
-                    let ch_msgs = db::get_messages_by_channel(conn, &ch.id, "", 100)?;
+                    let ch_msgs = db::get_messages_by_channel(conn, &ch.id, "", max_msgs as i32)?;
                     messages.extend(ch_msgs);
                 }
 
@@ -150,7 +215,13 @@ impl SyncManager {
     /// Uses last-writer-wins conflict resolution: if a remote record has a newer
     /// `updated_at` (or `edited_at` for messages), the local record is overwritten.
     /// New records are inserted. The entire merge runs in a single transaction.
+    ///
+    /// Rejects responses with more than MAX_SYNC_CHANNELS channels or
+    /// MAX_SYNC_TOTAL_MESSAGES messages to prevent abuse.
     pub async fn handle_state_sync_response(&self, data: StateSyncData) -> Result<(), String> {
+        // Validate response size limits.
+        validate_sync_response_size(data.channels.len(), data.messages.len())?;
+
         let db = self.db.clone();
 
         let channel_count = data.channels.len();
@@ -1042,4 +1113,43 @@ mod tests {
         })
         .unwrap();
     }
+}
+
+    #[test]
+    fn test_validate_sync_response_size_ok() {
+        assert!(validate_sync_response_size(50, 5000).is_ok());
+    }
+
+    #[test]
+    fn test_validate_sync_response_size_too_many_channels() {
+        assert!(validate_sync_response_size(101, 100).is_err());
+    }
+
+    #[test]
+    fn test_validate_sync_response_size_too_many_messages() {
+        assert!(validate_sync_response_size(10, 10001).is_err());
+    }
+
+    #[test]
+    fn test_validate_sync_response_size_at_limit() {
+        assert!(validate_sync_response_size(100, 10000).is_ok());
+    }
+
+    #[test]
+    fn test_is_sync_rate_limited_no_previous() {
+        assert!(!is_sync_rate_limited(None, 1000));
+    }
+
+    #[test]
+    fn test_is_sync_rate_limited_too_soon() {
+        let now = 1000;
+        let last = now - 60; // 60s ago, limit is 300s
+        assert!(is_sync_rate_limited(Some(last), now));
+    }
+
+    #[test]
+    fn test_is_sync_rate_limited_enough_time() {
+        let now = 1000;
+        let last = now - 301; // 301s ago, limit is 300s
+        assert!(!is_sync_rate_limited(Some(last), now));
 }
