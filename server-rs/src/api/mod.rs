@@ -111,7 +111,7 @@ pub fn create_router(state: AppState) -> Router {
     // Protected routes (auth required).
     let protected = Router::new()
         // Users
-        .route("/api/v1/users/me", get(users::get_me).patch(users::update_me))
+        .route("/api/v1/users/me", get(users::get_me).patch(users::update_me).delete(users::delete_me))
         // Identity blob
         .route(
             "/api/v1/identity/blob",
@@ -275,7 +275,7 @@ pub fn create_router(state: AppState) -> Router {
     let ws_route = Router::new()
         .route("/ws", get(ws_handler));
 
-    Router::new()
+    let mut router = Router::new()
         .merge(public)
         .merge(protected)
         .merge(ws_route)
@@ -294,7 +294,17 @@ pub fn create_router(state: AppState) -> Router {
             HeaderValue::from_static("strict-origin-when-cross-origin"),
         ))
         .fallback_service(crate::webapp::webapp_fallback())
-        .with_state(state)
+        .with_state(state.clone());
+
+    // Add HSTS header only when TLS is configured.
+    if !state.config.tls_cert.is_empty() && !state.config.tls_key.is_empty() {
+        router = router.layer(SetResponseHeaderLayer::if_not_present(
+            axum::http::header::STRICT_TRANSPORT_SECURITY,
+            HeaderValue::from_static("max-age=63072000; includeSubDomains; preload"),
+        ));
+    }
+
+    router
 }
 
 async fn health() -> Json<serde_json::Value> {
