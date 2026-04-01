@@ -47,6 +47,7 @@ export default function AppLayout() {
   const [showDMMembers, setShowDMMembers] = useState(false);
 
   // --- Extracted hooks ---
+  const { cryptoReady } = useCryptoRestore();
   const { authChecked, dataLoaded } = useTeamSync(activeTeamId);
 
   // Redirect to join/setup if no teams — wait until auth is validated so we
@@ -56,7 +57,6 @@ export default function AppLayout() {
       navigate('/join');
     }
   }, [teams, navigate, authChecked]);
-  useCryptoRestore();
   useIdentityBackup(activeTeamId, dataLoaded);
   usePresenceEvents(activeTeamId);
 
@@ -257,6 +257,15 @@ export default function AppLayout() {
 
   // Pre-compute content area for S3358
   const renderContentArea = () => {
+    if (!cryptoReady) {
+      return (
+        <div className="message-area">
+          <div className="message-area-empty">
+            <p>{t('app.loading', 'Loading...')}</p>
+          </div>
+        </div>
+      );
+    }
     if (isDMMode && activeDM) {
       return (
         <ContentErrorBoundary fallbackLabel="Direct messages failed to load.">

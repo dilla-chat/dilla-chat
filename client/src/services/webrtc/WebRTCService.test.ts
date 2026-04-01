@@ -409,7 +409,7 @@ describe('WebRTCService', () => {
       expect(typeof muted).toBe('boolean');
     });
 
-    it('returns false when not connected', () => {
+    it('returns false when not connected', async () => {
       const result = await webrtcService.toggleMute();
       expect(result).toBe(false);
     });
