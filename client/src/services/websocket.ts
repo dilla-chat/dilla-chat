@@ -352,6 +352,13 @@ export class WebSocketService {
     });
   }
 
+  distributeChannelKey(teamId: string, channelId: string, distribution: string): void {
+    this.send(teamId, {
+      type: 'channel:key-distribute',
+      payload: { channel_id: channelId, distribution },
+    });
+  }
+
   updatePresence(teamId: string, statusType: string, statusText?: string): void {
     this.send(teamId, {
       type: 'presence:update',

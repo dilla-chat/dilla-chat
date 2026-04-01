@@ -5,6 +5,7 @@ import { useMessageStore, type Message } from '../stores/messageStore';
 import { useThreadStore, type Thread } from '../stores/threadStore';
 import { ws } from '../services/websocket';
 import { api } from '../services/api';
+import { cryptoService } from '../services/crypto';
 import { deleteCachedMessage } from '../services/messageCache';
 import { tryDecrypt, tryEncrypt, serverToMessage, type ServerMessage } from '../hooks/useMessageDecryption';
 import { useToast } from '../components/Toast/useToast';
@@ -42,10 +43,23 @@ export default function ChannelView({ channel }: Readonly<Props>) {
   useEffect(() => {
     if (!activeTeamId) return;
     ws.joinChannel(activeTeamId, channel.id);
+
+    // Distribute our sender key to other channel members
+    if (derivedKey) {
+      (async () => {
+        try {
+          const dist = await cryptoService.getSenderKeyDistribution(channel.id, derivedKey);
+          ws.distributeChannelKey(activeTeamId, channel.id, dist);
+        } catch {
+          // Non-critical — other members just won't be able to decrypt our messages yet
+        }
+      })();
+    }
+
     return () => {
       ws.leaveChannel(activeTeamId, channel.id);
     };
-  }, [activeTeamId, channel.id]);
+  }, [activeTeamId, channel.id, derivedKey]);
 
   // Load initial message history via WS (with REST fallback)
   useEffect(() => {
@@ -112,11 +126,23 @@ export default function ChannelView({ channel }: Readonly<Props>) {
       });
     });
 
+    const unsubKeyDist = ws.on('channel:key-distribute', async (payload: { channel_id: string; sender_id: string; distribution: string }) => {
+      if (payload.channel_id !== channel.id) return;
+      if (!derivedKey) return;
+      try {
+        await cryptoService.processSenderKey(channel.id, payload.distribution, derivedKey);
+        console.log(`[ChannelView] Processed sender key from ${payload.sender_id} for channel ${channel.id}`);
+      } catch (err) {
+        console.warn('[ChannelView] Failed to process sender key:', err);
+      }
+    });
+
     return () => {
       unsubNew();
       unsubEdit();
       unsubDelete();
       unsubTyping();
+      unsubKeyDist();
     };
   }, [channel.id, derivedKey, addMessage, updateMessage, deleteMessage, setTyping]);
 

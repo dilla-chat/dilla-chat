@@ -142,6 +142,9 @@ pub(crate) async fn handle_event(
         EVENT_THREAD_MESSAGE_SEND | EVENT_THREAD_MESSAGE_EDIT | EVENT_THREAD_MESSAGE_REMOVE => {
             handle_thread_event(hub, user_id, team_id, &event.event_type, event.payload).await;
         }
+        EVENT_CHANNEL_KEY_DISTRIBUTE => {
+            handle_channel_key_distribute(hub, client_id, user_id, event.payload).await;
+        }
         EVENT_VOICE_JOIN | EVENT_VOICE_LEAVE | EVENT_VOICE_ANSWER
         | EVENT_VOICE_ICE_CANDIDATE | EVENT_VOICE_MUTE | EVENT_VOICE_DEAFEN
         | EVENT_VOICE_SCREEN_START | EVENT_VOICE_SCREEN_STOP
@@ -316,6 +319,20 @@ pub(crate) async fn handle_voice_key_distribute(hub: &Hub, client_id: &str, user
             if let Ok(data) = evt.to_bytes() {
                 hub.broadcast_to_channel(&p.channel_id, data, Some(client_id.to_string()))
                     .await;
+            }
+        }
+    }
+}
+
+pub(crate) async fn handle_channel_key_distribute(hub: &Hub, _client_id: &str, user_id: &str, payload: serde_json::Value) {
+    if let Ok(mut p) = serde_json::from_value::<ChannelKeyDistributePayload>(payload) {
+        p.sender_id = user_id.to_string();
+        let evt = Event::new(EVENT_CHANNEL_KEY_DISTRIBUTE, &p);
+        if let Ok(evt) = evt {
+            if let Ok(data) = evt.to_bytes() {
+                // Broadcast to all channel subscribers INCLUDING the sender
+                // so they get confirmation their distribution was received
+                hub.broadcast_to_channel(&p.channel_id, data, None).await;
             }
         }
     }
