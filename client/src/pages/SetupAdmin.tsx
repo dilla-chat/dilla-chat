@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { api } from '../services/api';
 import { hasIdentity } from '../services/keyStore';
+import { getIdentityKeys } from '../services/crypto';
 import { fromBase64, generateEd25519KeyPair, ed25519Sign } from '../services/cryptoCore';
 import ServerAddressInput from '../components/ServerAddressInput/ServerAddressInput';
 import {
@@ -52,13 +53,22 @@ export default function SetupAdmin() {
 
     setLoading(true);
     try {
-      // Generate a fresh Ed25519 keypair for the challenge-response.
-      // The identity created at /create-identity is for E2E encryption
-      // (stored encrypted in IndexedDB). For auth registration the server
-      // just needs a valid Ed25519 public key to associate with the account.
-      const kp = await generateEd25519KeyPair();
-      const signingKey = kp.privateKey;
-      const pubKey = btoa(String.fromCodePoint(...kp.publicKeyBytes));
+      // Use the identity's Ed25519 keypair for server registration.
+      // This ensures the server's stored public key matches the one in
+      // IndexedDB, so re-login with the same passkey produces the same key.
+      let signingKey: CryptoKey;
+      let pubKey: string;
+      try {
+        const identity = getIdentityKeys();
+        signingKey = identity.signingKey;
+        pubKey = btoa(String.fromCodePoint(...identity.publicKeyBytes));
+      } catch {
+        // Fallback if identity not yet initialized (shouldn't happen since
+        // /create-identity runs first, but be safe)
+        const kp = await generateEd25519KeyPair();
+        signingKey = kp.privateKey;
+        pubKey = btoa(String.fromCodePoint(...kp.publicKeyBytes));
+      }
       setPublicKey(pubKey);
 
       const normalizedUrl = normalizeServerUrl(serverAddress);
