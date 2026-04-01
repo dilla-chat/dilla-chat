@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { ToastProvider } from '../components/Toast/Toast';
 
 vi.mock('../services/websocket', () => ({
   ws: {
@@ -71,7 +72,11 @@ function makeChannel(overrides?: Partial<Channel>): Channel {
 
 /** Render ChannelView with standard props */
 function renderChannelView(overrides?: Partial<Channel>) {
-  return render(<ChannelView channel={makeChannel(overrides)} />);
+  return render(
+    <ToastProvider>
+      <ChannelView channel={makeChannel(overrides)} />
+    </ToastProvider>,
+  );
 }
 
 /** Fire a WS event handler by name on the current render */
@@ -136,9 +141,9 @@ describe('ChannelView', () => {
   });
 
   it('renders with different channels via rerender', () => {
-    const { rerender } = render(<ChannelView channel={makeChannel({ id: 'ch-1', name: 'general' })} />);
+    const { rerender } = render(<ToastProvider><ChannelView channel={makeChannel({ id: 'ch-1', name: 'general' })} /></ToastProvider>);
     expect(screen.getByTestId('message-list')).toHaveAttribute('data-channel-name', 'general');
-    rerender(<ChannelView channel={makeChannel({ id: 'ch-2', name: 'random' })} />);
+    rerender(<ToastProvider><ChannelView channel={makeChannel({ id: 'ch-2', name: 'random' })} /></ToastProvider>);
     expect(screen.getByTestId('message-list')).toHaveAttribute('data-channel-name', 'random');
   });
 

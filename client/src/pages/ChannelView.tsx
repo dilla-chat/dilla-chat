@@ -7,6 +7,7 @@ import { ws } from '../services/websocket';
 import { api } from '../services/api';
 import { deleteCachedMessage } from '../services/messageCache';
 import { tryDecrypt, tryEncrypt, serverToMessage, type ServerMessage } from '../hooks/useMessageDecryption';
+import { useToast } from '../components/Toast/useToast';
 import MessageList from '../components/MessageList/MessageList';
 import MessageInput from '../components/MessageInput/MessageInput';
 
@@ -28,6 +29,7 @@ export default function ChannelView({ channel }: Readonly<Props>) {
     setActiveThread, setThreadPanelOpen,
     addThreadMessage, updateThreadMessage, removeThreadMessage,
   } = useThreadStore();
+  const { toast } = useToast();
   const [editingMessage, setEditingMessage] = useState<{ id: string; content: string } | null>(null);
   const initialLoadDone = useRef<Set<string>>(new Set());
   const threadsLoadDone = useRef<Set<string>>(new Set());
@@ -249,6 +251,7 @@ export default function ChannelView({ channel }: Readonly<Props>) {
         ws.sendMessage(activeTeamId, channel.id, encrypted);
       } catch (err) {
         console.warn('[ChannelView] encryption failed, message not sent', err);
+        toast('Encryption key not available — log out and back in to unlock your identity', 'error');
       }
     },
     [activeTeamId, channel.id, derivedKey],
