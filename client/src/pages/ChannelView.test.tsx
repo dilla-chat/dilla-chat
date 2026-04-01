@@ -25,7 +25,13 @@ vi.mock('../services/api', () => ({
 }));
 
 vi.mock('../services/crypto', () => ({
-  cryptoService: { decryptChannel: vi.fn(), encryptChannel: vi.fn().mockResolvedValue('encrypted-content') },
+  cryptoService: {
+    decryptChannel: vi.fn(),
+    encryptChannel: vi.fn().mockResolvedValue('encrypted-content'),
+    getSenderKeyDistribution: vi.fn().mockResolvedValue('{"sender_id":"u1"}'),
+    processSenderKey: vi.fn().mockResolvedValue(undefined),
+    ensureChannelSession: vi.fn().mockResolvedValue(undefined),
+  },
   getIdentityKeys: vi.fn(() => ({ publicKeyBytes: new Uint8Array(32) })),
 }));
 
