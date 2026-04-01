@@ -505,17 +505,31 @@ class WebRTCService {
       this.stopScreenShare();
     };
 
-    // Tell the server we're starting screen share (it will renegotiate).
-    ws.voiceScreenStart(this.teamId, this.channelId);
-
-    // Add the video track to our PC. The server will send a new offer after renegotiation.
-    this.screenSender = this.pc.addTrack(videoTrack, this.screenStream);
-
-    // Store the local screen stream for preview.
+    // Store the local screen stream for preview immediately.
     const store = useVoiceStore.getState();
     store.setLocalScreenStream(this.screenStream);
     store.setScreenSharing(true);
     store.setScreenSharingUserId(this.localUserId);
+
+    // Tell the server we're starting screen share. The server will add a
+    // recv transceiver on its side and send a new voice:offer. We wait for
+    // that offer before adding the track to avoid signaling state conflicts.
+    ws.voiceScreenStart(this.teamId, this.channelId);
+
+    // Wait for the server's renegotiation offer to arrive and be handled,
+    // then add the track. A short delay ensures setRemoteDescription completes.
+    await new Promise<void>((resolve) => {
+      const unsub = ws.on('voice:offer', () => {
+        unsub();
+        resolve();
+      });
+      // Timeout fallback in case the offer doesn't arrive
+      setTimeout(() => { unsub(); resolve(); }, 3000);
+    });
+
+    if (this.pc && this.screenStream) {
+      this.screenSender = this.pc.addTrack(videoTrack, this.screenStream);
+    }
   }
 
   async stopScreenShare(): Promise<void> {
@@ -575,13 +589,25 @@ class WebRTCService {
       this.stopWebcam();
     };
 
-    ws.voiceWebcamStart(this.teamId, this.channelId);
-    this.webcamSender = this.pc.addTrack(videoTrack, this.webcamStream);
-
     const store = useVoiceStore.getState();
     store.setLocalWebcamStream(this.webcamStream);
     store.setWebcamSharing(true);
     store.updatePeer(this.localUserId ?? '', { webcam_sharing: true });
+
+    // Tell server, wait for renegotiation offer, then add track
+    ws.voiceWebcamStart(this.teamId, this.channelId);
+
+    await new Promise<void>((resolve) => {
+      const unsub = ws.on('voice:offer', () => {
+        unsub();
+        resolve();
+      });
+      setTimeout(() => { unsub(); resolve(); }, 3000);
+    });
+
+    if (this.pc && this.webcamStream) {
+      this.webcamSender = this.pc.addTrack(videoTrack, this.webcamStream);
+    }
   }
 
   async stopWebcam(): Promise<void> {

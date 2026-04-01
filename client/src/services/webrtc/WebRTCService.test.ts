@@ -895,6 +895,15 @@ describe('WebRTCService', () => {
     it('stops screen and webcam streams', async () => {
       await webrtcService.connect('ch-1', 'team-1');
 
+      // startScreenShare/startWebcam now await a voice:offer from the server.
+      // Emit the offer shortly after the WS methods are called.
+      mockWs.voiceScreenStart.mockImplementation(() => {
+        setTimeout(() => emitWS('voice:offer', { sdp: 'v=0\r\nrenegotiate' }), 10);
+      });
+      mockWs.voiceWebcamStart.mockImplementation(() => {
+        setTimeout(() => emitWS('voice:offer', { sdp: 'v=0\r\nrenegotiate' }), 10);
+      });
+
       const screenTrack = createMockVideoTrack();
       mockGetDisplayMedia.mockResolvedValueOnce(createMockMediaStream([screenTrack]));
       await webrtcService.startScreenShare();
