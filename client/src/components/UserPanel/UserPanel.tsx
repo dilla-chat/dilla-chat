@@ -89,8 +89,8 @@ export default function UserPanel({
 
   const statusLabel = myCustomStatus || t(`presence.${myStatus}`);
 
-  const handleMute = () => {
-    const newMuted = webrtcService.toggleMute();
+  const handleMute = async () => {
+    const newMuted = await webrtcService.toggleMute();
     setMuted(newMuted);
     if (newMuted) {
       playMuteSound();
@@ -99,8 +99,8 @@ export default function UserPanel({
     }
   };
 
-  const handleDeafen = () => {
-    const newDeafened = webrtcService.toggleDeafen();
+  const handleDeafen = async () => {
+    const newDeafened = await webrtcService.toggleDeafen();
     setDeafened(newDeafened);
     if (newDeafened) {
       playMuteSound();

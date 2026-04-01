@@ -437,24 +437,76 @@ class WebRTCService {
     this.encryption.cleanup();
   }
 
-  toggleMute(): boolean {
+  /** Toggle hardware mute — stops the mic track entirely on mute,
+   *  re-acquires on unmute. This turns off the OS mic indicator. */
+  async toggleMute(): Promise<boolean> {
     // PTT mode: toggleMute is a no-op
     if (useAudioSettingsStore.getState().pushToTalk) return false;
+    if (!this.pc) return false;
 
-    if (!this.localStream) return false;
-    const audioTrack = this.localStream.getAudioTracks()[0];
-    if (audioTrack) {
-      audioTrack.enabled = !audioTrack.enabled;
-      const muted = !audioTrack.enabled;
-      if (this.teamId && this.channelId) {
-        ws.voiceMute(this.teamId, this.channelId, muted);
+    const store = useVoiceStore.getState();
+    const wasMuted = store.muted;
+
+    if (!wasMuted) {
+      // MUTE: stop raw mic track to release hardware
+      if (this.rawStream) {
+        this.rawStream.getTracks().forEach((t) => t.stop());
       }
-      return muted;
+      // Stop VAD so it doesn't try to read a dead stream
+      this.vad.stopVAD();
+
+      // Replace the sender's track with null (sends silence)
+      const sender = this.pc.getSenders().find((s) => s.track?.kind === 'audio');
+      if (sender) {
+        await sender.replaceTrack(null);
+      }
+    } else {
+      // UNMUTE: re-acquire mic and rebuild audio graph
+      try {
+        const audioSettings = useAudioSettingsStore.getState();
+        const deviceId = useUserSettingsStore.getState().selectedInputDevice;
+        const audioConstraints = audioSettings.getAudioConstraints(deviceId);
+        this.rawStream = await navigator.mediaDevices.getUserMedia({
+          audio: audioConstraints,
+          video: false,
+        });
+
+        // Rebuild gain node pipeline
+        const ctx = this.vad.getAudioContext();
+        const source = ctx.createMediaStreamSource(this.rawStream);
+        const gainNode = ctx.createGain();
+        gainNode.gain.value = useUserSettingsStore.getState().inputVolume;
+        this.gainNode = gainNode;
+        const destination = ctx.createMediaStreamDestination();
+        source.connect(gainNode);
+        gainNode.connect(destination);
+        this.localStream = destination.stream;
+
+        // Replace sender track with new processed audio
+        const newTrack = this.localStream.getAudioTracks()[0];
+        const sender = this.pc.getSenders().find((s) => s.track === null || s.track?.kind === 'audio');
+        if (sender && newTrack) {
+          await sender.replaceTrack(newTrack);
+        }
+
+        // Restart VAD
+        this.vad.startVAD(this.rawStream, this.localStream, this.localUserId);
+
+        store.setLocalStream(this.localStream);
+      } catch (err) {
+        console.error('[Voice] Failed to re-acquire mic:', err);
+        return true; // stay muted
+      }
     }
-    return false;
+
+    const muted = !wasMuted;
+    if (this.teamId && this.channelId) {
+      ws.voiceMute(this.teamId, this.channelId, muted);
+    }
+    return muted;
   }
 
-  toggleDeafen(): boolean {
+  async toggleDeafen(): Promise<boolean> {
     const store = useVoiceStore.getState();
     const deafened = !store.deafened;
     // Mute all remote audio
@@ -463,11 +515,15 @@ class WebRTCService {
         track.enabled = !deafened;
       }
     }
-    // Deafen mutes the mic; undeafen does NOT auto-unmute it
-    if (deafened && this.localStream) {
-      const audioTrack = this.localStream.getAudioTracks()[0];
-      if (audioTrack) {
-        audioTrack.enabled = false;
+    // Deafen also hardware-mutes the mic (same as toggleMute)
+    if (deafened && !store.muted) {
+      if (this.rawStream) {
+        this.rawStream.getTracks().forEach((t) => t.stop());
+      }
+      this.vad.stopVAD();
+      const sender = this.pc?.getSenders().find((s) => s.track?.kind === 'audio');
+      if (sender) {
+        await sender.replaceTrack(null);
       }
     }
     if (this.teamId && this.channelId) {
