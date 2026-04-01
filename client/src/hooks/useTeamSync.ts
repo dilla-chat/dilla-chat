@@ -82,6 +82,10 @@ function applySyncData(teamId: string, data: any, setters: SyncStoreSetters) {
     useVoiceStore.getState().setVoiceOccupants(data.voice_states as Record<string, VoicePeer[]>);
   }
   console.log(`[AppLayout] sync:init applied for team ${teamId}`);
+
+  // Now that sync is complete and channels are known, flush any messages
+  // that were queued while the WebSocket was reconnecting.
+  ws.flushPendingMessages(teamId);
 }
 
 /** Fallback: load data via REST if WS sync fails */
