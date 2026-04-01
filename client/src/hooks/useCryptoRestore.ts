@@ -1,24 +1,36 @@
 import { useEffect, useRef, useState } from 'react';
-import { useAuthStore } from '../stores/authStore';
+import { useAuthStore, restoreDerivedKey } from '../stores/authStore';
 import { initCrypto } from '../services/crypto';
 import { unlockWithPrf } from '../services/keyStore';
 import { fromBase64 } from '../services/cryptoCore';
 
 /**
  * Re-initializes CryptoManager from a persisted derivedKey on mount.
- * Returns `cryptoReady` — true once sessions are fully restored from IndexedDB.
+ * First restores the encrypted derivedKey from sessionStorage, then
+ * unlocks the identity and initializes the crypto manager.
+ * Returns `cryptoReady` — true once sessions are fully restored.
  */
 export function useCryptoRestore(): { cryptoReady: boolean } {
-  const { derivedKey } = useAuthStore();
+  const { derivedKey, setDerivedKey } = useAuthStore();
   const cryptoRestored = useRef(false);
   const [cryptoReady, setCryptoReady] = useState(false);
 
+  // Async restore of encrypted derivedKey from sessionStorage
   useEffect(() => {
-    if (cryptoRestored.current || !derivedKey) {
-      // If no derivedKey, crypto can't init but we shouldn't block forever
-      if (!derivedKey) setCryptoReady(true);
-      return;
-    }
+    if (derivedKey || cryptoRestored.current) return;
+    (async () => {
+      const restored = await restoreDerivedKey();
+      if (restored) {
+        setDerivedKey(restored);
+      } else {
+        setCryptoReady(true);
+      }
+    })();
+  }, [derivedKey, setDerivedKey]);
+
+  // Once derivedKey is available, init crypto
+  useEffect(() => {
+    if (cryptoRestored.current || !derivedKey) return;
     cryptoRestored.current = true;
 
     (async () => {

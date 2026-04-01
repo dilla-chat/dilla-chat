@@ -51,6 +51,7 @@ vi.mock('../stores/authStore', () => ({
     teams: mockTeamMap,
     derivedKey: null,
   }),
+  restoreDerivedKey: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock('../stores/teamStore', () => ({
