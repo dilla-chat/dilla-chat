@@ -70,8 +70,22 @@ pub(in crate::ws) async fn handle_message_send(
 
     let db = hub.db.clone();
     let msg_clone = msg.clone();
+    let attachment_ids = p.attachment_ids.clone();
+    let mid_for_attach = msg_id.clone();
     if let Err(e) =
-        tokio::task::spawn_blocking(move || db.with_conn(|conn| db::create_message(conn, &msg_clone)))
+        tokio::task::spawn_blocking(move || {
+            db.with_conn(|conn| {
+                db::create_message(conn, &msg_clone)?;
+                // Link uploaded attachments to this message
+                for att_id in &attachment_ids {
+                    conn.execute(
+                        "UPDATE attachments SET message_id = ?1 WHERE id = ?2",
+                        rusqlite::params![mid_for_attach, att_id],
+                    )?;
+                }
+                Ok::<(), rusqlite::Error>(())
+            })
+        })
             .await
             .unwrap()
     {

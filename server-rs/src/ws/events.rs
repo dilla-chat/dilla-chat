@@ -134,6 +134,8 @@ pub struct MessageSendPayload {
     pub msg_type: String,
     #[serde(default)]
     pub thread_id: Option<String>,
+    #[serde(default)]
+    pub attachment_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

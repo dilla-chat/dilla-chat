@@ -4,7 +4,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useMessageStore, type Message } from '../stores/messageStore';
 import { useThreadStore, type Thread } from '../stores/threadStore';
 import { ws } from '../services/websocket';
-import { api } from '../services/api';
+import { api, type Attachment } from '../services/api';
 import { cryptoService } from '../services/crypto';
 import { deleteCachedMessage } from '../services/messageCache';
 import { tryDecrypt, tryEncrypt, serverToMessage, type ServerMessage } from '../hooks/useMessageDecryption';
@@ -273,12 +273,12 @@ export default function ChannelView({ channel }: Readonly<Props>) {
   }, [activeTeamId, channel.id, derivedKey, loadingHistory, hasMore, prependMessages, setLoadingHistory, setHasMore]);
 
   const handleSend = useCallback(
-    async (content: string) => {
+    async (content: string, attachments?: Attachment[]) => {
       if (!activeTeamId) { console.warn('[ChannelView] no activeTeamId, dropping message'); return; }
-      console.log('[ChannelView] sending message', { activeTeamId, channelId: channel.id, wsConnected: ws.isConnected(activeTeamId) });
       try {
-        const encrypted = await tryEncrypt(content, channel.id, derivedKey);
-        ws.sendMessage(activeTeamId, channel.id, encrypted);
+        const encrypted = await tryEncrypt(content || ' ', channel.id, derivedKey);
+        const attachmentIds = attachments?.map((a) => a.id) ?? [];
+        ws.sendMessage(activeTeamId, channel.id, encrypted, 'text', undefined, attachmentIds);
       } catch (err) {
         console.warn('[ChannelView] encryption failed, message not sent', err);
         toast('Encryption key not available — log out and back in to unlock your identity', 'error');

@@ -275,10 +275,17 @@ export class WebSocketService {
     content: string,
     type: string = 'text',
     threadId?: string,
+    attachmentIds?: string[],
   ): void {
     this.send(teamId, {
       type: 'message:send',
-      payload: { channel_id: channelId, content, type, thread_id: threadId ?? null },
+      payload: {
+        channel_id: channelId,
+        content,
+        type,
+        thread_id: threadId ?? null,
+        attachment_ids: attachmentIds ?? [],
+      },
     });
   }
 
