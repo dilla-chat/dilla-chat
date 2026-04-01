@@ -5,7 +5,7 @@
 }
 
 .voice-controls + .user-panel {
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid var(--white-overlay-subtle);
 }
 
 @keyframes voice-slide-in {
@@ -156,20 +156,20 @@
 
 .voice-btn.screen-share.active {
   color: var(--text-danger);
-  background: rgba(208, 90, 74, 0.15);
+  background: var(--danger-alpha-15);
 }
 
 .voice-btn.screen-share.active:hover {
-  background: rgba(208, 90, 74, 0.25);
+  background: var(--danger-alpha-25);
 }
 
 .voice-btn.webcam.active {
   color: var(--text-danger);
-  background: rgba(208, 90, 74, 0.15);
+  background: var(--danger-alpha-15);
 }
 
 .voice-btn.webcam.active:hover {
-  background: rgba(208, 90, 74, 0.25);
+  background: var(--danger-alpha-25);
 }
 
 .voice-btn.disconnect {

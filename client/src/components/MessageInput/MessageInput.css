@@ -22,7 +22,7 @@
 
 .message-input-composer:focus-within {
   border-color: var(--brand-500);
-  box-shadow: 0 0 0 3px rgba(46, 139, 154, 0.12);
+  box-shadow: 0 0 0 3px var(--brand-alpha-12);
 }
 
 /* Typing indicator above the composer */
@@ -40,7 +40,7 @@
   align-items: center;
   justify-content: space-between;
   background: var(--bg-accent);
-  color: #fff;
+  color: var(--interactive-active);
   padding: 6px 12px;
   font-size: 13px;
   font-weight: 500;
@@ -49,7 +49,7 @@
 .editing-cancel-btn {
   background: none;
   border: none;
-  color: #fff;
+  color: var(--interactive-active);
   cursor: pointer;
   font-size: 12px;
   opacity: 0.9;
@@ -213,7 +213,7 @@
 .message-input-drag-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(46, 139, 154, 0.12);
+  background: var(--brand-alpha-12);
   display: flex;
   align-items: center;
   justify-content: center;

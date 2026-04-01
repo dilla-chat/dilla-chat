@@ -110,16 +110,16 @@
 
 .connection-status__quality-badge--excellent,
 .connection-status__quality-badge--good {
-  background: rgba(76, 175, 130, 0.15);
+  background: var(--success-alpha-15);
   color: var(--status-online);
 }
 
 .connection-status__quality-badge--poor {
-  background: rgba(232, 184, 75, 0.15);
+  background: var(--accent-alpha-15);
   color: var(--status-idle);
 }
 
 .connection-status__quality-badge--disconnected {
-  background: rgba(208, 90, 74, 0.15);
+  background: var(--danger-alpha-15);
   color: var(--status-dnd);
 }

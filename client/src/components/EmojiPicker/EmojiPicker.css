@@ -2,18 +2,18 @@
   z-index: 10000;
   border-radius: 8px;
   overflow: hidden;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 24px var(--overlay-dark);
 }
 
 /* Override emoji-picker-react theme to match Dilla dark palette */
 .emoji-picker-container .EmojiPickerReact {
-  --epr-bg-color: rgb(18, 28, 38);
-  --epr-category-label-bg-color: rgb(18, 28, 38);
-  --epr-search-input-bg-color: rgb(10, 16, 22);
-  --epr-hover-bg-color: rgba(255, 255, 255, 0.08);
-  --epr-text-color: rgb(232, 237, 242);
-  --epr-search-input-text-color: rgb(232, 237, 242);
-  --epr-search-input-placeholder-color: rgba(232, 237, 242, 0.5);
+  --epr-bg-color: var(--bg-primary);
+  --epr-category-label-bg-color: var(--bg-primary);
+  --epr-search-input-bg-color: var(--bg-tertiary);
+  --epr-hover-bg-color: var(--white-overlay-subtle);
+  --epr-text-color: var(--text-normal);
+  --epr-search-input-text-color: var(--text-normal);
+  --epr-search-input-placeholder-color: var(--text-muted);
   --epr-category-icon-active-color: var(--accent);
   --epr-highlight-color: var(--accent);
   border: 1px solid var(--divider);

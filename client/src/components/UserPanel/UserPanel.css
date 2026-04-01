@@ -27,7 +27,7 @@
 }
 
 .user-panel-avatar:hover {
-  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 0 4px var(--white-overlay-subtle);
 }
 
 .user-panel-status-dot {

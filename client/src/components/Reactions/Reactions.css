@@ -24,17 +24,17 @@
 
 .reaction-chip:hover {
   background: var(--bg-modifier-active);
-  border-color: rgba(255,255,255,0.06);
+  border-color: var(--white-overlay-subtle);
 }
 
 .reaction-chip-active {
   border-color: var(--brand-500);
-  background: rgba(46, 139, 154, 0.15);
+  background: var(--brand-alpha-15);
   color: var(--brand-500);
 }
 
 .reaction-chip-active:hover {
-  background: rgba(46, 139, 154, 0.2);
+  background: var(--brand-alpha-20);
   border-color: var(--brand-500);
 }
 
@@ -72,7 +72,7 @@
   white-space: nowrap;
   pointer-events: none;
   z-index: 50;
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.24);
+  box-shadow: 0 8px 16px var(--overlay-light);
 }
 
 .reaction-add-wrapper {
@@ -100,6 +100,6 @@
 
 .reaction-add-btn:hover {
   background: var(--bg-modifier-active);
-  border-color: rgba(255,255,255,0.06);
+  border-color: var(--white-overlay-subtle);
   color: var(--interactive-hover);
 }

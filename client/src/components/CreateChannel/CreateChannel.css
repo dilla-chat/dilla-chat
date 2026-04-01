@@ -9,7 +9,7 @@ dialog.create-channel-overlay {
 .create-channel-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--overlay-dark);
   -webkit-backdrop-filter: blur(4px);
   backdrop-filter: blur(4px);
   display: flex;
@@ -92,7 +92,7 @@ dialog.create-channel-overlay {
 .channel-type-btn.active {
   border-color: var(--bg-accent);
   color: var(--text-primary);
-  background: rgba(46, 139, 154, 0.15);
+  background: var(--brand-alpha-15);
 }
 
 .create-channel-actions {
@@ -122,14 +122,14 @@ dialog.create-channel-overlay {
 .btn-create {
   background: var(--gradient-accent);
   color: white;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 2px 8px rgba(232, 184, 75, 0.2);
+  border: 1px solid var(--white-overlay-light);
+  box-shadow: 0 2px 8px var(--accent-alpha-20);
   transition: filter 0.15s, box-shadow 0.15s;
 }
 
 .btn-create:hover {
   filter: brightness(1.1);
-  box-shadow: 0 4px 16px rgba(232, 184, 75, 0.3);
+  box-shadow: 0 4px 16px var(--accent-alpha-30);
 }
 
 .btn-create:disabled {

@@ -1,4 +1,5 @@
 import type { User } from '../stores/authStore';
+import { fetchWithTimeout } from './fetchWithTimeout';
 
 export interface VoicePeer {
   user_id: string;
@@ -93,7 +94,7 @@ class ApiService {
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
-    const res = await fetch(`${baseUrl}${path}`, { ...options, headers });
+    const res = await fetchWithTimeout(`${baseUrl}${path}`, { ...options, headers, timeout: 15000 });
     if (!res.ok) {
       // Only trigger auth error for authenticated requests (bearer token was sent).
       // Public endpoints like /auth/verify return 401 for bad credentials — that's

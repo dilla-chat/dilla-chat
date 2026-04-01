@@ -9,7 +9,7 @@ dialog.new-dm-overlay {
 .new-dm-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--overlay-dark);
   -webkit-backdrop-filter: blur(4px);
   backdrop-filter: blur(4px);
   display: flex;
@@ -28,7 +28,7 @@ dialog.new-dm-overlay {
   max-height: 600px;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 24px var(--overlay-dark);
 }
 
 .new-dm-header {
@@ -78,7 +78,7 @@ dialog.new-dm-overlay {
 .new-dm-chip-remove {
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--white-overlay-medium);
   cursor: pointer;
   font-size: 11px;
   padding: 0 2px;
@@ -185,7 +185,7 @@ dialog.new-dm-overlay {
 .new-dm-create-btn {
   width: 100%;
   padding: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--white-overlay-light);
   border-radius: 4px;
   background: var(--gradient-accent);
   color: white;
@@ -193,12 +193,12 @@ dialog.new-dm-overlay {
   font-weight: 500;
   cursor: pointer;
   transition: filter 0.15s, box-shadow 0.15s;
-  box-shadow: 0 2px 8px rgba(232, 184, 75, 0.2);
+  box-shadow: 0 2px 8px var(--accent-alpha-20);
 }
 
 .new-dm-create-btn:hover:not(:disabled) {
   filter: brightness(1.1);
-  box-shadow: 0 4px 16px rgba(232, 184, 75, 0.3);
+  box-shadow: 0 4px 16px var(--accent-alpha-30);
 }
 
 .new-dm-create-btn:disabled {

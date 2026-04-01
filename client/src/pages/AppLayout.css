@@ -1,3 +1,21 @@
+.skip-to-content {
+  position: absolute;
+  top: -100%;
+  left: var(--spacing-lg);
+  z-index: var(--z-toast);
+  padding: var(--spacing-sm) var(--spacing-lg);
+  background: var(--bg-accent);
+  color: var(--bg-primary);
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  text-decoration: none;
+  transition: top var(--duration-fast) var(--ease-out);
+}
+
+.skip-to-content:focus {
+  top: var(--spacing-lg);
+}
+
 .app-layout-main {
   display: flex;
   width: 100%;
@@ -90,7 +108,7 @@
   flex-shrink: 0;
   gap: 8px;
   box-sizing: border-box;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 1px 2px var(--overlay-light);
 }
 
 .content-header-icon {
@@ -216,7 +234,7 @@
   border-bottom: 1px solid var(--divider);
   flex-shrink: 0;
   box-sizing: border-box;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 1px 2px var(--overlay-light);
 }
 
 .channel-sidebar-header-top {

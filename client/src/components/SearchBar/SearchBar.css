@@ -19,7 +19,7 @@
 .header-search-input-wrapper.focused {
   width: 300px;
   border-color: var(--brand-500);
-  box-shadow: 0 0 0 2px rgba(46, 139, 154, 0.12);
+  box-shadow: 0 0 0 2px var(--brand-alpha-12);
 }
 
 .header-search-icon {
@@ -148,7 +148,7 @@
 }
 
 .search-result-highlight {
-  background: rgba(232, 184, 75, 0.25);
+  background: var(--accent-alpha-25);
   color: var(--header-primary);
   border-radius: 2px;
   padding: 0 2px;

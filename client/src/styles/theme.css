@@ -139,6 +139,40 @@
   --radius-md: 6px;
   --radius-lg: 8px;
   --radius-full: 9999px;
+
+  /* Overlay & backdrop */
+  --overlay-dark: rgba(0, 0, 0, 0.5);
+  --overlay-light: rgba(0, 0, 0, 0.15);
+  --overlay-heavy: rgba(0, 0, 0, 0.85);
+
+  /* White overlays (for light effects on dark backgrounds) */
+  --white-overlay-subtle: rgba(255, 255, 255, 0.06);
+  --white-overlay-light: rgba(255, 255, 255, 0.1);
+  --white-overlay-medium: rgba(255, 255, 255, 0.7);
+
+  /* Brand alpha variants */
+  --brand-alpha-10: rgba(46, 139, 154, 0.1);
+  --brand-alpha-12: rgba(46, 139, 154, 0.12);
+  --brand-alpha-15: rgba(46, 139, 154, 0.15);
+  --brand-alpha-20: rgba(46, 139, 154, 0.2);
+  --brand-alpha-25: rgba(46, 139, 154, 0.25);
+
+  /* Accent alpha variants */
+  --accent-alpha-08: rgba(232, 184, 75, 0.08);
+  --accent-alpha-10: rgba(232, 184, 75, 0.10);
+  --accent-alpha-15: rgba(232, 184, 75, 0.15);
+  --accent-alpha-20: rgba(232, 184, 75, 0.2);
+  --accent-alpha-25: rgba(232, 184, 75, 0.25);
+  --accent-alpha-30: rgba(232, 184, 75, 0.3);
+
+  /* Danger alpha variants */
+  --danger-alpha-15: rgba(208, 90, 74, 0.15);
+  --danger-alpha-25: rgba(208, 90, 74, 0.25);
+
+  /* Success alpha variants */
+  --success-alpha-15: rgba(76, 175, 130, 0.15);
+  --success-alpha-35: rgba(52, 211, 122, 0.35);
+  --success-alpha-40: rgba(76, 175, 130, 0.4);
 }
 
 /* Shared dialog backdrop button — invisible full-area close target */

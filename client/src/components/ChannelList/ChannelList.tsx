@@ -116,6 +116,12 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
                     }
                   }}
                   onContextMenu={(e) => handleContextMenu(e, ch)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'F10' && e.shiftKey) {
+                      e.preventDefault();
+                      handleContextMenu(e as unknown as React.MouseEvent, ch);
+                    }
+                  }}
                 >
                   <span className={`channel-icon ${isVoice && voicePeerList.length > 0 ? 'voice-active' : ''}`}>{isVoice ? <SoundHigh width={16} height={16} strokeWidth={2} /> : <span className="channel-tilde">~</span>}</span>
                   <span className="channel-name">{ch.name}</span>

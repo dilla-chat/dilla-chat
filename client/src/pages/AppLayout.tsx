@@ -416,6 +416,9 @@ export default function AppLayout() {
 
   return (
     <>
+      <a href="#main-content" className="skip-to-content">
+        {t('a11y.skipToContent', 'Skip to content')}
+      </a>
       <TitleBar />
       <div className={`app-layout-main ${isMobile ? 'mobile' : ''}`}>
       {!isMobile && (
@@ -459,7 +462,7 @@ export default function AppLayout() {
       )}
 
       {(!isMobile || mobileTab === 'chat') && (
-      <div className="content-wrapper">
+      <div id="main-content" className="content-wrapper">
         <div className="content-header">
           {renderContentHeader()}
         </div>

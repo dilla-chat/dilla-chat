@@ -61,25 +61,25 @@
 
 .btn-primary {
   background: var(--gradient-accent);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--interactive-active);
+  border: 1px solid var(--white-overlay-light);
   padding: 0.7em 1.5em;
   border-radius: 8px;
   font-size: 1em;
   font-weight: 600;
   cursor: pointer;
   transition: filter 0.2s, opacity 0.2s, box-shadow 0.2s;
-  box-shadow: 0 2px 8px rgba(232, 184, 75, 0.2);
+  box-shadow: 0 2px 8px var(--accent-alpha-20);
 }
 
 .btn-primary:hover:not(:disabled) {
   filter: brightness(1.1);
-  box-shadow: 0 4px 16px rgba(232, 184, 75, 0.3);
+  box-shadow: 0 4px 16px var(--accent-alpha-30);
 }
 
 .btn-primary:active:not(:disabled) {
   filter: brightness(0.95);
-  box-shadow: 0 1px 4px rgba(232, 184, 75, 0.15);
+  box-shadow: 0 1px 4px var(--accent-alpha-15);
 }
 
 .btn-primary:disabled {
@@ -145,10 +145,10 @@
   transition: filter 300ms;
 }
 .logo:hover {
-  filter: drop-shadow(0 0 2em rgba(46,139,154,0.6));
+  filter: drop-shadow(0 0 2em var(--brand-alpha-25));
 }
 .logo.react:hover {
-  filter: drop-shadow(0 0 2em rgba(232,184,75,0.6));
+  filter: drop-shadow(0 0 2em var(--accent-alpha-25));
 }
 
 @keyframes logo-spin {
@@ -195,7 +195,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
+  color: var(--interactive-active);
   font-weight: 700;
   font-size: 1rem;
   flex-shrink: 0;
@@ -226,7 +226,7 @@
 
 .btn-danger {
   background: var(--danger);
-  color: #fff;
+  color: var(--interactive-active);
   border: none;
   padding: 0.5em 1.2em;
   border-radius: 8px;

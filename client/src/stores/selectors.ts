@@ -8,7 +8,8 @@ import { useShallow } from 'zustand/react/shallow';
 
 // Stable empty array to avoid infinite re-render loops from `?? []` creating
 // new references on every selector invocation.
-const EMPTY: readonly never[] = [];
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const EMPTY: any[] = [];
 
 // Message selectors
 export function useChannelMessages(channelId: string) {

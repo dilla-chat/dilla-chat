@@ -106,14 +106,14 @@ select option {
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: rgba(26, 42, 56, 0.6);
+  background-color: var(--glass-bg-floating);
   border-radius: 4px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(26, 42, 56, 0.9);
+  background-color: var(--glass-bg-modal);
 }
 
 * {

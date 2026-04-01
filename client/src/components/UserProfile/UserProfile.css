@@ -65,7 +65,7 @@ dialog.user-profile-popover {
   gap: 2px;
   margin-bottom: 12px;
   padding: 8px 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid var(--white-overlay-subtle);
 }
 
 .user-profile-status-text {
@@ -123,7 +123,7 @@ dialog.user-profile-popover {
 .user-profile-send-btn {
   width: 100%;
   padding: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--white-overlay-light);
   border-radius: 4px;
   background: var(--gradient-accent);
   color: white;
@@ -132,10 +132,10 @@ dialog.user-profile-popover {
   cursor: pointer;
   margin-top: 4px;
   transition: filter 0.15s, box-shadow 0.15s;
-  box-shadow: 0 2px 8px rgba(232, 184, 75, 0.2);
+  box-shadow: 0 2px 8px var(--accent-alpha-20);
 }
 
 .user-profile-send-btn:hover {
   filter: brightness(1.1);
-  box-shadow: 0 4px 16px rgba(232, 184, 75, 0.3);
+  box-shadow: 0 4px 16px var(--accent-alpha-30);
 }

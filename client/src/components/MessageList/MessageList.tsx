@@ -4,7 +4,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Emoji, Plus, Reply, Threads, EditPencil, Trash, ChatBubble } from 'iconoir-react';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
-import { useMessageStore, type Message } from '../../stores/messageStore';
+import type { Message } from '../../stores/messageStore';
+import { useChannelMessages, useChannelLoading, useChannelHasMore } from '../../stores/selectors';
 import Reactions from '../Reactions/Reactions';
 import FilePreview from '../FilePreview/FilePreview';
 import EmojiPicker from '../EmojiPicker/EmojiPicker';
@@ -52,13 +53,11 @@ export default function MessageList({
   threadInfo,
 }: Readonly<Props>) {
   const { t } = useTranslation();
-  const { messages, loadingHistory, hasMore } = useMessageStore();
+  const channelMessages = useChannelMessages(channelId);
+  const isLoading = useChannelLoading(channelId);
+  const canLoadMore = useChannelHasMore(channelId);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<string | null>(null);
-
-  const channelMessages = messages.get(channelId) ?? [];
-  const isLoading = loadingHistory.get(channelId) ?? false;
-  const canLoadMore = hasMore.get(channelId) ?? true;
   const groups = groupMessages(channelMessages);
 
   const firstItemIndex = useMemo(() => START_INDEX - groups.length, [groups.length]);

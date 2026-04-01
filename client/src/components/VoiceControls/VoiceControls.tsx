@@ -1,21 +1,15 @@
 import { useTranslation } from 'react-i18next';
 import { PhoneXmark, AppWindow, VideoCamera, VideoCameraOff } from 'iconoir-react';
-import { useVoiceStore } from '../../stores/voiceStore';
+import { useVoiceConnection } from '../../hooks/useVoiceConnection';
+import { useVoiceMediaState } from '../../stores/selectors';
 import { useTeamStore, type Channel } from '../../stores/teamStore';
 import ConnectionStatus from '../ConnectionStatus/ConnectionStatus';
 import './VoiceControls.css';
 
 export default function VoiceControls() {
   const { t } = useTranslation();
-  const {
-    currentChannelId,
-    currentTeamId,
-    connected,
-    connecting,
-    screenSharing,
-    webcamSharing,
-    leaveChannel,
-  } = useVoiceStore();
+  const { currentChannelId, currentTeamId, connected, connecting, leave } = useVoiceConnection();
+  const { screenSharing, webcamSharing } = useVoiceMediaState();
 
   const { channels, teams } = useTeamStore();
 
@@ -82,7 +76,7 @@ export default function VoiceControls() {
           </button>
           <button
             className="voice-btn disconnect"
-            onClick={leaveChannel}
+            onClick={leave}
             title={t('voice.leave')}
           >
             <PhoneXmark width={20} height={20} strokeWidth={2} />

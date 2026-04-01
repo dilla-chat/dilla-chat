@@ -360,14 +360,14 @@
   top: 0;
   left: 0;
   height: 100%;
-  background: rgba(122, 116, 144, 0.3);
+  background: var(--interactive-muted);
   border-radius: 3px;
   transition: width 0.06s linear;
   pointer-events: none;
 }
 
 .mic-threshold-level.above {
-  background: rgba(52, 211, 122, 0.35);
+  background: var(--success-alpha-35);
 }
 
 .mic-threshold-slider {
@@ -390,7 +390,7 @@
   border-radius: 2px;
   background: white;
   cursor: pointer;
-  box-shadow: 0 0 4px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 0 4px var(--overlay-dark);
 }
 
 .mic-threshold-labels {

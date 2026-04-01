@@ -33,7 +33,7 @@ export function useVoiceConnection() {
     })),
   );
 
-  const peerList = useMemo(() => Object.values(peers), [peers]);
+  const peerList = useMemo(() => Object.values(peers ?? {}), [peers]);
 
   const join = useCallback(
     (teamId: string, channelId: string) => joinChannel(teamId, channelId),

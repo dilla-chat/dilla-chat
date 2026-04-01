@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useVoiceStore } from '../stores/voiceStore';
+import { useVoiceConnection } from './useVoiceConnection';
 
 interface ShortcutHandlers {
   onOpenSearch?: () => void;
@@ -67,7 +67,7 @@ function handleNonInputShortcut(
 }
 
 export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
-  const { connected, toggleMute, toggleDeafen } = useVoiceStore();
+  const { connected, toggleMute, toggleDeafen } = useVoiceConnection();
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {

@@ -27,8 +27,8 @@
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse 80% 60% at 30% 40%, rgba(46, 139, 154, 0.18) 0%, transparent 70%),
-    radial-gradient(ellipse 60% 70% at 70% 70%, rgba(232, 184, 75, 0.08) 0%, transparent 70%);
+    radial-gradient(ellipse 80% 60% at 30% 40%, var(--brand-alpha-20) 0%, transparent 70%),
+    radial-gradient(ellipse 60% 70% at 70% 70%, var(--accent-alpha-08) 0%, transparent 70%);
   animation: public-brand-drift 16s ease-in-out infinite alternate;
   pointer-events: none;
 }
@@ -36,13 +36,13 @@
 @keyframes public-brand-drift {
   0% {
     background:
-      radial-gradient(ellipse 80% 60% at 30% 40%, rgba(46, 139, 154, 0.18) 0%, transparent 70%),
-      radial-gradient(ellipse 60% 70% at 70% 70%, rgba(232, 184, 75, 0.08) 0%, transparent 70%);
+      radial-gradient(ellipse 80% 60% at 30% 40%, var(--brand-alpha-20) 0%, transparent 70%),
+      radial-gradient(ellipse 60% 70% at 70% 70%, var(--accent-alpha-08) 0%, transparent 70%);
   }
   100% {
     background:
-      radial-gradient(ellipse 70% 70% at 40% 50%, rgba(46, 139, 154, 0.14) 0%, transparent 70%),
-      radial-gradient(ellipse 80% 50% at 60% 30%, rgba(232, 184, 75, 0.10) 0%, transparent 70%);
+      radial-gradient(ellipse 70% 70% at 40% 50%, var(--brand-alpha-15) 0%, transparent 70%),
+      radial-gradient(ellipse 80% 50% at 60% 30%, var(--accent-alpha-10) 0%, transparent 70%);
   }
 }
 
@@ -55,7 +55,7 @@
   width: 72px;
   height: 72px;
   margin-bottom: 1.25rem;
-  filter: drop-shadow(0 0 20px rgba(46, 139, 154, 0.25));
+  filter: drop-shadow(0 0 20px var(--brand-alpha-25));
 }
 
 .public-brand-tagline {
@@ -146,7 +146,7 @@
 .public-card .form input:focus,
 .public-card .form textarea:focus {
   border-color: var(--brand-500);
-  box-shadow: 0 0 0 3px rgba(46, 139, 154, 0.15);
+  box-shadow: 0 0 0 3px var(--brand-alpha-15);
   outline: none;
 }
 
