@@ -13,6 +13,9 @@ import SetupAdmin from './pages/SetupAdmin';
 import AppLayout from './pages/AppLayout';
 import TeamSettings from './pages/TeamSettings';
 import UserSettings from './pages/UserSettings';
+import NotFound from './pages/NotFound';
+import { ToastProvider } from './components/Toast/Toast';
+// useToast hook available from './components/Toast/useToast' for consumer components
 
 const DEMO_ENABLED = import.meta.env.VITE_DEMO === 'true';
 
@@ -72,6 +75,7 @@ function AuthRedirect() {
 function App() {
   return (
     <ErrorBoundary>
+    <ToastProvider>
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<AuthRedirect />} />
@@ -90,8 +94,10 @@ function App() {
         <Route path="/app/channels/:channelId" element={<AppLayout />} />
         <Route path="/app/settings" element={<TeamSettings />} />
         <Route path="/app/user-settings" element={<UserSettings />} />
+        <Route path="*" element={<NotFound />} />
       </Routes>
-    </BrowserRouter>
+      </BrowserRouter>
+    </ToastProvider>
     </ErrorBoundary>
   );
 }

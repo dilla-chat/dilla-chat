@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import './PresenceIndicator.css';
 
 export type PresenceStatus = 'online' | 'idle' | 'dnd' | 'offline';
@@ -15,12 +16,13 @@ const statusLabels: Record<PresenceStatus, string> = {
   offline: 'Offline',
 };
 
-export default function PresenceIndicator({ status, size = 'medium', className = '' }: Readonly<Props>) {
+export default memo(function PresenceIndicator({ status, size = 'medium', className = '' }: Readonly<Props>) {
   return (
     <span
       className={`presence-indicator presence-${size} ${className}`}
       data-status={status}
+      role="img"
       aria-label={statusLabels[status]}
     />
   );
-}
+});

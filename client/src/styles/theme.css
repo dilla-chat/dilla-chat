@@ -110,6 +110,35 @@
   /* --breakpoint-mobile: 768px */
   /* --breakpoint-tablet: 1024px */
   --bottom-tab-height: 56px;
+
+  /* Z-index scale */
+  --z-dropdown: 1000;
+  --z-sticky: 1100;
+  --z-modal-backdrop: 1300;
+  --z-modal: 1400;
+  --z-tooltip: 8000;
+  --z-toast: 10000;
+
+  /* Spacing scale */
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 0.75rem;
+  --spacing-lg: 1rem;
+  --spacing-xl: 1.5rem;
+  --spacing-2xl: 2rem;
+
+  /* Transition timing */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.45, 0, 0.55, 1);
+  --duration-fast: 150ms;
+  --duration-normal: 200ms;
+  --duration-slow: 300ms;
+
+  /* Border radius */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-full: 9999px;
 }
 
 /* Shared dialog backdrop button — invisible full-area close target */

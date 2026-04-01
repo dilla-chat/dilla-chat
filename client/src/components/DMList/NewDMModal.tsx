@@ -1,9 +1,10 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Xmark, Check } from 'iconoir-react';
 import { useTeamStore, type Member } from '../../stores/teamStore';
 import { api } from '../../services/api';
 import { useDMStore, type DMChannel } from '../../stores/dmStore';
+import { useFocusTrap } from '../../hooks/useFocusTrap';
 import './NewDMModal.css';
 
 interface Props {
@@ -18,6 +19,8 @@ export default function NewDMModal({ currentUserId, onClose, onDMCreated }: Read
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Member[]>([]);
   const [creating, setCreating] = useState(false);
+  const modalRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(modalRef, true, onClose);
 
   const teamMembers = activeTeamId ? (members.get(activeTeamId) ?? []) : [];
   const availableMembers = teamMembers.filter((m) => m.userId !== currentUserId);
@@ -79,7 +82,7 @@ export default function NewDMModal({ currentUserId, onClose, onDMCreated }: Read
   return (
     <dialog className="new-dm-overlay" open aria-labelledby="new-dm-title">
       <button type="button" className="dialog-backdrop" onClick={onClose} aria-label="Close" />
-      <div className="new-dm-modal">
+      <div className="new-dm-modal" ref={modalRef}>
         <div className="new-dm-header">
           <h3 id="new-dm-title">{t('dm.newDM', 'New Message')}</h3>
           <button className="new-dm-close" onClick={onClose}><Xmark width={20} height={20} strokeWidth={2} /></button>

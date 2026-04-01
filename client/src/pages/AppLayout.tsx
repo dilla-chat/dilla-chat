@@ -30,6 +30,7 @@ import { useCryptoRestore } from '../hooks/useCryptoRestore';
 import { useIdentityBackup } from '../hooks/useIdentityBackup';
 import { usePresenceEvents } from '../hooks/usePresenceEvents';
 import { telemetryClient } from '../services/telemetryClient';
+import ContentErrorBoundary from '../components/ErrorBoundary/ContentErrorBoundary';
 import './AppLayout.css';
 
 export default function AppLayout() {
@@ -257,13 +258,25 @@ export default function AppLayout() {
   // Pre-compute content area for S3358
   const renderContentArea = () => {
     if (isDMMode && activeDM) {
-      return <DMView dm={activeDM} currentUserId={currentUserId} showMembers={showDMMembers} />;
+      return (
+        <ContentErrorBoundary fallbackLabel="Direct messages failed to load.">
+          <DMView dm={activeDM} currentUserId={currentUserId} showMembers={showDMMembers} />
+        </ContentErrorBoundary>
+      );
     }
     if (!isDMMode && activeChannel?.type === 'voice') {
-      return <VoiceChannel channel={activeChannel} />;
+      return (
+        <ContentErrorBoundary fallbackLabel="Voice channel failed to load.">
+          <VoiceChannel channel={activeChannel} />
+        </ContentErrorBoundary>
+      );
     }
     if (!isDMMode && activeChannel) {
-      return <ChannelView channel={activeChannel} />;
+      return (
+        <ContentErrorBoundary fallbackLabel="Channel failed to load.">
+          <ChannelView channel={activeChannel} />
+        </ContentErrorBoundary>
+      );
     }
     return (
       <div className="message-area">
@@ -457,7 +470,9 @@ export default function AppLayout() {
           </div>
 
           {threadPanelOpen && activeThread && (
-            <ThreadPanel thread={activeThread} onClose={handleCloseThread} />
+            <ContentErrorBoundary fallbackLabel="Thread panel failed to load.">
+              <ThreadPanel thread={activeThread} onClose={handleCloseThread} />
+            </ContentErrorBoundary>
           )}
 
           {!isMobile && !isDMMode && showMembers && <MemberList />}

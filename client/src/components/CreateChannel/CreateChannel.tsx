@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Hashtag, SoundHigh } from 'iconoir-react';
 import { useTeamStore } from '../../stores/teamStore';
 import { api } from '../../services/api';
+import { useFocusTrap } from '../../hooks/useFocusTrap';
 import CategorySelect from '../CategorySelect/CategorySelect';
 import './CreateChannel.css';
 
@@ -20,7 +21,8 @@ export default function CreateChannel({ defaultCategory, onClose }: Readonly<Pro
   const [newCategory, setNewCategory] = useState('');
   const [topic, setTopic] = useState('');
   const [creating, setCreating] = useState(false);
-
+  const modalRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(modalRef, true, onClose);
 
   const handleCreate = async () => {
     if (!activeTeamId || !name.trim()) return;
@@ -54,7 +56,7 @@ export default function CreateChannel({ defaultCategory, onClose }: Readonly<Pro
   return (
     <dialog className="create-channel-overlay" open aria-labelledby="create-channel-title">
       <button type="button" className="dialog-backdrop" onClick={onClose} aria-label="Close" />
-      <div className="create-channel-modal">
+      <div className="create-channel-modal" ref={modalRef}>
         <h2 id="create-channel-title">{t('channels.create')}</h2>
 
         <div className="create-channel-field">

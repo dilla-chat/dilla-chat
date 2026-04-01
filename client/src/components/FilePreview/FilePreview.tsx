@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MusicNote, Page, Download } from 'iconoir-react';
 import type { Attachment } from '../../services/api';
@@ -105,7 +105,7 @@ function FileCard({ attachment }: Readonly<{ attachment: Attachment }>) {
   );
 }
 
-export default function FilePreview({ attachments }: Readonly<Props>) {
+export default memo(function FilePreview({ attachments }: Readonly<Props>) {
   if (!attachments || attachments.length === 0) return null;
 
   return (
@@ -124,4 +124,4 @@ export default function FilePreview({ attachments }: Readonly<Props>) {
       })}
     </div>
   );
-}
+});

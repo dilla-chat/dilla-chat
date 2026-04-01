@@ -18,6 +18,7 @@ export class WebSocketService {
   private readonly reconnectAttempts: Map<string, number> = new Map();
   private readonly connectionParams: Map<string, { url: string; token: string }> = new Map();
   private readonly heartbeatTimers: Map<string, ReturnType<typeof setInterval>> = new Map();
+  private readonly pendingMessages: Map<string, WSEvent[]> = new Map();
   private lastUserActivity = Date.now();
 
   constructor() {
@@ -55,6 +56,7 @@ export class WebSocketService {
       this.startHeartbeat(teamId);
       traceWSEvent('receive', 'ws:connected', { team_id: teamId });
       this.emit('ws:connected', { teamId });
+      this.flushPendingMessages(teamId);
     };
 
     socket.onmessage = (event) => {
@@ -178,7 +180,21 @@ export class WebSocketService {
       traceWSEvent('send', event.type, { team_id: teamId });
       socket.send(JSON.stringify(event));
     } else {
-      console.warn(`WebSocket not connected for team ${teamId}, dropping event: ${event.type}`);
+      const queue = this.pendingMessages.get(teamId) ?? [];
+      if (queue.length < 100) {
+        queue.push(event);
+        this.pendingMessages.set(teamId, queue);
+      }
+      console.warn(`WebSocket not connected for team ${teamId}, queued event: ${event.type}`);
+    }
+  }
+
+  private flushPendingMessages(teamId: string): void {
+    const queue = this.pendingMessages.get(teamId);
+    if (!queue || queue.length === 0) return;
+    this.pendingMessages.delete(teamId);
+    for (const event of queue) {
+      this.send(teamId, event);
     }
   }
 
