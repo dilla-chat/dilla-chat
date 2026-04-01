@@ -32,6 +32,7 @@ export default function ChannelView({ channel }: Readonly<Props>) {
   } = useThreadStore();
   const { toast } = useToast();
   const [editingMessage, setEditingMessage] = useState<{ id: string; content: string } | null>(null);
+  const [scrollTrigger, setScrollTrigger] = useState(0);
   const initialLoadDone = useRef<Set<string>>(new Set());
   const threadsLoadDone = useRef<Set<string>>(new Set());
 
@@ -279,6 +280,7 @@ export default function ChannelView({ channel }: Readonly<Props>) {
         const encrypted = await tryEncrypt(content || ' ', channel.id, derivedKey);
         const attachmentIds = attachments?.map((a) => a.id) ?? [];
         ws.sendMessage(activeTeamId, channel.id, encrypted, 'text', undefined, attachmentIds);
+        setScrollTrigger((n) => n + 1);
       } catch (err) {
         console.warn('[ChannelView] encryption failed, message not sent', err);
         toast('Encryption key not available — log out and back in to unlock your identity', 'error');
@@ -355,6 +357,7 @@ export default function ChannelView({ channel }: Readonly<Props>) {
         onCreateThread={handleCreateThread}
         onOpenThread={handleOpenThread}
         threadInfo={threadInfo}
+        scrollTrigger={scrollTrigger}
       />
 
       <MessageInput

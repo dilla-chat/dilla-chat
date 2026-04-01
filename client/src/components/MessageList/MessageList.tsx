@@ -27,6 +27,7 @@ interface Props {
   onOpenThread?: (messageId: string) => void;
   onReaction?: (messageId: string, emoji: string) => void;
   threadInfo?: Record<string, { count: number; lastReplyAt: string | null }>;
+  scrollTrigger?: number;
 }
 
 // Sanitize links to open in new tab
@@ -50,6 +51,7 @@ export default function MessageList({
   onOpenThread,
   onReaction,
   threadInfo,
+  scrollTrigger,
 }: Readonly<Props>) {
   const { t } = useTranslation();
   const { messages, loadingHistory, hasMore } = useMessageStore();
@@ -62,12 +64,12 @@ export default function MessageList({
 
   const firstItemIndex = useMemo(() => START_INDEX - groups.length, [groups.length]);
 
-  // Scroll to bottom on channel change
+  // Scroll to bottom on channel change or when triggered by parent (e.g. after send)
   useEffect(() => {
     if (virtuosoRef.current) {
       virtuosoRef.current.scrollToIndex({ index: groups.length - 1, behavior: 'auto' });
     }
-  }, [channelId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [channelId, scrollTrigger]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleStartReached = useCallback(() => {
     if (canLoadMore && !isLoading) {
