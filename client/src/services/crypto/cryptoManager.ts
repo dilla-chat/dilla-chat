@@ -17,7 +17,7 @@ export class CryptoManager {
   private readonly identityDhKeyPair: { privateKey: CryptoKey; publicKeyBytes: Uint8Array };
   private prekeySecrets: PrekeySecrets | null = null;
   private readonly pairwiseSessions: Map<string, RatchetSession> = new Map();
-  private readonly groupSessions: Map<string, GroupSession> = new Map();
+  readonly groupSessions: Map<string, GroupSession> = new Map();
 
   constructor(
     signingKey: CryptoKey,
@@ -80,10 +80,13 @@ export class CryptoManager {
         try {
           session = GroupSession.fromJSON(stored);
           this.groupSessions.set(channelId, session);
+          console.log(`[Crypto] Restored session for ${channelId} from IndexedDB (msg# ${session.mySenderKey.messageNumber}, members: ${session.memberSenderKeys.size})`);
           return session;
-        } catch {
-          // Stored session corrupted — create fresh
+        } catch (err) {
+          console.warn(`[Crypto] Failed to restore session for ${channelId}:`, err);
         }
+      } else {
+        console.log(`[Crypto] No stored session for ${channelId}, creating fresh`);
       }
       session = await GroupSession.create(channelId, senderId);
       this.groupSessions.set(channelId, session);

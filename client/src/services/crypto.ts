@@ -220,10 +220,28 @@ export const cryptoService = {
 
     const promise = (async () => {
       try {
-        await this.getSenderKeyDistribution(channelId, derivedKey);
+        // Check if a session already exists (in memory or IndexedDB) before
+        // creating a new one. getSenderKeyDistribution creates a fresh session
+        // with new random keys, which would destroy any persisted session.
+        const mgr = getManager();
+        const existingSession = mgr.groupSessions.get(channelId);
+        if (!existingSession) {
+          const { loadGroupSession } = await import('./crypto/sessionStore');
+          const stored = await loadGroupSession(channelId);
+          if (stored) {
+            const { GroupSession } = await import('./crypto/groupSession');
+            const restored = GroupSession.fromJSON(stored);
+            mgr.groupSessions.set(channelId, restored);
+            console.log(`[Crypto] Restored existing session for ${channelId} from IndexedDB`);
+          } else {
+            // No existing session — create fresh
+            await this.getSenderKeyDistribution(channelId, derivedKey);
+            console.log(`[Crypto] Created new session for ${channelId}`);
+          }
+        }
         initializedSessions.add(key);
-      } catch {
-        // Don't mark as initialized — allow retry on next attempt
+      } catch (err) {
+        console.warn(`[Crypto] ensureChannelSession failed for ${channelId}:`, err);
       } finally {
         initializingPromises.delete(key);
       }
