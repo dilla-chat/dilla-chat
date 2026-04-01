@@ -12,6 +12,7 @@ export function useCryptoRestore(): void {
   const cryptoRestored = useRef(false);
 
   useEffect(() => {
+    console.log('[CryptoRestore] derivedKey available:', !!derivedKey, 'already restored:', cryptoRestored.current);
     if (cryptoRestored.current || !derivedKey) return;
     cryptoRestored.current = true;
 

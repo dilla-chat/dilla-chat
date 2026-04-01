@@ -66,6 +66,7 @@ export default function ChannelView({ channel }: Readonly<Props>) {
   // after page reload) so messages can be re-decrypted.
   useEffect(() => {
     const loadKey = `${channel.id}:${derivedKey ? 'keyed' : 'nokey'}`;
+    console.log('[ChannelView] loadHistory check:', { loadKey, derivedKey: !!derivedKey, alreadyDone: initialLoadDone.current.has(loadKey) });
     if (!activeTeamId || initialLoadDone.current.has(loadKey)) return;
 
     const loadHistory = async () => {

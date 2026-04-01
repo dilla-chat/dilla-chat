@@ -37,6 +37,10 @@ export async function initCrypto(keys: IdentityKeys, derivedKey: string): Promis
     const saved = await loadSessions(derivedKey);
     if (saved) {
       manager.loadSessions(saved as Record<string, unknown>);
+      const groupCount = manager.groupSessions.size;
+      console.log(`[crypto] Restored ${groupCount} group sessions from IndexedDB`);
+    } else {
+      console.log('[crypto] No persisted sessions found in IndexedDB');
     }
   } catch (e) {
     console.warn('[crypto] Failed to restore sessions:', e);
