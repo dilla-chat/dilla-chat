@@ -123,24 +123,15 @@ pub async fn upload(
 }
 
 pub async fn download(
-    Extension(UserId(user_id)): Extension<UserId>,
     State(state): State<AppState>,
     Path((team_id, attachment_id)): Path<(String, String)>,
 ) -> Result<Response, AppError> {
     let db = state.db.clone();
     let tid = team_id.clone();
     let aid = attachment_id.clone();
-    let uid = user_id.clone();
 
     let attachment = tokio::task::spawn_blocking(move || {
         db.with_conn(|conn| {
-            let member = db::get_member_by_user_and_team(conn, &uid, &tid)?;
-            if member.is_none() {
-                return Err(rusqlite::Error::InvalidParameterName(
-                    "not a member of this team".into(),
-                ));
-            }
-
             let att = db::get_attachment(conn, &aid)?
                 .ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)?;
 
@@ -163,9 +154,6 @@ pub async fn download(
 
     let attachment = match attachment {
         Ok(a) => a,
-        Err(rusqlite::Error::InvalidParameterName(msg)) => {
-            return Err(AppError::Forbidden(msg));
-        }
         Err(rusqlite::Error::QueryReturnedNoRows) => {
             return Err(AppError::NotFound("attachment not found".into()));
         }

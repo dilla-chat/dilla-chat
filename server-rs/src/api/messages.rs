@@ -47,13 +47,37 @@ pub async fn list(
 ) -> Result<Json<Value>, AppError> {
     let limit = query.limit.clamp(1, 100);
 
-    let messages = spawn_db(state.db.clone(), move |conn| {
+    let enriched = spawn_db(state.db.clone(), move |conn| {
         require_team_member(conn, &user_id, &team_id)?;
-        db::get_messages_by_channel(conn, &channel_id, &query.before, limit)
+        let messages = db::get_messages_by_channel(conn, &channel_id, &query.before, limit)?;
+        let enriched: Vec<serde_json::Value> = messages
+            .into_iter()
+            .map(|msg| {
+                let attachments = db::get_message_attachments(conn, &msg.id)
+                    .unwrap_or_default();
+                let attachment_payloads: Vec<serde_json::Value> = attachments
+                    .iter()
+                    .map(|a| serde_json::json!({
+                        "id": a.id,
+                        "filename": String::from_utf8_lossy(&a.filename_encrypted),
+                        "content_type": String::from_utf8_lossy(&a.content_type_encrypted),
+                        "size": a.size,
+                        "url": format!("/api/v1/teams/{}/attachments/{}", team_id, a.id),
+                    }))
+                    .collect();
+                let mut val = serde_json::to_value(&msg).unwrap();
+                val.as_object_mut().unwrap().insert(
+                    "attachments".to_string(),
+                    serde_json::json!(attachment_payloads),
+                );
+                val
+            })
+            .collect();
+        Ok(enriched)
     })
     .await?;
 
-    json_ok(messages)
+    json_ok(enriched)
 }
 
 pub async fn create(

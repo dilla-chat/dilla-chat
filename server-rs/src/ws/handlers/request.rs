@@ -79,13 +79,26 @@ pub(in crate::ws) async fn handle_request(hub: &Hub, user_id: &str, team_id: &st
                     return Ok(serde_json::json!([]));
                 }
                 let messages = db::get_messages_by_channel(conn, &channel_id, &before, limit)?;
-                // Enrich each message with the author's username
+                // Enrich each message with the author's username and attachments
                 let enriched: Vec<serde_json::Value> = messages
                     .into_iter()
                     .map(|msg| {
                         let name = lookup_username(conn, &msg.author_id);
+                        let attachments = db::get_message_attachments(conn, &msg.id)
+                            .unwrap_or_default();
+                        let attachment_payloads: Vec<serde_json::Value> = attachments
+                            .iter()
+                            .map(|a| serde_json::json!({
+                                "id": a.id,
+                                "filename": String::from_utf8_lossy(&a.filename_encrypted),
+                                "content_type": String::from_utf8_lossy(&a.content_type_encrypted),
+                                "size": a.size,
+                                "url": format!("/api/v1/teams/{}/attachments/{}", tid, a.id),
+                            }))
+                            .collect();
                         let mut val = serde_json::to_value(&msg).unwrap();
                         val.as_object_mut().unwrap().insert("username".to_string(), serde_json::json!(name));
+                        val.as_object_mut().unwrap().insert("attachments".to_string(), serde_json::json!(attachment_payloads));
                         val
                     })
                     .collect();

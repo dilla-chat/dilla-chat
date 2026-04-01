@@ -106,6 +106,10 @@ pub fn create_router(state: AppState) -> Router {
         .route(
             "/api/v1/federation/join/{token}",
             get(federation::get_join_info),
+        )
+        .route(
+            "/api/v1/teams/{team_id}/attachments/{attachment_id}",
+            get(uploads::download),
         );
 
     // Protected routes (auth required).
@@ -237,7 +241,7 @@ pub fn create_router(state: AppState) -> Router {
         )
         .route(
             "/api/v1/teams/{team_id}/attachments/{attachment_id}",
-            get(uploads::download).delete(uploads::delete_attachment),
+            delete(uploads::delete_attachment),
         )
         // Presence
         .route(
