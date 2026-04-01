@@ -100,26 +100,38 @@ function serverIdFromUrl(baseUrl: string): string {
   return baseUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
 }
 
-// derivedKey is never persisted — it's the E2E encryption master key.
-// On page refresh, the user must re-authenticate with their passkey.
+// derivedKey is persisted to sessionStorage so E2E encryption survives
+// page reloads within the same tab. sessionStorage is cleared when the
+// tab closes, so the key doesn't leak across sessions.
+const DERIVED_KEY_STORAGE = 'dilla:derivedKey';
+
+function loadPersistedDerivedKey(): string | null {
+  try { return sessionStorage.getItem(DERIVED_KEY_STORAGE); } catch { return null; }
+}
+
+function persistDerivedKey(key: string | null): void {
+  try {
+    if (key) sessionStorage.setItem(DERIVED_KEY_STORAGE, key);
+    else sessionStorage.removeItem(DERIVED_KEY_STORAGE);
+  } catch { /* private browsing */ }
+}
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   isAuthenticated: false,
   passphrase: null,
-  derivedKey: null,
+  derivedKey: loadPersistedDerivedKey(),
   publicKey: null,
   credentialIds: [],
   teams: loadPersistedTeams(),
   servers: loadPersistedServers(),
 
   setPassphrase: (passphrase: string) => {
-    // Derived key is NOT persisted to sessionStorage — it's the E2E encryption
-    // master key and must only live in memory. On page refresh, the user
-    // re-authenticates with their passkey to re-derive it.
+    persistDerivedKey(passphrase);
     set({ passphrase, derivedKey: passphrase, isAuthenticated: true });
   },
 
   setDerivedKey: (key: string) => {
+    persistDerivedKey(key);
     set({ derivedKey: key, passphrase: key, isAuthenticated: true });
   },
 
@@ -236,6 +248,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   logout: () => {
     sessionStorage.removeItem(TEAMS_STORAGE_KEY);
     sessionStorage.removeItem(SERVERS_STORAGE_KEY);
+    persistDerivedKey(null);
     set({
       isAuthenticated: false,
       passphrase: null,
