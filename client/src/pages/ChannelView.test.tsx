@@ -13,6 +13,7 @@ vi.mock('../services/websocket', () => ({
     startTyping: vi.fn(),
     joinChannel: vi.fn(),
     leaveChannel: vi.fn(),
+    distributeChannelKey: vi.fn(),
   },
 }));
 
@@ -231,6 +232,14 @@ describe('ChannelView', () => {
     useTeamStore.setState({ activeTeamId: null });
     renderChannelView();
     expect(screen.getByTestId('message-list')).toBeInTheDocument();
+  });
+
+  it('distributes sender key on channel join when derivedKey is set', async () => {
+    useAuthStore.setState({ derivedKey: 'test-key' });
+    renderChannelView();
+    await waitFor(() => {
+      expect(ws.distributeChannelKey).toHaveBeenCalledWith('t1', 'ch-1', expect.any(String));
+    });
   });
 
   it('sends a message via WS when send button is clicked', async () => {
