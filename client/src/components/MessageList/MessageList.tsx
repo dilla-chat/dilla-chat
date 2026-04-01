@@ -51,7 +51,6 @@ export default function MessageList({
   onOpenThread,
   onReaction,
   threadInfo,
-  scrollTrigger,
 }: Readonly<Props>) {
   const { t } = useTranslation();
   const { messages, loadingHistory, hasMore } = useMessageStore();
@@ -64,12 +63,24 @@ export default function MessageList({
 
   const firstItemIndex = useMemo(() => START_INDEX - groups.length, [groups.length]);
 
-  // Scroll to bottom on channel change or when triggered by parent (e.g. after send)
+  // Scroll to bottom on channel change
   useEffect(() => {
     if (virtuosoRef.current) {
       virtuosoRef.current.scrollToIndex({ index: groups.length - 1, behavior: 'auto' });
     }
-  }, [channelId, scrollTrigger]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [channelId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Scroll to bottom when new messages arrive (e.g. after send + server echo)
+  const prevMsgCount = useRef(channelMessages.length);
+  useEffect(() => {
+    if (channelMessages.length > prevMsgCount.current && virtuosoRef.current) {
+      // Small delay to let Virtuoso render the new item first
+      setTimeout(() => {
+        virtuosoRef.current?.scrollToIndex({ index: groups.length - 1, behavior: 'smooth' });
+      }, 50);
+    }
+    prevMsgCount.current = channelMessages.length;
+  }, [channelMessages.length, groups.length]);
 
   const handleStartReached = useCallback(() => {
     if (canLoadMore && !isLoading) {
