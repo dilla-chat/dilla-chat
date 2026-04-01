@@ -40,6 +40,19 @@ describe('useMessageDecryption', () => {
       expect(result).toContain('Encrypted message');
     });
 
+    it('returns plaintext from sent cache when available', async () => {
+      // First encrypt to populate the sentPlaintextCache
+      vi.mocked(cryptoService.encryptChannel).mockResolvedValueOnce('cached-cipher');
+      const cipher = await tryEncrypt('hello from cache', 'ch1', 'key');
+      expect(cipher).toBe('cached-cipher');
+
+      // Now decrypt should find it in sentPlaintextCache
+      const result = await tryDecrypt('m-new', 'cached-cipher', 'sender', 'ch1', 'key');
+      expect(result).toBe('hello from cache');
+      // Should NOT call decryptChannel since cache hit
+      expect(cryptoService.decryptChannel).not.toHaveBeenCalled();
+    });
+
     it('decrypts and caches on success', async () => {
       vi.mocked(cryptoService.decryptChannel).mockResolvedValueOnce('plaintext');
       const result = await tryDecrypt('m1', 'cipher', 'sender', 'ch1', 'key');
