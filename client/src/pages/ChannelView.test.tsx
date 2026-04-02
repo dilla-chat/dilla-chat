@@ -483,6 +483,34 @@ describe('ChannelView', () => {
     expect(ws.sendMessage).not.toHaveBeenCalled();
   });
 
+  it('calls markRead on unreadStore when channel is viewed', async () => {
+    const { useUnreadStore } = await import('../stores/unreadStore');
+    useUnreadStore.setState({ counts: { 'ch-1': 5 } });
+    renderChannelView();
+    await waitFor(() => {
+      expect(useUnreadStore.getState().counts['ch-1']).toBe(0);
+    });
+  });
+
+  it('calls markChannelRead on ws service when channel is viewed with messages', async () => {
+    const { useMessageStore } = await import('../stores/messageStore');
+    useMessageStore.setState({
+      messages: new Map([['ch-1', [{ id: 'msg-latest', channelId: 'ch-1', authorId: 'u1', username: 'tester', content: 'hi', encryptedContent: '', type: 'text', threadId: null, editedAt: null, deleted: false, createdAt: '2025-01-01T00:00:00Z', reactions: [] }]]]),
+    });
+    renderChannelView();
+    await waitFor(() => {
+      expect(ws.markChannelRead).toHaveBeenCalledWith('t1', 'ch-1', 'msg-latest');
+    });
+  });
+
+  it('does not call markChannelRead when there are no messages', async () => {
+    const { useMessageStore } = await import('../stores/messageStore');
+    useMessageStore.setState({ messages: new Map() });
+    renderChannelView();
+    // markChannelRead should not be called with an empty latestId
+    expect(ws.markChannelRead).not.toHaveBeenCalled();
+  });
+
   it('handleLoadMore with REST decrypts messages using tryDecrypt', async () => {
     vi.mocked(ws.isConnected).mockReturnValue(false);
     const { api } = await import('../services/api');

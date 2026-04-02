@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import ChannelList from './ChannelList';
 import { useTeamStore } from '../../stores/teamStore';
 import { useVoiceStore } from '../../stores/voiceStore';
+import { useUnreadStore } from '../../stores/unreadStore';
 
 vi.mock('iconoir-react', () => ({
   SoundHigh: () => <span data-testid="SoundHigh" />,
@@ -260,6 +261,56 @@ describe('ChannelList', () => {
     expect(container.querySelector('.channel-context-menu')).toBeInTheDocument();
     fireEvent.click(document);
     expect(container.querySelector('.channel-context-menu')).not.toBeInTheDocument();
+  });
+
+  describe('unread badge rendering', () => {
+    it('renders unread badge when count > 0', () => {
+      useUnreadStore.setState({ counts: { 'ch-1': 3 } });
+      render(<ChannelList />);
+      const badge = screen.getByRole('generic', { hidden: true, name: '3 unread messages' });
+      expect(badge).toBeInTheDocument();
+      expect(badge.textContent).toBe('3');
+    });
+
+    it('renders 99+ when unread count exceeds 99', () => {
+      useUnreadStore.setState({ counts: { 'ch-1': 150 } });
+      render(<ChannelList />);
+      const badge = screen.getByText('99+');
+      expect(badge).toBeInTheDocument();
+    });
+
+    it('does not render unread badge when count is 0', () => {
+      useUnreadStore.setState({ counts: { 'ch-1': 0 } });
+      render(<ChannelList />);
+      expect(screen.queryByRole('generic', { hidden: true, name: /unread messages/ })).not.toBeInTheDocument();
+    });
+
+    it('does not render unread badge when no count entry exists', () => {
+      useUnreadStore.setState({ counts: {} });
+      render(<ChannelList />);
+      expect(screen.queryByText(/unread/i)).not.toBeInTheDocument();
+    });
+
+    it('channel name has unread class when there are unread messages', () => {
+      useUnreadStore.setState({ counts: { 'ch-1': 2 } });
+      const { container } = render(<ChannelList />);
+      const nameEl = container.querySelector('.channel-name--unread');
+      expect(nameEl).toBeInTheDocument();
+      expect(nameEl?.textContent).toBe('general');
+    });
+
+    it('channel name does not have unread class when count is 0', () => {
+      useUnreadStore.setState({ counts: { 'ch-1': 0 } });
+      const { container } = render(<ChannelList />);
+      expect(container.querySelector('.channel-name--unread')).not.toBeInTheDocument();
+    });
+
+    it('does not show unread badge on voice channels', () => {
+      useUnreadStore.setState({ counts: { 'ch-2': 5 } });
+      render(<ChannelList />);
+      // ch-2 is the voice channel — badge should not appear for it
+      expect(screen.queryByRole('generic', { hidden: true, name: '5 unread messages' })).not.toBeInTheDocument();
+    });
   });
 
   it('logs error when delete channel fails', async () => {

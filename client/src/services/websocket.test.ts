@@ -142,6 +142,18 @@ describe('WebSocketService', () => {
     });
   });
 
+  describe('markChannelRead', () => {
+    it('sends a request event with action channel:mark-read', () => {
+      service.markChannelRead('t1', 'ch-42', 'msg-99');
+      expect(mockSocket.send).toHaveBeenCalledTimes(1);
+      const sent = JSON.parse(mockSocket.send.mock.calls[0][0]);
+      expect(sent.type).toBe('request');
+      expect(sent.payload.action).toBe('channel:mark-read');
+      expect(sent.payload.payload.channel_id).toBe('ch-42');
+      expect(sent.payload.payload.message_id).toBe('msg-99');
+    });
+  });
+
   describe('distributeChannelKey', () => {
     it('sends channel:key-distribute event', () => {
       service.distributeChannelKey('t1', 'ch-1', '{"sender_id":"u1"}');
