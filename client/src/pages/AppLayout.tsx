@@ -29,6 +29,7 @@ import { useTeamSync } from '../hooks/useTeamSync';
 import { useCryptoRestore } from '../hooks/useCryptoRestore';
 import { useIdentityBackup } from '../hooks/useIdentityBackup';
 import { usePresenceEvents } from '../hooks/usePresenceEvents';
+import { useCustomTheme } from '../hooks/useCustomTheme';
 import { telemetryClient } from '../services/telemetryClient';
 import ContentErrorBoundary from '../components/ErrorBoundary/ContentErrorBoundary';
 import './AppLayout.css';
@@ -45,6 +46,8 @@ export default function AppLayout() {
   const [mobileTab, setMobileTab] = useState<MobileTab>('chat');
   const [showMembers, setShowMembers] = useState(true);
   const [showDMMembers, setShowDMMembers] = useState(false);
+
+  useCustomTheme();
 
   // --- Extracted hooks ---
   const { cryptoReady } = useCryptoRestore();
