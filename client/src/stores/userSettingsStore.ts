@@ -9,7 +9,7 @@ interface UserSettingsStore {
   outputVolume: number;
   desktopNotifications: boolean;
   soundNotifications: boolean;
-  theme: 'dark' | 'light';
+  theme: 'dark' | 'light' | 'minimal';
 
   setSelectedInputDevice: (v: string) => void;
   setSelectedOutputDevice: (v: string) => void;
@@ -18,7 +18,7 @@ interface UserSettingsStore {
   setOutputVolume: (v: number) => void;
   setDesktopNotifications: (v: boolean) => void;
   setSoundNotifications: (v: boolean) => void;
-  setTheme: (v: 'dark' | 'light') => void;
+  setTheme: (v: 'dark' | 'light' | 'minimal') => void;
 }
 
 export const useUserSettingsStore = create<UserSettingsStore>()(
