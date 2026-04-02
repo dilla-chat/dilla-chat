@@ -250,3 +250,24 @@
   color: var(--status-online);
   opacity: 1;
 }
+
+.channel-name--unread {
+  font-weight: var(--font-weight-semibold);
+  color: var(--interactive-hover);
+}
+
+.channel-unread-badge {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--radius-full);
+  background: var(--brand-500);
+  color: #fff;
+  font-size: var(--font-size-micro);
+  font-weight: var(--font-weight-semibold);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  flex-shrink: 0;
+}

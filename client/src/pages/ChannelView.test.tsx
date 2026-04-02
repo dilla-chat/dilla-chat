@@ -14,6 +14,7 @@ vi.mock('../services/websocket', () => ({
     joinChannel: vi.fn(),
     leaveChannel: vi.fn(),
     distributeChannelKey: vi.fn(),
+    markChannelRead: vi.fn(),
   },
 }));
 

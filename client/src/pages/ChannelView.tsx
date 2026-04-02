@@ -1,6 +1,7 @@
 import { useEffect, useCallback, useState, useRef, useMemo } from 'react';
 import { useTeamStore, type Channel } from '../stores/teamStore';
 import { useAuthStore } from '../stores/authStore';
+import { useUnreadStore } from '../stores/unreadStore';
 import { useMessageStore, type Message } from '../stores/messageStore';
 import { useThreadStore, type Thread } from '../stores/threadStore';
 import { ws } from '../services/websocket';
@@ -61,6 +62,17 @@ export default function ChannelView({ channel }: Readonly<Props>) {
       ws.leaveChannel(activeTeamId, channel.id);
     };
   }, [activeTeamId, channel.id, derivedKey]);
+
+  // Mark channel as read when user views it (optimistic + server notification).
+  useEffect(() => {
+    if (!activeTeamId) return;
+    useUnreadStore.getState().markRead(channel.id);
+    const messages = useMessageStore.getState().messages.get(channel.id) ?? [];
+    const latestId = messages.length > 0 ? messages[messages.length - 1].id : '';
+    if (latestId) {
+      ws.markChannelRead(activeTeamId, channel.id, latestId);
+    }
+  }, [activeTeamId, channel.id]);
 
   // Load initial message history via WS (with REST fallback).
   // Re-loads when derivedKey changes (e.g. restored from sessionStorage

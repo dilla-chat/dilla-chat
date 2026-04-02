@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { SoundHigh, Plus, MicrophoneMute, HeadsetWarning, AppWindow } from 'iconoir-react';
 import { useTeamStore, type Channel } from '../../stores/teamStore';
 import { useVoiceStore } from '../../stores/voiceStore';
+import { useUnreadStore } from '../../stores/unreadStore';
 import { api } from '../../services/api';
 import EditChannel from '../EditChannel/EditChannel';
 import './ChannelList.css';
@@ -21,6 +22,7 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
   const { t } = useTranslation();
   const { channels, activeTeamId, activeChannelId, setActiveChannel, removeChannel } = useTeamStore();
   const { currentChannelId: voiceChannelId, connected: voiceConnected, peers: voicePeers, voiceOccupants, joinChannel: voiceJoin } = useVoiceStore();
+  const { counts: unreadCounts } = useUnreadStore();
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
   const [editingChannel, setEditingChannel] = useState<Channel | null>(null);
@@ -105,6 +107,9 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
             else if (isVoice) voicePeerList = voiceOccupants[ch.id] ?? [];
             else voicePeerList = [];
 
+            const unreadCount = unreadCounts[ch.id] ?? 0;
+            const hasUnread = !isVoice && unreadCount > 0;
+
             return (
               <div key={ch.id}>
                 <button
@@ -124,7 +129,12 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
                   }}
                 >
                   <span className={`channel-icon ${isVoice && voicePeerList.length > 0 ? 'voice-active' : ''}`}>{isVoice ? <SoundHigh width={16} height={16} strokeWidth={2} /> : <span className="channel-tilde">~</span>}</span>
-                  <span className="channel-name truncate">{ch.name}</span>
+                  <span className={`channel-name truncate${hasUnread ? ' channel-name--unread' : ''}`}>{ch.name}</span>
+                  {hasUnread && (
+                    <span className="channel-unread-badge" aria-label={`${unreadCount} unread messages`}>
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                  )}
                 </button>
                 {voicePeerList.length > 0 && (
                   <div className="voice-channel-users">

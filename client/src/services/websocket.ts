@@ -359,6 +359,16 @@ export class WebSocketService {
     });
   }
 
+  markChannelRead(teamId: string, channelId: string, messageId: string): void {
+    this.send(teamId, {
+      type: 'request',
+      payload: {
+        action: 'channel:mark-read',
+        payload: { channel_id: channelId, message_id: messageId },
+      },
+    });
+  }
+
   distributeChannelKey(teamId: string, channelId: string, distribution: string): void {
     this.send(teamId, {
       type: 'channel:key-distribute',

@@ -4,6 +4,7 @@ import { useTeamStore, type Channel, type Team, type Role } from '../stores/team
 import { useAuthStore } from '../stores/authStore';
 import { usePresenceStore, type UserPresence } from '../stores/presenceStore';
 import { useVoiceStore } from '../stores/voiceStore';
+import { useUnreadStore } from '../stores/unreadStore';
 import { api, type VoicePeer } from '../services/api';
 import { ws } from '../services/websocket';
 import { telemetryClient } from '../services/telemetryClient';
@@ -80,6 +81,9 @@ function applySyncData(teamId: string, data: any, setters: SyncStoreSetters) {
   }
   if (data.voice_states && typeof data.voice_states === 'object') {
     useVoiceStore.getState().setVoiceOccupants(data.voice_states as Record<string, VoicePeer[]>);
+  }
+  if (data.unread_counts && typeof data.unread_counts === 'object') {
+    useUnreadStore.getState().setCounts(data.unread_counts as Record<string, number>);
   }
   console.log(`[AppLayout] sync:init applied for team ${teamId}`);
 
@@ -277,6 +281,30 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
       telemetryClient.setTeamId(activeTeamId);
     })();
   }, [activeTeamId, activeToken]);
+
+  // Increment unread count for messages on channels the user is not currently viewing,
+  // and handle channel:read events broadcast from other devices.
+  useEffect(() => {
+    if (!activeTeamId) return;
+
+    const unsubMsgNew = ws.on('message:new', (payload: { channel_id?: string }) => {
+      if (!payload?.channel_id) return;
+      const activeChannelId = useTeamStore.getState().activeChannelId;
+      if (payload.channel_id !== activeChannelId) {
+        useUnreadStore.getState().increment(payload.channel_id);
+      }
+    });
+
+    const unsubChannelRead = ws.on('channel:read', (payload: { channel_id?: string }) => {
+      if (!payload?.channel_id) return;
+      useUnreadStore.getState().markRead(payload.channel_id);
+    });
+
+    return () => {
+      unsubMsgNew();
+      unsubChannelRead();
+    };
+  }, [activeTeamId]);
 
   // Rotate channel encryption keys when a member leaves (kicked/banned).
   useEffect(() => {
