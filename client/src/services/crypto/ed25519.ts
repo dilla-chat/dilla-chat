@@ -1,5 +1,7 @@
 // ─── Ed25519 ──────────────────────────────────────────────────────────────────
 
+import { ed25519 } from '@noble/curves/ed25519.js';
+
 export interface Ed25519KeyPair {
   privateKey: CryptoKey;
   publicKey: CryptoKey;
@@ -17,8 +19,10 @@ export async function generateEd25519KeyPair(): Promise<Ed25519KeyPair> {
 }
 
 export async function ed25519Sign(privateKey: CryptoKey, data: Uint8Array): Promise<Uint8Array> {
-  const sig = await crypto.subtle.sign('Ed25519', privateKey, data as unknown as BufferSource);
-  return new Uint8Array(sig);
+  const pkcs8 = await crypto.subtle.exportKey('pkcs8', privateKey);
+  // PKCS8 for Ed25519: skip the 16-byte header to get the 32-byte seed
+  const seed = new Uint8Array(pkcs8).slice(16);
+  return ed25519.sign(data, seed);
 }
 
 export async function ed25519Verify(
@@ -26,7 +30,8 @@ export async function ed25519Verify(
   signature: Uint8Array,
   data: Uint8Array,
 ): Promise<boolean> {
-  return crypto.subtle.verify('Ed25519', publicKey, signature as unknown as BufferSource, data as unknown as BufferSource);
+  const raw = new Uint8Array(await crypto.subtle.exportKey('raw', publicKey));
+  return ed25519.verify(signature, data, raw);
 }
 
 export async function importEd25519PublicKey(raw: Uint8Array): Promise<CryptoKey> {

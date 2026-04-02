@@ -1,5 +1,7 @@
 // ─── X25519 (ECDH) ───────────────────────────────────────────────────────────
 
+import { x25519 } from '@noble/curves/ed25519.js';
+
 export interface X25519KeyPair {
   privateKey: CryptoKey;
   publicKey: CryptoKey;
@@ -20,13 +22,10 @@ export async function x25519DH(
   privateKey: CryptoKey,
   publicKeyBytes: Uint8Array,
 ): Promise<Uint8Array> {
-  const pubKey = await crypto.subtle.importKey('raw', publicKeyBytes as unknown as BufferSource, 'X25519', false, []);
-  const bits = await crypto.subtle.deriveBits(
-    { name: 'X25519', public: pubKey },
-    privateKey,
-    256,
-  );
-  return new Uint8Array(bits);
+  const pkcs8 = new Uint8Array(await crypto.subtle.exportKey('pkcs8', privateKey));
+  // PKCS8 for X25519: skip the 16-byte header to get the 32-byte scalar
+  const scalar = pkcs8.slice(16);
+  return x25519.getSharedSecret(scalar, publicKeyBytes);
 }
 
 export async function importX25519PublicKey(raw: Uint8Array): Promise<CryptoKey> {

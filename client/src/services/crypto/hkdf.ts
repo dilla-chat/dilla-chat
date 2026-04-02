@@ -1,6 +1,8 @@
 // ─── HKDF-SHA256 ─────────────────────────────────────────────────────────────
 
-import { encoder } from './helpers';
+import { hkdf } from '@noble/hashes/hkdf.js';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { hmac } from '@noble/hashes/hmac.js';
 
 export async function hkdfDerive(
   ikm: Uint8Array,
@@ -8,42 +10,21 @@ export async function hkdfDerive(
   length: number,
   salt?: Uint8Array,
 ): Promise<Uint8Array> {
-  const baseKey = await crypto.subtle.importKey(
-    'raw', ikm as unknown as BufferSource, 'HKDF', false, ['deriveBits'],
-  );
-  const bits = await crypto.subtle.deriveBits(
-    {
-      name: 'HKDF',
-      hash: 'SHA-256',
-      salt: (salt || new Uint8Array(0)) as unknown as BufferSource,
-      info: info as unknown as BufferSource,
-    },
-    baseKey,
-    length * 8,
-  );
-  return new Uint8Array(bits);
+  return hkdf(sha256, ikm, salt ?? new Uint8Array(0), info, length);
 }
 
 // KDF for root chain: DH output + old root key → new root key + chain key
-export async function kdfRoot(rootKey: Uint8Array, dhOutput: Uint8Array): Promise<[Uint8Array, Uint8Array]> {
-  const baseKey = await crypto.subtle.importKey('raw', dhOutput as unknown as BufferSource, 'HKDF', false, ['deriveBits']);
-  const newRoot = new Uint8Array(await crypto.subtle.deriveBits(
-    { name: 'HKDF', hash: 'SHA-256', salt: rootKey as unknown as BufferSource, info: encoder.encode('DillaRootKey') as unknown as BufferSource },
-    baseKey, 256,
-  ));
-  const chainKey = new Uint8Array(await crypto.subtle.deriveBits(
-    { name: 'HKDF', hash: 'SHA-256', salt: rootKey as unknown as BufferSource, info: encoder.encode('DillaChainKey') as unknown as BufferSource },
-    baseKey, 256,
-  ));
-  return [newRoot, chainKey];
+export async function kdfRoot(
+  rootKey: Uint8Array,
+  dhOutput: Uint8Array,
+): Promise<[Uint8Array, Uint8Array]> {
+  const derived = hkdf(sha256, dhOutput, rootKey, new TextEncoder().encode('DillaRootKey'), 64);
+  return [derived.slice(0, 32), derived.slice(32, 64)];
 }
 
 // KDF for sending/receiving chain: chain key → next chain key + message key
 export async function kdfChain(chainKey: Uint8Array): Promise<[Uint8Array, Uint8Array]> {
-  const key = await crypto.subtle.importKey(
-    'raw', chainKey as unknown as BufferSource, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
-  );
-  const messageKey = new Uint8Array(await crypto.subtle.sign('HMAC', key, new Uint8Array([0x01])));
-  const nextChainKey = new Uint8Array(await crypto.subtle.sign('HMAC', key, new Uint8Array([0x02])));
+  const messageKey = hmac(sha256, chainKey, new Uint8Array([0x01]));
+  const nextChainKey = hmac(sha256, chainKey, new Uint8Array([0x02]));
   return [nextChainKey, messageKey];
 }

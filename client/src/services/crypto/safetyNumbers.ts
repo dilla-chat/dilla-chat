@@ -1,5 +1,6 @@
 // ─── Safety Numbers ───────────────────────────────────────────────────────────
 
+import { sha256 } from '@noble/hashes/sha2.js';
 import { concatBytes, encoder } from './helpers';
 
 export async function generateSafetyNumber(
@@ -8,7 +9,7 @@ export async function generateSafetyNumber(
   theirIdentityKey: Uint8Array,
   theirId: string,
 ): Promise<string> {
-  async function fingerprint(identityKey: Uint8Array, stableId: string): Promise<Uint8Array> {
+  function fingerprint(identityKey: Uint8Array, stableId: string): Uint8Array {
     let data = concatBytes(
       encoder.encode('DillaFingerprint'),
       identityKey,
@@ -17,13 +18,13 @@ export async function generateSafetyNumber(
     // Iterate hash 5200 times as Signal does
     for (let i = 0; i < 5200; i++) {
       const input = concatBytes(data, identityKey);
-      data = new Uint8Array(await crypto.subtle.digest('SHA-256', input as unknown as BufferSource));
+      data = sha256(input);
     }
     return data;
   }
 
-  const ourFp = await fingerprint(ourIdentityKey, ourId);
-  const theirFp = await fingerprint(theirIdentityKey, theirId);
+  const ourFp = fingerprint(ourIdentityKey, ourId);
+  const theirFp = fingerprint(theirIdentityKey, theirId);
 
   // Combine in deterministic order
   const [first, second] = ourId < theirId ? [ourFp, theirFp] : [theirFp, ourFp];
