@@ -558,6 +558,7 @@ mod tests {
             allowed_origins: vec![],
             trusted_proxies: vec![],
             insecure: false,
+            theme_file: "".into(),
             telemetry_adapter: "".into(),
             sentry_dsn: "".into(),
             environment: "test".into(),

@@ -33,6 +33,7 @@ pub struct Config {
     pub allowed_origins: Vec<String>,
     pub trusted_proxies: Vec<String>,
     pub insecure: bool,
+    pub theme_file: String,
 
     // Client telemetry relay
     pub telemetry_adapter: String,
@@ -132,6 +133,7 @@ impl Config {
             allowed_origins,
             trusted_proxies,
             insecure: env_bool("DILLA_INSECURE", false),
+            theme_file: env_str("DILLA_THEME_FILE", ""),
             telemetry_adapter: env_str("DILLA_TELEMETRY_ADAPTER", "none"),
             sentry_dsn: env_str("DILLA_SENTRY_DSN", ""),
             environment: env_str("DILLA_ENVIRONMENT", "production"),
@@ -547,6 +549,24 @@ mod tests {
             let cfg = Config::load();
             let debug = format!("{:?}", cfg);
             assert!(debug.contains("Config"));
+        });
+    }
+
+    // --- theme_file ---
+
+    #[test]
+    fn theme_file_defaults_to_empty() {
+        with_env_vars(&[], || {
+            let cfg = Config::load();
+            assert!(cfg.theme_file.is_empty());
+        });
+    }
+
+    #[test]
+    fn theme_file_from_env() {
+        with_env_vars(&[("DILLA_THEME_FILE", "/etc/dilla/custom.css")], || {
+            let cfg = Config::load();
+            assert_eq!(cfg.theme_file, "/etc/dilla/custom.css");
         });
     }
 

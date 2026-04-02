@@ -1,0 +1,228 @@
+/*
+ * Dilla Custom Theme Template
+ * ============================
+ * Copy this file, uncomment the tokens you want to change, set new values,
+ * and point DILLA_THEME_FILE to your file on the server.
+ *
+ * Usage:
+ *   1. Copy this file somewhere accessible to the Dilla server process.
+ *   2. Uncomment the CSS variables you want to override.
+ *   3. Replace the values with your own colors.
+ *   4. Set the environment variable:
+ *        DILLA_THEME_FILE=/path/to/your-theme.css
+ *   5. Restart the server. Your theme is live.
+ *
+ * Important:
+ *   - Only define the tokens you actually want to override.
+ *     Unset tokens fall back to the built-in Gothenburg defaults.
+ *   - The built-in dark/light toggle overrides most visual tokens at runtime
+ *     via inline styles (higher CSS specificity). Your custom theme provides
+ *     the "base" values that are visible when no toggle preference is active.
+ *     See docs/theming.md for details.
+ *   - Structural tokens (typography scale, spacing, z-index, layout dimensions)
+ *     live in base-tokens.css and are intentionally not listed here.
+ *
+ * WCAG AA reminder:
+ *   - Normal text (--text-normal on --bg-primary): minimum 4.5:1 contrast ratio
+ *   - Large text / headings: minimum 3:1
+ *   - UI components (borders, icons): minimum 3:1
+ *   Checker: https://webaim.org/resources/contrastchecker/
+ */
+
+:root {
+  /* -------------------------------------------------------------------------
+   * Backgrounds
+   * The main surfaces of the UI, from darkest (tertiary) to lightest (floating).
+   * --bg-primary    : main chat area background
+   * --bg-secondary  : sidebar background
+   * --bg-tertiary   : deepest background (outer shell, scrollbar track)
+   * --bg-floating   : dropdowns, tooltips, floating panels
+   * --bg-modifier-* : hover / active / selected overlays on list items
+   * --bg-accent     : accent color used as a background (buttons, badges)
+   * --bg-accent-hover : hover state for accent backgrounds
+   * --------------------------------------------------------------------- */
+  /* --bg-primary: #121c26; */
+  /* --bg-secondary: #0c1218; */
+  /* --bg-tertiary: #0a0e14; */
+  /* --bg-floating: #1a2a38; */
+  /* --bg-modifier-hover: rgba(143, 163, 184, 0.12); */
+  /* --bg-modifier-active: rgba(143, 163, 184, 0.20); */
+  /* --bg-modifier-selected: rgba(143, 163, 184, 0.28); */
+  /* --bg-accent: #e8b84b; */
+  /* --bg-accent-hover: #f0ca6a; */
+
+  /* -------------------------------------------------------------------------
+   * Text colors
+   * --text-normal    : default body text
+   * --text-primary   : slightly brighter than normal, used for names/labels
+   * --text-secondary : de-emphasised text (timestamps, captions)
+   * --text-muted     : placeholder text, disabled labels
+   * --text-link      : hyperlinks
+   * --text-positive  : success messages, positive indicators
+   * --text-danger    : error messages, destructive action labels
+   * --text-warning   : warning messages
+   * --------------------------------------------------------------------- */
+  /* --text-normal: #e8edf2; */
+  /* --text-primary: #f0f4f8; */
+  /* --text-secondary: #8fa3b8; */
+  /* --text-muted: #7a8e9e; */
+  /* --text-link: #3ba8ba; */
+  /* --text-positive: #4caf82; */
+  /* --text-danger: #d05a4a; */
+  /* --text-warning: #e8b84b; */
+
+  /* -------------------------------------------------------------------------
+   * Header colors
+   * Used for panel/section headings.
+   * --------------------------------------------------------------------- */
+  /* --header-primary: #f0f4f8; */
+  /* --header-secondary: #8fa3b8; */
+
+  /* -------------------------------------------------------------------------
+   * Brand colors
+   * The primary brand hue used for selected state highlights, links, and
+   * call-to-action elements.
+   * --brand-500  : base brand color
+   * --brand-560  : slightly lighter / hover variant
+   * --------------------------------------------------------------------- */
+  /* --brand-500: #2e8b9a; */
+  /* --brand-560: #3ba8ba; */
+
+  /* -------------------------------------------------------------------------
+   * Status colors
+   * Presence indicators and semantic color primitives.
+   * --------------------------------------------------------------------- */
+  /* --status-online: #4caf82; */
+  /* --status-idle: #e8b84b; */
+  /* --status-dnd: #d05a4a; */
+  /* --status-offline: #4d6478; */
+  /* --green-360: #4caf82; */
+  /* --yellow-300: #e8b84b; */
+  /* --red-400: #d05a4a; */
+
+  /* -------------------------------------------------------------------------
+   * Interactive colors
+   * Icon and control states: normal → hover → active.
+   * --channel-icon    : default icon color in channel lists
+   * --interactive-*   : icon/control color at each interaction state
+   * --------------------------------------------------------------------- */
+  /* --channel-icon: #4d6478; */
+  /* --interactive-normal: #8fa3b8; */
+  /* --interactive-hover: #e8edf2; */
+  /* --interactive-active: #ffffff; */
+  /* --interactive-muted: #2d4050; */
+
+  /* -------------------------------------------------------------------------
+   * Borders & dividers
+   * --divider      : thin rule between list sections
+   * --border-color : default component border
+   * --border-subtle: lightest border variant
+   * --------------------------------------------------------------------- */
+  /* --divider: rgba(143, 163, 184, 0.08); */
+  /* --border-color: rgba(143, 163, 184, 0.10); */
+  /* --border-subtle: rgba(143, 163, 184, 0.08); */
+
+  /* -------------------------------------------------------------------------
+   * Scrollbar
+   * --------------------------------------------------------------------- */
+  /* --scrollbar-thin-thumb: #1a2a38; */
+  /* --scrollbar-thin-track: transparent; */
+
+  /* -------------------------------------------------------------------------
+   * Modals & inputs
+   * --------------------------------------------------------------------- */
+  /* --modal-bg: #0c1218; */
+  /* --input-bg: #0a1016; */
+
+  /* -------------------------------------------------------------------------
+   * Aliases
+   * Short-hand tokens consumed by components. Usually mirror brand/status
+   * primitives above — keep them in sync when you override brand/status.
+   * --------------------------------------------------------------------- */
+  /* --accent: #e8b84b; */
+  /* --accent-hover: #f0ca6a; */
+  /* --danger: #d05a4a; */
+  /* --success: #4caf82; */
+  /* --warning: #e8b84b; */
+  /* --hover: rgba(143, 163, 184, 0.12); */
+  /* --active: rgba(143, 163, 184, 0.20); */
+
+  /* -------------------------------------------------------------------------
+   * Brand-specific
+   * --color-encrypted    : color of the lock icon on E2E-encrypted kanals
+   * --shadow-glow-brand  : glow drop-shadow around brand-colored elements
+   * --shadow-glow-accent : glow drop-shadow around accent-colored elements
+   * --------------------------------------------------------------------- */
+  /* --color-encrypted: #4caf82; */
+  /* --shadow-glow-brand: 0 0 16px rgba(46, 139, 154, 0.3); */
+  /* --shadow-glow-accent: 0 0 16px rgba(232, 184, 75, 0.25); */
+
+  /* -------------------------------------------------------------------------
+   * Glass effects
+   * Frosted-glass backgrounds and borders used in panels and modals.
+   * The --glass-blur-* values are unitless numbers consumed by backdrop-filter.
+   * --------------------------------------------------------------------- */
+  /* --glass-blur: 12px; */
+  /* --glass-blur-heavy: 20px; */
+  /* --glass-blur-light: 8px; */
+  /* --glass-bg-primary: rgba(18, 28, 38, 0.85); */
+  /* --glass-bg-secondary: rgba(12, 18, 24, 0.80); */
+  /* --glass-bg-tertiary: rgba(10, 14, 20, 0.90); */
+  /* --glass-bg-floating: rgba(26, 42, 56, 0.90); */
+  /* --glass-bg-modal: rgba(12, 18, 24, 0.92); */
+  /* --glass-border: rgba(143, 163, 184, 0.12); */
+  /* --glass-border-light: rgba(143, 163, 184, 0.06); */
+  /* --glass-highlight: rgba(255, 255, 255, 0.04); */
+  /* --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.3); */
+  /* --glass-shadow-elevated: 0 12px 48px rgba(0, 0, 0, 0.4); */
+
+  /* -------------------------------------------------------------------------
+   * Gradients
+   * CSS gradient strings used on buttons, banners, and surface overlays.
+   * --------------------------------------------------------------------- */
+  /* --gradient-brand: linear-gradient(135deg, #2e8b9a 0%, #1e6b78 100%); */
+  /* --gradient-accent: linear-gradient(135deg, #e8b84b 0%, #d4a03a 100%); */
+  /* --gradient-surface: linear-gradient(180deg, rgba(143, 163, 184, 0.04) 0%, transparent 100%); */
+
+  /* -------------------------------------------------------------------------
+   * Overlays & backdrops
+   * Semi-transparent black veils layered over content (modals, etc.).
+   * --------------------------------------------------------------------- */
+  /* --overlay-dark: rgba(0, 0, 0, 0.5); */
+  /* --overlay-light: rgba(0, 0, 0, 0.15); */
+  /* --overlay-heavy: rgba(0, 0, 0, 0.85); */
+  /* --white-overlay-subtle: rgba(255, 255, 255, 0.06); */
+  /* --white-overlay-light: rgba(255, 255, 255, 0.1); */
+  /* --white-overlay-medium: rgba(255, 255, 255, 0.7); */
+
+  /* -------------------------------------------------------------------------
+   * Alpha variants
+   * Transparent versions of brand, accent, danger, and success colors.
+   * Used for tinted backgrounds, focus rings, and highlight states.
+   * When you change --brand-500, update these to match the new RGB values.
+   * --------------------------------------------------------------------- */
+
+  /* Brand alpha */
+  /* --brand-alpha-10: rgba(46, 139, 154, 0.1); */
+  /* --brand-alpha-12: rgba(46, 139, 154, 0.12); */
+  /* --brand-alpha-15: rgba(46, 139, 154, 0.15); */
+  /* --brand-alpha-20: rgba(46, 139, 154, 0.2); */
+  /* --brand-alpha-25: rgba(46, 139, 154, 0.25); */
+
+  /* Accent alpha */
+  /* --accent-alpha-08: rgba(232, 184, 75, 0.08); */
+  /* --accent-alpha-10: rgba(232, 184, 75, 0.10); */
+  /* --accent-alpha-15: rgba(232, 184, 75, 0.15); */
+  /* --accent-alpha-20: rgba(232, 184, 75, 0.2); */
+  /* --accent-alpha-25: rgba(232, 184, 75, 0.25); */
+  /* --accent-alpha-30: rgba(232, 184, 75, 0.3); */
+
+  /* Danger alpha */
+  /* --danger-alpha-15: rgba(208, 90, 74, 0.15); */
+  /* --danger-alpha-25: rgba(208, 90, 74, 0.25); */
+
+  /* Success alpha */
+  /* --success-alpha-15: rgba(76, 175, 130, 0.15); */
+  /* --success-alpha-35: rgba(52, 211, 122, 0.35); */
+  /* --success-alpha-40: rgba(76, 175, 130, 0.4); */
+}

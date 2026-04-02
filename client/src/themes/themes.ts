@@ -49,6 +49,68 @@ export const darkTheme: ThemeColors = {
   '--warning': '#e8b84f',
   '--hover': 'rgba(160, 140, 200, 0.12)',
   '--active': 'rgba(160, 140, 200, 0.20)',
+  /* Header */
+  '--header-primary': '#f0eef5',
+  '--header-secondary': '#a9a4b8',
+  /* Brand */
+  '--brand-500': '#7c4dff',
+  '--brand-560': '#9b7aff',
+  '--text-normal': '#e8e5f0',
+  /* Brand-specific */
+  '--color-encrypted': '#34d37a',
+  '--shadow-glow-brand': '0 0 16px rgba(124,77,255,0.3)',
+  '--shadow-glow-accent': '0 0 16px rgba(232,79,171,0.25)',
+  /* Glass */
+  '--glass-blur': '12px',
+  '--glass-blur-heavy': '20px',
+  '--glass-blur-light': '8px',
+  '--glass-bg-primary': 'rgba(34, 32, 58, 0.85)',
+  '--glass-bg-secondary': 'rgba(26, 24, 41, 0.80)',
+  '--glass-bg-tertiary': 'rgba(18, 16, 30, 0.90)',
+  '--glass-bg-floating': 'rgba(14, 12, 24, 0.90)',
+  '--glass-bg-modal': 'rgba(26, 24, 41, 0.92)',
+  '--glass-border': 'rgba(200, 180, 255, 0.12)',
+  '--glass-border-light': 'rgba(200, 180, 255, 0.06)',
+  '--glass-highlight': 'rgba(255, 255, 255, 0.04)',
+  '--glass-shadow': '0 8px 32px rgba(0, 0, 0, 0.3)',
+  '--glass-shadow-elevated': '0 12px 48px rgba(0, 0, 0, 0.4)',
+  /* Gradients */
+  '--gradient-brand': 'linear-gradient(135deg, #7c4dff 0%, #5c3dbf 100%)',
+  '--gradient-accent': 'linear-gradient(135deg, #e84fab 0%, #c43d90 100%)',
+  '--gradient-surface': 'linear-gradient(180deg, rgba(160, 140, 200, 0.04) 0%, transparent 100%)',
+  /* Overlays */
+  '--overlay-dark': 'rgba(0, 0, 0, 0.5)',
+  '--overlay-light': 'rgba(0, 0, 0, 0.15)',
+  '--overlay-heavy': 'rgba(0, 0, 0, 0.85)',
+  '--white-overlay-subtle': 'rgba(255, 255, 255, 0.06)',
+  '--white-overlay-light': 'rgba(255, 255, 255, 0.1)',
+  '--white-overlay-medium': 'rgba(255, 255, 255, 0.7)',
+  /* Brand alpha */
+  '--brand-alpha-10': 'rgba(124, 77, 255, 0.1)',
+  '--brand-alpha-12': 'rgba(124, 77, 255, 0.12)',
+  '--brand-alpha-15': 'rgba(124, 77, 255, 0.15)',
+  '--brand-alpha-20': 'rgba(124, 77, 255, 0.2)',
+  '--brand-alpha-25': 'rgba(124, 77, 255, 0.25)',
+  /* Accent alpha */
+  '--accent-alpha-08': 'rgba(232, 79, 171, 0.08)',
+  '--accent-alpha-10': 'rgba(232, 79, 171, 0.10)',
+  '--accent-alpha-15': 'rgba(232, 79, 171, 0.15)',
+  '--accent-alpha-20': 'rgba(232, 79, 171, 0.2)',
+  '--accent-alpha-25': 'rgba(232, 79, 171, 0.25)',
+  '--accent-alpha-30': 'rgba(232, 79, 171, 0.3)',
+  /* Danger alpha */
+  '--danger-alpha-15': 'rgba(242, 84, 106, 0.15)',
+  '--danger-alpha-25': 'rgba(242, 84, 106, 0.25)',
+  /* Success alpha */
+  '--success-alpha-15': 'rgba(52, 211, 122, 0.15)',
+  '--success-alpha-35': 'rgba(52, 211, 122, 0.35)',
+  '--success-alpha-40': 'rgba(52, 211, 122, 0.4)',
+  /* Divider */
+  '--divider': 'rgba(200, 180, 255, 0.08)',
+  /* Status extras */
+  '--green-360': '#34d37a',
+  '--yellow-300': '#e8b84f',
+  '--red-400': '#f2546a',
 };
 
 export const lightTheme: ThemeColors = {
@@ -90,4 +152,67 @@ export const lightTheme: ThemeColors = {
   '--warning': '#9a6700',
   '--hover': 'rgba(79, 84, 92, 0.08)',
   '--active': 'rgba(79, 84, 92, 0.16)',
+  /* Text */
+  '--text-normal': '#2e3338',
+  /* Header */
+  '--header-primary': '#060607',
+  '--header-secondary': '#4f5660',
+  /* Brand */
+  '--brand-500': '#0068b8',
+  '--brand-560': '#0078d4',
+  /* Brand-specific */
+  '--color-encrypted': '#248045',
+  '--shadow-glow-brand': '0 0 16px rgba(0,104,184,0.2)',
+  '--shadow-glow-accent': '0 0 16px rgba(196,144,0,0.2)',
+  /* Glass */
+  '--glass-blur': '12px',
+  '--glass-blur-heavy': '20px',
+  '--glass-blur-light': '8px',
+  '--glass-bg-primary': 'rgba(255, 255, 255, 0.85)',
+  '--glass-bg-secondary': 'rgba(242, 243, 245, 0.80)',
+  '--glass-bg-tertiary': 'rgba(227, 229, 232, 0.90)',
+  '--glass-bg-floating': 'rgba(255, 255, 255, 0.90)',
+  '--glass-bg-modal': 'rgba(255, 255, 255, 0.92)',
+  '--glass-border': 'rgba(79, 84, 92, 0.12)',
+  '--glass-border-light': 'rgba(79, 84, 92, 0.06)',
+  '--glass-highlight': 'rgba(255, 255, 255, 0.5)',
+  '--glass-shadow': '0 8px 32px rgba(0, 0, 0, 0.1)',
+  '--glass-shadow-elevated': '0 12px 48px rgba(0, 0, 0, 0.15)',
+  /* Gradients */
+  '--gradient-brand': 'linear-gradient(135deg, #0068b8 0%, #004d8a 100%)',
+  '--gradient-accent': 'linear-gradient(135deg, #c49000 0%, #a87a00 100%)',
+  '--gradient-surface': 'linear-gradient(180deg, rgba(79, 84, 92, 0.04) 0%, transparent 100%)',
+  /* Overlays */
+  '--overlay-dark': 'rgba(0, 0, 0, 0.3)',
+  '--overlay-light': 'rgba(0, 0, 0, 0.08)',
+  '--overlay-heavy': 'rgba(0, 0, 0, 0.6)',
+  '--white-overlay-subtle': 'rgba(255, 255, 255, 0.3)',
+  '--white-overlay-light': 'rgba(255, 255, 255, 0.5)',
+  '--white-overlay-medium': 'rgba(255, 255, 255, 0.85)',
+  /* Brand alpha */
+  '--brand-alpha-10': 'rgba(0, 104, 184, 0.1)',
+  '--brand-alpha-12': 'rgba(0, 104, 184, 0.12)',
+  '--brand-alpha-15': 'rgba(0, 104, 184, 0.15)',
+  '--brand-alpha-20': 'rgba(0, 104, 184, 0.2)',
+  '--brand-alpha-25': 'rgba(0, 104, 184, 0.25)',
+  /* Accent alpha */
+  '--accent-alpha-08': 'rgba(196, 144, 0, 0.08)',
+  '--accent-alpha-10': 'rgba(196, 144, 0, 0.10)',
+  '--accent-alpha-15': 'rgba(196, 144, 0, 0.15)',
+  '--accent-alpha-20': 'rgba(196, 144, 0, 0.2)',
+  '--accent-alpha-25': 'rgba(196, 144, 0, 0.25)',
+  '--accent-alpha-30': 'rgba(196, 144, 0, 0.3)',
+  /* Danger alpha */
+  '--danger-alpha-15': 'rgba(196, 53, 53, 0.15)',
+  '--danger-alpha-25': 'rgba(196, 53, 53, 0.25)',
+  /* Success alpha */
+  '--success-alpha-15': 'rgba(36, 128, 69, 0.15)',
+  '--success-alpha-35': 'rgba(36, 128, 69, 0.35)',
+  '--success-alpha-40': 'rgba(36, 128, 69, 0.4)',
+  /* Divider */
+  '--divider': 'rgba(79, 84, 92, 0.10)',
+  /* Status extras */
+  '--green-360': '#248045',
+  '--yellow-300': '#9a6700',
+  '--red-400': '#c43535',
 };

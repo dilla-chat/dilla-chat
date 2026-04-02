@@ -59,6 +59,9 @@ async fn main() {
 
     let mesh = init_federation_mesh(&cfg, &database, &hub).await;
 
+    // Load custom theme CSS from disk once at startup.
+    let custom_theme_css = api::theme::load_theme_file(&cfg.theme_file);
+
     // Build application state.
     let state = api::AppState {
         db: database.clone(),
@@ -67,6 +70,7 @@ async fn main() {
         presence: presence_mgr.clone(),
         config: Arc::new(cfg.clone()),
         mesh,
+        custom_theme_css,
     };
 
     // Create router and start server.

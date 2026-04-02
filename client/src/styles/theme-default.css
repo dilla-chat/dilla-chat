@@ -1,0 +1,141 @@
+/* Dilla default theme — Gothenburg-inspired palette */
+/* Override these tokens in a custom theme file to rebrand your instance */
+/* WCAG AA compliant: ≥4.5:1 normal text, ≥3:1 large text & UI elements */
+:root {
+  /* Backgrounds */
+  --bg-primary: #121c26;
+  --bg-secondary: #0c1218;
+  --bg-tertiary: #0a0e14;
+  --bg-floating: #1a2a38;
+  --bg-modifier-hover: rgba(143, 163, 184, 0.12);
+  --bg-modifier-active: rgba(143, 163, 184, 0.20);
+  --bg-modifier-selected: rgba(143, 163, 184, 0.28);
+
+  /* Text colors */
+  --text-normal: #e8edf2;
+  --text-primary: #f0f4f8;
+  --text-secondary: #8fa3b8;
+  --text-muted: #7a8e9e;
+  --text-link: #3ba8ba;
+  --text-positive: #4caf82;
+  --text-danger: #d05a4a;
+  --text-warning: #e8b84b;
+
+  /* Header colors */
+  --header-primary: #f0f4f8;
+  --header-secondary: #8fa3b8;
+
+  /* Brand colors */
+  --brand-500: #2e8b9a;
+  --brand-560: #3ba8ba;
+  --bg-accent: #e8b84b;
+  --bg-accent-hover: #f0ca6a;
+
+  /* Status colors */
+  --green-360: #4caf82;
+  --yellow-300: #e8b84b;
+  --red-400: #d05a4a;
+  --status-online: #4caf82;
+  --status-idle: #e8b84b;
+  --status-dnd: #d05a4a;
+  --status-offline: #4d6478;
+
+  /* Interactive colors */
+  --channel-icon: #4d6478;
+  --interactive-normal: #8fa3b8;
+  --interactive-hover: #e8edf2;
+  --interactive-active: #ffffff;
+  --interactive-muted: #2d4050;
+
+  /* Borders & dividers */
+  --divider: rgba(143, 163, 184, 0.08);
+  --border-color: rgba(143, 163, 184, 0.10);
+  --border-subtle: rgba(143, 163, 184, 0.08);
+
+  /* Scrollbar */
+  --scrollbar-thin-thumb: #1a2a38;
+  --scrollbar-thin-track: transparent;
+
+  /* Other */
+  --modal-bg: #0c1218;
+  --input-bg: #0a1016;
+
+  /* Aliases */
+  --accent: #e8b84b;
+  --accent-hover: #f0ca6a;
+  --danger: #d05a4a;
+  --success: #4caf82;
+  --warning: #e8b84b;
+  --hover: rgba(143, 163, 184, 0.12);
+  --active: rgba(143, 163, 184, 0.20);
+
+  /* Brand-specific */
+  --color-encrypted: #4caf82;
+  --shadow-glow-brand: 0 0 16px rgba(46,139,154,0.3);
+  --shadow-glow-accent: 0 0 16px rgba(232,184,75,0.25);
+
+  /* Glass effects */
+  --glass-blur: 12px;
+  --glass-blur-heavy: 20px;
+  --glass-blur-light: 8px;
+  --glass-bg-primary: rgba(18, 28, 38, 0.85);
+  --glass-bg-secondary: rgba(12, 18, 24, 0.80);
+  --glass-bg-tertiary: rgba(10, 14, 20, 0.90);
+  --glass-bg-floating: rgba(26, 42, 56, 0.90);
+  --glass-bg-modal: rgba(12, 18, 24, 0.92);
+  --glass-border: rgba(143, 163, 184, 0.12);
+  --glass-border-light: rgba(143, 163, 184, 0.06);
+  --glass-highlight: rgba(255, 255, 255, 0.04);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  --glass-shadow-elevated: 0 12px 48px rgba(0, 0, 0, 0.4);
+
+  /* Gradients */
+  --gradient-brand: linear-gradient(135deg, #2e8b9a 0%, #1e6b78 100%);
+  --gradient-accent: linear-gradient(135deg, #e8b84b 0%, #d4a03a 100%);
+  --gradient-surface: linear-gradient(180deg, rgba(143, 163, 184, 0.04) 0%, transparent 100%);
+
+  /* Overlay & backdrop */
+  --overlay-dark: rgba(0, 0, 0, 0.5);
+  --overlay-light: rgba(0, 0, 0, 0.15);
+  --overlay-heavy: rgba(0, 0, 0, 0.85);
+
+  /* White overlays */
+  --white-overlay-subtle: rgba(255, 255, 255, 0.06);
+  --white-overlay-light: rgba(255, 255, 255, 0.1);
+  --white-overlay-medium: rgba(255, 255, 255, 0.7);
+
+  /* Brand alpha variants */
+  --brand-alpha-10: rgba(46, 139, 154, 0.1);
+  --brand-alpha-12: rgba(46, 139, 154, 0.12);
+  --brand-alpha-15: rgba(46, 139, 154, 0.15);
+  --brand-alpha-20: rgba(46, 139, 154, 0.2);
+  --brand-alpha-25: rgba(46, 139, 154, 0.25);
+
+  /* Accent alpha variants */
+  --accent-alpha-08: rgba(232, 184, 75, 0.08);
+  --accent-alpha-10: rgba(232, 184, 75, 0.10);
+  --accent-alpha-15: rgba(232, 184, 75, 0.15);
+  --accent-alpha-20: rgba(232, 184, 75, 0.2);
+  --accent-alpha-25: rgba(232, 184, 75, 0.25);
+  --accent-alpha-30: rgba(232, 184, 75, 0.3);
+
+  /* Danger alpha variants */
+  --danger-alpha-15: rgba(208, 90, 74, 0.15);
+  --danger-alpha-25: rgba(208, 90, 74, 0.25);
+
+  /* Success alpha variants */
+  --success-alpha-15: rgba(76, 175, 130, 0.15);
+  --success-alpha-35: rgba(52, 211, 122, 0.35);
+  --success-alpha-40: rgba(76, 175, 130, 0.4);
+}
+
+/* Shared dialog backdrop button — invisible full-area close target */
+.dialog-backdrop {
+  position: absolute;
+  inset: 0;
+  background: none;
+  border: none;
+  cursor: default;
+  padding: 0;
+  z-index: 0;
+}
