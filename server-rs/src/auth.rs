@@ -381,6 +381,10 @@ pub struct UserId(pub String);
 mod tests {
     use super::*;
     use ed25519_dalek::{Signer, SigningKey};
+    use std::sync::Mutex;
+
+    /// Global mutex to prevent env var test races (env vars are process-global).
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn test_db() -> Database {
         let tmp = tempfile::tempdir().unwrap();
@@ -683,6 +687,7 @@ mod tests {
 
     #[test]
     fn test_derive_jwt_secret_with_passphrase_is_deterministic() {
+        let _guard = ENV_LOCK.lock().unwrap();
         let s1 = derive_jwt_secret("my-secret-passphrase");
         let s2 = derive_jwt_secret("my-secret-passphrase");
         assert_eq!(s1, s2);
@@ -691,6 +696,7 @@ mod tests {
 
     #[test]
     fn test_derive_jwt_secret_different_passphrases_differ() {
+        let _guard = ENV_LOCK.lock().unwrap();
         let s1 = derive_jwt_secret("passphrase-a");
         let s2 = derive_jwt_secret("passphrase-b");
         assert_ne!(s1, s2);
@@ -698,6 +704,7 @@ mod tests {
 
     #[test]
     fn test_derive_jwt_secret_empty_passphrase_is_random() {
+        let _guard = ENV_LOCK.lock().unwrap();
         let s1 = derive_jwt_secret("");
         let s2 = derive_jwt_secret("");
         // Ephemeral random secrets should differ (with overwhelming probability)
@@ -968,6 +975,7 @@ mod tests {
 
     #[test]
     fn test_derive_jwt_secret_with_env_var_override() {
+        let _guard = ENV_LOCK.lock().unwrap();
         // Set the env var, derive secret, then clean up.
         std::env::set_var("DILLA_JWT_SECRET", "my-explicit-jwt-secret");
         let s1 = derive_jwt_secret("some-passphrase");
@@ -981,6 +989,7 @@ mod tests {
 
     #[test]
     fn test_derive_jwt_secret_env_var_is_deterministic() {
+        let _guard = ENV_LOCK.lock().unwrap();
         std::env::set_var("DILLA_JWT_SECRET", "stable-secret-value");
         let s1 = derive_jwt_secret("");
         let s2 = derive_jwt_secret("");
@@ -993,6 +1002,7 @@ mod tests {
 
     #[test]
     fn test_derive_jwt_secret_env_var_empty_string_ignored() {
+        let _guard = ENV_LOCK.lock().unwrap();
         std::env::set_var("DILLA_JWT_SECRET", "");
         let s1 = derive_jwt_secret("my-passphrase");
         std::env::remove_var("DILLA_JWT_SECRET");
@@ -1004,6 +1014,7 @@ mod tests {
 
     #[test]
     fn test_derive_jwt_secret_env_var_differs_from_passphrase() {
+        let _guard = ENV_LOCK.lock().unwrap();
         // Without env var: derive from passphrase
         let from_passphrase = derive_jwt_secret("some-passphrase");
 
@@ -1017,6 +1028,7 @@ mod tests {
 
     #[test]
     fn test_derive_jwt_secret_env_var_produces_valid_tokens() {
+        let _guard = ENV_LOCK.lock().unwrap();
         std::env::set_var("DILLA_JWT_SECRET", "test-jwt-secret-for-tokens");
         let auth = test_auth_service_with_passphrase("ignored-passphrase");
         std::env::remove_var("DILLA_JWT_SECRET");
@@ -1028,6 +1040,7 @@ mod tests {
 
     #[test]
     fn test_derive_jwt_secret_env_var_cross_instance_validation() {
+        let _guard = ENV_LOCK.lock().unwrap();
         // Both instances must be created while the env var is set so they
         // derive the same JWT secret from the env var.
         std::env::set_var("DILLA_JWT_SECRET", "shared-env-secret");

@@ -15,10 +15,24 @@ describe('themeStore', () => {
     expect(root.dataset.theme).toBe('dark');
   });
 
-  it('syncs when userSettingsStore theme changes', () => {
+  it('syncs when userSettingsStore theme changes to light', () => {
     useUserSettingsStore.getState().setTheme('light');
-    // Allow subscription to fire
     expect(useThemeStore.getState().theme).toBe('light');
     expect(document.documentElement.dataset.theme).toBe('light');
+    expect(document.documentElement.style.colorScheme).toBe('light');
+  });
+
+  it('syncs when userSettingsStore theme changes to minimal', () => {
+    useUserSettingsStore.getState().setTheme('minimal');
+    expect(useThemeStore.getState().theme).toBe('minimal');
+    expect(document.documentElement.dataset.theme).toBe('minimal');
+    expect(document.documentElement.style.colorScheme).toBe('dark');
+  });
+
+  it('applies minimal theme CSS variables', () => {
+    useUserSettingsStore.getState().setTheme('minimal');
+    const root = document.documentElement;
+    // Minimal theme uses neutral grays
+    expect(root.style.getPropertyValue('--bg-primary')).toBeTruthy();
   });
 });

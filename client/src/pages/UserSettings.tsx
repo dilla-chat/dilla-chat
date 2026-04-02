@@ -459,7 +459,7 @@ export default function UserSettings() {
                 {t('userSettings.theme', 'Theme')}
               </div>
               <div className="settings-toggle-description">
-                {t('userSettings.themeDesc', 'Choose between dark and light mode')}
+                {t('userSettings.themeDesc', 'Choose a visual theme')}
               </div>
             </div>
             <div className="theme-toggle-buttons">
@@ -474,6 +474,12 @@ export default function UserSettings() {
                 onClick={() => setTheme('light')}
               >
                 {t('userSettings.light', 'Light')}
+              </button>
+              <button
+                className={`btn-secondary ${theme === 'minimal' ? 'active' : ''}`}
+                onClick={() => setTheme('minimal')}
+              >
+                {t('userSettings.minimal', 'Minimal')}
               </button>
             </div>
           </div>

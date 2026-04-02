@@ -216,3 +216,114 @@ export const lightTheme: ThemeColors = {
   '--yellow-300': '#9a6700',
   '--red-400': '#c43535',
 };
+
+export const minimalTheme: ThemeColors = {
+  /* Backgrounds — neutral dark grays */
+  '--bg-primary': '#1a1a1a',
+  '--bg-secondary': '#141414',
+  '--bg-tertiary': '#0f0f0f',
+  '--bg-accent': '#5c7a99',
+  '--bg-accent-hover': '#4a6580',
+  '--bg-modifier-hover': 'rgba(255, 255, 255, 0.06)',
+  '--bg-modifier-active': 'rgba(255, 255, 255, 0.10)',
+  '--bg-modifier-selected': 'rgba(255, 255, 255, 0.14)',
+  '--bg-floating': '#0a0a0a',
+  /* Text */
+  '--text-primary': '#e0e0e0',
+  '--text-secondary': '#b0b0b0',
+  '--text-muted': '#888888',
+  '--text-link': '#7aadcc',
+  '--text-positive': '#4caf7d',
+  '--text-danger': '#d96b6b',
+  '--text-warning': '#c8a050',
+  /* Borders */
+  '--border-color': 'rgba(255, 255, 255, 0.08)',
+  '--border-subtle': 'rgba(255, 255, 255, 0.05)',
+  /* Interactive */
+  '--channel-icon': '#888888',
+  '--interactive-normal': '#b0b0b0',
+  '--interactive-hover': '#d0d0d0',
+  '--interactive-active': '#f0f0f0',
+  '--interactive-muted': '#444444',
+  /* Status */
+  '--status-online': '#4caf7d',
+  '--status-idle': '#c8a050',
+  '--status-dnd': '#d96b6b',
+  '--status-offline': '#666666',
+  /* Scrollbar */
+  '--scrollbar-thin-thumb': '#333333',
+  '--scrollbar-thin-track': 'transparent',
+  /* Other */
+  '--modal-bg': '#141414',
+  '--input-bg': '#111111',
+  /* Aliases */
+  '--accent': '#5c7a99',
+  '--accent-hover': '#4a6580',
+  '--danger': '#d96b6b',
+  '--success': '#4caf7d',
+  '--warning': '#c8a050',
+  '--hover': 'rgba(255, 255, 255, 0.06)',
+  '--active': 'rgba(255, 255, 255, 0.10)',
+  /* Header */
+  '--header-primary': '#f0f0f0',
+  '--header-secondary': '#b0b0b0',
+  /* Brand */
+  '--brand-500': '#5c7a99',
+  '--brand-560': '#7a9ab8',
+  '--text-normal': '#d0d0d0',
+  /* Brand-specific */
+  '--color-encrypted': '#4caf7d',
+  '--shadow-glow-brand': '0 0 16px rgba(92, 122, 153, 0.3)',
+  '--shadow-glow-accent': '0 0 16px rgba(160, 147, 125, 0.25)',
+  /* Glass */
+  '--glass-blur': '12px',
+  '--glass-blur-heavy': '20px',
+  '--glass-blur-light': '8px',
+  '--glass-bg-primary': 'rgba(26, 26, 26, 0.85)',
+  '--glass-bg-secondary': 'rgba(20, 20, 20, 0.80)',
+  '--glass-bg-tertiary': 'rgba(15, 15, 15, 0.90)',
+  '--glass-bg-floating': 'rgba(10, 10, 10, 0.90)',
+  '--glass-bg-modal': 'rgba(20, 20, 20, 0.92)',
+  '--glass-border': 'rgba(255, 255, 255, 0.08)',
+  '--glass-border-light': 'rgba(255, 255, 255, 0.04)',
+  '--glass-highlight': 'rgba(255, 255, 255, 0.03)',
+  '--glass-shadow': '0 8px 32px rgba(0, 0, 0, 0.4)',
+  '--glass-shadow-elevated': '0 12px 48px rgba(0, 0, 0, 0.5)',
+  /* Gradients */
+  '--gradient-brand': 'linear-gradient(135deg, #5c7a99 0%, #3d5a73 100%)',
+  '--gradient-accent': 'linear-gradient(135deg, #a0937d 0%, #7a6f60 100%)',
+  '--gradient-surface': 'linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, transparent 100%)',
+  /* Overlays */
+  '--overlay-dark': 'rgba(0, 0, 0, 0.5)',
+  '--overlay-light': 'rgba(0, 0, 0, 0.15)',
+  '--overlay-heavy': 'rgba(0, 0, 0, 0.85)',
+  '--white-overlay-subtle': 'rgba(255, 255, 255, 0.04)',
+  '--white-overlay-light': 'rgba(255, 255, 255, 0.08)',
+  '--white-overlay-medium': 'rgba(255, 255, 255, 0.65)',
+  /* Brand alpha */
+  '--brand-alpha-10': 'rgba(92, 122, 153, 0.1)',
+  '--brand-alpha-12': 'rgba(92, 122, 153, 0.12)',
+  '--brand-alpha-15': 'rgba(92, 122, 153, 0.15)',
+  '--brand-alpha-20': 'rgba(92, 122, 153, 0.2)',
+  '--brand-alpha-25': 'rgba(92, 122, 153, 0.25)',
+  /* Accent alpha */
+  '--accent-alpha-08': 'rgba(160, 147, 125, 0.08)',
+  '--accent-alpha-10': 'rgba(160, 147, 125, 0.10)',
+  '--accent-alpha-15': 'rgba(160, 147, 125, 0.15)',
+  '--accent-alpha-20': 'rgba(160, 147, 125, 0.2)',
+  '--accent-alpha-25': 'rgba(160, 147, 125, 0.25)',
+  '--accent-alpha-30': 'rgba(160, 147, 125, 0.3)',
+  /* Danger alpha */
+  '--danger-alpha-15': 'rgba(217, 107, 107, 0.15)',
+  '--danger-alpha-25': 'rgba(217, 107, 107, 0.25)',
+  /* Success alpha */
+  '--success-alpha-15': 'rgba(76, 175, 125, 0.15)',
+  '--success-alpha-35': 'rgba(76, 175, 125, 0.35)',
+  '--success-alpha-40': 'rgba(76, 175, 125, 0.4)',
+  /* Divider */
+  '--divider': 'rgba(255, 255, 255, 0.06)',
+  /* Status extras */
+  '--green-360': '#4caf7d',
+  '--yellow-300': '#c8a050',
+  '--red-400': '#d96b6b',
+};
