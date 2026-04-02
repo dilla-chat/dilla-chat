@@ -265,18 +265,20 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
 
     // Request a single-use ticket for WS auth (avoids JWT in URL).
     // Falls back to token if ticket request fails.
-    (async () => {
-      let wsAuth: string;
-      let authParam: string;
+    const teamIdForClosure = activeTeamId;
+    const getAuthParam = async (): Promise<string> => {
       try {
-        wsAuth = await api.getWsTicket(activeTeamId);
-        authParam = `ticket=${encodeURIComponent(wsAuth)}`;
+        const ticket = await api.getWsTicket(teamIdForClosure);
+        return `ticket=${encodeURIComponent(ticket)}`;
       } catch {
-        wsAuth = connInfo.token!;
-        authParam = `token=${encodeURIComponent(wsAuth)}`;
+        return `token=${encodeURIComponent(connInfo.token!)}`;
       }
+    };
+
+    (async () => {
+      const authParam = await getAuthParam();
       console.log(`[AppLayout] Connecting WebSocket for team ${activeTeamId} → ${wsUrl}`);
-      ws.connectWithParams(activeTeamId, wsUrl, authParam);
+      ws.connectWithParams(activeTeamId, wsUrl, authParam, getAuthParam);
       wsConnected.current.add(activeTeamId);
       telemetryClient.setTeamId(activeTeamId);
     })();

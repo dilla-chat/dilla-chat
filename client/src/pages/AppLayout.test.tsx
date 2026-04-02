@@ -362,7 +362,7 @@ describe('AppLayout behavioral', () => {
     vi.mocked(api.getConnectionInfo).mockReturnValue({ baseUrl: 'http://localhost:8080', token: 'tok' });
     render(<AppLayout />);
     await waitFor(() => {
-      expect(ws.connectWithParams).toHaveBeenCalledWith('team1', 'ws://localhost:8080/ws', 'ticket=test-ws-ticket');
+      expect(ws.connectWithParams).toHaveBeenCalledWith('team1', 'ws://localhost:8080/ws', 'ticket=test-ws-ticket', expect.any(Function));
     });
   });
 
@@ -850,7 +850,7 @@ describe('AppLayout behavioral', () => {
     vi.mocked(api.getConnectionInfo).mockReturnValue({ baseUrl: 'http://localhost:8080', token: 'tok' });
     const { rerender } = render(<AppLayout />);
     await waitFor(() => {
-      expect(ws.connectWithParams).toHaveBeenCalledWith('team1', 'ws://localhost:8080/ws', 'ticket=test-ws-ticket');
+      expect(ws.connectWithParams).toHaveBeenCalledWith('team1', 'ws://localhost:8080/ws', 'ticket=test-ws-ticket', expect.any(Function));
     });
 
     // Simulate token change (e.g. after auth refresh)
@@ -874,7 +874,7 @@ describe('AppLayout behavioral', () => {
 
     rerender(<AppLayout />);
     await waitFor(() => {
-      expect(ws.connectWithParams).toHaveBeenCalledWith('team1', 'ws://localhost:8080/ws', 'ticket=test-ws-ticket');
+      expect(ws.connectWithParams).toHaveBeenCalledWith('team1', 'ws://localhost:8080/ws', 'ticket=test-ws-ticket', expect.any(Function));
     });
   });
 
@@ -904,7 +904,7 @@ describe('AppLayout behavioral', () => {
     vi.mocked(api.getConnectionInfo).mockReturnValue({ baseUrl: 'https://example.com', token: 'tok' });
     render(<AppLayout />);
     await waitFor(() => {
-      expect(ws.connectWithParams).toHaveBeenCalledWith('team1', 'wss://example.com/ws', 'ticket=test-ws-ticket');
+      expect(ws.connectWithParams).toHaveBeenCalledWith('team1', 'wss://example.com/ws', 'ticket=test-ws-ticket', expect.any(Function));
     });
   });
 
@@ -917,6 +917,7 @@ describe('AppLayout behavioral', () => {
         'team1',
         'ws://localhost:8080/ws',
         'token=jwt-fallback',
+        expect.any(Function),
       );
     });
   });
