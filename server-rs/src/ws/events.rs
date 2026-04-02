@@ -93,6 +93,11 @@ pub const EVENT_DM_MESSAGE_DELETED: &str = "dm:message:deleted";
 #[allow(dead_code)]
 pub const EVENT_DM_CREATED: &str = "dm:created";
 
+// ── Channel read event types ─────────────────────────────────────────────────
+pub const ACTION_CHANNEL_READ: &str = "channel:mark-read";
+#[allow(dead_code)]
+pub const EVENT_CHANNEL_READ: &str = "channel:read";
+
 // ── Request/Response action types ───────────────────────────────────────────
 pub const ACTION_SYNC_INIT: &str = "sync:init";
 pub const ACTION_MESSAGE_LIST: &str = "messages:list";
@@ -405,6 +410,12 @@ pub struct DMMessageDeletePayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DMTypingPayload {
     pub dm_channel_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChannelMarkReadPayload {
+    pub channel_id: String,
+    pub message_id: String,
 }
 
 // Request/Response

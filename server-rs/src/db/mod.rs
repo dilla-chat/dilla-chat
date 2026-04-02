@@ -17,6 +17,7 @@ mod dm_queries;
 mod thread_queries;
 mod reaction_queries;
 mod attachment_queries;
+mod read_queries;
 
 use rusqlite::Connection;
 use std::path::Path;
@@ -40,6 +41,7 @@ pub use dm_queries::*;
 pub use thread_queries::*;
 pub use reaction_queries::*;
 pub use attachment_queries::*;
+pub use read_queries::*;
 
 const MIGRATIONS: &[(&str, &str)] = &[
     ("001_initial.sql", include_str!("../../migrations/001_initial.sql")),
@@ -49,6 +51,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
     ("005_reactions_attachments.sql", include_str!("../../migrations/005_reactions_attachments.sql")),
     ("006_federation_sync.sql", include_str!("../../migrations/006_federation_sync.sql")),
     ("007_nullable_fks.sql", include_str!("../../migrations/007_nullable_fks.sql")),
+    ("008_channel_reads.sql", include_str!("../../migrations/008_channel_reads.sql")),
 ];
 
 /// Default number of read connections in the pool.

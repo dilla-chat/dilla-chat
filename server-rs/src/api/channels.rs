@@ -5,6 +5,8 @@ use axum::{
 use serde::Deserialize;
 use serde_json::Value;
 
+use rusqlite::OptionalExtension;
+
 use crate::api::helpers::{json_ok, json_ok_true, require_permission, require_team_member, spawn_db};
 use crate::api::AppState;
 use crate::auth::UserId;
@@ -335,6 +337,55 @@ mod tests {
         assert_eq!(channel.name, "new-name");
         assert_eq!(channel.topic, "General chat");
     }
+}
+
+pub async fn mark_read(
+    Extension(UserId(user_id)): Extension<UserId>,
+    State(state): State<AppState>,
+    Path((team_id, channel_id)): Path<(String, String)>,
+) -> Result<Json<Value>, AppError> {
+    let result = spawn_db(state.db.clone(), move |conn| {
+        require_team_member(conn, &user_id, &team_id)?;
+
+        // Verify channel belongs to the team
+        let channel = db::get_channel_by_id(conn, &channel_id)?
+            .ok_or(rusqlite::Error::QueryReturnedNoRows)?;
+        if channel.team_id != team_id {
+            return Err(rusqlite::Error::InvalidParameterName(
+                "channel does not belong to this team".into(),
+            ));
+        }
+
+        // Get the latest message in the channel
+        let latest_msg_id: Option<String> = conn
+            .query_row(
+                "SELECT id FROM messages WHERE channel_id = ?1 AND deleted = 0
+                 ORDER BY created_at DESC LIMIT 1",
+                [&channel_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        let message_id = latest_msg_id.unwrap_or_default();
+        db::mark_channel_read(conn, &user_id, &channel_id, &message_id)?;
+
+        let last_read_at = conn
+            .query_row(
+                "SELECT last_read_at FROM channel_reads WHERE user_id = ?1 AND channel_id = ?2",
+                rusqlite::params![user_id, channel_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?
+            .unwrap_or_default();
+
+        Ok(serde_json::json!({
+            "last_read_message_id": message_id,
+            "last_read_at": last_read_at,
+        }))
+    })
+    .await?;
+
+    json_ok(result)
 }
 
 pub async fn delete_channel(

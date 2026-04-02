@@ -152,6 +152,9 @@ pub(crate) async fn handle_event(
         | EVENT_VOICE_KEY_DISTRIBUTE => {
             handle_voice_event(hub, client_id, user_id, username, team_id, &event.event_type, event.payload).await;
         }
+        ACTION_CHANNEL_READ => {
+            handle_channel_mark_read(hub, user_id, team_id, event.payload).await;
+        }
         EVENT_DM_MESSAGE_SEND | EVENT_DM_MESSAGE_EDIT | EVENT_DM_MESSAGE_DELETE => {
             handle_dm_message_event(hub, user_id, username, &event.event_type, event.payload).await;
         }

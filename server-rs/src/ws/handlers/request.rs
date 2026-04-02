@@ -51,11 +51,17 @@ pub(in crate::ws) async fn handle_request(hub: &Hub, user_id: &str, team_id: &st
         ACTION_SYNC_INIT => {
             let db2 = db.clone();
             let tid2 = tid.clone();
+            let uid2 = uid.clone();
             ws_spawn_db(db2, move |conn| {
                 let channels = db::get_channels_by_team(conn, &tid2)?;
                 let members = db::get_members_by_team(conn, &tid2)?;
                 let roles = db::get_roles_by_team(conn, &tid2)?;
                 let team = db::get_team(conn, &tid2)?;
+                let unread_pairs = db::get_unread_counts_for_team(conn, &uid2, &tid2)?;
+                let unread_counts: serde_json::Map<String, serde_json::Value> = unread_pairs
+                    .into_iter()
+                    .map(|(cid, count)| (cid, serde_json::json!(count)))
+                    .collect();
                 Ok(serde_json::json!({
                     "team": team,
                     "channels": channels,
@@ -66,6 +72,7 @@ pub(in crate::ws) async fn handle_request(hub: &Hub, user_id: &str, team_id: &st
                         })
                     }).collect::<Vec<_>>(),
                     "roles": roles,
+                    "unread_counts": unread_counts,
                 }))
             })
             .await

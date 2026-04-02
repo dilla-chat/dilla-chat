@@ -160,6 +160,10 @@ pub fn create_router(state: AppState) -> Router {
                 .patch(channels::update)
                 .delete(channels::delete_channel),
         )
+        .route(
+            "/api/v1/teams/{team_id}/channels/{channel_id}/read",
+            put(channels::mark_read),
+        )
         // Messages
         .route(
             "/api/v1/teams/{team_id}/channels/{channel_id}/messages",
