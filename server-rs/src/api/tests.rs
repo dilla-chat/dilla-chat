@@ -175,6 +175,7 @@ fn test_router(state: AppState) -> Router {
         .route("/api/v1/teams/{team_id}/members/{user_id}/ban", post(super::teams::ban_member).delete(super::teams::unban_member))
         .route("/api/v1/teams/{team_id}/channels", get(super::channels::list).post(super::channels::create))
         .route("/api/v1/teams/{team_id}/channels/{channel_id}", get(super::channels::get_channel).patch(super::channels::update).delete(super::channels::delete_channel))
+        .route("/api/v1/teams/{team_id}/channels/{channel_id}/read", put(super::channels::mark_read))
         .route("/api/v1/teams/{team_id}/channels/{channel_id}/messages", get(super::messages::list).post(super::messages::create))
         .route("/api/v1/teams/{team_id}/channels/{channel_id}/messages/{message_id}", patch(super::messages::edit).delete(super::messages::delete_msg))
         .route("/api/v1/teams/{team_id}/roles", get(super::roles::list).post(super::roles::create))
@@ -3370,4 +3371,130 @@ async fn download_cross_team_attachment_returns_404() {
         .unwrap();
 
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// Channel read status tests
+// ══════════════════════════════════════════════════════════════════
+
+#[tokio::test]
+async fn mark_channel_read_succeeds() {
+    let (state, _tmp) = test_app_state();
+    let (_user_id, team_id, token) = bootstrap_user_and_team(&state);
+
+    let now = db::now_str();
+    let channel_id = db::new_id();
+    let msg_id = db::new_id();
+    state.db.with_conn(|conn| {
+        db::create_channel(conn, &db::Channel {
+            id: channel_id.clone(),
+            team_id: team_id.clone(),
+            name: "test-channel".into(),
+            topic: String::new(),
+            channel_type: "text".into(),
+            position: 0,
+            category: String::new(),
+            created_by: _user_id.clone(),
+            created_at: now.clone(),
+            updated_at: now.clone(),
+        })?;
+        db::create_message(conn, &db::Message {
+            id: msg_id.clone(),
+            channel_id: channel_id.clone(),
+            dm_channel_id: String::new(),
+            author_id: _user_id.clone(),
+            content: "hello".into(),
+            msg_type: "text".into(),
+            thread_id: String::new(),
+            edited_at: None,
+            deleted: false,
+            lamport_ts: 0,
+            created_at: now.clone(),
+        })
+    })
+    .unwrap();
+
+    let app = test_router(state);
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(&format!("/api/v1/teams/{}/channels/{}/read", team_id, channel_id))
+                .header("authorization", format!("Bearer {}", token))
+                .header("content-type", "application/json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap(),
+    )
+    .unwrap();
+    assert!(body["last_read_message_id"].is_string());
+    assert!(body["last_read_at"].is_string());
+}
+
+#[tokio::test]
+async fn mark_channel_read_requires_auth() {
+    let (state, _tmp) = test_app_state();
+    let (_user_id, team_id, _token) = bootstrap_user_and_team(&state);
+
+    let channel_id = db::new_id();
+    let app = test_router(state);
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(&format!("/api/v1/teams/{}/channels/{}/read", team_id, channel_id))
+                .header("content-type", "application/json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn mark_channel_read_empty_channel_returns_ok() {
+    let (state, _tmp) = test_app_state();
+    let (_user_id, team_id, token) = bootstrap_user_and_team(&state);
+
+    let now = db::now_str();
+    let channel_id = db::new_id();
+    state.db.with_conn(|conn| {
+        db::create_channel(conn, &db::Channel {
+            id: channel_id.clone(),
+            team_id: team_id.clone(),
+            name: "empty-channel".into(),
+            topic: String::new(),
+            channel_type: "text".into(),
+            position: 0,
+            category: String::new(),
+            created_by: _user_id.clone(),
+            created_at: now.clone(),
+            updated_at: now,
+        })
+    })
+    .unwrap();
+
+    let app = test_router(state);
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(&format!("/api/v1/teams/{}/channels/{}/read", team_id, channel_id))
+                .header("authorization", format!("Bearer {}", token))
+                .header("content-type", "application/json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
 }
