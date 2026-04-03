@@ -6,7 +6,6 @@ import { render } from 'vitest-browser-react';
 import { expect, test, describe } from 'vitest';
 
 import '../../styles/theme.css';
-import './MessageInput.css';
 
 describe('MessageInput focus-within', () => {
   test('focus-within changes border and shadow', async () => {

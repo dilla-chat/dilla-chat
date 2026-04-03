@@ -220,8 +220,8 @@ describe('MessageList', () => {
     render(
       <MessageList channelId="ch-1" currentUserId="user-1" onLoadMore={vi.fn()} />,
     );
-    // Skeleton loaders render as aria-hidden divs with the skeleton class
-    const skeletons = document.querySelectorAll('.skeleton-message');
+    // Skeleton loaders render as data-testid divs
+    const skeletons = document.querySelectorAll('[data-testid="skeleton-message"]');
     expect(skeletons.length).toBeGreaterThan(0);
   });
 

@@ -7,7 +7,6 @@ import { expect, test, describe, beforeEach } from 'vitest';
 import { page } from 'vitest/browser';
 
 import '../../styles/theme.css';
-import './SearchBar.css';
 
 const MOBILE = { w: 375, h: 812 };
 const DESKTOP = { w: 1280, h: 900 };

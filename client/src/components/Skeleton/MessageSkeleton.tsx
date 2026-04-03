@@ -1,6 +1,5 @@
 import { memo, useMemo } from 'react';
 import Skeleton from './Skeleton';
-import './Skeleton.css';
 
 interface Props {
   count?: number;
@@ -17,9 +16,9 @@ export default memo(function MessageSkeleton({ count = 5 }: Readonly<Props>) {
   return (
     <>
       {items.map((width) => (
-        <div key={width} className="skeleton-message">
-          <Skeleton width={36} height={36} borderRadius="50%" className="skeleton-message-avatar" />
-          <div className="skeleton-message-content">
+        <div key={width} data-testid="skeleton-message" className="flex items-start gap-3 py-2 px-4">
+          <Skeleton width={36} height={36} borderRadius="50%" />
+          <div className="flex flex-col gap-2 flex-1">
             <Skeleton width={120} height={14} />
             <Skeleton width={width} height={14} />
           </div>
