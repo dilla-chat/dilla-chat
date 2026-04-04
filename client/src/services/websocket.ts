@@ -17,6 +17,7 @@ export class WebSocketService {
   private readonly reconnectTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
   private readonly reconnectAttempts: Map<string, number> = new Map();
   private readonly connectionParams: Map<string, { url: string; token: string }> = new Map();
+  private readonly authRefreshers: Map<string, () => Promise<string>> = new Map();
   private readonly heartbeatTimers: Map<string, ReturnType<typeof setInterval>> = new Map();
   private readonly pendingMessages: Map<string, WSEvent[]> = new Map();
   private lastUserActivity = Date.now();
@@ -36,10 +37,21 @@ export class WebSocketService {
     this.connectWithParams(teamId, url, `token=${encodeURIComponent(token)}`);
   }
 
-  /** Connect with custom auth query params (e.g. ticket= or token=). */
-  connectWithParams(teamId: string, url: string, authParam: string): void {
+  /** Connect with custom auth query params (e.g. ticket= or token=).
+   *  @param refreshAuth — optional callback to obtain fresh auth params on reconnect
+   *                        (e.g. fetch a new single-use WS ticket). If not provided,
+   *                        reconnects reuse the original authParam. */
+  connectWithParams(
+    teamId: string,
+    url: string,
+    authParam: string,
+    refreshAuth?: () => Promise<string>,
+  ): void {
     this.disconnect(teamId);
     this.connectionParams.set(teamId, { url, token: authParam });
+    if (refreshAuth) {
+      this.authRefreshers.set(teamId, refreshAuth);
+    }
     this.reconnectAttempts.set(teamId, 0);
     this.createConnection(teamId);
   }
@@ -118,11 +130,25 @@ export class WebSocketService {
     const delay = Math.min(BASE_RECONNECT_DELAY * 2 ** attempts, MAX_RECONNECT_DELAY);
     this.reconnectAttempts.set(teamId, attempts + 1);
 
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
       this.reconnectTimers.delete(teamId);
-      if (this.connectionParams.has(teamId)) {
-        this.createConnection(teamId);
+      if (!this.connectionParams.has(teamId)) return;
+
+      // Refresh auth params (e.g. get a fresh single-use ticket) before reconnecting.
+      const refresher = this.authRefreshers.get(teamId);
+      if (refresher) {
+        try {
+          const freshAuth = await refresher();
+          const params = this.connectionParams.get(teamId);
+          if (params) {
+            params.token = freshAuth;
+          }
+        } catch {
+          // If refresh fails, try with existing params (will likely 401 and retry)
+        }
       }
+
+      this.createConnection(teamId);
     }, delay);
 
     this.reconnectTimers.set(teamId, timer);
@@ -130,6 +156,7 @@ export class WebSocketService {
 
   disconnect(teamId: string): void {
     this.connectionParams.delete(teamId);
+    this.authRefreshers.delete(teamId);
 
     const timer = this.reconnectTimers.get(teamId);
     if (timer) {

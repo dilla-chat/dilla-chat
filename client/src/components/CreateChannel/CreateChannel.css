@@ -1,11 +1,3 @@
-dialog.create-channel-overlay {
-  border: none;
-  padding: 0;
-  background: transparent;
-  max-width: none;
-  max-height: none;
-}
-
 .create-channel-overlay {
   position: fixed;
   inset: 0;

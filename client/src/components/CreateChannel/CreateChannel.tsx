@@ -54,8 +54,9 @@ export default function CreateChannel({ defaultCategory, onClose }: Readonly<Pro
   };
 
   return (
-    <dialog className="create-channel-overlay" open aria-labelledby="create-channel-title">
-      <button type="button" className="dialog-backdrop" onClick={onClose} aria-label="Close" />
+    <div className="create-channel-overlay" role="dialog" aria-modal="true" aria-labelledby="create-channel-title"
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
       <div className="create-channel-modal" ref={modalRef}>
         <h2 id="create-channel-title" className="heading-3">{t('channels.create')}</h2>
 
@@ -123,6 +124,6 @@ export default function CreateChannel({ defaultCategory, onClose }: Readonly<Pro
           </button>
         </div>
       </div>
-    </dialog>
+    </div>
   );
 }

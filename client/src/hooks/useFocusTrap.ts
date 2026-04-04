@@ -22,7 +22,9 @@ export function useFocusTrap(
     trapRef.current = trap;
 
     return () => {
-      trap.deactivate();
+      // Pass a noop onDeactivate to prevent firing onClose during
+      // React StrictMode cleanup (which double-invokes effects).
+      trap.deactivate({ onDeactivate: () => {} });
       trapRef.current = null;
     };
   }, [active, containerRef, onEscape]);

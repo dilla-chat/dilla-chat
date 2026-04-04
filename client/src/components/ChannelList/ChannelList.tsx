@@ -88,8 +88,9 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
           </button>
           {onCreateChannel && (
             <button
+              type="button"
               className="channel-category-add"
-              onClick={() => onCreateChannel(cat)}
+              onClick={(e) => { e.stopPropagation(); onCreateChannel(cat); }}
               title={t('channels.create')}
             >
               <Plus width={16} height={16} strokeWidth={2} />
