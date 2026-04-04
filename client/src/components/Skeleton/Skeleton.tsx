@@ -1,5 +1,4 @@
 import { memo } from 'react';
-import './Skeleton.css';
 
 interface Props {
   width?: string | number;
@@ -16,7 +15,7 @@ export default memo(function Skeleton({
 }: Readonly<Props>) {
   return (
     <div
-      className={`skeleton ${className}`}
+      className={`bg-surface-tertiary animate-pulse-skeleton ${className}`}
       style={{ width, height, borderRadius }}
       aria-hidden="true"
     />

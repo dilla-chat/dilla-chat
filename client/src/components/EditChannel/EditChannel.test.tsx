@@ -62,8 +62,8 @@ describe('EditChannel', () => {
 
   it('does not call onClose when modal content is clicked', () => {
     const onClose = vi.fn();
-    const { container } = render(<EditChannel channel={channel} onClose={onClose} />);
-    const modal = container.querySelector('.edit-channel-modal')!;
+    render(<EditChannel channel={channel} onClose={onClose} />);
+    const modal = screen.getByTestId('edit-channel-modal');
     fireEvent.click(modal);
     expect(onClose).not.toHaveBeenCalled();
   });

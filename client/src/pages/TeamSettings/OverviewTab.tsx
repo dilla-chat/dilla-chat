@@ -39,39 +39,40 @@ export default function OverviewTab({
   };
 
   return (
-    <div className="settings-section">
-      <h2 className="heading-3">{t('settings.overview', 'Overview')}</h2>
+    <div>
+      <h2 className="text-foreground-primary mb-5">{t('settings.overview', 'Overview')}</h2>
 
-      <div className="settings-field">
-        <label className="micro">{t('settings.teamName', 'Team Name')}</label>
-        <input value={name} onChange={(e) => setName(e.target.value)} />
+      <div className="mb-5">
+        <label className="text-micro font-medium uppercase tracking-wide text-foreground-muted block mb-2">{t('settings.teamName', 'Team Name')}</label>
+        <input className="form-input" value={name} onChange={(e) => setName(e.target.value)} />
       </div>
 
-      <div className="settings-field">
-        <label className="micro">{t('settings.description', 'Description')}</label>
-        <textarea value={description} onChange={(e) => setDescription(e.target.value)} />
+      <div className="mb-5">
+        <label className="text-micro font-medium uppercase tracking-wide text-foreground-muted block mb-2">{t('settings.description', 'Description')}</label>
+        <textarea className="form-input" value={description} onChange={(e) => setDescription(e.target.value)} />
       </div>
 
-      <div className="settings-field">
-        <label className="micro">{t('settings.iconUrl', 'Icon URL')}</label>
-        <input value={iconUrl} onChange={(e) => setIconUrl(e.target.value)} />
+      <div className="mb-5">
+        <label className="text-micro font-medium uppercase tracking-wide text-foreground-muted block mb-2">{t('settings.iconUrl', 'Icon URL')}</label>
+        <input className="form-input" value={iconUrl} onChange={(e) => setIconUrl(e.target.value)} />
       </div>
 
-      <div className="settings-field">
-        <label className="micro">{t('settings.maxFileSize', 'Max File Size (bytes)')}</label>
+      <div className="mb-5">
+        <label className="text-micro font-medium uppercase tracking-wide text-foreground-muted block mb-2">{t('settings.maxFileSize', 'Max File Size (bytes)')}</label>
         <input
+          className="form-input"
           type="number"
           value={maxFileSize}
           onChange={(e) => setMaxFileSize(Number(e.target.value))}
         />
       </div>
 
-      <div className="settings-toggle">
-        <div className="settings-toggle-info">
-          <div className="settings-toggle-label">
+      <div className="flex items-center justify-between py-3 border-b border-border-subtle">
+        <div className="flex-1">
+          <div className="text-base font-medium text-foreground-primary">
             {t('settings.allowInvites', 'Allow Member Invites')}
           </div>
-          <div className="settings-toggle-desc">
+          <div className="text-sm text-foreground-secondary mt-0.5">
             {t('settings.allowInvitesDesc', 'Let non-admin members create invite links')}
           </div>
         </div>
@@ -81,7 +82,7 @@ export default function OverviewTab({
         />
       </div>
 
-      <div style={{ marginTop: 24 }}>
+      <div className="mt-6">
         <button className="btn-primary" onClick={handleSave} disabled={saving}>
           {saving ? t('common.saving', 'Saving...') : t('common.save', 'Save Changes')}
         </button>

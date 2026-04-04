@@ -57,28 +57,28 @@ describe('NewDMModal', () => {
   });
 
   it('selects member on click', () => {
-    const { container } = render(<NewDMModal currentUserId="user-1" onClose={vi.fn()} onDMCreated={vi.fn()} />);
+    render(<NewDMModal currentUserId="user-1" onClose={vi.fn()} onDMCreated={vi.fn()} />);
     fireEvent.click(screen.getByText('Bob'));
-    const selected = container.querySelectorAll('.new-dm-member.selected');
+    const members = screen.getAllByTestId('new-dm-member');
+    const selected = members.filter((el) => el.getAttribute('data-selected') === 'true');
     expect(selected.length).toBe(1);
   });
 
   it('deselects member on second click', () => {
-    const { container } = render(<NewDMModal currentUserId="user-1" onClose={vi.fn()} onDMCreated={vi.fn()} />);
-    // Click the member row (not the chip)
-    const memberRow = container.querySelector('.new-dm-member')!;
-    fireEvent.click(memberRow); // select bob (first non-current-user member)
-    // Now Bob appears in chip AND list; click the member row again
-    const memberRows = container.querySelectorAll('.new-dm-member');
-    fireEvent.click(memberRows[0]); // deselect
-    const selected = container.querySelectorAll('.new-dm-member.selected');
+    render(<NewDMModal currentUserId="user-1" onClose={vi.fn()} onDMCreated={vi.fn()} />);
+    const memberRows = screen.getAllByTestId('new-dm-member');
+    fireEvent.click(memberRows[0]); // select bob (first non-current-user member)
+    // Click the member row again to deselect
+    const memberRowsAfter = screen.getAllByTestId('new-dm-member');
+    fireEvent.click(memberRowsAfter[0]); // deselect
+    const selected = screen.getAllByTestId('new-dm-member').filter((el) => el.getAttribute('data-selected') === 'true');
     expect(selected.length).toBe(0);
   });
 
   it('shows selected member chips', () => {
-    const { container } = render(<NewDMModal currentUserId="user-1" onClose={vi.fn()} onDMCreated={vi.fn()} />);
+    render(<NewDMModal currentUserId="user-1" onClose={vi.fn()} onDMCreated={vi.fn()} />);
     fireEvent.click(screen.getByText('Bob'));
-    const chips = container.querySelectorAll('.new-dm-chip');
+    const chips = screen.getAllByTestId('new-dm-chip');
     expect(chips.length).toBe(1);
   });
 
@@ -140,14 +140,14 @@ describe('NewDMModal', () => {
   });
 
   it('removes member via chip remove button', () => {
-    const { container } = render(<NewDMModal currentUserId="user-1" onClose={vi.fn()} onDMCreated={vi.fn()} />);
+    render(<NewDMModal currentUserId="user-1" onClose={vi.fn()} onDMCreated={vi.fn()} />);
     // Select bob
     fireEvent.click(screen.getByText('Bob'));
-    expect(container.querySelectorAll('.new-dm-chip').length).toBe(1);
+    expect(screen.getAllByTestId('new-dm-chip').length).toBe(1);
     // Remove via chip button
-    const removeBtn = container.querySelector('.new-dm-chip-remove')!;
+    const removeBtn = screen.getByTestId('new-dm-chip-remove');
     fireEvent.click(removeBtn);
-    expect(container.querySelectorAll('.new-dm-chip').length).toBe(0);
+    expect(screen.queryAllByTestId('new-dm-chip').length).toBe(0);
   });
 
   it('does not create when activeTeamId is null', async () => {

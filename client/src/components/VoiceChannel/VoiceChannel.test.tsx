@@ -184,8 +184,9 @@ describe('VoiceChannel', () => {
         },
       },
     });
-    const { container } = render(<VoiceChannel channel={channel} />);
-    expect(container.querySelector('.voice-tile.speaking')).toBeInTheDocument();
+    render(<VoiceChannel channel={channel} />);
+    const tile = screen.getByTestId('voice-tile');
+    expect(tile.className).toContain('speaking');
   });
 
   it('calls joinChannel when join button is clicked', () => {
@@ -262,10 +263,10 @@ describe('VoiceChannel', () => {
         'user-1': { user_id: 'user-1', username: 'alice', muted: false, deafened: false, speaking: true, voiceLevel: 0.7 },
       },
     });
-    const { container } = render(<VoiceChannel channel={channel} />);
-    const tile = container.querySelector('.voice-tile');
+    render(<VoiceChannel channel={channel} />);
+    const tile = screen.getByTestId('voice-tile');
     expect(tile).toBeInTheDocument();
-    expect(tile?.getAttribute('style')).toContain('--voice-level');
+    expect(tile.getAttribute('style')).toContain('--voice-level');
   });
 
   it('shows speaking label for speaking peers', () => {
@@ -309,9 +310,9 @@ describe('VoiceChannel', () => {
         'user-1': { user_id: 'user-1', username: 'alice', muted: false, deafened: false, speaking: false, voiceLevel: 0 },
       },
     });
-    const { container } = render(<VoiceChannel channel={channel} />);
-    const avatar = container.querySelector('.voice-tile-avatar');
-    expect(avatar?.textContent).toBe('AL');
+    render(<VoiceChannel channel={channel} />);
+    const avatar = screen.getByTestId('voice-tile-avatar');
+    expect(avatar.textContent).toBe('AL');
   });
 
   it('enters fullscreen mode when screen share banner is clicked', () => {
@@ -326,13 +327,11 @@ describe('VoiceChannel', () => {
         'user-1': { user_id: 'user-1', username: 'alice', muted: false, deafened: false, speaking: false, voiceLevel: 0 },
       },
     });
-    const { container } = render(<VoiceChannel channel={channel} />);
-    const banner = container.querySelector('.voice-screen-share-banner');
-    if (banner) {
-      fireEvent.click(banner);
-      // Should now show fullscreen mode
-      expect(container.querySelector('.screen-share-fullscreen')).toBeInTheDocument();
-    }
+    render(<VoiceChannel channel={channel} />);
+    const banner = screen.getByTestId('voice-screen-share-banner');
+    fireEvent.click(banner);
+    // Should now show fullscreen mode
+    expect(screen.getByTestId('screen-share-fullscreen')).toBeInTheDocument();
   });
 
   it('shows fullscreen screen share view with close button', () => {
@@ -347,19 +346,13 @@ describe('VoiceChannel', () => {
         'user-1': { user_id: 'user-1', username: 'alice', muted: false, deafened: false, speaking: false, voiceLevel: 0 },
       },
     });
-    const { container } = render(<VoiceChannel channel={channel} />);
+    render(<VoiceChannel channel={channel} />);
     // Click the screen share banner to enter fullscreen
-    const banner = container.querySelector('.voice-screen-share-banner');
-    if (banner) {
-      fireEvent.click(banner);
-      expect(screen.getByText('You are sharing your screen')).toBeInTheDocument();
-      // Click collapse button to exit fullscreen
-      const collapseBtn = container.querySelector('.screen-share-close');
-      if (collapseBtn) {
-        fireEvent.click(collapseBtn);
-        expect(container.querySelector('.screen-share-fullscreen')).not.toBeInTheDocument();
-      }
-    }
+    fireEvent.click(screen.getByTestId('voice-screen-share-banner'));
+    expect(screen.getByText('You are sharing your screen')).toBeInTheDocument();
+    // Click collapse button to exit fullscreen
+    fireEvent.click(screen.getByTestId('screen-share-close'));
+    expect(screen.queryByTestId('screen-share-fullscreen')).not.toBeInTheDocument();
   });
 
   it('shows remote screen share with sharer name', () => {
@@ -392,15 +385,12 @@ describe('VoiceChannel', () => {
         'user-2': { user_id: 'user-2', username: 'bob', muted: false, deafened: false, speaking: true, voiceLevel: 0.5 },
       },
     });
-    const { container } = render(<VoiceChannel channel={channel} />);
-    const banner = container.querySelector('.voice-screen-share-banner');
-    if (banner) {
-      fireEvent.click(banner);
-      // Thumbnail bar should show
-      expect(container.querySelector('.fullscreen-thumbnail-bar')).toBeInTheDocument();
-      // Muted peer should have mute icon
-      expect(screen.getByTestId('icon-mic-mute')).toBeInTheDocument();
-    }
+    render(<VoiceChannel channel={channel} />);
+    fireEvent.click(screen.getByTestId('voice-screen-share-banner'));
+    // Thumbnail bar should show
+    expect(screen.getByTestId('fullscreen-thumbnail-bar')).toBeInTheDocument();
+    // Muted peer should have mute icon
+    expect(screen.getByTestId('icon-mic-mute')).toBeInTheDocument();
   });
 
   it('uses teamId from channel when available', () => {
@@ -427,25 +417,17 @@ describe('VoiceChannel', () => {
         'user-1': { user_id: 'user-1', username: 'alice', muted: false, deafened: false, speaking: false, voiceLevel: 0, webcam_sharing: true },
       },
     });
-    const { container } = render(<VoiceChannel channel={channel} />);
+    render(<VoiceChannel channel={channel} />);
     // Enter fullscreen
-    const banner = container.querySelector('.voice-screen-share-banner');
-    if (banner) {
-      fireEvent.click(banner);
-      // Click on thumbnail to focus webcam
-      const thumbnail = container.querySelector('.fullscreen-thumbnail');
-      if (thumbnail) {
-        fireEvent.click(thumbnail);
-        // Should show focused webcam
-        expect(container.querySelector('.fullscreen-focused-webcam')).toBeInTheDocument();
-        // Click to unfocus
-        const focused = container.querySelector('.fullscreen-focused-webcam');
-        if (focused) {
-          fireEvent.click(focused);
-          expect(container.querySelector('.fullscreen-focused-webcam')).not.toBeInTheDocument();
-        }
-      }
-    }
+    fireEvent.click(screen.getByTestId('voice-screen-share-banner'));
+    // Click on thumbnail to focus webcam
+    const thumbnail = screen.getByTestId('fullscreen-thumbnail');
+    fireEvent.click(thumbnail);
+    // Should show focused webcam
+    expect(screen.getByTestId('fullscreen-focused-webcam')).toBeInTheDocument();
+    // Click to unfocus
+    fireEvent.click(screen.getByTestId('fullscreen-focused-webcam'));
+    expect(screen.queryByTestId('fullscreen-focused-webcam')).not.toBeInTheDocument();
   });
 
   it('uses channel.team_id fallback when teamId is missing', () => {
@@ -484,11 +466,11 @@ describe('VoiceChannel', () => {
     });
     const { container } = render(<VoiceChannel channel={channel} />);
     // The banner contains a VideoPreview with onClick that triggers setFullscreen(true)
-    const video = container.querySelector('.voice-screen-share-video');
+    const video = container.querySelector('video');
     if (video) {
       fireEvent.click(video);
       // After clicking the video, fullscreen mode should activate
-      expect(container.querySelector('.screen-share-fullscreen')).toBeInTheDocument();
+      expect(screen.getByTestId('screen-share-fullscreen')).toBeInTheDocument();
     }
   });
 });

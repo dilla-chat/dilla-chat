@@ -56,8 +56,8 @@ describe('VoiceControls', () => {
   });
 
   it('renders when connected', () => {
-    const { container } = render(<VoiceControls />);
-    expect(container.querySelector('.voice-controls')).toBeInTheDocument();
+    render(<VoiceControls />);
+    expect(screen.getByTestId('voice-controls')).toBeInTheDocument();
   });
 
   it('shows Voice Connected text when connected', () => {
@@ -181,8 +181,8 @@ describe('VoiceControls', () => {
 
   it('renders when connecting', () => {
     setVoiceState({ connected: false, connecting: true });
-    const { container } = render(<VoiceControls />);
-    expect(container.querySelector('.voice-controls')).toBeInTheDocument();
+    render(<VoiceControls />);
+    expect(screen.getByTestId('voice-controls')).toBeInTheDocument();
   });
 
   it('handles screen share failure gracefully', async () => {

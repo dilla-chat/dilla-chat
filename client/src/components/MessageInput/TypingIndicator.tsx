@@ -43,7 +43,7 @@ export default function TypingIndicator({
   }
 
   return (
-    <div className="typing-indicator" role="status" aria-live="polite">
+    <div className="text-xs text-foreground-muted px-1 py-0.5 min-h-[18px] font-medium" role="status" aria-live="polite">
       {text}
     </div>
   );

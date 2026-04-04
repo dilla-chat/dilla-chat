@@ -51,13 +51,13 @@ export default function InvitesTab({ teamId }: Readonly<{ teamId: string }>) {
   };
 
   return (
-    <div className="settings-section">
-      <h2 className="heading-3">{t('settings.invites')}</h2>
+    <div>
+      <h2 className="text-foreground-primary mb-5">{t('settings.invites')}</h2>
 
-      <div className="invite-form">
-        <div className="settings-field">
-          <label className="micro">{t('invites.maxUses', 'Max Uses')}</label>
-          <select value={maxUses} onChange={(e) => setMaxUses(e.target.value)}>
+      <div className="flex items-end gap-4 mb-6">
+        <div className="mb-0">
+          <label className="text-micro font-medium uppercase tracking-wide text-foreground-muted block mb-2">{t('invites.maxUses', 'Max Uses')}</label>
+          <select className="w-full py-2.5 pr-8 pl-2.5 rounded-sm bg-input text-foreground-primary text-base font-[inherit] box-border" value={maxUses} onChange={(e) => setMaxUses(e.target.value)}>
             <option value="0">{t('invites.unlimited', 'Unlimited')}</option>
             <option value="1">1</option>
             <option value="5">5</option>
@@ -68,9 +68,9 @@ export default function InvitesTab({ teamId }: Readonly<{ teamId: string }>) {
           </select>
         </div>
 
-        <div className="settings-field">
-          <label className="micro">{t('invites.expiry', 'Expires After')}</label>
-          <select value={expiry} onChange={(e) => setExpiry(e.target.value)}>
+        <div className="mb-0">
+          <label className="text-micro font-medium uppercase tracking-wide text-foreground-muted block mb-2">{t('invites.expiry', 'Expires After')}</label>
+          <select className="w-full py-2.5 pr-8 pl-2.5 rounded-sm bg-input text-foreground-primary text-base font-[inherit] box-border" value={expiry} onChange={(e) => setExpiry(e.target.value)}>
             <option value="0.5">{t('invites.30min', '30 minutes')}</option>
             <option value="1">{t('invites.1hour', '1 hour')}</option>
             <option value="6">{t('invites.6hours', '6 hours')}</option>
@@ -87,13 +87,13 @@ export default function InvitesTab({ teamId }: Readonly<{ teamId: string }>) {
       </div>
 
       {invites.length > 0 && (
-        <table className="invites-table">
+        <table className="w-full border-collapse text-sm">
           <thead>
-            <tr>
-              <th>{t('invites.link', 'Invite Link')}</th>
-              <th>{t('invites.createdBy', 'Created By')}</th>
-              <th>{t('invites.uses', 'Uses')}</th>
-              <th>{t('invites.expiresAt', 'Expires')}</th>
+            <tr className="border-b border-border-subtle">
+              <th className="text-left py-2 px-3 text-foreground-secondary font-medium">{t('invites.link', 'Invite Link')}</th>
+              <th className="text-left py-2 px-3 text-foreground-secondary font-medium">{t('invites.createdBy', 'Created By')}</th>
+              <th className="text-left py-2 px-3 text-foreground-secondary font-medium">{t('invites.uses', 'Uses')}</th>
+              <th className="text-left py-2 px-3 text-foreground-secondary font-medium">{t('invites.expiresAt', 'Expires')}</th>
               <th />
             </tr>
           </thead>
@@ -102,32 +102,32 @@ export default function InvitesTab({ teamId }: Readonly<{ teamId: string }>) {
               const link = getInviteLink(inv.token);
               const isCopied = copiedId === inv.id;
               return (
-                <tr key={inv.id}>
-                  <td>
-                    <div className="invite-link-cell">
+                <tr key={inv.id} className="border-b border-border-subtle hover:bg-surface-hover">
+                  <td className="py-2 px-3">
+                    <div className="flex items-center gap-2">
                       <button
-                        className="invite-link-text mono"
+                        className="bg-transparent border-none text-foreground-primary cursor-pointer hover:text-accent truncate max-w-[300px] mono"
                         onClick={() => copyLink(inv.id, inv.token)}
                         title={link}
                         type="button"
                       >
-                        {link.length > 48 ? `${link.slice(0, 48)}…` : link}
+                        {link.length > 48 ? `${link.slice(0, 48)}...` : link}
                       </button>
                       <button
-                        className={`invite-copy-btn${isCopied ? ' copied' : ''}`}
+                        className={`bg-transparent border-none cursor-pointer text-sm shrink-0 ${isCopied ? 'text-success' : 'text-foreground-secondary hover:text-foreground-primary'}`}
                         onClick={() => copyLink(inv.id, inv.token)}
                         title={isCopied ? t('invites.copied', 'Copied!') : t('invites.copyLink', 'Copy invite link')}
                       >
-                        {isCopied ? '✓' : '⎘'}
+                        {isCopied ? '\u2713' : '\u2398'}
                       </button>
                     </div>
                   </td>
-                  <td>{inv.created_by}</td>
-                  <td>
-                    {inv.uses}/{inv.max_uses ?? '∞'}
+                  <td className="py-2 px-3 text-foreground-secondary">{inv.created_by}</td>
+                  <td className="py-2 px-3 text-foreground-secondary">
+                    {inv.uses}/{inv.max_uses ?? '\u221E'}
                   </td>
-                  <td>{inv.expires_at ? new Date(inv.expires_at).toLocaleString() : t('invites.never')}</td>
-                  <td>
+                  <td className="py-2 px-3 text-foreground-secondary">{inv.expires_at ? new Date(inv.expires_at).toLocaleString() : t('invites.never')}</td>
+                  <td className="py-2 px-3">
                     <button className="btn-danger" onClick={() => handleRevoke(inv.id)}>
                       {t('invites.revoke', 'Revoke')}
                     </button>

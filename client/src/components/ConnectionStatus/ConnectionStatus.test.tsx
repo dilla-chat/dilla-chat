@@ -17,31 +17,33 @@ describe('ConnectionStatus', () => {
   });
 
   it('renders the connection status bars', () => {
-    const { container } = render(<ConnectionStatus />);
-    expect(container.querySelector('.connection-status')).toBeInTheDocument();
-    expect(container.querySelector('.connection-status__bars')).toBeInTheDocument();
+    render(<ConnectionStatus />);
+    expect(screen.getByTestId('connection-status')).toBeInTheDocument();
+    expect(screen.getAllByTestId('connection-bar').length).toBeGreaterThan(0);
   });
 
   it('renders 4 bar elements', () => {
-    const { container } = render(<ConnectionStatus />);
-    const bars = container.querySelectorAll('.connection-status__bar');
+    render(<ConnectionStatus />);
+    const bars = screen.getAllByTestId('connection-bar');
     expect(bars).toHaveLength(4);
   });
 
   it('shows disconnected state initially when ws is not connected', () => {
-    const { container } = render(<ConnectionStatus />);
-    expect(container.querySelector('.connection-status--disconnected')).toBeInTheDocument();
+    render(<ConnectionStatus />);
+    const statusEl = screen.getByTestId('connection-status');
+    expect(statusEl).toHaveAttribute('data-quality', 'disconnected');
   });
 
   it('shows no active bars when disconnected', () => {
-    const { container } = render(<ConnectionStatus />);
-    const activeBars = container.querySelectorAll('.connection-status__bar.active');
+    render(<ConnectionStatus />);
+    const bars = screen.getAllByTestId('connection-bar');
+    const activeBars = bars.filter((b) => b.getAttribute('data-active') === 'true');
     expect(activeBars).toHaveLength(0);
   });
 
   it('shows tooltip on mouse enter', () => {
-    const { container } = render(<ConnectionStatus />);
-    const statusEl = container.querySelector('.connection-status')!;
+    render(<ConnectionStatus />);
+    const statusEl = screen.getByTestId('connection-status');
     fireEvent.mouseEnter(statusEl);
     expect(screen.getByText('Connection Info')).toBeInTheDocument();
     expect(screen.getByText('Quality')).toBeInTheDocument();
@@ -50,8 +52,8 @@ describe('ConnectionStatus', () => {
   });
 
   it('hides tooltip on mouse leave', () => {
-    const { container } = render(<ConnectionStatus />);
-    const statusEl = container.querySelector('.connection-status')!;
+    render(<ConnectionStatus />);
+    const statusEl = screen.getByTestId('connection-status');
     fireEvent.mouseEnter(statusEl);
     expect(screen.getByText('Connection Info')).toBeInTheDocument();
     fireEvent.mouseLeave(statusEl);
@@ -59,8 +61,8 @@ describe('ConnectionStatus', () => {
   });
 
   it('shows Disconnected in tooltip when disconnected', () => {
-    const { container } = render(<ConnectionStatus />);
-    const statusEl = container.querySelector('.connection-status')!;
+    render(<ConnectionStatus />);
+    const statusEl = screen.getByTestId('connection-status');
     fireEvent.mouseEnter(statusEl);
     // Both quality badge and WebSocket row show 'Disconnected'
     const elements = screen.getAllByText('Disconnected');
@@ -68,13 +70,11 @@ describe('ConnectionStatus', () => {
   });
 
   it('shows dash for latency when no latency data', () => {
-    const { container } = render(<ConnectionStatus />);
-    const statusEl = container.querySelector('.connection-status')!;
+    render(<ConnectionStatus />);
+    const statusEl = screen.getByTestId('connection-status');
     fireEvent.mouseEnter(statusEl);
     // The em-dash character for null latency
-    const rows = container.querySelectorAll('.connection-status__tooltip-row');
-    // Latency row is the second row
-    const latencyRow = rows[1];
+    const latencyRow = screen.getByTestId('tooltip-latency');
     expect(latencyRow.textContent).toContain('\u2014');
   });
 
@@ -83,15 +83,15 @@ describe('ConnectionStatus', () => {
     vi.mocked(ws.isConnected).mockReturnValue(true);
     vi.mocked(ws.ping).mockResolvedValue(50);
 
-    const { container } = render(<ConnectionStatus />);
+    render(<ConnectionStatus />);
 
     await vi.waitFor(() => {
       // Should transition from disconnected to a connected state
-      const el = container.querySelector('.connection-status');
-      expect(el?.className).not.toContain('disconnected');
+      const el = screen.getByTestId('connection-status');
+      expect(el.getAttribute('data-quality')).not.toBe('disconnected');
     });
 
-    const statusEl = container.querySelector('.connection-status')!;
+    const statusEl = screen.getByTestId('connection-status');
     fireEvent.mouseEnter(statusEl);
     expect(screen.getByText('Connected')).toBeInTheDocument();
     expect(screen.getByText('50 ms')).toBeInTheDocument();
@@ -102,13 +102,13 @@ describe('ConnectionStatus', () => {
     vi.mocked(ws.isConnected).mockReturnValue(true);
     vi.mocked(ws.ping).mockResolvedValue(30);
 
-    const { container } = render(<ConnectionStatus />);
+    render(<ConnectionStatus />);
 
     await vi.waitFor(() => {
-      expect(container.querySelector('.connection-status--excellent')).toBeInTheDocument();
+      expect(screen.getByTestId('connection-status')).toHaveAttribute('data-quality', 'excellent');
     });
 
-    fireEvent.mouseEnter(container.querySelector('.connection-status') as HTMLElement);
+    fireEvent.mouseEnter(screen.getByTestId('connection-status'));
     expect(screen.getByText('Excellent')).toBeInTheDocument();
   });
 
@@ -117,10 +117,10 @@ describe('ConnectionStatus', () => {
     vi.mocked(ws.isConnected).mockReturnValue(true);
     vi.mocked(ws.ping).mockResolvedValue(150);
 
-    const { container } = render(<ConnectionStatus />);
+    render(<ConnectionStatus />);
 
     await vi.waitFor(() => {
-      expect(container.querySelector('.connection-status--good')).toBeInTheDocument();
+      expect(screen.getByTestId('connection-status')).toHaveAttribute('data-quality', 'good');
     });
   });
 
@@ -129,10 +129,10 @@ describe('ConnectionStatus', () => {
     vi.mocked(ws.isConnected).mockReturnValue(true);
     vi.mocked(ws.ping).mockResolvedValue(300);
 
-    const { container } = render(<ConnectionStatus />);
+    render(<ConnectionStatus />);
 
     await vi.waitFor(() => {
-      expect(container.querySelector('.connection-status--poor')).toBeInTheDocument();
+      expect(screen.getByTestId('connection-status')).toHaveAttribute('data-quality', 'poor');
     });
   });
 
@@ -141,11 +141,11 @@ describe('ConnectionStatus', () => {
     vi.mocked(ws.isConnected).mockReturnValue(true);
     vi.mocked(ws.ping).mockRejectedValue(new Error('timeout'));
 
-    const { container } = render(<ConnectionStatus />);
+    render(<ConnectionStatus />);
 
     // Should not crash
     await vi.waitFor(() => {
-      expect(container.querySelector('.connection-status')).toBeInTheDocument();
+      expect(screen.getByTestId('connection-status')).toBeInTheDocument();
     });
   });
 
@@ -154,10 +154,11 @@ describe('ConnectionStatus', () => {
     vi.mocked(ws.isConnected).mockReturnValue(true);
     vi.mocked(ws.ping).mockResolvedValue(30);
 
-    const { container } = render(<ConnectionStatus />);
+    render(<ConnectionStatus />);
 
     await vi.waitFor(() => {
-      const activeBars = container.querySelectorAll('.connection-status__bar.active');
+      const bars = screen.getAllByTestId('connection-bar');
+      const activeBars = bars.filter((b) => b.getAttribute('data-active') === 'true');
       expect(activeBars).toHaveLength(4);
     });
   });
@@ -170,12 +171,12 @@ describe('ConnectionStatus', () => {
       return vi.fn();
     });
 
-    const { container } = render(<ConnectionStatus />);
+    render(<ConnectionStatus />);
     // Trigger the connected handler
     connectedHandler();
 
     await vi.waitFor(() => {
-      const statusEl = container.querySelector('.connection-status')!;
+      const statusEl = screen.getByTestId('connection-status');
       fireEvent.mouseEnter(statusEl);
       expect(screen.getByText('Connected')).toBeInTheDocument();
     });
@@ -193,17 +194,17 @@ describe('ConnectionStatus', () => {
     vi.mocked(ws.isConnected).mockReturnValue(true);
     vi.mocked(ws.ping).mockResolvedValue(50);
 
-    const { container } = render(<ConnectionStatus />);
+    render(<ConnectionStatus />);
 
     await vi.waitFor(() => {
-      expect(container.querySelector('.connection-status--excellent')).toBeInTheDocument();
+      expect(screen.getByTestId('connection-status')).toHaveAttribute('data-quality', 'excellent');
     });
 
     // Trigger disconnected
     disconnectedHandler();
 
     await vi.waitFor(() => {
-      expect(container.querySelector('.connection-status--disconnected')).toBeInTheDocument();
+      expect(screen.getByTestId('connection-status')).toHaveAttribute('data-quality', 'disconnected');
     });
   });
 
@@ -212,11 +213,11 @@ describe('ConnectionStatus', () => {
     vi.mocked(ws.isConnected).mockReturnValue(true);
     vi.mocked(ws.ping).mockRejectedValue(new Error('timeout'));
 
-    const { container } = render(<ConnectionStatus />);
+    render(<ConnectionStatus />);
 
     await vi.waitFor(() => {
       // Should show poor quality since ping failed but ws is connected
-      const statusEl = container.querySelector('.connection-status')!;
+      const statusEl = screen.getByTestId('connection-status');
       fireEvent.mouseEnter(statusEl);
       expect(screen.getByText('Poor')).toBeInTheDocument();
     });
@@ -227,17 +228,17 @@ describe('ConnectionStatus', () => {
     vi.mocked(ws.isConnected).mockReturnValue(false);
     useTeamStore.setState({ activeTeamId: 'team-1' });
 
-    const { container } = render(<ConnectionStatus />);
+    render(<ConnectionStatus />);
 
     await vi.waitFor(() => {
-      expect(container.querySelector('.connection-status--disconnected')).toBeInTheDocument();
+      expect(screen.getByTestId('connection-status')).toHaveAttribute('data-quality', 'disconnected');
     });
   });
 
   it('renders without errors when no team is active', () => {
     useTeamStore.setState({ activeTeamId: null });
-    const { container } = render(<ConnectionStatus />);
-    expect(container.querySelector('.connection-status')).toBeInTheDocument();
+    render(<ConnectionStatus />);
+    expect(screen.getByTestId('connection-status')).toBeInTheDocument();
   });
 
   it('pingServer sets disconnected when isConnected returns false with active team', async () => {
@@ -247,12 +248,12 @@ describe('ConnectionStatus', () => {
     vi.mocked(ws.isConnected).mockReturnValue(false);
     useTeamStore.setState({ activeTeamId: 'team-1' });
 
-    const { container } = render(<ConnectionStatus />);
+    render(<ConnectionStatus />);
 
     // Flush the setTimeout(pingServer, 0)
     await vi.advanceTimersByTimeAsync(10);
 
-    const statusEl = container.querySelector('.connection-status')!;
+    const statusEl = screen.getByTestId('connection-status');
     fireEvent.mouseEnter(statusEl);
     const disconnectedEls = screen.getAllByText('Disconnected');
     expect(disconnectedEls.length).toBeGreaterThanOrEqual(1);

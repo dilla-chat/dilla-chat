@@ -1,7 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useTeamStore } from '../../stores/teamStore';
 import { ws } from '../../services/websocket';
-import './ConnectionStatus.css';
 
 type Quality = 'excellent' | 'good' | 'poor' | 'disconnected';
 
@@ -38,6 +37,22 @@ function qualityBars(q: Quality): number {
     case 'disconnected': return 0;
   }
 }
+
+const qualityColorClass: Record<Quality, string> = {
+  excellent: 'text-success',
+  good: 'text-success',
+  poor: 'text-foreground-warning',
+  disconnected: 'text-foreground-danger',
+};
+
+const badgeClasses: Record<Quality, string> = {
+  excellent: 'bg-success-a15 text-success',
+  good: 'bg-success-a15 text-success',
+  poor: 'bg-accent-a20 text-foreground-warning',
+  disconnected: 'bg-danger-a15 text-foreground-danger',
+};
+
+const barHeights = ['h-1', 'h-[7px]', 'h-2.5', 'h-3.5'] as const;
 
 export default function ConnectionStatus() {
   const { activeTeamId } = useTeamStore();
@@ -100,36 +115,40 @@ export default function ConnectionStatus() {
 
   return (
     <output
-      className={`connection-status connection-status--${state.quality}`}
+      className={`flex items-center gap-1.5 px-2.5 py-2 bg-surface-secondary border-t border-divider cursor-default relative select-none text-micro ${qualityColorClass[state.quality]}`}
       aria-label={`Connection quality: ${label}`}
+      data-testid="connection-status"
+      data-quality={state.quality}
       onMouseEnter={() => setShowTooltip(true)}
       onMouseLeave={() => setShowTooltip(false)}
     >
-      <div className="connection-status__bars">
-        {[1, 2, 3, 4].map(i => (
+      <div className="flex items-end gap-[1.5px] h-3.5">
+        {[0, 1, 2, 3].map(i => (
           <div
             key={i}
-            className={`connection-status__bar connection-status__bar--${i} ${i <= bars ? 'active' : ''}`}
+            className={`w-[3px] rounded-[1px] transition-colors duration-200 ${barHeights[i]} ${i < bars ? 'connection-bar active' : 'connection-bar'}`}
+            data-testid="connection-bar"
+            data-active={i < bars}
           />
         ))}
       </div>
 
       {showTooltip && (
-        <div className="connection-status__tooltip">
-          <div className="connection-status__tooltip-title micro">Connection Info</div>
-          <div className="connection-status__tooltip-row">
+        <div className="absolute bottom-[calc(100%+8px)] left-2 w-[220px] bg-glass-floating backdrop-blur-glass-heavy border border-glass-border rounded-lg p-3 z-[1000] pointer-events-none">
+          <div className="text-micro font-medium uppercase tracking-wide text-foreground-muted mb-2 tracking-[0.04em]">Connection Info</div>
+          <div className="flex justify-between items-center py-[3px] text-xs text-foreground-muted">
             <span>Quality</span>
-            <span className={`connection-status__quality-badge connection-status__quality-badge--${state.quality}`}>
+            <span className={`text-micro px-1.5 py-px rounded-sm font-semibold ${badgeClasses[state.quality]}`}>
               {label}
             </span>
           </div>
-          <div className="connection-status__tooltip-row">
+          <div className="flex justify-between items-center py-[3px] text-xs text-foreground-muted" data-testid="tooltip-latency">
             <span>Latency</span>
-            <span>{state.latency === null ? '—' : `${state.latency} ms`}</span>
+            <span className="text-foreground font-medium">{state.latency === null ? '—' : `${state.latency} ms`}</span>
           </div>
-          <div className="connection-status__tooltip-row">
+          <div className="flex justify-between items-center py-[3px] text-xs text-foreground-muted">
             <span>WebSocket</span>
-            <span>{state.wsConnected ? 'Connected' : 'Disconnected'}</span>
+            <span className="text-foreground font-medium">{state.wsConnected ? 'Connected' : 'Disconnected'}</span>
           </div>
         </div>
       )}

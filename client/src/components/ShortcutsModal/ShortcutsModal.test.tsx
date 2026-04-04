@@ -13,14 +13,14 @@ describe('ShortcutsModal', () => {
   });
 
   it('renders all shortcut rows', () => {
-    const { container } = render(<ShortcutsModal onClose={vi.fn()} />);
-    const rows = container.querySelectorAll('.shortcuts-row');
+    render(<ShortcutsModal onClose={vi.fn()} />);
+    const rows = screen.getAllByTestId('shortcut-row');
     expect(rows.length).toBe(6);
   });
 
   it('renders keyboard shortcut keys as kbd elements', () => {
     const { container } = render(<ShortcutsModal onClose={vi.fn()} />);
-    const kbds = container.querySelectorAll('kbd.shortcuts-key');
+    const kbds = container.querySelectorAll('kbd');
     expect(kbds.length).toBe(6);
     // Check one of them
     const keys = Array.from(kbds).map((k) => k.textContent);
@@ -38,16 +38,16 @@ describe('ShortcutsModal', () => {
 
   it('calls onClose when overlay is clicked', () => {
     const onClose = vi.fn();
-    const { container } = render(<ShortcutsModal onClose={onClose} />);
-    const overlay = container.querySelector('.dialog-backdrop')!;
+    render(<ShortcutsModal onClose={onClose} />);
+    const overlay = screen.getByLabelText('Close');
     fireEvent.click(overlay);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it('does not call onClose when modal content is clicked', () => {
     const onClose = vi.fn();
-    const { container } = render(<ShortcutsModal onClose={onClose} />);
-    const modal = container.querySelector('.shortcuts-modal')!;
+    render(<ShortcutsModal onClose={onClose} />);
+    const modal = screen.getByTestId('shortcuts-modal');
     fireEvent.click(modal);
     expect(onClose).not.toHaveBeenCalled();
   });

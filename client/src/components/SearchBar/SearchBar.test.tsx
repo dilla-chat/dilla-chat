@@ -131,7 +131,7 @@ describe('SearchBar', () => {
       expect(screen.getByText('alice')).toBeInTheDocument();
     }, { timeout: 1000 });
 
-    fireEvent.click(screen.getByText('alice').closest('.search-bar-result') as HTMLElement);
+    fireEvent.click(screen.getByText('alice').closest('[data-testid="search-result"]') as HTMLElement);
     expect(onJump).toHaveBeenCalledWith('ch-1', 'msg-1');
   });
 
@@ -181,7 +181,7 @@ describe('SearchBar', () => {
     fireEvent.focus(input);
 
     await vi.waitFor(() => {
-      const mark = container.querySelector('.search-result-highlight');
+      const mark = container.querySelector('[data-testid="search-highlight"]');
       expect(mark).toBeInTheDocument();
       expect(mark?.textContent).toBe('Hello');
     }, { timeout: 1000 });
@@ -262,6 +262,6 @@ describe('SearchBar', () => {
     const { container } = render(<SearchBar />);
     const input = screen.getByPlaceholderText('Search messages...');
     fireEvent.focus(input);
-    expect(container.querySelector('.focused')).toBeInTheDocument();
+    expect(container.querySelector('[data-focused]')).toBeInTheDocument();
   });
 });

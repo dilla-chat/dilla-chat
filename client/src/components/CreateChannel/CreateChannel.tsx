@@ -5,7 +5,6 @@ import { useTeamStore } from '../../stores/teamStore';
 import { api } from '../../services/api';
 import { useFocusTrap } from '../../hooks/useFocusTrap';
 import CategorySelect from '../CategorySelect/CategorySelect';
-import './CreateChannel.css';
 
 interface Props {
   defaultCategory?: string;
@@ -54,34 +53,39 @@ export default function CreateChannel({ defaultCategory, onClose }: Readonly<Pro
   };
 
   return (
-    <dialog className="create-channel-overlay" open aria-labelledby="create-channel-title">
+    <dialog className="fixed inset-0 border-none p-0 bg-transparent max-w-none max-h-none bg-overlay-dark backdrop-blur-[4px] flex items-center justify-center z-[1000]" open aria-labelledby="create-channel-title">
       <button type="button" className="dialog-backdrop" onClick={onClose} aria-label="Close" />
-      <div className="create-channel-modal" ref={modalRef}>
-        <h2 id="create-channel-title" className="heading-3">{t('channels.create')}</h2>
+      <div className="bg-glass-modal backdrop-blur-glass-heavy border border-glass-border shadow-glass-elevated rounded-lg p-xl w-[440px] max-w-[90vw] text-foreground-primary" ref={modalRef}>
+        <h2 id="create-channel-title" className="heading-3 m-0 mb-5">{t('channels.create')}</h2>
 
-        <div className="create-channel-field">
-          <label className="micro">{t('channels.type', 'Channel Type')}</label>
-          <div className="channel-type-toggle">
+        <div className="mb-lg">
+          <label className="text-micro font-medium uppercase tracking-wide text-foreground-muted block mb-1.5">{t('channels.type', 'Channel Type')}</label>
+          <div className="flex gap-sm">
             <button
-              className={`channel-type-btn ${type === 'text' ? 'active' : ''}`}
+              className={`flex-1 p-2.5 rounded-sm border cursor-pointer text-base flex items-center justify-center gap-1.5${type === 'text' ? ' border-accent text-foreground-primary bg-brand-a15' : ' border-border bg-input text-foreground-secondary'}`}
               onClick={() => setType('text')}
+              data-testid="channel-type-text"
+              data-active={type === 'text'}
             >
               <Hashtag width={16} height={16} strokeWidth={2} /> {t('channels.text')}
             </button>
             <button
-              className={`channel-type-btn ${type === 'voice' ? 'active' : ''}`}
+              className={`flex-1 p-2.5 rounded-sm border cursor-pointer text-base flex items-center justify-center gap-1.5${type === 'voice' ? ' border-accent text-foreground-primary bg-brand-a15' : ' border-border bg-input text-foreground-secondary'}`}
               onClick={() => setType('voice')}
+              data-testid="channel-type-voice"
+              data-active={type === 'voice'}
             >
               <SoundHigh width={16} height={16} strokeWidth={2} /> {t('channels.voice')}
             </button>
           </div>
         </div>
 
-        <div className="create-channel-field">
-          <label htmlFor="create-channel-name" className="micro">{t('channels.name', 'Channel Name')}</label>
+        <div className="mb-lg">
+          <label htmlFor="create-channel-name" className="text-micro font-medium uppercase tracking-wide text-foreground-muted block mb-1.5">{t('channels.name', 'Channel Name')}</label>
           <input
             id="create-channel-name"
             type="text"
+            className="w-full py-2.5 pl-2.5 pr-8 rounded-sm bg-input text-foreground-primary text-base font-inherit box-border"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder={t('channels.namePlaceholder', 'General Chat')}
@@ -89,8 +93,8 @@ export default function CreateChannel({ defaultCategory, onClose }: Readonly<Pro
           />
         </div>
 
-        <div className="create-channel-field">
-          <label htmlFor="create-channel-category" className="micro">{t('channels.categoryLabel', 'Category')}</label>
+        <div className="mb-lg">
+          <label htmlFor="create-channel-category" className="text-micro font-medium uppercase tracking-wide text-foreground-muted block mb-1.5">{t('channels.categoryLabel', 'Category')}</label>
           <CategorySelect
             id="create-channel-category"
             category={category}
@@ -100,22 +104,23 @@ export default function CreateChannel({ defaultCategory, onClose }: Readonly<Pro
           />
         </div>
 
-        <div className="create-channel-field">
-          <label htmlFor="create-channel-topic" className="micro">{t('channels.topicLabel', 'Topic')} ({t('channels.optional', 'optional')})</label>
+        <div className="mb-lg">
+          <label htmlFor="create-channel-topic" className="text-micro font-medium uppercase tracking-wide text-foreground-muted block mb-1.5">{t('channels.topicLabel', 'Topic')} ({t('channels.optional', 'optional')})</label>
           <textarea
             id="create-channel-topic"
+            className="w-full py-2.5 pl-2.5 pr-8 rounded-sm bg-input text-foreground-primary text-base font-inherit box-border resize-y min-h-[60px]"
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
             placeholder={t('channels.topicPlaceholder', 'What is this channel about?')}
           />
         </div>
 
-        <div className="create-channel-actions">
-          <button className="btn-cancel" onClick={onClose}>
+        <div className="flex justify-end gap-md mt-5">
+          <button className="py-sm px-xl rounded-sm border-none text-base cursor-pointer bg-transparent text-foreground-primary hover:underline" onClick={onClose}>
             {t('common.cancel', 'Cancel')}
           </button>
           <button
-            className="btn-create"
+            className="py-sm px-xl rounded-sm border border-[var(--white-overlay-light)] text-base cursor-pointer bg-[var(--gradient-accent)] text-white shadow-[0_2px_8px_var(--accent-alpha-20)] transition-[filter,box-shadow] duration-150 hover:brightness-110 hover:shadow-[0_4px_16px_var(--accent-alpha-30)] disabled:opacity-50 disabled:cursor-not-allowed disabled:brightness-100 disabled:shadow-none"
             onClick={handleCreate}
             disabled={!name.trim() || creating}
           >

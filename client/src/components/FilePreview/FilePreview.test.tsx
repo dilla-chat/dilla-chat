@@ -47,19 +47,19 @@ const fileAttachment: Attachment = {
 
 describe('FilePreview', () => {
   it('returns null for empty attachments', () => {
-    const { container } = render(<FilePreview attachments={[]} teamId="team-1" />);
+    const { container } = render(<FilePreview attachments={[]} />);
     expect(container.firstChild).toBeNull();
   });
 
   it('returns null when attachments is undefined/falsy', () => {
     const { container } = render(
-      <FilePreview attachments={undefined as unknown as Attachment[]} teamId="team-1" />,
+      <FilePreview attachments={undefined as unknown as Attachment[]} />,
     );
     expect(container.firstChild).toBeNull();
   });
 
   it('renders image files with img tag', () => {
-    render(<FilePreview attachments={[imageAttachment]} teamId="team-1" />);
+    render(<FilePreview attachments={[imageAttachment]} />);
     const img = screen.getByAltText('photo.png');
     expect(img).toBeInTheDocument();
     expect(img.tagName).toBe('IMG');
@@ -67,14 +67,14 @@ describe('FilePreview', () => {
   });
 
   it('opens lightbox when clicking an image', () => {
-    render(<FilePreview attachments={[imageAttachment]} teamId="team-1" />);
+    render(<FilePreview attachments={[imageAttachment]} />);
     fireEvent.click(screen.getByAltText('photo.png'));
     // After click, lightbox should appear
-    expect(document.querySelector('.file-preview-lightbox')).toBeInTheDocument();
+    expect(screen.getByTestId('file-preview-lightbox')).toBeInTheDocument();
   });
 
   it('renders video files with video tag', () => {
-    const { container } = render(<FilePreview attachments={[videoAttachment]} teamId="team-1" />);
+    const { container } = render(<FilePreview attachments={[videoAttachment]} />);
     const video = container.querySelector('video');
     expect(video).toBeInTheDocument();
     expect(video).toHaveAttribute('src', 'https://example.com/clip.mp4');
@@ -82,7 +82,7 @@ describe('FilePreview', () => {
   });
 
   it('renders audio files with audio tag and filename', () => {
-    const { container } = render(<FilePreview attachments={[audioAttachment]} teamId="team-1" />);
+    const { container } = render(<FilePreview attachments={[audioAttachment]} />);
     const audio = container.querySelector('audio');
     expect(audio).toBeInTheDocument();
     expect(audio).toHaveAttribute('src', 'https://example.com/song.mp3');
@@ -90,13 +90,13 @@ describe('FilePreview', () => {
   });
 
   it('renders non-media files as card with filename and size', () => {
-    render(<FilePreview attachments={[fileAttachment]} teamId="team-1" />);
+    render(<FilePreview attachments={[fileAttachment]} />);
     expect(screen.getByText('document.pdf')).toBeInTheDocument();
     expect(screen.getByText('1.0 MB')).toBeInTheDocument();
   });
 
   it('renders download link for file cards', () => {
-    render(<FilePreview attachments={[fileAttachment]} teamId="team-1" />);
+    render(<FilePreview attachments={[fileAttachment]} />);
     const downloadLink = screen.getByTitle('Download');
     expect(downloadLink).toHaveAttribute('href', 'https://example.com/document.pdf');
     expect(downloadLink).toHaveAttribute('download', 'document.pdf');
@@ -106,7 +106,6 @@ describe('FilePreview', () => {
     render(
       <FilePreview
         attachments={[imageAttachment, fileAttachment]}
-        teamId="team-1"
       />,
     );
     expect(screen.getByAltText('photo.png')).toBeInTheDocument();
@@ -114,22 +113,22 @@ describe('FilePreview', () => {
   });
 
   it('closes lightbox when clicking on it', () => {
-    render(<FilePreview attachments={[imageAttachment]} teamId="team-1" />);
+    render(<FilePreview attachments={[imageAttachment]} />);
     fireEvent.click(screen.getByAltText('photo.png'));
     // Lightbox should be open
-    expect(document.querySelector('.file-preview-lightbox')).toBeInTheDocument();
+    expect(screen.getByTestId('file-preview-lightbox')).toBeInTheDocument();
     // Click the lightbox overlay to close
-    const lightbox = document.querySelector('.file-preview-lightbox')!;
+    const lightbox = screen.getByTestId('file-preview-lightbox');
     fireEvent.click(lightbox);
     // Lightbox should be gone
-    expect(document.querySelector('.file-preview-lightbox')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('file-preview-lightbox')).not.toBeInTheDocument();
   });
 
   it('formats file sizes correctly', () => {
     const smallFile: Attachment = { ...fileAttachment, id: 'small', size: 500 };
     const mediumFile: Attachment = { ...fileAttachment, id: 'medium', size: 1536, filename: 'medium.pdf' };
 
-    render(<FilePreview attachments={[smallFile, mediumFile]} teamId="team-1" />);
+    render(<FilePreview attachments={[smallFile, mediumFile]} />);
     expect(screen.getByText('500 B')).toBeInTheDocument();
     expect(screen.getByText('1.5 KB')).toBeInTheDocument();
   });

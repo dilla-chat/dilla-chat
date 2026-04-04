@@ -6,7 +6,6 @@ import { useVoiceStore } from '../../stores/voiceStore';
 import { useUnreadStore } from '../../stores/unreadStore';
 import { api } from '../../services/api';
 import EditChannel from '../EditChannel/EditChannel';
-import './ChannelList.css';
 
 interface ContextMenu {
   x: number;
@@ -80,17 +79,18 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
   const renderCategory = (cat: string, chs: Channel[]) => {
     const isCollapsed = collapsedCategories.has(cat);
     return (
-      <div key={cat} className="channel-category">
-        <div className="channel-category-header">
-          <button className="channel-category-name micro" onClick={() => toggleCategory(cat)} type="button">
-            <span className={`category-arrow ${isCollapsed ? 'collapsed' : ''}`}>▼</span>
+      <div key={cat} className="pt-lg">
+        <div className="flex items-center justify-between px-sm h-7 cursor-pointer select-none">
+          <button className="text-micro font-medium uppercase tracking-wide text-foreground-muted flex items-center gap-xs flex-1 overflow-hidden bg-transparent border-none p-0 rounded-none transition-colors duration-150 hover:text-interactive-hover" onClick={() => toggleCategory(cat)} type="button">
+            <span className={`text-micro transition-transform duration-150${isCollapsed ? ' -rotate-90' : ''}`}>▼</span>
             {cat}
           </button>
           {onCreateChannel && (
             <button
-              className="channel-category-add"
+              className="bg-transparent border-none text-interactive cursor-pointer text-lg px-xs leading-none rounded-sm transition-colors duration-150 hover:text-interactive-hover"
               onClick={() => onCreateChannel(cat)}
               title={t('channels.create')}
+              data-testid="channel-category-add"
             >
               <Plus width={16} height={16} strokeWidth={2} />
             </button>
@@ -113,7 +113,7 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
             return (
               <div key={ch.id}>
                 <button
-                  className={`channel-item clickable ${activeChannelId === ch.id ? 'active' : ''}`}
+                  className={`channel-item flex items-center py-1.5 px-sm mx-sm my-px border-none rounded-md bg-transparent font-inherit text-left w-[calc(100%-16px)] text-interactive text-lg font-medium gap-1.5 relative before:hidden clickable${activeChannelId === ch.id ? ' active bg-surface-active text-interactive-active' : ''} hover:bg-surface-hover hover:text-interactive-hover`}
                   onClick={() => {
                     setActiveChannel(ch.id);
                     if (isVoice && !isVoiceConnected && activeTeamId) {
@@ -128,29 +128,31 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
                     }
                   }}
                 >
-                  <span className={`channel-icon ${isVoice && voicePeerList.length > 0 ? 'voice-active' : ''}`}>{isVoice ? <SoundHigh width={16} height={16} strokeWidth={2} /> : <span className="channel-tilde">~</span>}</span>
-                  <span className={`channel-name truncate${hasUnread ? ' channel-name--unread' : ''}`}>{ch.name}</span>
+                  <span className={`text-xl w-5 text-center shrink-0 text-channel-icon transition-colors duration-150${isVoice && voicePeerList.length > 0 ? ' !text-status-online' : ''}${activeChannelId === ch.id ? ' !text-interactive-active' : ''}`}>{isVoice ? <SoundHigh width={16} height={16} strokeWidth={2} /> : <span className="channel-tilde">~</span>}</span>
+                  <span className={`flex-1 truncate${hasUnread ? ' channel-name--unread font-semibold text-interactive-hover' : ''}`}>{ch.name}</span>
                   {hasUnread && (
-                    <span className="channel-unread-badge" aria-label={`${unreadCount} unread messages`}>
+                    <span className="min-w-4 h-4 px-xs rounded-full bg-brand text-white text-micro font-semibold flex items-center justify-center ml-auto shrink-0" aria-label={`${unreadCount} unread messages`}>
                       {unreadCount > 99 ? '99+' : unreadCount}
                     </span>
                   )}
+                  <span className="hidden gap-0.5 group-hover/item:flex">
+                  </span>
                 </button>
                 {voicePeerList.length > 0 && (
-                  <div className="voice-channel-users">
+                  <div className="py-0.5 px-sm pl-[42px] flex flex-col gap-px">
                     {voicePeerList.map((peer) => (
                       <div
                         key={peer.user_id}
-                        className={`voice-channel-user ${peer.speaking ? 'speaking' : ''}`}
+                        className={`flex items-center gap-1.5 text-base text-interactive px-xs rounded-sm transition-colors duration-150 py-0.5 hover:bg-surface-hover${peer.speaking ? ' text-status-online' : ''}`}
                         style={{ '--voice-level': peer.voiceLevel ?? 0 } as React.CSSProperties}
                       >
-                        <span className="voice-user-avatar">
+                        <span className={`w-5 h-5 rounded-full bg-bg-accent text-white flex items-center justify-center text-micro font-semibold shrink-0 shadow-[0_0_0_1.5px_var(--white-overlay-light)] transition-shadow duration-150${peer.speaking ? ' !shadow-[0_0_0_1.5px_var(--status-online)]' : ''}`}>
                           {peer.username.slice(0, 1).toUpperCase()}
                         </span>
-                        <span className="voice-user-name">{peer.username}</span>
-                        {peer.muted && <MicrophoneMute width={14} height={14} strokeWidth={2} className="voice-user-icon" />}
-                        {peer.deafened && <HeadsetWarning width={14} height={14} strokeWidth={2} className="voice-user-icon" />}
-                        {peer.screen_sharing && <AppWindow width={14} height={14} strokeWidth={2} className="voice-user-icon screen-sharing" />}
+                        <span className="truncate flex-1">{peer.username}</span>
+                        {peer.muted && <MicrophoneMute width={14} height={14} strokeWidth={2} className="shrink-0 text-foreground-muted opacity-70" />}
+                        {peer.deafened && <HeadsetWarning width={14} height={14} strokeWidth={2} className="shrink-0 text-foreground-muted opacity-70" />}
+                        {peer.screen_sharing && <AppWindow width={14} height={14} strokeWidth={2} className="shrink-0 text-status-online opacity-100" />}
                       </div>
                     ))}
                   </div>
@@ -166,17 +168,17 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
   const voiceCategories = Object.keys(voiceGrouped).sort((a, b) => a.localeCompare(b));
 
   return (
-    <div className="channel-list">
+    <div className="flex flex-col flex-1 overflow-y-auto p-0">
       {textCategories.map((cat) => renderCategory(cat, textGrouped[cat]))}
       {voiceCategories.map((cat) => renderCategory(cat, voiceGrouped[cat]))}
 
       {contextMenu && (
         <div
-          className="channel-context-menu"
+          className="channel-context-menu fixed bg-glass-floating backdrop-blur-glass-heavy border border-glass-border shadow-glass-elevated rounded-lg py-1.5 px-sm min-w-[188px] z-[1000]"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           <button
-            className="channel-context-item"
+            className="bg-transparent border-none w-full text-left flex items-center py-1.5 px-sm rounded-sm cursor-pointer text-interactive text-base font-medium font-inherit transition-colors duration-150 hover:bg-brand hover:text-white"
             onClick={() => {
               setEditingChannel(contextMenu.channel);
               setContextMenu(null);
@@ -186,7 +188,7 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
             {t('channels.edit', 'Edit Channel')}
           </button>
           <button
-            className="channel-context-item danger"
+            className="bg-transparent border-none w-full text-left flex items-center py-1.5 px-sm rounded-sm cursor-pointer text-foreground-danger text-base font-medium font-inherit transition-colors duration-150 hover:bg-foreground-danger hover:text-white"
             onClick={async () => {
               if (!activeTeamId) return;
               const ch = contextMenu.channel;

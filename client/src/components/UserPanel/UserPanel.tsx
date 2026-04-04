@@ -11,8 +11,6 @@ import { playMuteSound, playUnmuteSound } from '../../utils/sounds';
 import PresenceIndicator from '../PresenceIndicator/PresenceIndicator';
 import StatusPicker from '../StatusPicker/StatusPicker';
 import type { PresenceStatus } from '../PresenceIndicator/PresenceIndicator';
-import './UserPanel.css';
-
 interface Props {
   username: string;
   displayName?: string;
@@ -114,32 +112,34 @@ export default function UserPanel({
   else if (muted) muteTitle = t('voice.unmute', 'Unmute');
 
   return (
-    <div className="user-panel">
+    <div className="flex items-center px-[var(--spacing-md)] h-[var(--user-panel-height)] gap-2">
       <button
-        className="user-panel-avatar"
+        className="border-none p-0 size-8 rounded-full bg-accent text-white flex items-center justify-center text-base font-medium font-[inherit] shrink-0 relative cursor-pointer transition-shadow duration-150 ease-out hover:shadow-[0_0_0_4px_var(--white-overlay-subtle)]"
         onClick={(e) => {
           e.stopPropagation();
           setShowStatusPicker(!showStatusPicker);
         }}
         type="button"
+        data-testid="user-panel-avatar"
       >
         {initials}
         <PresenceIndicator status={myStatus} size="medium" className="border-tertiary" />
       </button>
       <button
-        className="user-panel-info"
+        className="bg-none border-none text-left font-[inherit] text-[inherit] text-inherit flex-1 min-w-0 cursor-pointer py-1"
         onClick={(e) => {
           e.stopPropagation();
           setShowStatusPicker(!showStatusPicker);
         }}
         type="button"
+        data-testid="user-panel-info"
       >
-        <div className="user-panel-name title truncate">{displayName ?? username}</div>
-        <div className="user-panel-status-text caption truncate">{statusLabel}</div>
+        <div className="text-lg font-semibold leading-[1.375] text-heading truncate">{displayName ?? username}</div>
+        <div className="text-xs font-normal leading-[1.4] text-foreground-muted truncate">{statusLabel}</div>
       </button>
-      <div className="user-panel-actions">
+      <div className="flex gap-2">
         <button
-          className={`user-panel-btn clickable ${muted ? 'user-panel-btn-active' : ''}`}
+          className={`clickable bg-none border-none p-0 text-xl size-8 flex items-center justify-center ${muted ? 'text-[var(--text-danger)] hover:text-[var(--text-danger)] hover:bg-surface-hover' : 'text-interactive hover:text-interactive-hover'} disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-none disabled:hover:text-[var(--text-danger)]`}
           onClick={handleMute}
           disabled={deafened}
           title={muteTitle}
@@ -147,14 +147,14 @@ export default function UserPanel({
           {muted ? <MicrophoneMute width={20} height={20} strokeWidth={2} /> : <Microphone width={20} height={20} strokeWidth={2} />}
         </button>
         <button
-          className={`user-panel-btn clickable ${deafened ? 'user-panel-btn-active' : ''}`}
+          className={`clickable bg-none border-none p-0 text-xl size-8 flex items-center justify-center ${deafened ? 'text-[var(--text-danger)] hover:text-[var(--text-danger)] hover:bg-surface-hover' : 'text-interactive hover:text-interactive-hover'}`}
           onClick={handleDeafen}
           title={deafened ? t('voice.undeafen', 'Undeafen') : t('voice.deafen', 'Deafen')}
         >
           {deafened ? <HeadsetWarning width={20} height={20} strokeWidth={2} /> : <Headset width={20} height={20} strokeWidth={2} />}
         </button>
         <button
-          className="user-panel-btn clickable"
+          className="clickable bg-none border-none text-interactive p-0 text-xl size-8 flex items-center justify-center hover:text-interactive-hover"
           onClick={onSettingsClick}
           title={t('settings.general')}
         >

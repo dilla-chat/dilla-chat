@@ -1,5 +1,4 @@
 import { memo } from 'react';
-import './PresenceIndicator.css';
 
 export type PresenceStatus = 'online' | 'idle' | 'dnd' | 'offline';
 

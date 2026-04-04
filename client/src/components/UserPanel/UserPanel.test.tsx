@@ -77,15 +77,15 @@ describe('UserPanel', () => {
   it('renders initials from display name', () => {
     render(<UserPanel username="alice" displayName="Alice Johnson" />);
     // Initials: AJ
-    const avatar = document.querySelector('.user-panel-avatar');
-    expect(avatar?.textContent).toContain('AJ');
+    const avatar = screen.getByTestId('user-panel-avatar');
+    expect(avatar.textContent).toContain('AJ');
   });
 
   it('renders initials from username when no display name', () => {
     render(<UserPanel username="alice" />);
-    const avatar = document.querySelector('.user-panel-avatar');
+    const avatar = screen.getByTestId('user-panel-avatar');
     // 'alice' is one word, so initials = 'A'
-    expect(avatar?.textContent).toContain('A');
+    expect(avatar.textContent).toContain('A');
   });
 
   it('renders presence indicator', () => {
@@ -154,24 +154,21 @@ describe('UserPanel', () => {
   it('toggles status picker on avatar click', () => {
     render(<UserPanel username="alice" />);
     expect(screen.queryByTestId('status-picker')).not.toBeInTheDocument();
-    const avatar = document.querySelector('.user-panel-avatar')!;
-    fireEvent.click(avatar);
+    fireEvent.click(screen.getByTestId('user-panel-avatar'));
     expect(screen.getByTestId('status-picker')).toBeInTheDocument();
   });
 
   it('toggles status picker on info click', () => {
     render(<UserPanel username="alice" />);
-    const info = document.querySelector('.user-panel-info')!;
-    fireEvent.click(info);
+    fireEvent.click(screen.getByTestId('user-panel-info'));
     expect(screen.getByTestId('status-picker')).toBeInTheDocument();
   });
 
   it('closes status picker on second avatar click', () => {
     render(<UserPanel username="alice" />);
-    const avatar = document.querySelector('.user-panel-avatar')!;
-    fireEvent.click(avatar);
+    fireEvent.click(screen.getByTestId('user-panel-avatar'));
     expect(screen.getByTestId('status-picker')).toBeInTheDocument();
-    fireEvent.click(avatar);
+    fireEvent.click(screen.getByTestId('user-panel-avatar'));
     expect(screen.queryByTestId('status-picker')).not.toBeInTheDocument();
   });
 
@@ -221,11 +218,11 @@ describe('UserPanel', () => {
     expect(webrtcService.toggleDeafen).toHaveBeenCalled();
   });
 
-  it('shows muted icon with active class when muted', () => {
+  it('shows muted state with danger text when muted', () => {
     useVoiceStore.setState({ muted: true } as never);
-    const { container } = render(<UserPanel username="alice" />);
-    const muteBtn = container.querySelector('.user-panel-btn-active');
-    expect(muteBtn).toBeInTheDocument();
+    render(<UserPanel username="alice" />);
+    const muteBtn = screen.getByTitle('Unmute');
+    expect(muteBtn.className).toContain('text-[var(--text-danger)]');
   });
 
   it('renders without activeTeamId', () => {
@@ -236,8 +233,7 @@ describe('UserPanel', () => {
 
   it('closes status picker on outside click', () => {
     render(<UserPanel username="alice" />);
-    const avatar = document.querySelector('.user-panel-avatar')!;
-    fireEvent.click(avatar);
+    fireEvent.click(screen.getByTestId('user-panel-avatar'));
     expect(screen.getByTestId('status-picker')).toBeInTheDocument();
     // Simulate clicking outside (on document body)
     fireEvent.click(document.body);
@@ -270,16 +266,16 @@ describe('UserPanel', () => {
   it('renders with all action buttons', () => {
     render(<UserPanel username="alice" />);
     // Mute, Deafen, Settings
-    const buttons = document.querySelectorAll('.user-panel-btn');
-    expect(buttons.length).toBe(3);
+    expect(screen.getByTitle('Mute')).toBeInTheDocument();
+    expect(screen.getByTitle('Deafen')).toBeInTheDocument();
+    expect(screen.getByTitle('settings.general')).toBeInTheDocument();
   });
 
   it('handleStatusChange updates presence via WS', async () => {
     const { ws } = await import('../../services/websocket');
     vi.mocked(ws.updatePresence).mockClear();
     render(<UserPanel username="alice" />);
-    const avatar = document.querySelector('.user-panel-avatar')!;
-    fireEvent.click(avatar);
+    fireEvent.click(screen.getByTestId('user-panel-avatar'));
     fireEvent.click(screen.getByTestId('set-away'));
     expect(ws.updatePresence).toHaveBeenCalledWith('team-1', 'away', undefined);
   });
@@ -288,16 +284,14 @@ describe('UserPanel', () => {
     const { ws } = await import('../../services/websocket');
     vi.mocked(ws.updatePresence).mockClear();
     render(<UserPanel username="alice" />);
-    const info = document.querySelector('.user-panel-info')!;
-    fireEvent.click(info);
+    fireEvent.click(screen.getByTestId('user-panel-info'));
     fireEvent.click(screen.getByTestId('set-custom'));
     expect(ws.updatePresence).toHaveBeenCalledWith('team-1', 'online', 'Busy');
   });
 
   it('closes status picker via onClose', () => {
     render(<UserPanel username="alice" />);
-    const avatar = document.querySelector('.user-panel-avatar')!;
-    fireEvent.click(avatar);
+    fireEvent.click(screen.getByTestId('user-panel-avatar'));
     expect(screen.getByTestId('status-picker')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('close-picker'));
     expect(screen.queryByTestId('status-picker')).not.toBeInTheDocument();

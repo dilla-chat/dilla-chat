@@ -14,7 +14,6 @@ import { ws } from '../../services/websocket';
 import { cryptoService } from '../../services/crypto';
 import { cacheMessage, getCachedMessage, deleteCachedMessage } from '../../services/messageCache';
 import MessageInput from '../MessageInput/MessageInput';
-import './ThreadPanel.css';
 
 
 const markdownComponents = {
@@ -296,11 +295,11 @@ export default function ThreadPanel({ thread, onClose }: Readonly<Props>) {
   const threadTitle = thread.title || t('thread.title', 'Thread');
 
   return (
-    <div className="thread-panel">
-      <div className="thread-panel-header">
-        <div className="thread-panel-header-info">
-          <div className="thread-panel-title title truncate">{threadTitle}</div>
-          <div className="thread-panel-subtitle">
+    <div className="w-[400px] min-w-[400px] bg-glass-secondary backdrop-blur-glass border-l border-glass-border flex flex-col h-full max-md:fixed max-md:inset-0 max-md:w-auto max-md:min-w-0 max-md:z-[150] max-md:border-l-0 md:max-lg:w-[320px] md:max-lg:min-w-[320px]">
+      <div className="flex items-center justify-between px-lg py-md border-b border-divider shadow-[0_1px_2px_var(--overlay-light)] shrink-0">
+        <div className="flex flex-col min-w-0 flex-1">
+          <div className="title truncate text-foreground-primary">{threadTitle}</div>
+          <div className="text-xs text-foreground-muted mt-0.5">
             {(() => {
               if (thread.message_count === 0) return t('thread.noReplies', 'No replies yet. Start the conversation!');
               if (thread.message_count === 1) return t('thread.reply', '1 reply');
@@ -308,27 +307,31 @@ export default function ThreadPanel({ thread, onClose }: Readonly<Props>) {
             })()}
           </div>
         </div>
-        <button className="thread-panel-close" onClick={onClose} title={t('thread.closeThread', 'Close')}>
+        <button
+          className="bg-transparent border-none text-interactive cursor-pointer px-sm py-xs rounded-sm text-[18px] leading-none shrink-0 ml-sm hover:text-interactive-hover hover:bg-surface-hover"
+          onClick={onClose}
+          title={t('thread.closeThread', 'Close')}
+        >
           <Xmark width={20} height={20} strokeWidth={2} />
         </button>
       </div>
 
       {/* Parent message */}
       {parentMessage && (
-        <div className="thread-parent-message">
-          <div className="thread-parent-header">
+        <div className="px-lg py-md bg-input border-b border-divider shrink-0">
+          <div className="flex items-center gap-sm mb-1.5">
             <div
-              className="thread-parent-avatar"
+              className="w-6 h-6 rounded-full flex items-center justify-center text-micro font-semibold text-interactive-active shrink-0"
               style={{ backgroundColor: usernameColor(parentMessage.username) }}
             >
               {getInitials(parentMessage.username)}
             </div>
-            <span className="thread-parent-username" style={{ color: usernameColor(parentMessage.username) }}>
+            <span className="text-base font-semibold" style={{ color: usernameColor(parentMessage.username) }}>
               {parentMessage.username}
             </span>
-            <span className="thread-parent-time">{formatTime(parentMessage.createdAt)}</span>
+            <span className="text-micro text-foreground-muted">{formatTime(parentMessage.createdAt)}</span>
           </div>
-          <div className="thread-parent-content">
+          <div className="text-base text-foreground-secondary leading-[1.4] overflow-hidden line-clamp-3 [&_p]:m-0">
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents} skipHtml>
               {parentMessage.content}
             </ReactMarkdown>
@@ -337,19 +340,25 @@ export default function ThreadPanel({ thread, onClose }: Readonly<Props>) {
       )}
 
       {/* Thread messages */}
-      <div className="thread-messages" ref={containerRef} onScroll={handleScroll}>
+      <div
+        className="flex-1 overflow-y-auto py-sm flex flex-col scrollbar-thin"
+        style={{ scrollbarColor: 'var(--scrollbar-thin-thumb) var(--scrollbar-thin-track)' }}
+        ref={containerRef}
+        onScroll={handleScroll}
+        data-testid="thread-messages"
+      >
         {loading && (
-          <div className="thread-messages-loading">{t('app.loading', 'Loading...')}</div>
+          <div className="text-center p-md text-foreground-muted text-sm">{t('app.loading', 'Loading...')}</div>
         )}
 
         {!loading && msgs.length === 0 && (
-          <div className="thread-no-replies">
+          <div className="text-center px-lg py-2xl text-foreground-muted text-base">
             {t('thread.noReplies', 'No replies yet. Start the conversation!')}
           </div>
         )}
 
         {msgs.length > 0 && (
-          <div className="thread-reply-count">
+          <div className="flex items-center gap-sm px-lg py-sm text-xs font-semibold text-foreground-muted after:content-[''] after:flex-1 after:h-px after:bg-border-subtle">
             {msgs.length === 1
               ? t('thread.reply', '1 reply')
               : t('thread.replies', '{{count}} replies', { count: msgs.length })}
@@ -357,28 +366,28 @@ export default function ThreadPanel({ thread, onClose }: Readonly<Props>) {
         )}
 
         {msgs.map((msg) => (
-          <div key={msg.id} className="thread-message-group">
-            <div className="thread-message-avatar-col">
+          <div key={msg.id} className="flex px-lg py-xs mt-sm hover:bg-surface-hover">
+            <div className="shrink-0 w-8 mr-md pt-0.5">
               <div
-                className="thread-message-avatar"
+                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold text-interactive-active select-none"
                 style={{ backgroundColor: usernameColor(msg.username) }}
               >
                 {getInitials(msg.username)}
               </div>
             </div>
-            <div className="thread-message-content-col">
-              <div className="thread-message-header">
-                <span className="thread-message-username" style={{ color: usernameColor(msg.username) }}>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-baseline gap-1.5 mb-0.5">
+                <span className="text-base font-semibold cursor-pointer hover:underline" style={{ color: usernameColor(msg.username) }}>
                   {msg.username}
                 </span>
-                <span className="thread-message-time">{formatTime(msg.createdAt)}</span>
+                <span className="text-micro text-foreground-muted">{formatTime(msg.createdAt)}</span>
               </div>
               {msg.deleted ? (
-                <div className="thread-message-deleted">
+                <div className="text-base text-foreground-muted opacity-50">
                   {t('messages.deleted', '[message deleted]')}
                 </div>
               ) : (
-                <div className="thread-message-body">
+                <div className="relative text-base text-foreground-primary break-words overflow-wrap-anywhere leading-[1.375] [&_p]:m-0 [&_.message-edited]:text-micro group">
                   <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents} skipHtml>
                     {msg.content}
                   </ReactMarkdown>
@@ -386,16 +395,16 @@ export default function ThreadPanel({ thread, onClose }: Readonly<Props>) {
                     <span className="message-edited">{t('messages.edited', '(edited)')}</span>
                   )}
                   {msg.authorId === currentUserId && (
-                    <div className="thread-message-actions">
+                    <div className="hidden group-hover:flex absolute -top-2.5 right-0 bg-glass-floating backdrop-blur-glass-light border border-glass-border rounded-sm p-0.5 gap-0.5 z-[1]">
                       <button
-                        className="thread-message-action-btn"
+                        className="bg-transparent border-none text-interactive cursor-pointer px-[5px] py-[3px] rounded-sm text-xs leading-none hover:bg-surface-hover hover:text-interactive-hover"
                         onClick={() => setEditingMessage({ id: msg.id, content: msg.content })}
                         title={t('messages.edit', 'Edit Message')}
                       >
                         <EditPencil width={16} height={16} strokeWidth={2} />
                       </button>
                       <button
-                        className="thread-message-action-btn danger"
+                        className="bg-transparent border-none text-interactive cursor-pointer px-[5px] py-[3px] rounded-sm text-xs leading-none hover:bg-surface-hover hover:text-foreground-danger"
                         onClick={() => handleDelete(msg.id)}
                         title={t('messages.delete', 'Delete Message')}
                       >
@@ -413,7 +422,7 @@ export default function ThreadPanel({ thread, onClose }: Readonly<Props>) {
       </div>
 
       {/* Thread input */}
-      <div className="thread-input-area">
+      <div className="px-md pb-lg shrink-0">
         <MessageInput
           channelId={thread.id}
           channelName={threadTitle}

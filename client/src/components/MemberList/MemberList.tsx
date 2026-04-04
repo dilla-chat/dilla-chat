@@ -7,7 +7,6 @@ import { useDMStore } from '../../stores/dmStore';
 import { api } from '../../services/api';
 import PresenceIndicator from '../PresenceIndicator/PresenceIndicator';
 import UserProfile from '../UserProfile/UserProfile';
-import './MemberList.css';
 
 interface ProfilePopup {
   member: Member;
@@ -112,20 +111,22 @@ export default function MemberList() {
     return (
       <button
         key={member.id}
-        className={`member-item ${isOffline ? 'offline' : ''}`}
+        className={`flex items-center w-[calc(100%-16px)] text-left font-[inherit] text-[inherit] text-inherit bg-none border-none px-2 py-px mx-2 mt-px gap-3 cursor-pointer rounded-md h-[42px] box-border transition-colors duration-150 ease-out hover:bg-surface-hover ${isOffline ? 'opacity-40' : ''}`}
+        data-testid="member-item"
+        data-offline={isOffline}
         onClick={(e) => handleMemberClick(e, member)}
         type="button"
       >
-        <div className="member-avatar">
+        <div className="size-8 rounded-full bg-accent text-white flex items-center justify-center text-base font-medium shrink-0 relative" data-testid="member-avatar">
           {getInitials(member)}
           <PresenceIndicator status={status} size="medium" />
         </div>
-        <div className="member-info">
-          <div className="member-display-name truncate">
+        <div className="flex-1 min-w-0 flex flex-col justify-center">
+          <div className="text-base font-medium text-interactive leading-[18px] truncate group-hover:text-interactive-hover" data-testid="member-display-name">
             {member.nickname || member.displayName || member.username}
           </div>
           {customStatus && (
-            <div className="member-custom-status truncate caption">{customStatus}</div>
+            <div className="text-xs text-foreground-muted leading-[13px] truncate">{customStatus}</div>
           )}
         </div>
       </button>
@@ -133,10 +134,10 @@ export default function MemberList() {
   };
 
   return (
-    <div className="member-list">
+    <div className="w-[var(--member-sidebar-width)] bg-glass-secondary backdrop-blur-[var(--glass-blur)] flex flex-col overflow-y-auto pt-6 pb-2 border-l border-glass-border max-md:w-full max-md:border-l-0 md:max-lg:w-[200px]">
       {onlineGroup.length > 0 && (
-        <div className="member-role-group">
-          <div className="member-role-header micro">
+        <div className="pt-4">
+          <div className="px-2 pb-1 pl-4 flex items-center gap-1 text-micro font-medium uppercase tracking-wide text-foreground-muted">
             {t('presence.onlineCount', { count: onlineGroup.length })}
           </div>
           {onlineGroup.map(renderMember)}
@@ -144,8 +145,8 @@ export default function MemberList() {
       )}
 
       {offlineGroup.length > 0 && (
-        <div className="member-role-group">
-          <div className="member-role-header micro">
+        <div className="pt-4">
+          <div className="px-2 pb-1 pl-4 flex items-center gap-1 text-micro font-medium uppercase tracking-wide text-foreground-muted">
             {t('presence.offlineCount', { count: offlineGroup.length })}
           </div>
           {offlineGroup.map(renderMember)}

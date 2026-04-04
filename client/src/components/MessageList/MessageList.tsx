@@ -12,7 +12,6 @@ import type { Attachment } from '../../services/api';
 import MessageSkeleton from '../Skeleton/MessageSkeleton';
 import { usernameColor, getInitials } from '../../utils/colors';
 import { groupMessages, formatTime } from '../../utils/messageGrouping';
-import './MessageList.css';
 
 interface Props {
   channelId: string;
@@ -92,7 +91,7 @@ export default function MessageList({
     <Virtuoso
       ref={virtuosoRef}
       style={{ flex: 1 }}
-      className="message-list"
+      className="flex-1 pt-sm"
       role="log"
       aria-live="polite"
       firstItemIndex={firstItemIndex}
@@ -105,7 +104,7 @@ export default function MessageList({
           <>
             {isLoading && <MessageSkeleton count={5} />}
             {!canLoadMore && channelMessages.length > 0 && (
-              <div className="message-list-beginning">
+              <div className="text-center p-lg text-foreground-muted text-base font-display font-semibold border-b border-divider mb-sm">
                 {t('channels.welcomeTitle', 'Welcome to ~{{name}}', { name: channelName })}
               </div>
             )}
@@ -118,44 +117,50 @@ export default function MessageList({
 
         if (isSystem) {
           return (
-            <div className="message-system">
-              <span className="message-system-text">{firstMsg.content}</span>
+            <div className="flex justify-center px-lg py-xs" data-testid="system-message">
+              <span className="text-sm tracking-wide uppercase font-medium text-foreground-muted">
+                {firstMsg.content}
+              </span>
             </div>
           );
         }
 
         return (
-          <div className="message-group">
-            <div className="message-group-avatar">
+          <div className="flex pr-12 pl-lg mt-[1.0625rem] relative first:mt-4"
+               style={{ paddingRight: '48px' }}
+               data-testid="message-group">
+            <div className="shrink-0 w-10 mr-lg mt-0.5">
               <div
-                className="message-avatar"
+                className="w-10 h-10 rounded-full flex items-center justify-center text-[15px] font-semibold text-interactive-active select-none cursor-pointer transition-opacity duration-150 hover:opacity-85"
                 style={{ backgroundColor: usernameColor(group.username) }}
               >
                 {getInitials(group.username)}
               </div>
             </div>
-            <div className="message-group-content">
-              <div className="message-group-header">
+            <div className="flex-1 min-w-0 text-left">
+              <div className="flex items-baseline gap-1.5 mb-0.5 leading-[1.375rem]">
                 <span
-                  className="message-username"
+                  className="text-lg font-medium text-heading cursor-pointer hover:underline"
                   style={{ color: usernameColor(group.username) }}
                 >
                   {group.username}
                 </span>
-                <span className="message-timestamp">{formatTime(firstMsg.createdAt)}</span>
+                <span className="text-xs text-foreground-muted font-medium">
+                  {formatTime(firstMsg.createdAt)}
+                </span>
               </div>
               {group.messages.map((msg) => (
                 <div
                   key={msg.id}
                   id={`msg-${msg.id}`}
-                  className={`message-item ${msg.deleted ? 'deleted' : ''}`}
+                  className={`group/msg relative py-0.5 leading-[1.375rem] min-h-[1.375rem] hover:bg-surface-hover hover:rounded-sm hover:mx-[-0.25rem] hover:px-xs ${msg.deleted ? 'opacity-50' : ''}`}
                 >
                   {msg.deleted ? (
-                    <span className="message-deleted-text">
+                    <span className="text-lg text-foreground-muted opacity-50">
                       {t('messages.deleted', '[message deleted]')}
                     </span>
                   ) : (
-                    <div className="message-content">
+                    <div className="message-content text-lg text-foreground break-words overflow-wrap-anywhere leading-[1.375rem]">
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
                         components={markdownComponents}
@@ -164,17 +169,17 @@ export default function MessageList({
                         {msg.content.replace(/^\[DEV: unencrypted\] /, '')}
                       </ReactMarkdown>
                       {msg.editedAt && (
-                        <span className="message-edited">
+                        <span className="text-[0.625rem] text-foreground-muted ml-xs font-normal">
                           {t('messages.edited', '(edited)')}
                         </span>
                       )}
                     </div>
                   )}
                   {!msg.deleted && (
-                    <div className="message-actions">
+                    <div className="hidden group-hover/msg:flex group-focus-within/msg:flex absolute -top-4 -right-8 bg-glass-floating backdrop-blur-glass-light border border-glass-border rounded-md p-0.5 gap-0 z-[1] shadow-[0_2px_8px_0_var(--overlay-light)]" data-testid="message-actions">
                       {onReaction && (
                         <button
-                          className="message-action-btn clickable"
+                          className="bg-transparent border-none text-interactive p-xs px-sm text-md leading-none clickable hover:text-interactive-hover"
                           onClick={() =>
                             setEmojiPickerMsgId(
                               emojiPickerMsgId === msg.id ? null : msg.id,
@@ -182,7 +187,7 @@ export default function MessageList({
                           }
                           title={t('reactions.addReaction', 'Add Reaction')}
                         >
-                          <span className="message-action-icon">
+                          <span className="flex items-center">
                             <Emoji width={16} height={16} strokeWidth={2} />
                             <Plus width={10} height={10} strokeWidth={2} />
                           </span>
@@ -190,7 +195,7 @@ export default function MessageList({
                       )}
                       {onReply && (
                         <button
-                          className="message-action-btn clickable"
+                          className="bg-transparent border-none text-interactive p-xs px-sm text-md leading-none clickable hover:text-interactive-hover"
                           onClick={() => onReply(msg)}
                           title={t('messages.reply', 'Reply')}
                         >
@@ -199,7 +204,7 @@ export default function MessageList({
                       )}
                       {onCreateThread && (
                         <button
-                          className="message-action-btn clickable"
+                          className="bg-transparent border-none text-interactive p-xs px-sm text-md leading-none clickable hover:text-interactive-hover"
                           onClick={() => onCreateThread(msg)}
                           title={t('thread.createThread', 'Create Thread')}
                         >
@@ -208,7 +213,7 @@ export default function MessageList({
                       )}
                       {msg.authorId === currentUserId && onEdit && (
                         <button
-                          className="message-action-btn clickable"
+                          className="bg-transparent border-none text-interactive p-xs px-sm text-md leading-none clickable hover:text-interactive-hover"
                           onClick={() => onEdit(msg)}
                           title={t('messages.edit', 'Edit Message')}
                         >
@@ -217,7 +222,7 @@ export default function MessageList({
                       )}
                       {msg.authorId === currentUserId && onDelete && (
                         <button
-                          className="message-action-btn danger clickable"
+                          className="bg-transparent border-none text-interactive p-xs px-sm text-md leading-none clickable hover:text-foreground-danger"
                           onClick={() => onDelete(msg)}
                           title={t('messages.delete', 'Delete Message')}
                         >
@@ -227,7 +232,7 @@ export default function MessageList({
                     </div>
                   )}
                   {emojiPickerMsgId === msg.id && (
-                    <div className="message-emoji-picker-anchor">
+                    <div className="relative z-[100]">
                       <EmojiPicker
                         onSelect={(emoji) => {
                           onReaction?.(msg.id, emoji);
@@ -255,13 +260,13 @@ export default function MessageList({
                   )}
                   {threadInfo?.[msg.id] && (
                     <button
-                      className="message-thread-indicator"
+                      className="flex items-center gap-1.5 mt-xs py-0.5 px-sm pl-[3px] bg-transparent border-none rounded-md cursor-pointer text-base text-foreground-link font-medium transition-colors duration-150 hover:bg-surface-hover"
                       onClick={() => onOpenThread?.(msg.id)}
                     >
-                      <span className="thread-indicator-icon">
+                      <span className="text-lg">
                         <ChatBubble width={16} height={16} strokeWidth={2} />
                       </span>
-                      <span className="thread-indicator-count">
+                      <span className="font-semibold">
                         {threadInfo[msg.id].count === 1
                           ? t('thread.reply', '1 reply')
                           : t('thread.replies', '{{count}} replies', {
@@ -269,7 +274,7 @@ export default function MessageList({
                             })}
                       </span>
                       {threadInfo[msg.id].lastReplyAt && (
-                        <span className="thread-indicator-time">
+                        <span className="text-foreground-muted text-xs font-normal">
                           {t('thread.lastReply', 'Last reply {{time}}', {
                             time: formatTime(threadInfo[msg.id].lastReplyAt!),
                           })}

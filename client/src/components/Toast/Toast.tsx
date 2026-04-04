@@ -1,6 +1,5 @@
 import { useState, useCallback, type ReactNode } from 'react';
 import { ToastContext, type ToastType } from './ToastContext';
-import './Toast.css';
 
 interface ToastItem {
   id: number;
@@ -9,6 +8,13 @@ interface ToastItem {
 }
 
 let nextId = 0;
+
+const typeClasses: Record<ToastType, string> = {
+  info: '',
+  success: 'border-success',
+  error: 'border-danger',
+  warning: 'border-warning',
+};
 
 export function ToastProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
@@ -28,12 +34,21 @@ export function ToastProvider({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <ToastContext value={{ toast }}>
       {children}
-      <div className="toast-container" role="status" aria-live="polite">
+      <div
+        className="toast-container fixed bottom-lg right-lg z-toast flex flex-col-reverse gap-sm pointer-events-none"
+        role="status"
+        aria-live="polite"
+        data-testid="toast-container"
+      >
         {toasts.map((t) => (
-          <div key={t.id} className={`toast toast-${t.type}`}>
-            <span className="toast-message">{t.message}</span>
+          <div
+            key={t.id}
+            className={`flex items-center gap-md px-lg py-md rounded-md text-sm text-foreground-primary bg-surface-secondary border border-border shadow-glass pointer-events-auto animate-toast-slide-in max-w-[360px] ${typeClasses[t.type]}`}
+            data-testid={`toast-${t.type}`}
+          >
+            <span className="flex-1">{t.message}</span>
             <button
-              className="toast-dismiss"
+              className="bg-transparent border-none text-foreground-muted cursor-pointer text-xl leading-none p-0 transition-colors duration-fast ease-out hover:text-foreground-primary"
               onClick={() => dismiss(t.id)}
               aria-label="Dismiss"
             >

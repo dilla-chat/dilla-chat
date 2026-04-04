@@ -17,18 +17,18 @@ export default function BansTab({ teamId }: Readonly<{ teamId: string }>) {
   };
 
   return (
-    <div className="settings-section">
-      <h2 className="heading-3">{t('settings.bans', 'Bans')}</h2>
-      <div className="banned-users-list">
+    <div>
+      <h2 className="text-foreground-primary mb-5">{t('settings.bans', 'Bans')}</h2>
+      <div className="flex flex-col gap-0.5">
         {bannedUsers.length === 0 && (
-          <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>
+          <p className="text-foreground-muted text-sm">
             {t('members.noBanned', 'No banned users')}
           </p>
         )}
         {/* v8 ignore next 7 -- BansTab has no API to load banned users yet */}
         {bannedUsers.map((user) => (
-          <div key={user.id} className="banned-user-item">
-            <span className="banned-user-name">{user.username}</span>
+          <div key={user.id} className="flex items-center justify-between py-2.5 px-3 rounded-sm hover:bg-surface-hover">
+            <span className="text-base text-foreground-primary">{user.username}</span>
             <button className="btn-secondary" onClick={() => handleUnban(user.id)}>
               {t('members.unban', 'Unban')}
             </button>

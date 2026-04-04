@@ -25,15 +25,14 @@ describe('Toast', () => {
     expect(screen.getByText('Success!')).toBeInTheDocument();
   });
 
-  it('applies correct CSS class for toast type', () => {
+  it('applies correct data-testid for toast type', () => {
     render(
       <ToastProvider>
         <TestConsumer />
       </ToastProvider>,
     );
     fireEvent.click(screen.getByText('Show Error'));
-    const toast = screen.getByText('Error!').closest('.toast');
-    expect(toast).toHaveClass('toast-error');
+    expect(screen.getByTestId('toast-error')).toBeInTheDocument();
   });
 
   it('defaults to info type', () => {
@@ -43,8 +42,7 @@ describe('Toast', () => {
       </ToastProvider>,
     );
     fireEvent.click(screen.getByText('Show Info'));
-    const toast = screen.getByText('Info message').closest('.toast');
-    expect(toast).toHaveClass('toast-info');
+    expect(screen.getByTestId('toast-info')).toBeInTheDocument();
   });
 
   it('dismisses toast on button click', () => {
@@ -93,7 +91,7 @@ describe('Toast', () => {
         <TestConsumer />
       </ToastProvider>,
     );
-    const container = document.querySelector('.toast-container');
+    const container = screen.getByTestId('toast-container');
     expect(container).toHaveAttribute('role', 'status');
     expect(container).toHaveAttribute('aria-live', 'polite');
   });

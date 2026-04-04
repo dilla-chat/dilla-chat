@@ -6,7 +6,6 @@ import { render } from 'vitest-browser-react';
 import { expect, test, describe } from 'vitest';
 
 import '../../styles/theme.css';
-import './MessageList.css';
 
 describe('MessageList hover-reveal actions', () => {
   test('message-actions hidden by default', async () => {

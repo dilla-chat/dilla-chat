@@ -2,7 +2,6 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Search, Xmark } from 'iconoir-react';
 import { useMessageStore, type Message } from '../../stores/messageStore';
-import './SearchBar.css';
 
 interface Props {
   onJumpToMessage?: (channelId: string, messageId: string) => void;
@@ -101,13 +100,16 @@ export default function SearchBar({ onJumpToMessage }: Readonly<Props>) {
   }, [showDropdown]);
 
   return (
-    <div className="header-search" ref={containerRef}>
-      <div className={`header-search-input-wrapper ${focused ? 'focused' : ''}`}>
-        <Search className="header-search-icon" width={16} height={16} strokeWidth={2} />
+    <div className="relative" ref={containerRef}>
+      <div
+        className={`flex items-center bg-input border border-transparent rounded-lg px-sm h-7 w-[200px] max-md:w-[140px] transition-all duration-200 ease-out box-border ${focused ? 'w-[300px] max-md:w-[200px] border-brand shadow-[0_0_0_2px_var(--brand-alpha-12)]' : ''}`}
+        data-focused={focused || undefined}
+      >
+        <Search className="text-foreground-muted shrink-0" width={16} height={16} strokeWidth={2} />
         <input
           ref={inputRef}
           type="text"
-          className="header-search-input"
+          className="flex-1 bg-transparent border-none text-foreground-primary text-sm font-[inherit] outline-none px-1.5 min-w-0"
           placeholder={t('search.placeholder', 'Search messages...')}
           value={query}
           onChange={(e) => handleChange(e.target.value)}
@@ -115,41 +117,45 @@ export default function SearchBar({ onJumpToMessage }: Readonly<Props>) {
           onFocus={() => setFocused(true)}
         />
         {query && (
-          <button className="header-search-clear" onClick={handleClear}>
+          <button
+            className="bg-transparent border-none text-interactive cursor-pointer p-0 w-5 h-5 flex items-center justify-center rounded-sm shrink-0 transition-colors duration-[120ms] ease-out hover:text-interactive-hover"
+            onClick={handleClear}
+          >
             <Xmark width={14} height={14} strokeWidth={2} />
           </button>
         )}
       </div>
 
       {showDropdown && (
-        <div className="header-search-dropdown">
+        <div className="absolute top-[calc(100%+6px)] right-0 w-[420px] max-md:w-[calc(100vw-16px)] max-md:max-w-[420px] md:max-lg:w-[min(420px,calc(100vw-340px))] max-h-[60vh] overflow-y-auto bg-glass-floating backdrop-blur-glass-heavy border border-glass-border shadow-glass-elevated rounded-lg z-[200] p-sm">
           {results.length === 0 ? (
-            <div className="search-bar-no-results">
+            <div className="text-center py-xl px-lg text-foreground-muted text-base">
               {t('search.noResults', 'No results found')}
             </div>
           ) : (
             <>
-              <div className="search-bar-result-count micro">
+              <div className="px-sm py-xs text-micro">
                 {t('search.results', '{{count}} results', { count: results.length })}
               </div>
               {results.map((result) => (
                 <button
                   key={result.message.id}
-                  className="search-bar-result"
+                  className="bg-transparent border-none w-full text-left font-[inherit] text-[inherit] text-[length:inherit] py-2.5 px-3 rounded-sm cursor-pointer mb-0.5 transition-colors duration-150 ease-out hover:bg-surface-hover"
                   onClick={() => handleResultClick(result)}
                   type="button"
+                  data-testid="search-result"
                 >
-                  <div className="search-result-header">
-                    <span className="search-result-author">
+                  <div className="flex items-baseline gap-sm mb-0.5">
+                    <span className="text-base font-medium text-heading">
                       {result.message.username}
                     </span>
-                    <span className="search-result-time">
+                    <span className="text-micro text-foreground-muted font-medium">
                       {new Date(result.message.createdAt).toLocaleString()}
                     </span>
                   </div>
-                  <div className="search-result-content">
+                  <div className="text-sm text-foreground overflow-hidden text-ellipsis line-clamp-2 leading-[1.375]">
                     {result.message.content.substring(0, result.matchStart)}
-                    <mark className="search-result-highlight">
+                    <mark className="bg-accent-a25 text-heading rounded-[2px] px-0.5 font-medium" data-testid="search-highlight">
                       {result.message.content.substring(
                         result.matchStart,
                         result.matchEnd,

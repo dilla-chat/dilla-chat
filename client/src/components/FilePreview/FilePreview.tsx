@@ -2,7 +2,6 @@ import { memo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MusicNote, Page, Download } from 'iconoir-react';
 import type { Attachment } from '../../services/api';
-import './FilePreview.css';
 
 interface Props {
   attachments: Attachment[];
@@ -32,21 +31,31 @@ function ImagePreview({ attachment }: Readonly<{ attachment: Attachment }>) {
 
   return (
     <>
-      <div className="file-preview-image-container">
-        <button className="file-preview-image-btn" onClick={() => setExpanded(true)} type="button" title={t('upload.preview', 'Preview')}>
+      <div className="max-w-[400px] max-h-[300px] rounded-lg overflow-hidden">
+        <button
+          className="bg-transparent border-none p-0 rounded-none cursor-pointer block"
+          onClick={() => setExpanded(true)}
+          type="button"
+          title={t('upload.preview', 'Preview')}
+        >
           <img
             src={attachment.url}
             alt={attachment.filename}
-            className="file-preview-image"
+            className="max-w-[400px] max-h-[300px] rounded-lg object-contain block hover:opacity-90"
           />
         </button>
       </div>
       {expanded && (
-        <div className="file-preview-lightbox" aria-hidden="true" onClick={() => setExpanded(false)}>
+        <div
+          className="fixed inset-0 bg-overlay-heavy flex items-center justify-center z-modal cursor-pointer"
+          data-testid="file-preview-lightbox"
+          aria-hidden="true"
+          onClick={() => setExpanded(false)}
+        >
           <img
             src={attachment.url}
             alt=""
-            className="file-preview-lightbox-image"
+            className="max-w-[90vw] max-h-[90vh] object-contain rounded-sm"
           />
         </div>
       )}
@@ -56,11 +65,11 @@ function ImagePreview({ attachment }: Readonly<{ attachment: Attachment }>) {
 
 function VideoPreview({ attachment }: Readonly<{ attachment: Attachment }>) {
   return (
-    <div className="file-preview-video-container">
+    <div className="max-w-[400px] rounded-lg overflow-hidden">
       <video
         src={attachment.url}
         controls
-        className="file-preview-video"
+        className="max-w-[400px] max-h-[300px] rounded-lg block"
         preload="metadata"
       >
         <track kind="captions" />
@@ -71,12 +80,12 @@ function VideoPreview({ attachment }: Readonly<{ attachment: Attachment }>) {
 
 function AudioPreview({ attachment }: Readonly<{ attachment: Attachment }>) {
   return (
-    <div className="file-preview-audio-container">
-      <div className="file-preview-audio-info">
-        <span className="file-preview-audio-icon"><MusicNote width={20} height={20} /></span>
-        <span className="file-preview-audio-name">{attachment.filename}</span>
+    <div className="bg-surface-secondary border border-border rounded-lg p-md max-w-[400px]">
+      <div className="flex items-center gap-sm mb-sm">
+        <span className="text-xl"><MusicNote width={20} height={20} /></span>
+        <span className="text-base text-foreground-primary font-medium">{attachment.filename}</span>
       </div>
-      <audio src={attachment.url} controls className="file-preview-audio" preload="metadata">
+      <audio src={attachment.url} controls className="w-full h-8" preload="metadata">
         <track kind="captions" />
       </audio>
     </div>
@@ -87,16 +96,16 @@ function FileCard({ attachment }: Readonly<{ attachment: Attachment }>) {
   const { t } = useTranslation();
 
   return (
-    <div className="file-preview-card">
-      <div className="file-preview-card-icon"><Page width={24} height={24} /></div>
-      <div className="file-preview-card-info">
-        <span className="file-preview-card-name truncate">{attachment.filename}</span>
-        <span className="file-preview-card-size">{formatFileSize(attachment.size)}</span>
+    <div className="flex items-center gap-2.5 bg-surface-secondary border border-border rounded-lg py-2.5 px-3.5 max-w-[400px]">
+      <div className="text-[28px] shrink-0"><Page width={24} height={24} /></div>
+      <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+        <span className="text-base text-foreground-link font-medium truncate">{attachment.filename}</span>
+        <span className="text-xs text-foreground-muted">{formatFileSize(attachment.size)}</span>
       </div>
       <a
         href={attachment.url}
         download={attachment.filename}
-        className="file-preview-card-download clickable"
+        className="bg-transparent border-none text-xl text-interactive no-underline p-xs shrink-0 hover:text-interactive-hover"
         title={t('upload.download', 'Download')}
       >
         <Download width={16} height={16} />
@@ -109,7 +118,7 @@ export default memo(function FilePreview({ attachments }: Readonly<Props>) {
   if (!attachments || attachments.length === 0) return null;
 
   return (
-    <div className="file-preview-list">
+    <div className="flex flex-col gap-xs mt-xs">
       {attachments.map((att) => {
         if (isImage(att.content_type)) {
           return <ImagePreview key={att.id} attachment={att} />;

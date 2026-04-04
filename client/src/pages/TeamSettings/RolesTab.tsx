@@ -76,37 +76,37 @@ export default function RolesTab({ teamId }: Readonly<{ teamId: string }>) {
   };
 
   return (
-    <div className="settings-section">
-      <h2 className="heading-3">{t('settings.roles')}</h2>
+    <div>
+      <h2 className="text-foreground-primary mb-5">{t('settings.roles')}</h2>
 
-      <button className="btn-primary" onClick={handleCreateRole} style={{ marginBottom: 16 }}>
+      <button className="btn-primary mb-4" onClick={handleCreateRole}>
         {t('roles.create', 'Create Role')}
       </button>
 
-      <div className="roles-list">
+      <div className="flex flex-col gap-0.5">
         {[...teamRoles].sort((a, b) => b.position - a.position).map((role) => (
           <button
             key={role.id}
-            className={`role-item ${selectedRoleId === role.id ? 'active' : ''}`}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-sm border-none text-left cursor-pointer transition-colors duration-150 hover:bg-surface-hover ${selectedRoleId === role.id ? 'bg-surface-active' : 'bg-transparent'}`}
             onClick={() => selectRole(role)}
             type="button"
           >
-            <span className="role-color-circle" style={{ background: role.color || '#8fa3b8' }} />
-            <span className="role-name">{role.name}</span>
-            {role.isDefault && <span className="role-default-badge">{t('roles.default', 'Default')}</span>}
+            <span className="w-3 h-3 rounded-full shrink-0" style={{ background: role.color || '#8fa3b8' }} />
+            <span className="text-base text-foreground-primary">{role.name}</span>
+            {role.isDefault && <span className="text-micro font-medium uppercase tracking-wide text-foreground-muted ml-auto">{t('roles.default', 'Default')}</span>}
           </button>
         ))}
       </div>
 
       {selectedRole && (
-        <div className="role-editor">
-          <div className="settings-field">
-            <label className="micro">{t('roles.name', 'Role Name')}</label>
-            <input value={editName} onChange={(e) => setEditName(e.target.value)} />
+        <div className="mt-5 pt-5 border-t border-border-subtle">
+          <div className="mb-5">
+            <label className="text-micro font-medium uppercase tracking-wide text-foreground-muted block mb-2">{t('roles.name', 'Role Name')}</label>
+            <input className="form-input" value={editName} onChange={(e) => setEditName(e.target.value)} />
           </div>
 
-          <div className="settings-field">
-            <label className="micro">{t('roles.color', 'Color')}</label>
+          <div className="mb-5">
+            <label className="text-micro font-medium uppercase tracking-wide text-foreground-muted block mb-2">{t('roles.color', 'Color')}</label>
             <input
               type="color"
               value={editColor}
@@ -115,10 +115,10 @@ export default function RolesTab({ teamId }: Readonly<{ teamId: string }>) {
             />
           </div>
 
-          <h3 className="title">{t('roles.permissions', 'Permissions')}</h3>
-          <div className="permissions-grid">
+          <h3 className="text-lg font-semibold text-foreground-primary leading-snug">{t('roles.permissions', 'Permissions')}</h3>
+          <div className="grid grid-cols-2 gap-2 mt-2">
             {PERMISSION_FLAGS.map(({ bit, label }) => (
-              <label key={bit} className="permission-check">
+              <label key={bit} className="flex items-center gap-2 text-sm text-foreground-primary cursor-pointer py-1">
                 <input
                   type="checkbox"
                   checked={(editPermissions & bit) !== 0}
@@ -129,7 +129,7 @@ export default function RolesTab({ teamId }: Readonly<{ teamId: string }>) {
             ))}
           </div>
 
-          <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
+          <div className="flex gap-3 mt-5">
             <button className="btn-primary" onClick={handleSaveRole}>
               {t('common.save', 'Save Changes')}
             </button>

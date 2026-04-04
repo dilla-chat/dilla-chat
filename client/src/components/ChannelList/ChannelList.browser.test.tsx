@@ -6,7 +6,6 @@ import { render } from 'vitest-browser-react';
 import { expect, test, describe } from 'vitest';
 
 import '../../styles/theme.css';
-import './ChannelList.css';
 
 describe('ChannelList hover-reveal', () => {
   test('channel-actions hidden by default', async () => {

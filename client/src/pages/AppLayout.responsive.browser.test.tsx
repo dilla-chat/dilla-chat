@@ -10,7 +10,6 @@ import { expect, test, describe, beforeEach } from 'vitest';
 import { page } from 'vitest/browser';
 
 /* Import the CSS files whose media queries we're testing */
-import './AppLayout.css';
 import '../components/MemberList/MemberList.css';
 import '../components/ThreadPanel/ThreadPanel.css';
 import '../components/SearchBar/SearchBar.css';

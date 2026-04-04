@@ -103,8 +103,8 @@ describe('MemberList', () => {
   });
 
   it('shows member initials', () => {
-    const { container } = render(<MemberList />);
-    const avatars = container.querySelectorAll('.member-avatar');
+    render(<MemberList />);
+    const avatars = screen.getAllByTestId('member-avatar');
     // Alice => "A", Bob => "B", Charlie => "C"
     const initials = Array.from(avatars).map((a) => a.textContent?.trim());
     expect(initials).toContain('A');
@@ -112,16 +112,17 @@ describe('MemberList', () => {
     expect(initials).toContain('C');
   });
 
-  it('applies offline class to offline members', () => {
-    const { container } = render(<MemberList />);
-    const offlineItems = container.querySelectorAll('.member-item.offline');
+  it('applies offline attribute to offline members', () => {
+    render(<MemberList />);
+    const items = screen.getAllByTestId('member-item');
+    const offlineItems = items.filter((el) => el.getAttribute('data-offline') === 'true');
     expect(offlineItems.length).toBe(1);
   });
 
   it('renders empty when no team is active', () => {
     useTeamStore.setState({ activeTeamId: null });
-    const { container } = render(<MemberList />);
-    expect(container.querySelectorAll('.member-item').length).toBe(0);
+    render(<MemberList />);
+    expect(screen.queryAllByTestId('member-item').length).toBe(0);
   });
 
   it('shows user profile popup on member click', () => {
@@ -152,9 +153,13 @@ describe('MemberList', () => {
   });
 
   it('sorts online members by status priority', () => {
-    const { container } = render(<MemberList />);
-    const memberItems = container.querySelectorAll('.member-item:not(.offline)');
-    const names = Array.from(memberItems).map(el => el.querySelector('.member-display-name')?.textContent);
+    render(<MemberList />);
+    const memberItems = screen.getAllByTestId('member-item');
+    const onlineItems = memberItems.filter((el) => el.getAttribute('data-offline') !== 'true');
+    const names = onlineItems.map(el => {
+      const nameEl = el.querySelector('[data-testid="member-display-name"]');
+      return nameEl?.textContent;
+    });
     // alice=online, bob=idle => alice before bob
     expect(names[0]).toBe('Alice');
     expect(names[1]).toBe('Bob');
@@ -207,8 +212,8 @@ describe('MemberList', () => {
         },
       },
     });
-    const { container } = render(<MemberList />);
-    const names = Array.from(container.querySelectorAll('.member-display-name')).map(el => el.textContent);
+    render(<MemberList />);
+    const names = screen.getAllByTestId('member-display-name').map(el => el.textContent);
     expect(names[0]).toBe('Apple');
     expect(names[1]).toBe('Zebra');
   });
@@ -243,13 +248,16 @@ describe('MemberList', () => {
       },
     });
 
-    const { container } = render(<MemberList />);
-    const onlineNames = Array.from(container.querySelectorAll('.member-item:not(.offline) .member-display-name')).map(el => el.textContent);
+    render(<MemberList />);
+    const allItems = screen.getAllByTestId('member-item');
+    const onlineItems = allItems.filter((el) => el.getAttribute('data-offline') !== 'true');
+    const onlineNames = onlineItems.map(el => el.querySelector('[data-testid="member-display-name"]')?.textContent);
     // apple < zebra
     expect(onlineNames[0]).toBe('apple');
     expect(onlineNames[1]).toBe('zebra');
 
-    const offlineNames = Array.from(container.querySelectorAll('.member-item.offline .member-display-name')).map(el => el.textContent);
+    const offlineItems = allItems.filter((el) => el.getAttribute('data-offline') === 'true');
+    const offlineNames = offlineItems.map(el => el.querySelector('[data-testid="member-display-name"]')?.textContent);
     // banana < mango
     expect(offlineNames[0]).toBe('banana');
     expect(offlineNames[1]).toBe('mango');
@@ -270,8 +278,8 @@ describe('MemberList', () => {
       },
     });
 
-    const { container } = render(<MemberList />);
-    const avatarText = container.querySelector('.member-avatar')?.textContent?.trim();
+    render(<MemberList />);
+    const avatarText = screen.getByTestId('member-avatar').textContent?.trim();
     expect(avatarText).toBe('JD');
   });
 
@@ -311,8 +319,10 @@ describe('MemberList', () => {
       },
     });
 
-    const { container } = render(<MemberList />);
-    const names = Array.from(container.querySelectorAll('.member-item:not(.offline) .member-display-name')).map(el => el.textContent);
+    render(<MemberList />);
+    const allItems = screen.getAllByTestId('member-item');
+    const onlineItems = allItems.filter((el) => el.getAttribute('data-offline') !== 'true');
+    const names = onlineItems.map(el => el.querySelector('[data-testid="member-display-name"]')?.textContent);
     // Bob (online=0) before Alice (dnd=2)
     expect(names[0]).toBe('Bob');
     expect(names[1]).toBe('Alice');

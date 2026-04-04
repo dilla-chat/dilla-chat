@@ -35,16 +35,18 @@ describe('CreateChannel', () => {
   });
 
   it('defaults to text channel type', () => {
-    const { container } = render(<CreateChannel onClose={vi.fn()} />);
-    const textBtn = container.querySelector('.channel-type-btn.active');
-    expect(textBtn?.textContent).toContain('channels.text');
+    render(<CreateChannel onClose={vi.fn()} />);
+    const textBtn = screen.getByTestId('channel-type-text');
+    expect(textBtn).toHaveAttribute('data-active', 'true');
+    expect(textBtn.textContent).toContain('channels.text');
   });
 
   it('switches to voice type on click', () => {
-    const { container } = render(<CreateChannel onClose={vi.fn()} />);
+    render(<CreateChannel onClose={vi.fn()} />);
     fireEvent.click(screen.getByText('channels.voice'));
-    const activeBtn = container.querySelector('.channel-type-btn.active');
-    expect(activeBtn?.textContent).toContain('channels.voice');
+    const voiceBtn = screen.getByTestId('channel-type-voice');
+    expect(voiceBtn).toHaveAttribute('data-active', 'true');
+    expect(voiceBtn.textContent).toContain('channels.voice');
   });
 
   it('disables create button when name is empty', () => {
@@ -106,11 +108,12 @@ describe('CreateChannel', () => {
   });
 
   it('switches back to text type', () => {
-    const { container } = render(<CreateChannel onClose={vi.fn()} />);
+    render(<CreateChannel onClose={vi.fn()} />);
     fireEvent.click(screen.getByText('channels.voice'));
     fireEvent.click(screen.getByText('channels.text'));
-    const activeBtn = container.querySelector('.channel-type-btn.active');
-    expect(activeBtn?.textContent).toContain('channels.text');
+    const textBtn = screen.getByTestId('channel-type-text');
+    expect(textBtn).toHaveAttribute('data-active', 'true');
+    expect(textBtn.textContent).toContain('channels.text');
   });
 
   it('handles create channel failure gracefully', async () => {

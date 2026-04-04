@@ -32,7 +32,6 @@ import { usePresenceEvents } from '../hooks/usePresenceEvents';
 import { useCustomTheme } from '../hooks/useCustomTheme';
 import { telemetryClient } from '../services/telemetryClient';
 import ContentErrorBoundary from '../components/ErrorBoundary/ContentErrorBoundary';
-import './AppLayout.css';
 
 export default function AppLayout() {
   const { t } = useTranslation();
@@ -171,10 +170,10 @@ export default function AppLayout() {
     if (isDMMode && activeDM) {
       return (
         <>
-          <span className="content-header-icon">
+          <span className="text-channel-icon text-2xl font-semibold">
             {activeDM.is_group ? <Group width={20} height={20} strokeWidth={2} /> : <ChatBubble width={20} height={20} strokeWidth={2} />}
           </span>
-          <span className="content-header-name title">
+          <span className="font-display title">
             {activeDM.is_group
               ? ((activeDM as unknown as { name?: string }).name || activeDM.members.map((m) => m.display_name || m.username).join(', '))
               : (() => {
@@ -183,23 +182,23 @@ export default function AppLayout() {
                 })()}
           </span>
           {derivedKey && (
-            <span className="content-header-encrypted" title="End-to-end encrypted">
+            <span className="inline-flex items-center ml-1.5 text-foreground-positive opacity-80" title="End-to-end encrypted">
               <Lock width={14} height={14} strokeWidth={2} />
             </span>
           )}
           {activeDM.is_group && (
             <>
-              <span className="content-header-divider" />
-              <span className="content-header-topic">
+              <span className="w-px h-6 bg-divider mx-sm" />
+              <span className="text-base text-foreground-muted overflow-hidden text-ellipsis whitespace-nowrap flex-1 max-md:hidden">
                 {t('dm.members', '{{count}} members', { count: activeDM.members.length })}
               </span>
             </>
           )}
-          <div className="content-header-actions">
+          <div className="flex gap-lg ml-auto max-md:gap-2">
             <SearchBar onJumpToMessage={handleJumpToMessage} />
             {activeDM.is_group && (
               <button
-                className={`header-action-btn ${showDMMembers ? 'active' : ''}`}
+                className={`bg-none border-none text-interactive cursor-pointer p-xs rounded-sm text-xl transition-colors duration-150 ease-linear hover:text-interactive-hover ${showDMMembers ? 'text-interactive-active' : ''}`}
                 onClick={() => setShowDMMembers(v => !v)}
                 title={t('members.toggle', 'Toggle Member List')}
               >
@@ -213,25 +212,25 @@ export default function AppLayout() {
     if (!isDMMode && activeChannel) {
       return (
         <>
-          <span className="content-header-icon">
+          <span className="text-channel-icon text-2xl font-semibold">
             {activeChannel.type === 'voice' ? <SoundHigh width={20} height={20} strokeWidth={2} /> : <span className="channel-tilde">~</span>}
           </span>
-          <span className="content-header-name title">{activeChannel.name}</span>
+          <span className="font-display title">{activeChannel.name}</span>
           {derivedKey && (
-            <span className="content-header-encrypted" title="End-to-end encrypted">
+            <span className="inline-flex items-center ml-1.5 text-foreground-positive opacity-80" title="End-to-end encrypted">
               <Lock width={14} height={14} strokeWidth={2} />
             </span>
           )}
           {activeChannel.topic && (
             <>
-              <span className="content-header-divider" />
-              <span className="content-header-topic">{activeChannel.topic}</span>
+              <span className="w-px h-6 bg-divider mx-sm max-md:hidden" />
+              <span className="text-base text-foreground-muted overflow-hidden text-ellipsis whitespace-nowrap flex-1 max-md:hidden md:max-lg:max-w-[200px]">{activeChannel.topic}</span>
             </>
           )}
-          <div className="content-header-actions">
+          <div className="flex gap-lg ml-auto max-md:gap-2">
             <SearchBar onJumpToMessage={handleJumpToMessage} />
             <button
-              className={`header-action-btn ${showMembers ? 'active' : ''}`}
+              className={`bg-none border-none text-interactive cursor-pointer p-xs rounded-sm text-xl transition-colors duration-150 ease-linear hover:text-interactive-hover ${showMembers ? 'text-interactive-active' : ''}`}
               onClick={() => setShowMembers(v => !v)}
               title={t('members.toggle', 'Toggle Member List')}
             >
@@ -243,11 +242,11 @@ export default function AppLayout() {
     }
     return (
       <>
-        <span className="content-header-name title">{t('app.name')}</span>
-        <div className="content-header-actions">
+        <span className="font-display title">{t('app.name')}</span>
+        <div className="flex gap-lg ml-auto max-md:gap-2">
           <SearchBar onJumpToMessage={handleJumpToMessage} />
           <button
-            className={`header-action-btn ${showMembers ? 'active' : ''}`}
+            className={`bg-none border-none text-interactive cursor-pointer p-xs rounded-sm text-xl transition-colors duration-150 ease-linear hover:text-interactive-hover ${showMembers ? 'text-interactive-active' : ''}`}
             onClick={() => setShowMembers(!showMembers)}
             title={t('members.toggle', 'Toggle Member List')}
           >
@@ -262,8 +261,8 @@ export default function AppLayout() {
   const renderContentArea = () => {
     if (!cryptoReady) {
       return (
-        <div className="message-area">
-          <div className="message-area-empty">
+        <div className="flex-1 flex items-center justify-center text-foreground-muted text-base p-lg">
+          <div className="text-center">
             <p>{t('app.loading', 'Loading...')}</p>
           </div>
         </div>
@@ -291,8 +290,8 @@ export default function AppLayout() {
       );
     }
     return (
-      <div className="message-area">
-        <div className="message-area-empty">
+      <div className="flex-1 flex items-center justify-center text-foreground-muted text-base p-lg">
+        <div className="text-center">
           <p>
             {isDMMode
               ? t('dm.noDMs', 'No direct messages yet')
@@ -365,7 +364,7 @@ export default function AppLayout() {
     return (
       <>
         <TitleBar />
-        <div className="app-layout-main">
+        <div className="app-layout-main flex w-full h-full overflow-hidden bg-surface">
           <div className="page" style={{ margin: 'auto', maxWidth: 480, padding: '3rem 2rem' }}>
             <img src="/brand/icon.svg" alt="Dilla" style={{ width: 80, height: 80, marginBottom: 8 }} />
             <h1>{t('app.welcomeBack', 'Welcome to Dilla')}</h1>
@@ -385,14 +384,17 @@ export default function AppLayout() {
   }
 
   const channelSidebarContent = (
-    <div className={`channel-sidebar ${isMobile ? 'mobile-fullwidth' : ''}`} style={isMobile ? undefined : { width: channelWidth }}>
-      <div className="channel-sidebar-header">
-        <div className="channel-sidebar-header-top">
-          <span className="channel-sidebar-header-name title truncate">
+    <div
+      className={`channel-sidebar flex flex-col shrink-0 min-h-0 overflow-hidden bg-glass-secondary backdrop-blur-glass border-r border-glass-border ${isMobile ? 'w-full border-r-0' : ''}`}
+      style={isMobile ? undefined : { width: channelWidth }}
+    >
+      <div className="flex flex-col border-b border-divider shrink-0 box-border shadow-[0_1px_2px_var(--overlay-light)]">
+        <div className="flex items-center justify-between px-3 pt-2.5 pb-1">
+          <span className="font-display title truncate flex-1 min-w-0">
             {isDMMode ? t('dm.title', 'Direct Messages') : (activeTeamId && teamMap.get(activeTeamId)?.name) || t('app.name')}
           </span>
           <button
-            className="sidebar-settings-btn"
+            className="p-xs border-none rounded-sm bg-none text-interactive cursor-pointer shrink-0 inline-flex items-center justify-center transition-colors duration-150 ease-linear hover:text-interactive-hover hover:bg-surface-hover"
             onClick={() => navigate('/app/settings')}
             title={t('teams.settings', 'Team Settings')}
             style={isDMMode ? { visibility: 'hidden' } : undefined}
@@ -400,16 +402,16 @@ export default function AppLayout() {
             <Settings width={18} height={18} strokeWidth={2} />
           </button>
         </div>
-        <div className="channel-sidebar-tabs">
+        <div className="flex px-sm pb-sm gap-xs">
           <button
-            className={`sidebar-tab ${isDMMode ? '' : 'active'}`}
+            className={`flex-1 py-1.5 border-none rounded-md bg-transparent text-interactive cursor-pointer text-sm font-medium text-center inline-flex items-center justify-center gap-1.5 transition-colors duration-150 ease-linear hover:text-interactive-hover hover:bg-surface-hover ${isDMMode ? '' : 'text-interactive-active bg-surface-selected'}`}
             onClick={switchToChannels}
             title={t('channels.uncategorized', 'Channels')}
           >
             <Hashtag width={16} height={16} strokeWidth={2} /> {t('channels.title', 'Kanals')}
           </button>
           <button
-            className={`sidebar-tab ${isDMMode ? 'active' : ''}`}
+            className={`flex-1 py-1.5 border-none rounded-md bg-transparent text-interactive cursor-pointer text-sm font-medium text-center inline-flex items-center justify-center gap-1.5 transition-colors duration-150 ease-linear hover:text-interactive-hover hover:bg-surface-hover ${isDMMode ? 'text-interactive-active bg-surface-selected' : ''}`}
             onClick={switchToDMs}
             title={t('dm.title', 'Direct Messages')}
           >
@@ -428,20 +430,20 @@ export default function AppLayout() {
 
   return (
     <>
-      <a href="#main-content" className="skip-to-content">
+      <a href="#main-content" className="absolute -top-full left-lg z-toast px-lg py-sm bg-accent text-surface rounded-md font-semibold no-underline transition-[top] duration-150 ease-out focus:top-lg">
         {t('a11y.skipToContent', 'Skip to content')}
       </a>
       <TitleBar />
-      <div className={`app-layout-main ${isMobile ? 'mobile' : ''}`}>
+      <div className={`app-layout-main flex w-full h-full overflow-hidden bg-surface ${isMobile ? 'max-md:flex-col' : ''}`}>
       {!isMobile && (
         <>
-          <div className="left-panels">
-            <div className="left-panels-top">
+          <div className="flex flex-col h-full shrink-0">
+            <div className="flex flex-1 min-h-0 overflow-hidden">
               <TeamSidebar />
               {channelSidebarContent}
             </div>
 
-            <div className="left-panels-bottom">
+            <div className="bg-surface-tertiary shrink-0 border-t border-divider">
               <VoiceControls />
               <UserPanel
                 username={username}
@@ -456,31 +458,31 @@ export default function AppLayout() {
       )}
 
       {isMobile && mobileTab === 'teams' && (
-        <div className="mobile-tab-content">
+        <div className="mobile-tab-content flex flex-1 min-h-0 overflow-hidden">
           <TeamSidebar />
         </div>
       )}
 
       {isMobile && mobileTab === 'channels' && (
-        <div className="mobile-tab-content">
+        <div className="mobile-tab-content flex flex-1 min-h-0 overflow-hidden">
           {channelSidebarContent}
         </div>
       )}
 
       {isMobile && mobileTab === 'members' && (
-        <div className="mobile-tab-content">
+        <div className="mobile-tab-content flex flex-1 min-h-0 overflow-hidden">
           <MemberList />
         </div>
       )}
 
       {(!isMobile || mobileTab === 'chat') && (
-      <div id="main-content" className="content-wrapper">
-        <div className="content-header">
+      <div id="main-content" className="flex-1 flex flex-col min-w-0 overflow-hidden max-md:min-h-0">
+        <div className="h-[var(--header-height)] min-h-[var(--header-height)] flex items-center px-lg bg-glass backdrop-blur-glass-light border-b border-divider shrink-0 gap-sm box-border shadow-[0_1px_2px_var(--overlay-light)] max-md:px-2 max-md:gap-1">
           {renderContentHeader()}
         </div>
 
-        <div className="content-body">
-          <div className="content-area">
+        <div className="flex-1 flex min-h-0 overflow-hidden">
+          <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden bg-surface">
             {renderContentArea()}
           </div>
 
@@ -496,7 +498,7 @@ export default function AppLayout() {
       )}
 
       {isMobile && (
-        <div className="mobile-bottom-controls">
+        <div className="flex flex-col shrink-0 bg-surface-tertiary border-t border-divider">
           <VoiceControls />
           <UserPanel
             username={username}

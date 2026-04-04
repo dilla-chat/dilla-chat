@@ -4,9 +4,9 @@ export default function ModerationTab({ teamId: _teamId }: Readonly<{ teamId: st
   const { t } = useTranslation();
 
   return (
-    <div className="settings-section">
-      <h2 className="heading-3">{t('settings.moderation')}</h2>
-      <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>
+    <div>
+      <h2 className="text-foreground-primary mb-5">{t('settings.moderation')}</h2>
+      <p className="text-foreground-muted text-sm">
         {t('settings.moderationDesc', 'Configure moderation tools and auto-moderation rules.')}
       </p>
     </div>

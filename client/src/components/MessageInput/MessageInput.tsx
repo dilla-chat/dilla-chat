@@ -9,7 +9,6 @@ import { getFormatTypeForKey, applyFormatting } from './formatting';
 import { PlusCircleIcon } from './Icons';
 import FileUploadArea from './FileUploadArea';
 import type { PendingFile } from './FileUploadArea';
-import './MessageInput.css';
 
 interface Props {
   channelId: string;
@@ -220,7 +219,7 @@ export default function MessageInput({
 
   return (
     <section
-      className={`message-input-wrapper ${dragging ? 'message-input-dragging' : ''}`}
+      className={`shrink-0 relative p-0 px-lg pb-lg z-10 max-md:px-sm max-md:pb-sm ${dragging ? '[&_.composer]:outline-2 [&_.composer]:outline-dashed [&_.composer]:outline-brand [&_.composer]:-outline-offset-2' : ''}`}
       aria-label="Message composition"
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -229,16 +228,16 @@ export default function MessageInput({
       <TypingIndicator channelId={channelId} currentUserId={currentUserId} />
 
       {dragging && (
-        <div className="message-input-drag-overlay">
+        <div className="absolute inset-0 bg-brand-a12 flex items-center justify-center z-10 text-brand text-lg font-semibold pointer-events-none rounded-[12px]">
           <span>{t('upload.dragDrop', 'Drop files here to upload')}</span>
         </div>
       )}
 
-      <div className="message-input-composer">
+      <div className="composer bg-glass backdrop-blur-glass-light border border-glass-border rounded-[12px] overflow-hidden transition-[border-color,box-shadow] duration-150 ease-out focus-within:border-brand focus-within:shadow-[0_0_0_3px_var(--brand-alpha-12)]">
         {editingMessage && (
-          <div className="message-input-editing-banner">
+          <div className="flex items-center justify-between bg-bg-accent text-interactive-active px-3 py-1.5 text-sm font-medium">
             <span>{t('messages.editingBanner', 'Editing message')}</span>
-            <button className="editing-cancel-btn" onClick={() => { onCancelEdit(); setValue(''); }}>
+            <button className="bg-transparent border-none text-interactive-active cursor-pointer text-xs opacity-90 p-0 transition-opacity duration-150 hover:opacity-100" onClick={() => { onCancelEdit(); setValue(''); }}>
               {t('common.cancel', 'Cancel')} (Esc)
             </button>
           </div>
@@ -248,10 +247,10 @@ export default function MessageInput({
         <FormattingToolbar textareaRef={textareaRef} setValue={setValue} />
 
         {/* Row 2: Textarea (middle) */}
-        <div className="message-input-textarea-area">
+        <div className="px-md py-sm min-h-[22px]">
           <textarea
             ref={textareaRef}
-            className="message-input-textarea"
+            className="w-full bg-transparent border-none box-border text-foreground text-md font-sans p-0 m-0 resize-none outline-none max-h-[300px] leading-[1.375rem] block placeholder:text-foreground-muted max-md:max-h-[150px]"
             value={value}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
@@ -271,12 +270,12 @@ export default function MessageInput({
         />
 
         {/* Row 3: Action bar (bottom) */}
-        <div className="message-input-action-bar">
-          <div className="toolbar-group">
+        <div className="flex items-center justify-between px-sm py-xs min-h-[36px] box-border">
+          <div className="flex items-center gap-0.5">
             <input
               ref={fileInputRef}
               type="file"
-              className="message-input-file-hidden"
+              className="hidden"
               multiple
               onChange={(e) => {
                 if (e.target.files) addFiles(e.target.files);
@@ -284,14 +283,14 @@ export default function MessageInput({
               }}
             />
             <button
-              className="toolbar-btn clickable"
+              className="bg-transparent border-none text-interactive p-0 w-7 h-7 flex items-center justify-center shrink-0 text-sm font-semibold font-sans clickable hover:text-interactive-hover [&_svg]:w-[18px] [&_svg]:h-[18px]"
               title={t('upload.attachFile', 'Attach File')}
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
             >
               {uploading ? <Hourglass width={18} height={18} strokeWidth={2} /> : <PlusCircleIcon />}
             </button>
-            <div style={{ position: 'relative' }}>
+            <div className="relative">
               {showEmojiPicker && (
                 <EmojiPicker
                   onSelect={handleEmojiSelect}
@@ -299,16 +298,16 @@ export default function MessageInput({
                   anchorRef={emojiBtnRef}
                 />
               )}
-              <button ref={emojiBtnRef} className="toolbar-btn clickable" title={t('messages.emoji', 'Emoji')} onClick={() => setShowEmojiPicker(v => !v)} disabled={uploading}>
+              <button ref={emojiBtnRef} className="bg-transparent border-none text-interactive p-0 w-7 h-7 flex items-center justify-center shrink-0 text-sm font-semibold font-sans clickable hover:text-interactive-hover [&_svg]:w-[18px] [&_svg]:h-[18px]" title={t('messages.emoji', 'Emoji')} onClick={() => setShowEmojiPicker(v => !v)} disabled={uploading}>
                 <Emoji width={18} height={18} strokeWidth={1.75} />
               </button>
             </div>
           </div>
 
-          <div className="send-area">
-            <div className="send-divider" />
+          <div className="flex items-center gap-0">
+            <div className="w-px h-5 bg-divider mx-1.5 ml-1" />
             <button
-              className={`toolbar-send-btn ${hasContent ? 'has-content' : ''}`}
+              className={`bg-transparent border-none p-0 w-7 h-7 flex items-center justify-center rounded-sm shrink-0 transition-colors duration-150 [&_svg]:w-[18px] [&_svg]:h-[18px] ${hasContent ? 'text-brand cursor-pointer hover:text-brand-light' : 'text-interactive-muted cursor-default'}`}
               title={t('messages.send', 'Send Message')}
               onClick={handleSend}
               disabled={!hasContent || uploading}
@@ -319,7 +318,7 @@ export default function MessageInput({
         </div>
       </div>
 
-      {uploading && <div className="message-input-uploading">{t('upload.uploading', 'Uploading...')}</div>}
+      {uploading && <div className="text-sm text-foreground-muted px-md py-xs font-medium">{t('upload.uploading', 'Uploading...')}</div>}
     </section>
   );
 }

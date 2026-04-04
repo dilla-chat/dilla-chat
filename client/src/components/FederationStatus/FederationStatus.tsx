@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api } from '../../services/api';
-import './FederationStatus.css';
 
 interface Peer {
   name: string;
@@ -20,6 +19,12 @@ interface JoinTokenData {
   token: string;
   join_command: string;
 }
+
+const statusDotColor: Record<string, string> = {
+  connected: 'bg-status-online',
+  syncing: 'bg-status-idle',
+  disconnected: 'bg-danger',
+};
 
 export default function FederationStatus({ teamId }: Readonly<{ teamId: string }>) {
   const { t } = useTranslation();
@@ -88,17 +93,6 @@ export default function FederationStatus({ teamId }: Readonly<{ teamId: string }
     }
   };
 
-  const statusClass = (s: string) => {
-    switch (s) {
-      case 'connected':
-        return 'connected';
-      case 'syncing':
-        return 'syncing';
-      default:
-        return 'disconnected';
-    }
-  };
-
   const formatLastSeen = (iso: string) => {
     try {
       return new Date(iso).toLocaleString();
@@ -112,56 +106,56 @@ export default function FederationStatus({ teamId }: Readonly<{ teamId: string }
     : '';
 
   return (
-    <div className="federation-status">
-      <h2>{t('federation.title')}</h2>
+    <div className="flex flex-col gap-5">
+      <h2 className="text-foreground-primary m-0 mb-xs">{t('federation.title')}</h2>
 
-      {error && <div className="settings-error">{error}</div>}
+      {error && <div className="text-foreground-danger text-sm">{error}</div>}
 
       {/* Node Information */}
       {status && (
-        <div className="federation-node-info">
-          <h3>{t('federation.nodeInfo')}</h3>
-          <div className="node-info-grid">
-            <span className="node-info-label">{t('federation.nodeName')}</span>
-            <span className="node-info-value mono">{status.node_name}</span>
-            <span className="node-info-label">{t('federation.lamportTimestamp')}</span>
-            <span className="node-info-value mono">{status.lamport_ts}</span>
+        <div className="bg-surface-secondary border border-glass-border-light rounded-lg p-lg">
+          <h3 className="text-foreground-primary text-base font-semibold uppercase tracking-[0.02em] m-0 mb-md">{t('federation.nodeInfo')}</h3>
+          <div className="grid grid-cols-[auto_1fr] gap-x-lg gap-y-sm items-center">
+            <span className="text-foreground-muted text-sm font-medium">{t('federation.nodeName')}</span>
+            <span className="text-foreground-primary font-mono text-sm">{status.node_name}</span>
+            <span className="text-foreground-muted text-sm font-medium">{t('federation.lamportTimestamp')}</span>
+            <span className="text-foreground-primary font-mono text-sm">{status.lamport_ts}</span>
           </div>
         </div>
       )}
 
       {/* Connected Peers */}
-      <div className="federation-peers">
-        <h3>{t('federation.connectedPeers')}</h3>
+      <div className="bg-surface-secondary border border-glass-border-light rounded-lg p-lg">
+        <h3 className="text-foreground-primary text-base font-semibold uppercase tracking-[0.02em] m-0 mb-md">{t('federation.connectedPeers')}</h3>
         {total > 0 && (
-          <div className="federation-mesh-summary">
+          <div className="text-foreground-muted text-xs mb-md">
             {t('federation.meshSummary', { total, connected, disconnected })}
           </div>
         )}
         {total === 0 ? (
-          <div className="federation-no-peers">{t('federation.noPeers')}</div>
+          <div className="text-foreground-muted text-sm py-md">{t('federation.noPeers')}</div>
         ) : (
-          <table className="federation-peer-table">
+          <table className="w-full border-collapse">
             <thead>
               <tr>
-                <th className="micro">{t('federation.peerName')}</th>
-                <th className="micro">{t('federation.peerAddress')}</th>
-                <th className="micro">{t('federation.peerStatus')}</th>
-                <th className="micro">{t('federation.peerLastSeen')}</th>
+                <th className="text-left p-sm px-md border-b border-border text-micro font-medium uppercase tracking-wide text-foreground-muted">{t('federation.peerName')}</th>
+                <th className="text-left p-sm px-md border-b border-border text-micro font-medium uppercase tracking-wide text-foreground-muted">{t('federation.peerAddress')}</th>
+                <th className="text-left p-sm px-md border-b border-border text-micro font-medium uppercase tracking-wide text-foreground-muted">{t('federation.peerStatus')}</th>
+                <th className="text-left p-sm px-md border-b border-border text-micro font-medium uppercase tracking-wide text-foreground-muted">{t('federation.peerLastSeen')}</th>
               </tr>
             </thead>
             <tbody>
               {peers.map((peer) => (
                 <tr key={peer.name}>
-                  <td>{peer.name}</td>
-                  <td>{peer.address}</td>
-                  <td>
-                    <span className="peer-status-indicator">
-                      <span className={`peer-status-dot ${statusClass(peer.status)}`} />
+                  <td className="py-2.5 px-md text-foreground-primary text-sm border-b border-border last:border-b-0">{peer.name}</td>
+                  <td className="py-2.5 px-md text-foreground-primary text-sm border-b border-border last:border-b-0">{peer.address}</td>
+                  <td className="py-2.5 px-md text-sm border-b border-border last:border-b-0">
+                    <span className="inline-flex items-center gap-1.5 text-sm">
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${statusDotColor[peer.status] ?? 'bg-danger'}`} />
                       {statusLabel(peer.status)}
                     </span>
                   </td>
-                  <td>{formatLastSeen(peer.last_seen)}</td>
+                  <td className="py-2.5 px-md text-foreground-primary text-sm border-b border-border last:border-b-0">{formatLastSeen(peer.last_seen)}</td>
                 </tr>
               ))}
             </tbody>
@@ -170,10 +164,11 @@ export default function FederationStatus({ teamId }: Readonly<{ teamId: string }
       </div>
 
       {/* Join Token Generator */}
-      <div className="federation-join">
-        <h3>{t('federation.joinCommand')}</h3>
+      <div className="bg-surface-secondary border border-glass-border-light rounded-lg p-lg">
+        <h3 className="text-foreground-primary text-base font-semibold uppercase tracking-[0.02em] m-0 mb-md">{t('federation.joinCommand')}</h3>
         <button
-          className="federation-generate-btn"
+          className="bg-[var(--gradient-accent)] text-interactive-active border border-white-overlay-light rounded-sm px-lg py-sm text-base font-medium cursor-pointer transition-[filter,box-shadow] duration-150 shadow-[0_2px_8px_var(--accent-alpha-20)] hover:brightness-110 hover:shadow-[0_4px_16px_var(--accent-alpha-30)] disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{ background: 'var(--gradient-accent)' }}
           onClick={handleGenerateToken}
           disabled={generating}
         >
@@ -181,23 +176,23 @@ export default function FederationStatus({ teamId }: Readonly<{ teamId: string }
         </button>
 
         {joinToken && (
-          <div className="federation-join-result">
-            <p className="federation-join-help">{t('federation.joinCommandHelp')}</p>
-            <div className="federation-command-block mono">
+          <div className="mt-lg flex flex-col gap-md">
+            <p className="text-foreground-muted text-sm m-0">{t('federation.joinCommandHelp')}</p>
+            <div className="relative bg-surface-tertiary rounded-sm p-md text-foreground-primary break-all whitespace-pre-wrap font-mono text-sm">
               {joinToken.join_command}
               <button
-                className={`federation-copy-btn ${copiedField === 'join' ? 'copied' : ''}`}
+                className={`absolute top-2 right-2 border-none rounded-sm px-sm py-xs text-xs cursor-pointer transition-colors duration-150 ${copiedField === 'join' ? 'bg-status-online text-foreground-primary' : 'bg-border text-foreground-primary hover:bg-surface-hover'}`}
                 onClick={() => copyToClipboard(joinToken.join_command, 'join')}
               >
                 {copiedField === 'join' ? t('federation.copied') : t('federation.copyToClipboard')}
               </button>
             </div>
 
-            <p className="federation-curl-label">{t('federation.curlOneLiner')}</p>
-            <div className="federation-command-block mono">
+            <p className="text-foreground-muted text-xs m-0">{t('federation.curlOneLiner')}</p>
+            <div className="relative bg-surface-tertiary rounded-sm p-md text-foreground-primary break-all whitespace-pre-wrap font-mono text-sm">
               {curlOneLiner}
               <button
-                className={`federation-copy-btn ${copiedField === 'curl' ? 'copied' : ''}`}
+                className={`absolute top-2 right-2 border-none rounded-sm px-sm py-xs text-xs cursor-pointer transition-colors duration-150 ${copiedField === 'curl' ? 'bg-status-online text-foreground-primary' : 'bg-border text-foreground-primary hover:bg-surface-hover'}`}
                 onClick={() => copyToClipboard(curlOneLiner, 'curl')}
               >
                 {copiedField === 'curl' ? t('federation.copied') : t('federation.copyToClipboard')}
@@ -207,7 +202,7 @@ export default function FederationStatus({ teamId }: Readonly<{ teamId: string }
         )}
       </div>
 
-      <div className="federation-auto-refresh">{t('federation.autoRefresh')}</div>
+      <div className="text-foreground-muted text-xs tracking-[0.02em] opacity-70 text-right">{t('federation.autoRefresh')}</div>
     </div>
   );
 }

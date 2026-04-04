@@ -4,7 +4,6 @@ import { useVoiceConnection } from '../../hooks/useVoiceConnection';
 import { useVoiceMediaState } from '../../stores/selectors';
 import { useTeamStore, type Channel } from '../../stores/teamStore';
 import ConnectionStatus from '../ConnectionStatus/ConnectionStatus';
-import './VoiceControls.css';
 
 export default function VoiceControls() {
   const { t } = useTranslation();
@@ -46,36 +45,36 @@ export default function VoiceControls() {
   };
 
   return (
-    <div className="voice-controls">
-      <div className="voice-controls-row">
-        <div className="voice-controls-left">
-          <div className="voice-controls-title">
+    <div className="pt-2.5 px-3 pb-1.5 overflow-visible animate-voice-slide-in" data-testid="voice-controls">
+      <div className="flex items-center gap-sm">
+        <div className="flex flex-col gap-px min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 text-status-online text-sm font-semibold leading-[18px]">
             <ConnectionStatus />
-            <span className="voice-controls-title-text">
+            <span className="text-status-online">
               {connecting ? t('voice.connecting', 'Connecting') : t('voice.connected', 'Voice Connected')}
             </span>
           </div>
-          <div className="voice-controls-channel">
+          <div className="text-xs text-foreground-muted font-normal truncate">
             {channel?.name ?? t('voice.voiceChannel')}{teamName ? ` / ${teamName}` : ''}
           </div>
         </div>
-        <div className="voice-controls-right">
+        <div className="flex items-center gap-sm shrink-0 ml-auto">
           <button
-            className={`voice-btn webcam ${webcamSharing ? 'active' : ''}`}
+            className={`bg-transparent border-none text-interactive cursor-pointer p-0 rounded-sm w-8 h-8 flex items-center justify-center transition-[color,background-color] duration-150 ease-linear hover:text-interactive-hover hover:bg-surface-hover ${webcamSharing ? 'active text-foreground-danger bg-danger-a15 hover:bg-danger-a25' : ''}`}
             onClick={handleWebcam}
             title={webcamSharing ? t('voice.stopWebcam', 'Stop camera') : t('voice.startWebcam', 'Share camera')}
           >
             {webcamSharing ? <VideoCameraOff width={18} height={18} strokeWidth={2} /> : <VideoCamera width={18} height={18} strokeWidth={2} />}
           </button>
           <button
-            className={`voice-btn screen-share ${screenSharing ? 'active' : ''}`}
+            className={`bg-transparent border-none text-interactive cursor-pointer p-0 rounded-sm w-8 h-8 flex items-center justify-center transition-[color,background-color] duration-150 ease-linear hover:text-interactive-hover hover:bg-surface-hover ${screenSharing ? 'active text-foreground-danger bg-danger-a15 hover:bg-danger-a25' : ''}`}
             onClick={handleScreenShare}
             title={screenSharing ? t('voice.stopScreenShare', 'Stop sharing') : t('voice.startScreenShare', 'Share screen')}
           >
             <AppWindow width={18} height={18} strokeWidth={2} />
           </button>
           <button
-            className="voice-btn disconnect"
+            className="bg-transparent border-none text-foreground-danger cursor-pointer p-0 rounded-sm w-8 h-8 flex items-center justify-center transition-[color,background-color] duration-150 ease-linear hover:bg-surface-hover"
             onClick={leave}
             title={t('voice.leave')}
           >

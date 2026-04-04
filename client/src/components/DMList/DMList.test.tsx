@@ -109,8 +109,10 @@ describe('DMList', () => {
 
   it('marks active DM', () => {
     useDMStore.setState({ activeDMId: 'dm-1' });
-    const { container } = render(<DMList currentUserId="user-1" onNewDM={vi.fn()} />);
-    expect(container.querySelector('.dm-item.active')).toBeInTheDocument();
+    render(<DMList currentUserId="user-1" onNewDM={vi.fn()} />);
+    const dmItems = screen.getAllByTestId('dm-item');
+    const activeItem = dmItems.find((el) => el.getAttribute('data-active') === 'true');
+    expect(activeItem).toBeTruthy();
   });
 
   it('renders search input', () => {
@@ -179,8 +181,8 @@ describe('DMList', () => {
     const dm1 = { ...dmChannel, last_message: { content: 'old', createdAt: '2025-01-01T00:00:00Z' } };
     const dm2 = { ...groupDM, last_message: { content: 'new', createdAt: '2025-01-03T00:00:00Z' } };
     useDMStore.setState({ dmChannels: { 'team-1': [dm1, dm2] } });
-    const { container } = render(<DMList currentUserId="user-1" onNewDM={vi.fn()} />);
-    const items = container.querySelectorAll('.dm-item');
+    render(<DMList currentUserId="user-1" onNewDM={vi.fn()} />);
+    const items = screen.getAllByTestId('dm-item');
     // Group DM (newer) should be first
     expect(items[0].textContent).toContain('Alice, Bob, Charlie');
   });

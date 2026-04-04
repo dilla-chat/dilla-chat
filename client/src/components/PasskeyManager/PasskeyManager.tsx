@@ -10,7 +10,6 @@ import {
   encodeRecoveryKey as encodeRecoveryKeyKS,
   generateRecoveryKey as generateRecoveryKeyBytes,
 } from '../../services/keyStore';
-import './PasskeyManager.css';
 
 interface CredentialInfo {
   credentials: { id: string; name: string; created_at: string }[];
@@ -104,17 +103,17 @@ export default function PasskeyManager() {
   if (!credInfo) return null;
 
   return (
-    <div className="passkey-manager">
-      <h3>Passkey Management</h3>
+    <div className="py-6">
+      <h3 className="m-0 mb-4 text-[15px] font-semibold text-heading">Passkey Management</h3>
 
-      <div className="passkey-manager-list">
+      <div className="mb-4">
         {credInfo.credentials.length === 0 ? (
-          <p className="passkey-manager-empty">No passkeys registered</p>
+          <p className="text-foreground-muted text-sm opacity-60">No passkeys registered</p>
         ) : (
           credInfo.credentials.map((cred, i) => (
-            <div key={cred.id || i} className="passkey-manager-item">
-              <span className="passkey-manager-item-name">{cred.name || 'Passkey'}</span>
-              <span className="passkey-manager-item-id mono">
+            <div key={cred.id || i} className="flex items-center justify-between px-4 py-2 bg-input rounded-md mb-1">
+              <span className="font-medium text-foreground text-base">{cred.name || 'Passkey'}</span>
+              <span className="text-foreground-muted mono">
                 {cred.id?.slice(0, 12)}...
               </span>
             </div>
@@ -122,29 +121,31 @@ export default function PasskeyManager() {
         )}
       </div>
 
-      {error && <p className="error" style={{ marginTop: 8 }}>{error}</p>}
+      {error && <p className="error mt-2">{error}</p>}
 
-      <div className="passkey-manager-actions">
-        <button onClick={handleAddPasskey} disabled={loading}>
+      <div className="flex gap-2 flex-wrap">
+        <button onClick={handleAddPasskey} disabled={loading} className="px-6 py-2 text-sm">
           {loading ? 'Adding...' : 'Add Another Passkey'}
         </button>
         <button
           onClick={handleRegenerateRecovery}
-          style={{ background: 'transparent', border: '1px solid var(--divider)' }}
+          className="px-6 py-2 text-sm bg-transparent border border-divider"
         >
           Regenerate Recovery Key
         </button>
       </div>
 
       {showRecoveryKey && newRecoveryKey && (
-        <div className="passkey-manager-recovery">
+        <div className="mt-6 p-4 bg-input rounded-md border border-divider">
           <p><strong>New Recovery Key:</strong></p>
-          <code>{newRecoveryKey}</code>
+          <code className="block font-mono text-sm break-all p-2 bg-surface-secondary rounded-sm mt-1.5 select-all">
+            {newRecoveryKey}
+          </code>
           <button
             onClick={async () => {
               await navigator.clipboard.writeText(newRecoveryKey);
             }}
-            style={{ marginTop: 8 }}
+            className="mt-2"
           >
             Copy to Clipboard
           </button>

@@ -11,7 +11,6 @@ import { notificationService } from '../services/notifications';
 import { api } from '../services/api';
 import { startMicTest, stopMicTest, type MicTestSession } from '../services/micTest';
 import { shortcuts } from '../utils/keyboardShortcuts';
-import './UserSettings.css';
 
 /** Maps KeyboardEvent.code to a readable label */
 function keyCodeToLabel(code: string): string {
@@ -171,15 +170,15 @@ export default function UserSettings() {
       onClose={handleClose}
     >
       {activeId === 'my-account' && (
-        <div className="settings-section">
-          <h2>{t('userSettings.myAccount', 'My Account')}</h2>
-          <div className="user-profile-card">
-            <div className="user-profile-avatar">{initials}</div>
-            <div className="user-profile-info">
-              <div className="user-profile-display-name">
+        <div>
+          <h2 className="text-foreground-primary mb-5">{t('userSettings.myAccount', 'My Account')}</h2>
+          <div className="flex items-center gap-4 p-4 bg-surface-secondary rounded-lg">
+            <div className="w-[72px] h-[72px] rounded-full bg-accent text-white flex items-center justify-center text-2xl font-semibold shrink-0">{initials}</div>
+            <div className="flex-1 min-w-0">
+              <div className="text-xl font-semibold text-foreground-primary">
                 {editingName ? (
                   <input
-                    className="user-profile-name-input"
+                    className="text-xl font-semibold bg-input text-foreground-primary border-none rounded-sm px-2 py-0.5 w-full box-border"
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
                     onBlur={() => saveDisplayName()}
@@ -190,7 +189,7 @@ export default function UserSettings() {
                   <span>{displayName || userInfo.username}</span>
                 )}
               </div>
-              <div className="user-profile-username">@{userInfo.username}</div>
+              <div className="text-base text-foreground-secondary mt-0.5">@{userInfo.username}</div>
             </div>
             <button className="btn-secondary" onClick={() => setEditingName(!editingName)} disabled={savingName}>
               {savingName ? t('common.saving', 'Saving...') : t('common.edit', 'Edit')}
@@ -198,23 +197,23 @@ export default function UserSettings() {
           </div>
 
           {publicKey && (
-            <div className="settings-field" style={{ marginTop: 20 }}>
-              <label>{t('identity.publicKeyLabel', 'Your public key fingerprint')}</label>
-              <div className="user-public-key mono">{publicKey}</div>
+            <div className="mb-5 mt-5">
+              <label className="block mb-2 text-foreground-secondary">{t('identity.publicKeyLabel', 'Your public key fingerprint')}</label>
+              <div className="bg-input px-3 py-2 rounded-sm text-foreground-secondary break-all select-all mono">{publicKey}</div>
             </div>
           )}
         </div>
       )}
 
       {activeId === 'voice-video' && (
-        <div className="settings-section">
-          <h2>{t('userSettings.voiceVideo', 'Voice & Video')}</h2>
+        <div>
+          <h2 className="text-foreground-primary mb-5">{t('userSettings.voiceVideo', 'Voice & Video')}</h2>
 
           {/* Side-by-side device selectors */}
-          <div className="voice-device-row">
-            <div className="settings-field" style={{ flex: 1 }}>
-              <label>{t('userSettings.inputDevice', 'Input Device')}</label>
-              <select value={selectedInputDevice} onChange={(e) => setSelectedInputDevice(e.target.value)}>
+          <div className="flex gap-4 mb-4">
+            <div className="mb-0 flex-1">
+              <label className="block mb-2 text-foreground-secondary">{t('userSettings.inputDevice', 'Input Device')}</label>
+              <select className="w-full py-2.5 pr-8 pl-2.5 rounded-sm bg-input text-foreground-primary text-base font-[inherit] box-border" value={selectedInputDevice} onChange={(e) => setSelectedInputDevice(e.target.value)}>
                 <option value="default">{t('userSettings.defaultDevice', 'Default')}</option>
                 {inputDevices.filter((d) => d.deviceId !== 'default').map((d) => (
                   <option key={d.deviceId} value={d.deviceId}>
@@ -223,9 +222,9 @@ export default function UserSettings() {
                 ))}
               </select>
             </div>
-            <div className="settings-field" style={{ flex: 1 }}>
-              <label>{t('userSettings.outputDevice', 'Output Device')}</label>
-              <select value={selectedOutputDevice} onChange={(e) => setSelectedOutputDevice(e.target.value)}>
+            <div className="mb-0 flex-1">
+              <label className="block mb-2 text-foreground-secondary">{t('userSettings.outputDevice', 'Output Device')}</label>
+              <select className="w-full py-2.5 pr-8 pl-2.5 rounded-sm bg-input text-foreground-primary text-base font-[inherit] box-border" value={selectedOutputDevice} onChange={(e) => setSelectedOutputDevice(e.target.value)}>
                 <option value="default">{t('userSettings.defaultDevice', 'Default')}</option>
                 {outputDevices.filter((d) => d.deviceId !== 'default').map((d) => (
                   <option key={d.deviceId} value={d.deviceId}>
@@ -237,49 +236,49 @@ export default function UserSettings() {
           </div>
 
           {/* Side-by-side volume sliders */}
-          <div className="voice-device-row">
-            <div className="settings-field" style={{ flex: 1 }}>
-              <label>{t('userSettings.inputVolume', 'Input Volume')}</label>
+          <div className="flex gap-4 mb-4">
+            <div className="mb-0 flex-1">
+              <label className="block mb-2 text-foreground-secondary">{t('userSettings.inputVolume', 'Input Volume')}</label>
               <input
                 type="range"
                 min="0"
                 max="200"
                 value={Math.round(inputVolume * 100)}
                 onChange={(e) => setInputVolume(Number(e.target.value) / 100)}
-                className="voice-volume-slider"
+                className="volume-slider w-full mt-1 cursor-pointer"
                 aria-label={t('userSettings.inputVolume', 'Input Volume')}
                 aria-valuemin={0}
                 aria-valuemax={200}
                 aria-valuenow={Math.round(inputVolume * 100)}
               />
-              <span className="voice-volume-label">{Math.round(inputVolume * 100)}%</span>
+              <span className="text-xs text-foreground-secondary block text-right mt-0.5">{Math.round(inputVolume * 100)}%</span>
             </div>
-            <div className="settings-field" style={{ flex: 1 }}>
-              <label>{t('userSettings.outputVolume', 'Output Volume')}</label>
+            <div className="mb-0 flex-1">
+              <label className="block mb-2 text-foreground-secondary">{t('userSettings.outputVolume', 'Output Volume')}</label>
               <input
                 type="range"
                 min="0"
                 max="100"
                 value={Math.round(outputVolume * 100)}
                 onChange={(e) => setOutputVolume(Number(e.target.value) / 100)}
-                className="voice-volume-slider"
+                className="volume-slider w-full mt-1 cursor-pointer"
                 aria-label={t('userSettings.outputVolume', 'Output Volume')}
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-valuenow={Math.round(outputVolume * 100)}
               />
-              <span className="voice-volume-label">{Math.round(outputVolume * 100)}%</span>
+              <span className="text-xs text-foreground-secondary block text-right mt-0.5">{Math.round(outputVolume * 100)}%</span>
             </div>
           </div>
 
           {/* Mic test */}
           <MicTest deviceId={selectedInputDevice} inputVolume={inputVolume} />
 
-          <div className="voice-separator" />
+          <div className="border-t border-border-subtle my-2" />
 
           {/* Input Profile radio group */}
-          <h3 className="voice-processing-heading">{t('userSettings.inputProfile', 'Input Profile')}</h3>
-          <div className="voice-profile-group" role="radiogroup" aria-label={t('userSettings.inputProfile', 'Input Profile')}>
+          <h3 className="text-xs font-semibold uppercase text-foreground-secondary mt-5 mb-2 tracking-[0.02em]">{t('userSettings.inputProfile', 'Input Profile')}</h3>
+          <div className="flex flex-col gap-2 mb-4" role="radiogroup" aria-label={t('userSettings.inputProfile', 'Input Profile')}>
             <ProfileOption
               value="voice-isolation"
               selected={inputProfile}
@@ -305,12 +304,12 @@ export default function UserSettings() {
 
           {/* Custom settings — only shown when Custom profile is selected */}
           {isCustomProfile && (
-            <div className="voice-custom-settings">
+            <div className="py-2">
               {/* Auto sensitivity toggle */}
-              <div className="settings-toggle">
-                <div className="settings-toggle-info">
-                  <div className="settings-toggle-label">{t('userSettings.autoSensitivityToggle', 'Automatically Adjust Input Sensitivity')}</div>
-                  <div className="settings-toggle-description">{t('userSettings.autoGainControlDesc', 'Automatically adjusts your mic volume to a consistent level')}</div>
+              <div className="flex items-center justify-between py-3 border-b border-border-subtle">
+                <div className="flex-1">
+                  <div className="text-base font-medium text-foreground-primary">{t('userSettings.autoSensitivityToggle', 'Automatically Adjust Input Sensitivity')}</div>
+                  <div className="text-sm text-foreground-secondary mt-0.5">{t('userSettings.autoGainControlDesc', 'Automatically adjusts your mic volume to a consistent level')}</div>
                 </div>
                 <button
                   className={`toggle-switch ${autoGainControl ? 'active' : ''}`}
@@ -323,11 +322,11 @@ export default function UserSettings() {
 
               {/* Threshold slider — shown when auto sensitivity is OFF */}
               {!autoGainControl && (
-                <div className="mic-threshold">
-                  <label>{t('userSettings.inputSensitivity', 'Input Sensitivity')}</label>
-                  <div className="mic-threshold-track">
+                <div className="mt-2 mb-2">
+                  <label className="text-xs font-semibold uppercase tracking-[0.02em] text-foreground-secondary block mb-2">{t('userSettings.inputSensitivity', 'Input Sensitivity')}</label>
+                  <div className="relative h-5 bg-input rounded-[3px] overflow-hidden">
                     <div
-                      className="mic-threshold-level"
+                      className="absolute top-0 left-0 h-full bg-interactive-muted rounded-[3px] transition-[width] duration-[60ms] linear pointer-events-none"
                       style={{ width: `${inputThreshold * 100}%` }}
                     />
                     <input
@@ -343,7 +342,7 @@ export default function UserSettings() {
                       aria-valuenow={Math.round(inputThreshold * 100)}
                     />
                   </div>
-                  <div className="mic-threshold-labels">
+                  <div className="flex justify-between mt-1 text-micro text-foreground-muted">
                     <span>{t('userSettings.sensitive', 'Sensitive')}</span>
                     <span>{t('userSettings.noisy', 'Noisy')}</span>
                   </div>
@@ -351,9 +350,10 @@ export default function UserSettings() {
               )}
 
               {/* Noise Suppression dropdown */}
-              <div className="settings-field">
-                <label>{t('userSettings.noiseSuppression', 'Noise Suppression')}</label>
+              <div className="mb-5">
+                <label className="block mb-2 text-foreground-secondary">{t('userSettings.noiseSuppression', 'Noise Suppression')}</label>
                 <select
+                  className="w-full py-2.5 pr-8 pl-2.5 rounded-sm bg-input text-foreground-primary text-base font-[inherit] box-border"
                   value={noiseSuppressionMode}
                   onChange={(e) => setNoiseSuppressionMode(e.target.value as NoiseSuppressionMode)}
                 >
@@ -363,10 +363,10 @@ export default function UserSettings() {
               </div>
 
               {/* Echo Cancellation toggle */}
-              <div className="settings-toggle">
-                <div className="settings-toggle-info">
-                  <div className="settings-toggle-label">{t('userSettings.echoCancellation', 'Echo Cancellation')}</div>
-                  <div className="settings-toggle-description">{t('userSettings.echoCancellationDesc', 'Removes echo from speakers being picked up by your mic')}</div>
+              <div className="flex items-center justify-between py-3 border-b border-border-subtle">
+                <div className="flex-1">
+                  <div className="text-base font-medium text-foreground-primary">{t('userSettings.echoCancellation', 'Echo Cancellation')}</div>
+                  <div className="text-sm text-foreground-secondary mt-0.5">{t('userSettings.echoCancellationDesc', 'Removes echo from speakers being picked up by your mic')}</div>
                 </div>
                 <button
                   className={`toggle-switch ${echoCancellation ? 'active' : ''}`}
@@ -378,10 +378,10 @@ export default function UserSettings() {
               </div>
 
               {/* Push to Talk toggle */}
-              <div className="settings-toggle">
-                <div className="settings-toggle-info">
-                  <div className="settings-toggle-label">{t('userSettings.pushToTalk', 'Push to Talk')}</div>
-                  <div className="settings-toggle-description">{t('userSettings.pushToTalkDesc', 'Hold a key to transmit your voice instead of always-on mic')}</div>
+              <div className="flex items-center justify-between py-3 border-b border-border-subtle">
+                <div className="flex-1">
+                  <div className="text-base font-medium text-foreground-primary">{t('userSettings.pushToTalk', 'Push to Talk')}</div>
+                  <div className="text-sm text-foreground-secondary mt-0.5">{t('userSettings.pushToTalkDesc', 'Hold a key to transmit your voice instead of always-on mic')}</div>
                 </div>
                 <button
                   className={`toggle-switch ${pushToTalk ? 'active' : ''}`}
@@ -394,10 +394,10 @@ export default function UserSettings() {
 
               {/* PTT key capture — shown when PTT is ON */}
               {pushToTalk && (
-                <div className="settings-field">
-                  <label>{t('userSettings.pushToTalkKey', 'Push to Talk Key')}</label>
+                <div className="mb-5">
+                  <label className="block mb-2 text-foreground-secondary">{t('userSettings.pushToTalkKey', 'Push to Talk Key')}</label>
                   <button
-                    className="ptt-key-capture"
+                    className="inline-flex items-center justify-center min-w-[80px] px-4 py-2 text-base font-medium text-foreground-primary bg-input border border-border rounded-sm cursor-pointer transition-[border-color] duration-150 hover:border-accent focus:outline-2 focus:outline-accent focus:outline-offset-2"
                     onClick={() => setCapturingKey(true)}
                     aria-label={t('userSettings.pushToTalkKeyCapture', 'Click to change push to talk key')}
                   >
@@ -414,15 +414,15 @@ export default function UserSettings() {
       )}
 
       {activeId === 'notifications' && (
-        <div className="settings-section">
-          <h2>{t('userSettings.notifications', 'Notifications')}</h2>
+        <div>
+          <h2 className="text-foreground-primary mb-5">{t('userSettings.notifications', 'Notifications')}</h2>
 
-          <div className="settings-toggle">
-            <div className="settings-toggle-info">
-              <div className="settings-toggle-label">
+          <div className="flex items-center justify-between py-3 border-b border-border-subtle">
+            <div className="flex-1">
+              <div className="text-base font-medium text-foreground-primary">
                 {t('userSettings.desktopNotifs', 'Desktop Notifications')}
               </div>
-              <div className="settings-toggle-desc">
+              <div className="text-sm text-foreground-secondary mt-0.5">
                 {t('userSettings.desktopNotifsDesc', 'Show desktop notifications for new messages')}
               </div>
             </div>
@@ -432,12 +432,12 @@ export default function UserSettings() {
             />
           </div>
 
-          <div className="settings-toggle">
-            <div className="settings-toggle-info">
-              <div className="settings-toggle-label">
+          <div className="flex items-center justify-between py-3 border-b border-border-subtle">
+            <div className="flex-1">
+              <div className="text-base font-medium text-foreground-primary">
                 {t('userSettings.soundNotifs', 'Notification Sounds')}
               </div>
-              <div className="settings-toggle-desc">
+              <div className="text-sm text-foreground-secondary mt-0.5">
                 {t('userSettings.soundNotifsDesc', 'Play a sound when you receive a notification')}
               </div>
             </div>
@@ -450,19 +450,19 @@ export default function UserSettings() {
       )}
 
       {activeId === 'appearance' && (
-        <div className="settings-section">
-          <h2>{t('userSettings.appearance', 'Appearance')}</h2>
+        <div>
+          <h2 className="text-foreground-primary mb-5">{t('userSettings.appearance', 'Appearance')}</h2>
 
-          <div className="settings-toggle">
-            <div className="settings-toggle-info">
-              <div className="settings-toggle-label">
+          <div className="flex items-center justify-between py-3 border-b border-border-subtle">
+            <div className="flex-1">
+              <div className="text-base font-medium text-foreground-primary">
                 {t('userSettings.theme', 'Theme')}
               </div>
-              <div className="settings-toggle-description">
+              <div className="text-sm text-foreground-secondary mt-0.5">
                 {t('userSettings.themeDesc', 'Choose a visual theme')}
               </div>
             </div>
-            <div className="theme-toggle-buttons">
+            <div className="flex gap-2 shrink-0 ml-4">
               <button
                 className={`btn-secondary ${theme === 'dark' ? 'active' : ''}`}
                 onClick={() => setTheme('dark')}
@@ -487,13 +487,13 @@ export default function UserSettings() {
       )}
 
       {activeId === 'keybinds' && (
-        <div className="settings-section">
-          <h2>{t('userSettings.keybinds', 'Keybinds')}</h2>
-          <div className="keybinds-list">
+        <div>
+          <h2 className="text-foreground-primary mb-5">{t('userSettings.keybinds', 'Keybinds')}</h2>
+          <div className="flex flex-col gap-0.5">
             {shortcuts.map((s) => (
-              <div className="keybind-row" key={s.key}>
-                <span className="keybind-action">{t(s.action)}</span>
-                <kbd className="keybind-key mono">{s.key}</kbd>
+              <div className="flex items-center justify-between py-2.5 px-3 rounded-sm hover:bg-surface-hover" key={s.key}>
+                <span className="text-base text-foreground-primary">{t(s.action)}</span>
+                <kbd className="bg-surface-tertiary text-foreground-secondary px-2 py-1 rounded-sm border border-border mono">{s.key}</kbd>
               </div>
             ))}
           </div>
@@ -501,11 +501,12 @@ export default function UserSettings() {
       )}
 
       {activeId === 'language' && (
-        <div className="settings-section">
-          <h2>{t('userSettings.language', 'Language')}</h2>
-          <div className="settings-field">
-            <label>{t('userSettings.selectLanguage', 'Select Language')}</label>
+        <div>
+          <h2 className="text-foreground-primary mb-5">{t('userSettings.language', 'Language')}</h2>
+          <div className="mb-5">
+            <label className="block mb-2 text-foreground-secondary">{t('userSettings.selectLanguage', 'Select Language')}</label>
             <select
+              className="w-full py-2.5 pr-8 pl-2.5 rounded-sm bg-input text-foreground-primary text-base font-[inherit] box-border"
               value={i18n.language}
               onChange={(e) => i18n.changeLanguage(e.target.value)}
             >
@@ -524,15 +525,15 @@ export default function UserSettings() {
       )}
 
       {activeId === 'privacy' && (
-        <div className="settings-section">
-          <h2>{t('userSettings.privacy', 'Privacy')}</h2>
+        <div>
+          <h2 className="text-foreground-primary mb-5">{t('userSettings.privacy', 'Privacy')}</h2>
 
-          <div className="settings-toggle">
-            <div className="settings-toggle-info">
-              <div className="settings-toggle-label">
+          <div className="flex items-center justify-between py-3 border-b border-border-subtle">
+            <div className="flex-1">
+              <div className="text-base font-medium text-foreground-primary">
                 {t('userSettings.telemetry', 'Anonymous Telemetry')}
               </div>
-              <div className="settings-toggle-description">
+              <div className="text-sm text-foreground-secondary mt-0.5">
                 {t(
                   'userSettings.telemetryDesc',
                   'Help improve Dilla by sharing anonymous usage data (page load times, error counts). No message content, usernames, or IP addresses are ever collected.',
@@ -549,8 +550,8 @@ export default function UserSettings() {
       )}
 
       {activeId === 'security' && (
-        <div className="settings-section">
-          <h2>{t('userSettings.security', 'Security')}</h2>
+        <div>
+          <h2 className="text-foreground-primary mb-5">{t('userSettings.security', 'Security')}</h2>
           <PasskeyManager />
         </div>
       )}
@@ -568,17 +569,18 @@ function ProfileOption({ value, selected, onChange, name, desc }: Readonly<{
 }>) {
   const isSelected = selected === value;
   return (
-    <label className={`voice-profile-option ${isSelected ? 'selected' : ''}`} aria-label={name}>
+    <label className={`flex items-center gap-3 px-4 py-3 bg-surface-secondary border-2 rounded-lg cursor-pointer transition-[border-color] duration-150 hover:bg-surface-hover ${isSelected ? 'border-accent' : 'border-transparent'}`} aria-label={name}>
       <input
         type="radio"
         name="input-profile"
         value={value}
         checked={isSelected}
         onChange={() => onChange(value)}
+        className="accent-accent shrink-0 w-4 h-4"
       />
       <div>
-        <div className="voice-profile-name">{name}</div>
-        <div className="voice-profile-desc">{desc}</div>
+        <div className="text-base font-semibold text-foreground-primary">{name}</div>
+        <div className="text-sm text-foreground-secondary mt-0.5">{desc}</div>
       </div>
     </label>
   );
@@ -627,15 +629,15 @@ function MicTest({ deviceId, inputVolume }: Readonly<{ deviceId: string; inputVo
   }, []);
 
   return (
-    <div className="voice-mic-test-row">
+    <div className="flex items-center gap-3 mb-4">
       <button
-        className={testing ? 'btn-danger' : 'btn-secondary'}
+        className={`shrink-0 ${testing ? 'btn-danger' : 'btn-secondary'}`}
         onClick={testing ? handleStop : handleStart}
       >
         {testing ? t('userSettings.stopTest', 'Stop') : t('userSettings.startTest', 'Test Mic')}
       </button>
       <meter
-        className="voice-level-bar"
+        className="flex-1 h-2 bg-input rounded-sm overflow-hidden"
         min={0}
         max={100}
         value={Math.round(level * 100)}

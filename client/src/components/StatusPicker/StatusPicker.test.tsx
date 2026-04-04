@@ -31,7 +31,7 @@ describe('StatusPicker', () => {
 
   it('marks the current status as active', () => {
     const { container } = renderPicker({ currentStatus: 'idle' });
-    const activeOption = container.querySelector('.status-picker-option.active');
+    const activeOption = container.querySelector('[data-active]');
     expect(activeOption).toBeInTheDocument();
     expect(activeOption?.textContent).toContain('presence.idle');
   });
@@ -94,7 +94,7 @@ describe('StatusPicker', () => {
 
   it('renders as a dialog element', () => {
     const { container } = renderPicker();
-    const picker = container.querySelector('dialog.status-picker');
+    const picker = container.querySelector('dialog');
     expect(picker).toBeInTheDocument();
   });
 });

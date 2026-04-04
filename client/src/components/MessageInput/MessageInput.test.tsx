@@ -37,6 +37,10 @@ function getTextarea() {
   return screen.getByRole('textbox');
 }
 
+function getCompositionSection() {
+  return screen.getByLabelText('Message composition');
+}
+
 describe('MessageInput', () => {
   it('renders a textarea', () => {
     render(<MessageInput {...defaultProps} />);
@@ -252,17 +256,17 @@ describe('MessageInput', () => {
 
   it('handles file drop', () => {
     render(<MessageInput {...defaultProps} />);
-    const wrapper = document.querySelector('.message-input-wrapper')!;
+    const wrapper = getCompositionSection();
     fireEvent.dragOver(wrapper);
-    expect(document.querySelector('.message-input-dragging')).toBeInTheDocument();
+    expect(screen.getByText('Drop files here to upload')).toBeInTheDocument();
     fireEvent.dragLeave(wrapper);
-    expect(document.querySelector('.message-input-dragging')).not.toBeInTheDocument();
+    expect(screen.queryByText('Drop files here to upload')).not.toBeInTheDocument();
   });
 
   it('shows file previews for pending files', () => {
     const file = new File(['data'], 'test.txt', { type: 'text/plain' });
     render(<MessageInput {...defaultProps} />);
-    const wrapper = document.querySelector('.message-input-wrapper')!;
+    const wrapper = getCompositionSection();
     fireEvent.drop(wrapper, { dataTransfer: { files: [file] } });
     expect(screen.getByText('test.txt')).toBeInTheDocument();
   });
@@ -270,7 +274,7 @@ describe('MessageInput', () => {
   it('removes a pending file when remove button is clicked', () => {
     const file = new File(['data'], 'test.txt', { type: 'text/plain' });
     render(<MessageInput {...defaultProps} />);
-    const wrapper = document.querySelector('.message-input-wrapper')!;
+    const wrapper = getCompositionSection();
     fireEvent.drop(wrapper, { dataTransfer: { files: [file] } });
     expect(screen.getByText('test.txt')).toBeInTheDocument();
     fireEvent.click(screen.getByTitle('Remove'));
@@ -280,7 +284,7 @@ describe('MessageInput', () => {
   it('displays file size in correct format', () => {
     const file = new File(['x'.repeat(500)], 'small.txt', { type: 'text/plain' });
     render(<MessageInput {...defaultProps} />);
-    const wrapper = document.querySelector('.message-input-wrapper')!;
+    const wrapper = getCompositionSection();
     fireEvent.drop(wrapper, { dataTransfer: { files: [file] } });
     expect(screen.getByText('500 B')).toBeInTheDocument();
   });
@@ -304,7 +308,7 @@ describe('MessageInput', () => {
 
     // Add a file via drop
     const file = new File(['data'], 'test.txt', { type: 'text/plain' });
-    const wrapper = document.querySelector('.message-input-wrapper')!;
+    const wrapper = getCompositionSection();
     fireEvent.drop(wrapper, { dataTransfer: { files: [file] } });
 
     await user.type(getTextarea(), 'with file');
@@ -324,7 +328,7 @@ describe('MessageInput', () => {
     render(<MessageInput {...defaultProps} onSend={onSend} onUploadFile={onUploadFile} />);
 
     const file = new File(['data'], 'test.txt', { type: 'text/plain' });
-    const wrapper = document.querySelector('.message-input-wrapper')!;
+    const wrapper = getCompositionSection();
     fireEvent.drop(wrapper, { dataTransfer: { files: [file] } });
 
     await user.type(getTextarea(), 'msg');
@@ -367,7 +371,7 @@ describe('MessageInput', () => {
     const file = new File(['x'.repeat(2048)], 'medium.txt', { type: 'text/plain' });
     Object.defineProperty(file, 'size', { value: 2048 });
     render(<MessageInput {...defaultProps} />);
-    const wrapper = document.querySelector('.message-input-wrapper')!;
+    const wrapper = getCompositionSection();
     fireEvent.drop(wrapper, { dataTransfer: { files: [file] } });
     expect(screen.getByText('2.0 KB')).toBeInTheDocument();
   });
@@ -376,7 +380,7 @@ describe('MessageInput', () => {
     const file = new File(['x'], 'large.bin', { type: 'application/octet-stream' });
     Object.defineProperty(file, 'size', { value: 2 * 1024 * 1024 });
     render(<MessageInput {...defaultProps} />);
-    const wrapper = document.querySelector('.message-input-wrapper')!;
+    const wrapper = getCompositionSection();
     fireEvent.drop(wrapper, { dataTransfer: { files: [file] } });
     expect(screen.getByText('2.0 MB')).toBeInTheDocument();
   });
@@ -392,16 +396,16 @@ describe('MessageInput', () => {
   it('shows image preview for image files', () => {
     const file = new File(['img'], 'photo.png', { type: 'image/png' });
     render(<MessageInput {...defaultProps} />);
-    const wrapper = document.querySelector('.message-input-wrapper')!;
+    const wrapper = getCompositionSection();
     fireEvent.drop(wrapper, { dataTransfer: { files: [file] } });
-    const img = document.querySelector('.file-preview-thumb');
+    const img = document.querySelector('img[alt="photo.png"]');
     expect(img).toBeInTheDocument();
   });
 
   it('shows page icon for non-image files', () => {
     const file = new File(['data'], 'doc.pdf', { type: 'application/pdf' });
     render(<MessageInput {...defaultProps} />);
-    const wrapper = document.querySelector('.message-input-wrapper')!;
+    const wrapper = getCompositionSection();
     fireEvent.drop(wrapper, { dataTransfer: { files: [file] } });
     expect(screen.getByTestId('page')).toBeInTheDocument();
   });
@@ -424,28 +428,28 @@ describe('MessageInput', () => {
       items: [{ type: 'text/plain', getAsFile: () => null }],
     };
     fireEvent.paste(textarea, { clipboardData });
-    // No file previews should appear
-    expect(document.querySelector('.message-input-file-previews')).not.toBeInTheDocument();
+    // No file previews should appear - no file names should be rendered
+    expect(screen.queryByTitle('Remove')).not.toBeInTheDocument();
   });
 
   it('shows drag overlay when dragging files', () => {
     render(<MessageInput {...defaultProps} />);
-    const wrapper = document.querySelector('.message-input-wrapper')!;
+    const wrapper = getCompositionSection();
     fireEvent.dragOver(wrapper);
     expect(screen.getByText('Drop files here to upload')).toBeInTheDocument();
   });
 
   it('does not drop when no files in dataTransfer', () => {
     render(<MessageInput {...defaultProps} />);
-    const wrapper = document.querySelector('.message-input-wrapper')!;
+    const wrapper = getCompositionSection();
     fireEvent.drop(wrapper, { dataTransfer: { files: [] } });
-    expect(document.querySelector('.message-input-file-previews')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Remove')).not.toBeInTheDocument();
   });
 
   it('send button enabled when files are pending even without text', () => {
     const file = new File(['data'], 'test.txt', { type: 'text/plain' });
     render(<MessageInput {...defaultProps} />);
-    const wrapper = document.querySelector('.message-input-wrapper')!;
+    const wrapper = getCompositionSection();
     fireEvent.drop(wrapper, { dataTransfer: { files: [file] } });
     expect(screen.getByTitle('Send Message')).not.toBeDisabled();
   });
@@ -457,7 +461,7 @@ describe('MessageInput', () => {
     render(<MessageInput {...defaultProps} onSend={onSend} onUploadFile={onUploadFile} />);
 
     const file = new File(['data'], 'test.txt', { type: 'text/plain' });
-    const wrapper = document.querySelector('.message-input-wrapper')!;
+    const wrapper = getCompositionSection();
     fireEvent.drop(wrapper, { dataTransfer: { files: [file] } });
 
     fireEvent.click(screen.getByTitle('Send Message'));
@@ -511,8 +515,7 @@ describe('MessageInput', () => {
     });
 
     render(<MessageInput {...defaultProps} />);
-    // The i18n mock returns the default value string with {{name}} interpolation or the key
-    expect(document.querySelector('.typing-indicator')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toBeInTheDocument();
   });
 
   it('shows typing indicator for two users', async () => {
@@ -525,7 +528,7 @@ describe('MessageInput', () => {
     });
 
     render(<MessageInput {...defaultProps} />);
-    expect(document.querySelector('.typing-indicator')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toBeInTheDocument();
   });
 
   it('shows typing indicator for several users', async () => {
@@ -539,7 +542,7 @@ describe('MessageInput', () => {
     });
 
     render(<MessageInput {...defaultProps} />);
-    expect(document.querySelector('.typing-indicator')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toBeInTheDocument();
   });
 
   it('clears expired typing users', async () => {

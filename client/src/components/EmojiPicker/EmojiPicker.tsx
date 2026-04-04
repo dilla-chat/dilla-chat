@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Picker, { Theme } from 'emoji-picker-react';
-import './EmojiPicker.css';
 
 interface Props {
   onSelect: (emoji: string) => void;
@@ -38,7 +37,7 @@ export default function EmojiPicker({ onSelect, onClose, anchorRef }: Props) {
     : { position: 'absolute', bottom: '100%', left: 0 };
 
   const picker = (
-    <div className="emoji-picker-container" ref={pickerRef} style={style}>
+    <div className="emoji-picker-container z-toast rounded-lg overflow-hidden shadow-[0_8px_24px_var(--overlay-dark)]" ref={pickerRef} style={style}>
       <Picker
         onEmojiClick={(emojiData) => onSelect(emojiData.emoji)}
         theme={Theme.DARK}

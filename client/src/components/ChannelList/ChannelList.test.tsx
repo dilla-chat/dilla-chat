@@ -105,15 +105,14 @@ describe('ChannelList', () => {
 
   it('renders add button when onCreateChannel is provided', () => {
     const onCreate = vi.fn();
-    const { container } = render(<ChannelList onCreateChannel={onCreate} />);
-    const addBtns = container.querySelectorAll('.channel-category-add');
+    render(<ChannelList onCreateChannel={onCreate} />);
+    const addBtns = screen.getAllByTestId('channel-category-add');
     expect(addBtns.length).toBeGreaterThan(0);
   });
 
   it('does not render add button when onCreateChannel is not provided', () => {
-    const { container } = render(<ChannelList />);
-    const addBtns = container.querySelectorAll('.channel-category-add');
-    expect(addBtns.length).toBe(0);
+    render(<ChannelList />);
+    expect(screen.queryAllByTestId('channel-category-add').length).toBe(0);
   });
 
   it('shows context menu on right click', () => {
@@ -179,7 +178,7 @@ describe('ChannelList', () => {
   it('calls onCreateChannel with category when add button is clicked', () => {
     const onCreate = vi.fn();
     render(<ChannelList onCreateChannel={onCreate} />);
-    const addBtns = document.querySelectorAll('.channel-category-add');
+    const addBtns = screen.getAllByTestId('channel-category-add');
     fireEvent.click(addBtns[0]);
     expect(onCreate).toHaveBeenCalled();
   });
@@ -267,7 +266,7 @@ describe('ChannelList', () => {
     it('renders unread badge when count > 0', () => {
       useUnreadStore.setState({ counts: { 'ch-1': 3 } });
       render(<ChannelList />);
-      const badge = screen.getByRole('generic', { hidden: true, name: '3 unread messages' });
+      const badge = screen.getByLabelText('3 unread messages');
       expect(badge).toBeInTheDocument();
       expect(badge.textContent).toBe('3');
     });
@@ -282,7 +281,7 @@ describe('ChannelList', () => {
     it('does not render unread badge when count is 0', () => {
       useUnreadStore.setState({ counts: { 'ch-1': 0 } });
       render(<ChannelList />);
-      expect(screen.queryByRole('generic', { hidden: true, name: /unread messages/ })).not.toBeInTheDocument();
+      expect(screen.queryByLabelText(/unread messages/)).not.toBeInTheDocument();
     });
 
     it('does not render unread badge when no count entry exists', () => {
@@ -309,7 +308,7 @@ describe('ChannelList', () => {
       useUnreadStore.setState({ counts: { 'ch-2': 5 } });
       render(<ChannelList />);
       // ch-2 is the voice channel — badge should not appear for it
-      expect(screen.queryByRole('generic', { hidden: true, name: '5 unread messages' })).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('5 unread messages')).not.toBeInTheDocument();
     });
   });
 

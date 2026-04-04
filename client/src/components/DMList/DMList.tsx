@@ -6,7 +6,6 @@ import { useTeamStore } from '../../stores/teamStore';
 import { api } from '../../services/api';
 import { ws } from '../../services/websocket';
 import { usernameColor, getInitials } from '../../utils/colors';
-import './DMList.css';
 
 const EMPTY_DM_LIST: DMChannel[] = [];
 
@@ -87,26 +86,32 @@ export default function DMList({ currentUserId, onNewDM }: Readonly<Props>) {
   }, [sorted, filter, currentUserId]);
 
   return (
-    <div className="dm-list">
-      <div className="dm-list-actions">
-        <button className="dm-new-btn" onClick={onNewDM} title={t('dm.newDM', 'New Message')}>
+    <div className="flex flex-col flex-1 overflow-y-auto p-0">
+      <div className="flex items-center justify-end px-lg pt-sm pb-xs">
+        <button
+          className="bg-transparent border-none text-interactive cursor-pointer text-[18px] px-xs py-0 leading-none rounded-sm transition-colors duration-150 hover:text-interactive-hover"
+          onClick={onNewDM}
+          title={t('dm.newDM', 'New Message')}
+        >
           <Plus width={16} height={16} strokeWidth={2} />
         </button>
       </div>
 
-      <div className="dm-search">
+      <div className="px-md pt-lg pb-sm">
         <input
           type="text"
-          className="dm-search-input"
+          className="w-full py-1.5 px-2.5 rounded-sm border-none bg-surface-tertiary text-foreground text-base outline-none box-border transition-colors duration-150 focus:bg-surface placeholder:text-foreground-muted"
           placeholder={t('dm.searchMembers', 'Search members...')}
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />
       </div>
 
-      <div className="dm-items">
+      <div className="flex-1 overflow-y-auto py-xs">
         {filtered.length === 0 && (
-          <div className="dm-empty">{t('dm.noDMs', 'No direct messages yet')}</div>
+          <div className="px-lg py-xl text-foreground-muted text-base text-center">
+            {t('dm.noDMs', 'No direct messages yet')}
+          </div>
         )}
         {filtered.map((dm) => {
           const displayName = getDMDisplayName(dm, currentUserId);
@@ -119,29 +124,40 @@ export default function DMList({ currentUserId, onNewDM }: Readonly<Props>) {
           return (
             <button
               key={dm.id}
-              className={`dm-item clickable ${activeDMId === dm.id ? 'active' : ''}`}
+              className={`dm-item-indicator clickable bg-transparent border-none w-[calc(100%-16px)] text-left font-[inherit] text-[inherit] text-inherit flex items-center py-1.5 px-sm mx-sm my-px rounded-sm gap-md hover:bg-surface-hover ${activeDMId === dm.id ? 'active bg-surface-active' : ''}`}
+              data-testid="dm-item"
+              data-active={activeDMId === dm.id}
               onClick={() => setActiveDM(dm.id)}
               type="button"
             >
-              <div className="dm-item-avatar" style={{ backgroundColor: usernameColor(avatarName) }}>
+              <div
+                className="w-8 h-8 rounded-full flex items-center justify-center text-white text-base font-medium shrink-0 relative"
+                style={{ backgroundColor: usernameColor(avatarName) }}
+              >
                 {dm.is_group ? (
-                  <span className="dm-group-icon"><Group width={16} height={16} strokeWidth={2} /></span>
+                  <span className="text-lg"><Group width={16} height={16} strokeWidth={2} /></span>
                 ) : (
                   getInitials(avatarName)
                 )}
               </div>
-              <div className="dm-item-info">
-                <div className="dm-item-header">
-                  <span className="dm-item-name truncate">{displayName}</span>
-                  <span className="dm-item-time">{formatTimestamp(timestamp)}</span>
+              <div className="flex-1 min-w-0 flex flex-col gap-px">
+                <div className="flex items-center justify-between gap-sm">
+                  <span className={`text-lg font-medium flex-1 truncate ${activeDMId === dm.id ? 'text-interactive-hover' : 'text-interactive'} group-hover:text-interactive-hover`}>
+                    {displayName}
+                  </span>
+                  <span className="text-micro text-foreground-muted shrink-0 font-medium">
+                    {formatTimestamp(timestamp)}
+                  </span>
                 </div>
-                <div className="dm-item-preview truncate">
+                <div className="text-sm text-foreground-muted truncate">
                   {lastMsg || (
-                    <span className="dm-item-no-msg">{t('dm.noMessages', 'No messages yet. Say hello!')}</span>
+                    <span className="opacity-60">
+                      {t('dm.noMessages', 'No messages yet. Say hello!')}
+                    </span>
                   )}
                 </div>
                 {dm.is_group && (
-                  <span className="dm-item-member-count">
+                  <span className="text-xs text-foreground-muted">
                     {t('dm.members', '{{count}} members', { count: dm.members.length })}
                   </span>
                 )}

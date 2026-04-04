@@ -14,8 +14,8 @@ describe('MobileTabBar', () => {
     render(<MobileTabBar activeTab="channels" onTabChange={vi.fn()} />);
     const tabs = screen.getAllByRole('button');
     const channelsTab = tabs.find((t) => t.textContent?.includes('Kanals'));
-    expect(channelsTab).toHaveClass('active');
     expect(channelsTab).toHaveAttribute('aria-current', 'page');
+    expect(channelsTab?.className).toContain('text-brand');
   });
 
   it('calls onTabChange when a tab is clicked', async () => {

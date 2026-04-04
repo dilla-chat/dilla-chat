@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import './ResizeHandle.css';
 
 interface ResizeHandleProps {
   onResize: (delta: number) => void;

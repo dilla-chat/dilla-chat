@@ -80,35 +80,36 @@ export default function MembersTab({ teamId }: Readonly<{ teamId: string }>) {
   };
 
   return (
-    <div className="settings-section">
-      <h2 className="heading-3">{t('settings.members')}</h2>
+    <div>
+      <h2 className="text-foreground-primary mb-5">{t('settings.members')}</h2>
 
-      <div className="members-search">
+      <div className="mb-4">
         <input
+          className="form-input"
           placeholder={t('members.search', 'Search members...')}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
       </div>
 
-      <div className="settings-member-list">
+      <div className="flex flex-col gap-0.5">
         {filtered.map((member) => (
           <button
             key={member.id}
-            className={`settings-member-item ${selectedMemberId === member.id ? 'active' : ''}`}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-sm border-none text-left cursor-pointer transition-colors duration-150 hover:bg-surface-hover ${selectedMemberId === member.id ? 'bg-surface-active' : 'bg-transparent'}`}
             onClick={() => setSelectedMemberId(member.id === selectedMemberId ? null : member.id)}
             type="button"
           >
-            <div className="settings-member-avatar">{getInitials(member)}</div>
-            <div className="settings-member-info">
-              <div className="settings-member-name">
+            <div className="w-8 h-8 rounded-full bg-accent text-white flex items-center justify-center text-xs font-semibold shrink-0">{getInitials(member)}</div>
+            <div className="flex-1 min-w-0">
+              <div className="text-base text-foreground-primary font-medium truncate">
                 {member.displayName || member.username}
               </div>
-              <div className="settings-member-username">@{member.username}</div>
+              <div className="text-sm text-foreground-secondary">@{member.username}</div>
             </div>
-            <div className="settings-member-roles">
+            <div className="flex gap-1 flex-wrap">
               {member.roles.map((r) => (
-                <span key={r.id} className="settings-member-role-tag">
+                <span key={r.id} className="text-xs bg-surface-tertiary text-foreground-secondary px-1.5 py-0.5 rounded-sm">
                   {r.name}
                 </span>
               ))}
@@ -118,16 +119,16 @@ export default function MembersTab({ teamId }: Readonly<{ teamId: string }>) {
       </div>
 
       {selectedMember && (
-        <div className="member-actions-panel">
-          <h4>{selectedMember.displayName || selectedMember.username}</h4>
+        <div className="mt-5 pt-5 border-t border-border-subtle">
+          <h4 className="text-base font-semibold text-foreground-primary mb-3">{selectedMember.displayName || selectedMember.username}</h4>
 
-          <div className="member-role-toggles">
+          <div className="flex flex-col gap-1.5 mb-4">
             {teamRoles
               .filter((r) => !r.isDefault)
               .map((role) => {
                 const hasRole = selectedMember.roles.some((r) => r.id === role.id);
                 return (
-                  <label key={role.id} className="member-role-toggle">
+                  <label key={role.id} className="flex items-center gap-2 text-sm text-foreground-primary cursor-pointer py-1">
                     <input
                       type="checkbox"
                       checked={hasRole}
@@ -139,7 +140,7 @@ export default function MembersTab({ teamId }: Readonly<{ teamId: string }>) {
               })}
           </div>
 
-          <div className="member-danger-actions">
+          <div className="flex gap-3">
             <button className="btn-danger" onClick={() => handleKick(selectedMember.userId)}>
               {t('members.kick', 'Kick')}
             </button>

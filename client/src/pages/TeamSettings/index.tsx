@@ -11,7 +11,6 @@ import InvitesTab from './InvitesTab';
 import ModerationTab from './ModerationTab';
 import BansTab from './BansTab';
 import type { Tab } from './types';
-import '../TeamSettings.css';
 
 export default function TeamSettings() {
   const { t } = useTranslation();
@@ -68,21 +67,21 @@ export default function TeamSettings() {
       {tab === 'federation' && activeTeamId && <FederationStatus teamId={activeTeamId} />}
       {tab === 'moderation' && activeTeamId && <ModerationTab teamId={activeTeamId} />}
       {tab === 'audit-log' && (
-        <div className="settings-section">
-          <h2 className="heading-3">{t('settings.auditLog', 'Audit Log')}</h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>
+        <div>
+          <h2 className="text-foreground-primary mb-5">{t('settings.auditLog', 'Audit Log')}</h2>
+          <p className="text-foreground-muted text-sm">
             {t('moderation.noActions', 'No recent actions')}
           </p>
         </div>
       )}
       {tab === 'bans' && activeTeamId && <BansTab teamId={activeTeamId} />}
       {tab === 'delete-server' && (
-        <div className="settings-section">
-          <h2 className="heading-3">{t('settings.deleteServer', 'Delete Server')}</h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>
+        <div>
+          <h2 className="text-foreground-primary mb-5">{t('settings.deleteServer', 'Delete Server')}</h2>
+          <p className="text-foreground-muted text-sm">
             {t('settings.deleteServerDesc', 'This action is irreversible. All data will be permanently deleted.')}
           </p>
-          <button className="btn-danger" style={{ marginTop: 16 }} disabled>
+          <button className="btn-danger mt-4" disabled>
             {t('settings.deleteServer', 'Delete Server')}
           </button>
         </div>

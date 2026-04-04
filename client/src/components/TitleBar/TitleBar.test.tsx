@@ -56,8 +56,8 @@ describe('TitleBar', () => {
     });
 
     const { container } = render(<TitleBar />);
-    expect(container.querySelector('.titlebar-macos')).toBeInTheDocument();
-    // macOS should not have control buttons
+    // macOS renders a titlebar with drag region but no control buttons
+    expect(container.querySelector('.titlebar')).toBeInTheDocument();
     expect(screen.queryByLabelText('Minimize')).not.toBeInTheDocument();
   });
 
@@ -69,7 +69,8 @@ describe('TitleBar', () => {
     });
 
     const { container } = render(<TitleBar />);
-    expect(container.querySelector('.titlebar-win')).toBeInTheDocument();
+    // Windows renders a titlebar with control buttons
+    expect(container.querySelector('.titlebar')).toBeInTheDocument();
     expect(screen.getByLabelText('Minimize')).toBeInTheDocument();
     expect(screen.getByLabelText('Maximize')).toBeInTheDocument();
     expect(screen.getByLabelText('Close')).toBeInTheDocument();

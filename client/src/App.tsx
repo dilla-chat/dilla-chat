@@ -3,7 +3,6 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
 import { recordException } from './services/telemetry';
 import './i18n';
-import './App.css';
 
 import CreateIdentity from './pages/CreateIdentity';
 import Login from './pages/Login';
@@ -33,12 +32,12 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   render() {
     if (this.state.error) {
       return (
-        <div style={{ padding: '2rem', color: 'var(--text-danger)', background: 'var(--bg-tertiary)', height: '100vh' }}>
+        <div className="p-8 text-foreground-danger bg-surface-tertiary h-screen">
           <h1>Something went wrong</h1>
-          <pre style={{ whiteSpace: 'pre-wrap', fontSize: '14px' }}>{this.state.error.message}</pre>
-          <pre style={{ whiteSpace: 'pre-wrap', fontSize: '12px', color: 'var(--text-muted)' }}>{this.state.error.stack}</pre>
+          <pre className="whitespace-pre-wrap text-sm">{this.state.error.message}</pre>
+          <pre className="whitespace-pre-wrap text-xs text-foreground-muted">{this.state.error.stack}</pre>
           <button onClick={() => { this.setState({ error: null }); globalThis.location.href = '/'; }}
-            style={{ marginTop: '1rem', padding: '0.5rem 1rem', cursor: 'pointer' }}>
+            className="mt-4 px-4 py-2 cursor-pointer">
             Restart App
           </button>
         </div>

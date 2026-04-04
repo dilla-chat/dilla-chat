@@ -76,7 +76,7 @@ describe('Reactions', () => {
       />,
     );
     const partyButton = screen.getByText('🎉').closest('button')!;
-    expect(partyButton.className).toContain('reaction-chip-active');
+    expect(partyButton.className).toContain('border-brand');
   });
 
   it('does not highlight reaction when user has not reacted', () => {
@@ -89,7 +89,7 @@ describe('Reactions', () => {
       />,
     );
     const btn = screen.getByText('😊').closest('button')!;
-    expect(btn.className).not.toContain('reaction-chip-active');
+    expect(btn.className).not.toContain('border-brand');
   });
 
   it('shows add reaction button', () => {

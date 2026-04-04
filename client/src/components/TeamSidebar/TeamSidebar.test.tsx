@@ -40,8 +40,8 @@ describe('TeamSidebar', () => {
   });
 
   it('marks the active team', () => {
-    const { container } = render(<TeamSidebar />);
-    const activeIcons = container.querySelectorAll('.team-icon.active');
+    render(<TeamSidebar />);
+    const activeIcons = screen.getAllByTestId('team-icon').filter(el => el.hasAttribute('data-active'));
     expect(activeIcons.length).toBe(1);
     expect(activeIcons[0].textContent).toBe('A');
   });
@@ -60,13 +60,13 @@ describe('TeamSidebar', () => {
   });
 
   it('renders add team button', () => {
-    const { container } = render(<TeamSidebar />);
-    expect(container.querySelector('.team-add')).toBeInTheDocument();
+    render(<TeamSidebar />);
+    expect(screen.getByTestId('team-add')).toBeInTheDocument();
   });
 
   it('renders separator between teams and add button', () => {
-    const { container } = render(<TeamSidebar />);
-    expect(container.querySelector('.team-separator')).toBeInTheDocument();
+    render(<TeamSidebar />);
+    expect(screen.getByTestId('team-separator')).toBeInTheDocument();
   });
 
   it('renders server labels and separators for multiple servers', () => {
@@ -86,12 +86,12 @@ describe('TeamSidebar', () => {
     ]);
     useTeamStore.setState({ activeTeamId: 'team-1', teams: teamMap });
 
-    const { container } = render(<TeamSidebar />);
+    render(<TeamSidebar />);
     // Should show server labels since multiple servers
-    const labels = container.querySelectorAll('.server-label');
+    const labels = screen.getAllByTestId('server-label');
     expect(labels.length).toBe(2);
     // Should show separator between server groups
-    expect(container.querySelector('.team-separator')).toBeInTheDocument();
+    expect(screen.getAllByTestId('team-separator').length).toBeGreaterThan(0);
   });
 
   it('renders ungrouped teams separately', () => {
@@ -129,7 +129,7 @@ describe('TeamSidebar', () => {
 
   it('renders empty sidebar when no teams', () => {
     useAuthStore.setState({ teams: new Map(), servers: new Map() });
-    const { container } = render(<TeamSidebar />);
-    expect(container.querySelectorAll('.team-icon').length).toBe(0);
+    render(<TeamSidebar />);
+    expect(screen.queryAllByTestId('team-icon').length).toBe(0);
   });
 });

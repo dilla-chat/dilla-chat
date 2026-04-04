@@ -310,7 +310,7 @@ describe('AppLayout behavioral', () => {
   it('renders skip-to-content accessibility link', async () => {
     render(<AppLayout />);
     await waitFor(() => {
-      const skipLink = document.querySelector('.skip-to-content');
+      const skipLink = screen.getByText('Skip to content');
       expect(skipLink).toBeInTheDocument();
       expect(skipLink).toHaveAttribute('href', '#main-content');
     });
@@ -1396,7 +1396,7 @@ describe('AppLayout mobile', () => {
     const { container } = render(<AppLayout />);
     await waitFor(() => {
       const mainDiv = container.querySelector('.app-layout-main');
-      expect(mainDiv?.className).toContain('mobile');
+      expect(mainDiv?.className).toContain('max-md:flex-col');
     });
   });
 

@@ -143,7 +143,7 @@ function setupDefaultStores() {
 
 /** Simulate scrolling near top to trigger load-more */
 function simulateScrollNearTop(container: HTMLElement) {
-  const messagesDiv = container.querySelector('.thread-messages');
+  const messagesDiv = container.querySelector('[data-testid="thread-messages"]');
   if (messagesDiv) {
     Object.defineProperty(messagesDiv, 'scrollTop', { value: 30, configurable: true });
     Object.defineProperty(messagesDiv, 'scrollHeight', { value: 2000, configurable: true });
@@ -353,7 +353,7 @@ describe('ThreadPanel', () => {
 
   it('handles scroll near top and at bottom', () => {
     const { container } = renderThreadPanel();
-    const messagesDiv = container.querySelector('.thread-messages');
+    const messagesDiv = container.querySelector('[data-testid="thread-messages"]');
     expect(messagesDiv).toBeTruthy();
     if (messagesDiv) {
       // Near top
@@ -441,7 +441,7 @@ describe('ThreadPanel', () => {
     vi.mocked(ws.request).mockResolvedValue([]);
     useThreadStore.setState({ threadMessages: {} });
     const { container } = renderThreadPanel({ id: 'thread-loading-check' });
-    const messagesDiv = container.querySelector('.thread-messages');
+    const messagesDiv = container.querySelector('[data-testid="thread-messages"]');
     expect(messagesDiv).toBeTruthy();
     if (messagesDiv) {
       Object.defineProperty(messagesDiv, 'scrollTop', { value: 30, configurable: true });

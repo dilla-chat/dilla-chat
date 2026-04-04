@@ -28,15 +28,15 @@ describe('UserProfile', () => {
   });
 
   it('renders initials from display name', () => {
-    const { container } = render(<UserProfile member={baseMember} x={0} y={0} onClose={vi.fn()} />);
-    expect(container.querySelector('.user-profile-avatar')?.textContent).toBe('AW');
+    render(<UserProfile member={baseMember} x={0} y={0} onClose={vi.fn()} />);
+    expect(screen.getByTestId('user-profile-avatar').textContent).toBe('AW');
   });
 
   it('falls back to username when displayName is empty', () => {
     const member = { ...baseMember, displayName: '' };
-    const { container } = render(<UserProfile member={member} x={0} y={0} onClose={vi.fn()} />);
+    render(<UserProfile member={member} x={0} y={0} onClose={vi.fn()} />);
     // "alice".split(' ') = ["alice"], initials = "A"
-    expect(container.querySelector('.user-profile-avatar')?.textContent).toBe('A');
+    expect(screen.getByTestId('user-profile-avatar').textContent).toBe('A');
   });
 
   it('renders presence indicator', () => {
@@ -75,7 +75,7 @@ describe('UserProfile', () => {
 
   it('does not render custom status when empty', () => {
     render(<UserProfile member={baseMember} x={0} y={0} onClose={vi.fn()} />);
-    expect(screen.queryByText('.user-profile-custom-status')).not.toBeInTheDocument();
+    expect(screen.queryByText('In a meeting')).not.toBeInTheDocument();
   });
 
   it('renders roles when member has roles', () => {
@@ -92,8 +92,8 @@ describe('UserProfile', () => {
   });
 
   it('does not render roles section when empty', () => {
-    const { container } = render(<UserProfile member={baseMember} x={0} y={0} onClose={vi.fn()} />);
-    expect(container.querySelector('.user-profile-roles')).not.toBeInTheDocument();
+    render(<UserProfile member={baseMember} x={0} y={0} onClose={vi.fn()} />);
+    expect(screen.queryByTestId('user-profile-roles')).not.toBeInTheDocument();
   });
 
   it('renders send message button when onSendMessage is provided', () => {
@@ -114,21 +114,21 @@ describe('UserProfile', () => {
   });
 
   it('positions popover at given coordinates', () => {
-    const { container } = render(<UserProfile member={baseMember} x={200} y={300} onClose={vi.fn()} />);
-    const popover = container.querySelector('.user-profile-popover') as HTMLElement;
+    render(<UserProfile member={baseMember} x={200} y={300} onClose={vi.fn()} />);
+    const popover = screen.getByTestId('user-profile-popover') as HTMLElement;
     expect(popover.style.left).toBe('200px');
     expect(popover.style.top).toBe('300px');
   });
 
   it('clamps negative x to 0', () => {
-    const { container } = render(<UserProfile member={baseMember} x={-50} y={100} onClose={vi.fn()} />);
-    const popover = container.querySelector('.user-profile-popover') as HTMLElement;
+    render(<UserProfile member={baseMember} x={-50} y={100} onClose={vi.fn()} />);
+    const popover = screen.getByTestId('user-profile-popover') as HTMLElement;
     expect(popover.style.left).toBe('0px');
   });
 
   it('renders as a dialog element', () => {
-    const { container } = render(<UserProfile member={baseMember} x={0} y={0} onClose={vi.fn()} />);
-    const popover = container.querySelector('dialog.user-profile-popover');
-    expect(popover).toBeInTheDocument();
+    render(<UserProfile member={baseMember} x={0} y={0} onClose={vi.fn()} />);
+    const popover = screen.getByTestId('user-profile-popover');
+    expect(popover.tagName).toBe('DIALOG');
   });
 });

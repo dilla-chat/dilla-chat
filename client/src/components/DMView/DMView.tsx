@@ -10,7 +10,6 @@ import { cryptoService } from '../../services/crypto';
 import { cacheMessage, getCachedMessage, deleteCachedMessage } from '../../services/messageCache';
 import MessageList from '../MessageList/MessageList';
 import MessageInput from '../MessageInput/MessageInput';
-import './DMView.css';
 
 const DM_PAGE_SIZE = 50;
 
@@ -243,8 +242,8 @@ export default function DMView({ dm, currentUserId, showMembers = false }: Reado
   }, [activeTeamId, dm.id]);
 
   return (
-      <div className="dm-view-body">
-        <div className="dm-view-messages">
+      <div className="flex flex-1 min-h-0">
+        <div className="flex flex-1 flex-col min-w-0">
           <MessageList
             channelId={dm.id}
             currentUserId={currentUserId}
@@ -266,16 +265,16 @@ export default function DMView({ dm, currentUserId, showMembers = false }: Reado
         </div>
 
         {showMembers && dm.is_group && (
-          <div className="dm-member-panel">
-            <div className="dm-member-panel-header micro">
+          <div className="w-[240px] bg-surface-secondary border-l border-surface-tertiary overflow-y-auto shrink-0">
+            <div className="py-3 px-lg text-foreground-secondary text-micro">
               {t('dm.members', '{{count}} members', { count: dm.members.length })}
             </div>
             {dm.members.map((member) => (
-              <div key={member.user_id} className="dm-member-item">
-                <span className="dm-member-name">
+              <div key={member.user_id} className="flex flex-col py-1.5 px-lg gap-px hover:bg-surface-hover">
+                <span className="text-base font-medium text-foreground-primary">
                   {member.display_name || member.username}
                 </span>
-                <span className="dm-member-username">@{member.username}</span>
+                <span className="text-xs text-foreground-muted">@{member.username}</span>
               </div>
             ))}
           </div>
