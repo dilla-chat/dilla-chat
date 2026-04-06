@@ -125,9 +125,15 @@
 .content-header-encrypted {
   display: inline-flex;
   align-items: center;
-  margin-left: 6px;
-  color: var(--text-positive);
-  opacity: 0.8;
+  gap: var(--spacing-xs);
+  margin-left: var(--spacing-sm);
+  padding: 2px var(--spacing-sm);
+  border-radius: var(--radius-full);
+  background: rgba(16, 185, 129, 0.06);
+  border: 1px solid rgba(16, 185, 129, 0.1);
+  color: var(--success);
+  font-size: var(--font-size-micro);
+  font-weight: var(--font-weight-medium);
 }
 
 .content-header-divider {
