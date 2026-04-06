@@ -72,12 +72,7 @@
 }
 
 /* ===== Row 1: Formatting toolbar (TOP) ===== */
-.message-input-format-bar {
-  display: flex;
-  align-items: center;
-  padding: 6px 10px;
-  gap: 2px;
-}
+/* Deprecated — formatting now in bottom bar */
 
 /* ===== Row 2: Textarea area (MIDDLE) ===== */
 .message-input-textarea-area {
@@ -106,14 +101,21 @@
   color: var(--text-muted);
 }
 
-/* ===== Row 3: Action bar (BOTTOM) ===== */
-.message-input-action-bar {
+/* ===== Bottom bar: attach + formatting + emoji + send ===== */
+.message-input-bottom-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: var(--spacing-xs) var(--spacing-sm);
-  min-height: 36px;
-  box-sizing: border-box;
+  gap: 2px;
+  border-top: 1px solid var(--divider);
+}
+
+.toolbar-separator {
+  width: 1px;
+  height: var(--spacing-lg);
+  background: var(--divider);
+  margin: 0 var(--spacing-xs);
+  flex-shrink: 0;
 }
 
 /* Shared group layout */
@@ -329,7 +331,7 @@
     max-height: 150px;
   }
 
-  .message-input-format-bar {
+  .message-input-bottom-bar {
     flex-wrap: nowrap;
     overflow-x: auto;
   }

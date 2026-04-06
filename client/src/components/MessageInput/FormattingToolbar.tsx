@@ -28,7 +28,7 @@ export default function FormattingToolbar({ textareaRef, setValue }: Readonly<Fo
   };
 
   return (
-    <div className="message-input-format-bar">
+    <>
       <button
         className="toolbar-btn clickable"
         title={t('format.bold', 'Bold (Ctrl+B)')}
@@ -94,6 +94,6 @@ export default function FormattingToolbar({ textareaRef, setValue }: Readonly<Fo
       >
         <CodeBlockIcon />
       </button>
-    </div>
+    </>
   );
 }

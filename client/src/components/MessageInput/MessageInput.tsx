@@ -244,10 +244,7 @@ export default function MessageInput({
           </div>
         )}
 
-        {/* Row 1: Formatting toolbar (top) */}
-        <FormattingToolbar textareaRef={textareaRef} setValue={setValue} />
-
-        {/* Row 2: Textarea (middle) */}
+        {/* Textarea (top) */}
         <div className="message-input-textarea-area">
           <textarea
             ref={textareaRef}
@@ -270,52 +267,55 @@ export default function MessageInput({
           uploadError={uploadError}
         />
 
-        {/* Row 3: Action bar (bottom) */}
-        <div className="message-input-action-bar">
-          <div className="toolbar-group">
-            <input
-              ref={fileInputRef}
-              type="file"
-              className="message-input-file-hidden"
-              multiple
-              onChange={(e) => {
-                if (e.target.files) addFiles(e.target.files);
-                e.target.value = '';
-              }}
-            />
-            <button
-              className="toolbar-btn clickable"
-              title={t('upload.attachFile', 'Attach File')}
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-            >
-              {uploading ? <IconHourglass size={18} stroke={1.75} /> : <PlusCircleIcon />}
+        {/* Bottom bar: attach + separator + formatting + separator + emoji + send */}
+        <div className="message-input-bottom-bar">
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="message-input-file-hidden"
+            multiple
+            onChange={(e) => {
+              if (e.target.files) addFiles(e.target.files);
+              e.target.value = '';
+            }}
+          />
+          <button
+            className="toolbar-btn clickable"
+            title={t('upload.attachFile', 'Attach File')}
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+          >
+            {uploading ? <IconHourglass size={18} stroke={1.75} /> : <PlusCircleIcon />}
+          </button>
+
+          <div className="toolbar-separator" />
+
+          <FormattingToolbar textareaRef={textareaRef} setValue={setValue} />
+
+          <div className="toolbar-separator" />
+
+          <div style={{ position: 'relative' }}>
+            {showEmojiPicker && (
+              <EmojiPicker
+                onSelect={handleEmojiSelect}
+                onClose={() => setShowEmojiPicker(false)}
+                anchorRef={emojiBtnRef}
+              />
+            )}
+            <button ref={emojiBtnRef} className="toolbar-btn clickable" title={t('messages.emoji', 'Emoji')} onClick={() => setShowEmojiPicker(v => !v)} disabled={uploading}>
+              <IconMoodSmile size={18} stroke={1.75} />
             </button>
-            <div style={{ position: 'relative' }}>
-              {showEmojiPicker && (
-                <EmojiPicker
-                  onSelect={handleEmojiSelect}
-                  onClose={() => setShowEmojiPicker(false)}
-                  anchorRef={emojiBtnRef}
-                />
-              )}
-              <button ref={emojiBtnRef} className="toolbar-btn clickable" title={t('messages.emoji', 'Emoji')} onClick={() => setShowEmojiPicker(v => !v)} disabled={uploading}>
-                <IconMoodSmile size={18} stroke={1.75} />
-              </button>
-            </div>
           </div>
 
-          <div className="send-area">
-            <div className="send-divider" />
-            <button
-              className={`toolbar-send-btn ${hasContent ? 'has-content' : ''}`}
-              title={t('messages.send', 'Send Message')}
-              onClick={handleSend}
-              disabled={!hasContent || uploading}
-            >
-              <SendIcon />
-            </button>
-          </div>
+          <button
+            className={`toolbar-send-btn ${hasContent ? 'has-content' : ''}`}
+            title={t('messages.send', 'Send Message')}
+            onClick={handleSend}
+            disabled={!hasContent || uploading}
+            style={{ marginLeft: 'auto' }}
+          >
+            <SendIcon />
+          </button>
         </div>
       </div>
 
