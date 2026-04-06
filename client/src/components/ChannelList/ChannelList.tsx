@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { IconVolume, IconPlus, IconMicrophoneOff, IconHeadphonesOff, IconScreenShare, IconVideo } from '@tabler/icons-react';
 import { useTeamStore, type Channel } from '../../stores/teamStore';
@@ -213,10 +214,11 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
       </div>
       {remainingChannels.map(renderChannelItem)}
 
-      {contextMenu && (
+      {contextMenu && createPortal(
         <div
           className="channel-context-menu"
           style={{ left: contextMenu.x, top: contextMenu.y }}
+          onMouseDown={(e) => e.stopPropagation()}
         >
           <button
             className="channel-context-item"
@@ -228,6 +230,7 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
           >
             {t('channels.edit', 'Edit Channel')}
           </button>
+          <div className="channel-context-separator" />
           <button
             className="channel-context-item danger"
             onClick={async () => {
@@ -245,7 +248,8 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
           >
             {t('channels.delete', 'Delete Channel')}
           </button>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {editingChannel && (
