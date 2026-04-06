@@ -108,17 +108,13 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
             const voicePeerValues = Object.values(voicePeers);
             let voicePeerList: typeof voicePeerValues;
             if (isVoiceConnected) {
-              // Add local user to the peer list (WebRTC peers are remote only)
-              const localUser = {
-                user_id: currentUserId,
-                username: teams.get(authActiveTeamId ?? '')?.user?.username ?? '',
-                muted: localMuted,
-                deafened: localDeafened,
-                screen_sharing: localScreenSharing,
-                speaking: false,
-                voiceLevel: 0,
-              };
-              voicePeerList = [localUser, ...voicePeerValues.filter(p => p.user_id !== currentUserId)];
+              // Merge local mute state into occupant data (which includes self)
+              const occupants = voiceOccupants[ch.id] ?? [];
+              voicePeerList = occupants.map(p =>
+                p.user_id === currentUserId
+                  ? { ...p, muted: localMuted, deafened: localDeafened, screen_sharing: localScreenSharing }
+                  : p,
+              );
             } else if (isVoice) {
               voicePeerList = voiceOccupants[ch.id] ?? [];
             } else {
