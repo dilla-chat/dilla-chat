@@ -127,7 +127,7 @@ export default function SearchBar({ onJumpToMessage }: Readonly<Props>) {
       </div>
 
       {showDropdown && (
-        <div className="absolute top-[calc(100%+6px)] right-0 w-[420px] max-md:w-[calc(100vw-16px)] max-md:max-w-[420px] md:max-lg:w-[min(420px,calc(100vw-340px))] max-h-[60vh] overflow-y-auto bg-glass-floating backdrop-blur-glass-heavy border border-glass-border shadow-glass-elevated rounded-lg z-[200] p-sm">
+        <div className="absolute top-[calc(100%+6px)] right-0 w-[420px] max-md:w-[calc(100vw-16px)] max-md:max-w-[420px] md:max-lg:w-[min(420px,calc(100vw-340px))] max-h-[60vh] overflow-y-auto bg-glass-floating backdrop-blur-glass-heavy border border-glass-border shadow-glass-elevated rounded-lg z-dropdown p-sm">
           {results.length === 0 ? (
             <div className="text-center py-xl px-lg text-foreground-muted text-base">
               {t('search.noResults', 'No results found')}
