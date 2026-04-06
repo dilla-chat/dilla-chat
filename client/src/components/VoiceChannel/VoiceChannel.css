@@ -424,5 +424,123 @@
   color: var(--text-muted);
 }
 
+/* Picture-in-Picture floating preview */
+.voice-pip {
+  position: fixed;
+  bottom: var(--spacing-xl);
+  right: var(--spacing-xl);
+  width: 200px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-floating);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 var(--spacing-sm) var(--spacing-xl) rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  z-index: var(--z-sticky);
+  cursor: pointer;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
 
+.voice-pip:hover {
+  transform: scale(1.02);
+}
+
+.voice-pip-content {
+  padding: var(--spacing-sm);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.voice-pip-avatars {
+  display: flex;
+}
+
+.voice-pip-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 8px;
+  font-weight: var(--font-weight-semibold);
+  margin-right: calc(-1 * var(--spacing-xs));
+  border: 2px solid var(--bg-floating);
+}
+
+.voice-pip-info {
+  font-size: var(--font-size-micro);
+  color: var(--text-muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Screen share focus + filmstrip */
+.voice-screen-focus {
+  flex: 1;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  position: relative;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--divider);
+}
+
+.voice-screen-focus-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.voice-screen-live-badge {
+  position: absolute;
+  top: var(--spacing-sm);
+  right: var(--spacing-sm);
+  padding: 2px var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--danger);
+  font-size: var(--font-size-micro);
+  font-weight: var(--font-weight-semibold);
+}
+
+.voice-filmstrip {
+  display: flex;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) 0;
+  overflow-x: auto;
+}
+
+.voice-filmstrip-tile {
+  width: 80px;
+  height: 50px;
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  border: 1px solid var(--divider);
+  transition: border-color var(--duration-fast) var(--ease-out);
+}
+
+.voice-filmstrip-tile:hover,
+.voice-filmstrip-tile.active {
+  border-color: var(--brand-500);
+}
+
+.voice-filmstrip-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: var(--font-size-micro);
+  font-weight: var(--font-weight-semibold);
+}
 

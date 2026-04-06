@@ -183,3 +183,63 @@
 .voice-btn.disconnect:hover {
   background: rgba(239, 68, 68, 0.25);
 }
+
+/* Noise suppression toggle */
+.voice-btn.noise-suppression {
+  position: relative;
+}
+
+.voice-btn.noise-suppression.active {
+  color: var(--success);
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.noise-badge {
+  position: absolute;
+  top: calc(-1 * var(--spacing-xs));
+  right: calc(-1 * var(--spacing-xs));
+  width: var(--spacing-sm);
+  height: var(--spacing-sm);
+  border-radius: var(--radius-full);
+  background: var(--success);
+  border: 2px solid var(--bg-tertiary);
+}
+
+/* Sound effects panel */
+.soundboard-panel {
+  position: absolute;
+  bottom: calc(100% + var(--spacing-sm));
+  right: 0;
+  background: var(--bg-floating);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-sm);
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: var(--spacing-xs);
+  box-shadow: 0 var(--spacing-sm) var(--spacing-xl) rgba(0, 0, 0, 0.4);
+  z-index: var(--z-dropdown);
+}
+
+.soundboard-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--divider);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-spring);
+}
+
+.soundboard-btn:hover {
+  background: var(--bg-modifier-hover);
+  transform: scale(1.05);
+}
+
+.soundboard-btn:active {
+  transform: scale(0.95);
+}
