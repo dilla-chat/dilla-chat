@@ -290,7 +290,7 @@ describe('AppLayout behavioral', () => {
     useTeamStore.setState({ activeChannelId: null });
     render(<AppLayout />);
     await waitFor(() => {
-      expect(screen.getByText('Select a channel to start chatting')).toBeInTheDocument();
+      expect(screen.getByText('Select a kanal')).toBeInTheDocument();
     });
   });
 
@@ -992,7 +992,7 @@ describe('AppLayout behavioral', () => {
     useDMStore.setState({ activeDMId: null, setActiveDM: vi.fn(), dmChannels: {} });
     render(<AppLayout />);
     await waitFor(() => {
-      expect(screen.getByText('Select a channel to start chatting')).toBeInTheDocument();
+      expect(screen.getByText('Select a kanal')).toBeInTheDocument();
     });
 
     // Switch to DM mode
@@ -1257,7 +1257,7 @@ describe('AppLayout behavioral', () => {
     useDMStore.setState({ activeDMId: null, setActiveDM: vi.fn(), dmChannels: {} });
     render(<AppLayout />);
     await waitFor(() => {
-      expect(screen.getByText('Select a channel to start chatting')).toBeInTheDocument();
+      expect(screen.getByText('Select a kanal')).toBeInTheDocument();
     });
     // In empty state, the member list toggle button should exist but MemberList not shown for DM mode
     // The toggle buttons are in the empty state header

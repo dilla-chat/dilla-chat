@@ -294,11 +294,19 @@ export default function AppLayout() {
     }
     return (
       <div className="message-area">
-        <div className="message-area-empty">
-          <p>
+        <div className="empty-state">
+          <div className="empty-state-icon">
+            <IconMessage size={48} stroke={1.25} />
+          </div>
+          <h3 className="empty-state-title">
             {isDMMode
               ? t('dm.noDMs', 'No direct messages yet')
-              : t('channels.selectChannel', 'Select a channel to start chatting')}
+              : t('channels.selectChannel', 'Select a kanal')}
+          </h3>
+          <p className="empty-state-description">
+            {isDMMode
+              ? t('dm.noDMsHint', 'Start a conversation by opening a new direct message')
+              : t('channels.selectChannelHint', 'Pick a channel from the sidebar to start chatting')}
           </p>
         </div>
       </div>
