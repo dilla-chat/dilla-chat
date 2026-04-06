@@ -287,10 +287,10 @@ export default function Login() {
         </div>
       )}
 
-      {error && <p className="error">{error}</p>}
+      {error && <p className="text-foreground-danger text-sm">{error}</p>}
 
       {needsLoginPassphrase && (
-        <div className="form">
+        <div className="flex flex-col gap-3 w-full max-w-[360px]">
           <p style={{ opacity: 0.8, fontSize: '0.9rem' }}>
             {t(
               'login.passphraseNeeded',
@@ -298,6 +298,7 @@ export default function Login() {
             )}
           </p>
           <input
+            className="form-input"
             type="password"
             placeholder={t('login.passphrase')}
             value={loginPassphrase}
@@ -312,14 +313,14 @@ export default function Login() {
           >
             {loading ? t('login.unlocking') : t('login.unlock')}
           </button>
-          <button className="btn-link" onClick={() => { setNeedsLoginPassphrase(false); setMode('recovery'); }}>
+          <button className="bg-transparent border-none text-foreground-muted text-sm cursor-pointer p-1.5 transition-colors hover:text-foreground-primary" onClick={() => { setNeedsLoginPassphrase(false); setMode('recovery'); }}>
             {t('login.useRecoveryKey')}
           </button>
         </div>
       )}
 
       {!needsLoginPassphrase && mode === 'passkey' && keyVersion >= 2 && (
-        <div className="form">
+        <div className="flex flex-col gap-3 w-full max-w-[360px]">
           <button className="btn-primary" onClick={handlePasskeyUnlock} disabled={loading}>
             {passkeyButtonLabel}
           </button>
@@ -337,8 +338,9 @@ export default function Login() {
       )}
 
       {mode === 'recovery' && (
-        <div className="form">
+        <div className="flex flex-col gap-3 w-full max-w-[360px]">
           <input
+            className="form-input"
             type="text"
             placeholder={t('login.recoveryKeyPlaceholder')}
             value={recoveryKeyInput}
@@ -349,7 +351,7 @@ export default function Login() {
           <button className="btn-primary" onClick={handleRecoveryUnlock} disabled={loading || !recoveryKeyInput.trim()}>
             {loading ? t('login.unlocking') : t('login.unlockWithRecovery')}
           </button>
-          <button className="btn-link" onClick={() => setMode(keyVersion >= 2 ? 'passkey' : 'legacy')}>
+          <button className="bg-transparent border-none text-foreground-muted text-sm cursor-pointer p-1.5 transition-colors hover:text-foreground-primary" onClick={() => setMode(keyVersion >= 2 ? 'passkey' : 'legacy')}>
             ← {t('common.back', 'Back')}
           </button>
         </div>
@@ -357,9 +359,10 @@ export default function Login() {
 
       {/* v8 ignore start -- Legacy mode unreachable in current UI flow */}
       {mode === 'legacy' && (
-        <div className="form">
+        <div className="flex flex-col gap-3 w-full max-w-[360px]">
           <p style={{ opacity: 0.7, fontSize: '0.9rem' }}>{t('login.legacyDetected')}</p>
           <input
+            className="form-input"
             type="password"
             placeholder={t('login.passphrase')}
             value={legacyPassphrase}
@@ -374,13 +377,13 @@ export default function Login() {
       {/* v8 ignore stop */}
 
       <div style={{ marginTop: '1.5rem', textAlign: 'center' }}>
-        <button className="btn-link" onClick={() => navigate('/recover')}>
+        <button className="bg-transparent border-none text-foreground-muted text-sm cursor-pointer p-1.5 transition-colors hover:text-foreground-primary" onClick={() => navigate('/recover')}>
           {t('login.recoverFromServer', 'Recover identity from server')}
         </button>
       </div>
 
       <details style={{ marginTop: '1rem', textAlign: 'center' }}>
-        <summary className="btn-link" style={{ cursor: 'pointer', color: 'var(--text-danger)', listStyle: 'none', display: 'inline' }}>
+        <summary className="bg-transparent border-none text-foreground-muted text-sm cursor-pointer p-1.5 transition-colors hover:text-foreground-primary" style={{ cursor: 'pointer', color: 'var(--text-danger)', listStyle: 'none', display: 'inline' }}>
           {t('login.deleteIdentity', 'Delete identity')}
         </summary>
         <div style={{ marginTop: 8 }}>

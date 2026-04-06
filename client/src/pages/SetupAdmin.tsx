@@ -127,8 +127,8 @@ export default function SetupAdmin() {
       <p style={{ opacity: 0.7, fontSize: '0.9rem', marginBottom: '0.5rem', textAlign: 'center' }}>
         First-time setup: create your team and admin account on this server.
       </p>
-      {error && <p className="error">{error}</p>}
-      <div className="form">
+      {error && <p className="text-foreground-danger text-sm">{error}</p>}
+      <div className="flex flex-col gap-3 w-full max-w-[360px]">
         {!isBrowser && (
           <ServerAddressInput
             placeholder={t('setup.serverAddress')}
@@ -138,24 +138,28 @@ export default function SetupAdmin() {
           />
         )}
         <input
+          className="form-input"
           type="text"
           placeholder={t('setup.bootstrapToken')}
           value={bootstrapToken}
           onChange={(e) => setBootstrapToken(e.target.value)}
         />
         <input
+          className="form-input"
           type="text"
           placeholder={t('setup.teamName', 'Team Name')}
           value={teamName}
           onChange={(e) => setTeamName(e.target.value)}
         />
         <input
+          className="form-input"
           type="text"
           placeholder={t('identity.username', 'Username')}
           value={username}
           onChange={(e) => setUsername(e.target.value)}
         />
         <input
+          className="form-input"
           type="text"
           placeholder={t('identity.displayName', 'Display Name')}
           value={displayName}
@@ -164,7 +168,7 @@ export default function SetupAdmin() {
         <button className="btn-primary" onClick={handleSetup} disabled={loading || !serverAddress.trim() || !bootstrapToken.trim() || !username.trim() || !teamName.trim() || serverStatus !== 'online'}>
           {loading ? t('setup.settingUp') : t('setup.setup')}
         </button>
-        <button className="btn-link" onClick={() => navigate(-1)}>
+        <button className="bg-transparent border-none text-foreground-muted text-sm cursor-pointer p-1.5 transition-colors hover:text-foreground-primary" onClick={() => navigate(-1)}>
           ← Back
         </button>
       </div>

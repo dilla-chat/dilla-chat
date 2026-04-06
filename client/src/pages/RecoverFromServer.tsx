@@ -91,9 +91,9 @@ export default function RecoverFromServer() {
         {t('recover.subtitle', 'Restore your identity from a server using your recovery key.')}
       </p>
 
-      {error && <p className="error">{error}</p>}
+      {error && <p className="text-foreground-danger text-sm">{error}</p>}
 
-      <div className="form">
+      <div className="flex flex-col gap-3 w-full max-w-[360px]">
         <ServerAddressInput
           placeholder={t('join.serverAddress', 'Server address (e.g. http://localhost:8080)')}
           value={serverAddress}
@@ -102,6 +102,7 @@ export default function RecoverFromServer() {
         />
 
         <input
+          className="form-input"
           type="text"
           placeholder={t('recover.username', 'Username')}
           value={username}
@@ -109,6 +110,7 @@ export default function RecoverFromServer() {
         />
 
         <textarea
+          className="form-input"
           placeholder={t('recover.recoveryKey', 'Recovery key (e.g. XXXX-XXXX-XXXX-...)')}
           value={recoveryKeyInput}
           onChange={(e) => setRecoveryKeyInput(e.target.value)}
@@ -124,7 +126,7 @@ export default function RecoverFromServer() {
           {loading ? t('recover.recovering', 'Recovering...') : t('recover.submit', 'Recover Identity')}
         </button>
 
-        <button className="btn-link" onClick={() => navigate(-1)}>
+        <button className="bg-transparent border-none text-foreground-muted text-sm cursor-pointer p-1.5 transition-colors hover:text-foreground-primary" onClick={() => navigate(-1)}>
           ← {t('common.back', 'Back')}
         </button>
       </div>

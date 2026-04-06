@@ -174,7 +174,7 @@ export default function CreateIdentity() {
         <h1>{t('identity.create')}</h1>
         <p>{t('identity.publicKeyLabel')}:</p>
         <code>{publicKeyFingerprint}</code>
-        <div className="form">
+        <div className="flex flex-col gap-3 w-full max-w-[360px]">
           {returnTo ? (
             <button className="btn-primary" onClick={() => navigate(returnTo)}>{t('common.continue', 'Continue')}</button>
           ) : (
@@ -183,7 +183,7 @@ export default function CreateIdentity() {
               <button className="btn-secondary" onClick={() => navigate('/setup')}>{t('setup.title')}</button>
             </>
           )}
-          <button className="btn-link" onClick={() => navigate('/app')}>
+          <button className="bg-transparent border-none text-foreground-muted text-sm cursor-pointer p-1.5 transition-colors hover:text-foreground-primary" onClick={() => navigate('/app')}>
             {t('common.skipForNow', 'Skip for now')}
           </button>
         </div>
@@ -201,9 +201,10 @@ export default function CreateIdentity() {
             "Your passkey provider doesn't support key derivation (PRF). Choose a passphrase to protect your encryption keys.",
           )}
         </p>
-        {error && <p className="error">{error}</p>}
-        <div className="form">
+        {error && <p className="text-foreground-danger text-sm">{error}</p>}
+        <div className="flex flex-col gap-3 w-full max-w-[360px]">
           <input
+            className="form-input"
             type="password"
             placeholder={t('identity.passphrase', 'Passphrase')}
             value={passphrase}
@@ -211,6 +212,7 @@ export default function CreateIdentity() {
             autoFocus
           />
           <input
+            className="form-input"
             type="password"
             placeholder={t('identity.confirm', 'Confirm Passphrase')}
             value={passphraseConfirm}
@@ -282,9 +284,10 @@ export default function CreateIdentity() {
     <PublicShell steps={[stepNumber, totalSteps]}>
       <h1>{t('welcome.createIdentity')}</h1>
       <p style={{ opacity: 0.7 }}>{t('identity.passkeyPrompt')}</p>
-      {error && <p className="error">{error}</p>}
-      <div className="form">
+      {error && <p className="text-foreground-danger text-sm">{error}</p>}
+      <div className="flex flex-col gap-3 w-full max-w-[360px]">
         <input
+          className="form-input"
           type="text"
           placeholder={t('identity.username', 'Username')}
           value={username}
@@ -295,6 +298,7 @@ export default function CreateIdentity() {
         {/* istanbul ignore next -- Tauri-only: server input hidden in browser mode */}
         {!hasPendingInvite && !isBrowser && (
           <input
+            className="form-input"
             type="text"
             placeholder={t('identity.serverAddress', 'Server address (e.g. dilla.example.com)')}
             value={serverAddress}
@@ -306,7 +310,7 @@ export default function CreateIdentity() {
             ? t('identity.openingBrowser', 'Opening browser for passkey setup...')
             : t('identity.createWithPasskey')}
         </button>
-        <button className="btn-link" onClick={() => navigate('/')} disabled={loading}>
+        <button className="bg-transparent border-none text-foreground-muted text-sm cursor-pointer p-1.5 transition-colors hover:text-foreground-primary" onClick={() => navigate('/')} disabled={loading}>
           ← {t('common.back', 'Back')}
         </button>
       </div>

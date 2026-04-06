@@ -365,11 +365,11 @@ export default function AppLayout() {
       <>
         <TitleBar />
         <div className="app-layout-main flex w-full h-full overflow-hidden bg-surface">
-          <div className="page" style={{ margin: 'auto', maxWidth: 480, padding: '3rem 2rem' }}>
+          <div className="max-w-[480px] mx-auto p-8 flex flex-col items-center text-center gap-4" style={{ margin: 'auto', maxWidth: 480, padding: '3rem 2rem' }}>
             <img src="/brand/icon.svg" alt="Dilla" style={{ width: 80, height: 80, marginBottom: 8 }} />
             <h1>{t('app.welcomeBack', 'Welcome to Dilla')}</h1>
             <p style={{ opacity: 0.7 }}>{t('app.noServers', 'You haven\'t joined any servers yet. Join an existing server or set up your own.')}</p>
-            <div className="form" style={{ marginTop: '1rem' }}>
+            <div className="flex flex-col gap-3 w-full max-w-[360px]" style={{ marginTop: '1rem' }}>
               <button className="btn-primary" onClick={() => navigate('/join')}>
                 {t('auth.joinTeam', 'Join a Server')}
               </button>

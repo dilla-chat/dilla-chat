@@ -121,7 +121,7 @@ export default function PasskeyManager() {
         )}
       </div>
 
-      {error && <p className="error mt-2">{error}</p>}
+      {error && <p className="text-foreground-danger text-sm mt-2">{error}</p>}
 
       <div className="flex gap-2 flex-wrap">
         <button onClick={handleAddPasskey} disabled={loading} className="px-6 py-2 text-sm">

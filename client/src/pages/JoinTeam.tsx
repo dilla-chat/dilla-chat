@@ -149,7 +149,7 @@ export default function JoinTeam() {
   return (
     <PublicShell>
       <h1>{t('join.title')}</h1>
-      {error && <p className="error">{error}</p>}
+      {error && <p className="text-foreground-danger text-sm">{error}</p>}
 
       {teamInfo && (
         <div className="login-identity-card" style={{ marginBottom: 16 }}>
@@ -162,7 +162,7 @@ export default function JoinTeam() {
         </div>
       )}
 
-      <div className="form">
+      <div className="flex flex-col gap-3 w-full max-w-[360px]">
         {!fromInviteLink && (
           <ServerAddressInput
             placeholder={t('join.serverAddress')}
@@ -173,6 +173,7 @@ export default function JoinTeam() {
         )}
         {!fromInviteLink && (
           <input
+            className="form-input"
             type="text"
             placeholder={t('join.inviteToken')}
             value={inviteToken}
@@ -180,12 +181,14 @@ export default function JoinTeam() {
           />
         )}
         <input
+          className="form-input"
           type="text"
           placeholder={t('identity.username', 'Username')}
           value={username}
           onChange={(e) => setUsername(e.target.value)}
         />
         <input
+          className="form-input"
           type="text"
           placeholder={t('identity.displayName', 'Display Name')}
           value={displayName}
@@ -201,10 +204,10 @@ export default function JoinTeam() {
             {loading ? t('join.joining') : t('join.join')}
           </button>
         )}
-        <button className="btn-link" onClick={() => navigate(-1)}>
+        <button className="bg-transparent border-none text-foreground-muted text-sm cursor-pointer p-1.5 transition-colors hover:text-foreground-primary" onClick={() => navigate(-1)}>
           ← Back
         </button>
-        <button className="btn-link" onClick={() => navigate('/setup')} style={{ marginTop: '0.5rem' }}>
+        <button className="bg-transparent border-none text-foreground-muted text-sm cursor-pointer p-1.5 transition-colors hover:text-foreground-primary" onClick={() => navigate('/setup')} style={{ marginTop: '0.5rem' }}>
           Set up a new server instead
         </button>
       </div>

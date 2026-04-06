@@ -374,46 +374,6 @@
      Global shared classes (migrated from App.css)
      ============================================ */
 
-  .page {
-    max-width: 480px;
-    margin: 0 auto;
-    padding: 2rem;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    gap: 1rem;
-  }
-
-  .form {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    width: 100%;
-    max-width: 360px;
-  }
-
-  .form input,
-  .form textarea {
-    padding: 0.6em 1em;
-    border-radius: var(--radius-lg);
-    border: 1px solid var(--border-color);
-    background-color: var(--input-bg);
-    color: var(--text-primary);
-    font-size: 1em;
-    width: 100%;
-    box-sizing: border-box;
-    font-family: inherit;
-    resize: vertical;
-  }
-
-  .form input:focus,
-  .form textarea:focus {
-    outline: none;
-    border-color: var(--brand-500);
-    box-shadow: 0 0 0 3px var(--brand-alpha-12);
-  }
-
   .btn-primary {
     background: var(--gradient-accent);
     color: var(--interactive-active);
@@ -474,25 +434,6 @@
 
   .btn-danger:hover {
     filter: brightness(1.1);
-  }
-
-  .btn-link {
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    font-size: 0.9em;
-    cursor: pointer;
-    padding: 0.4em;
-    transition: color 0.15s;
-  }
-
-  .btn-link:hover {
-    color: var(--text-primary);
-  }
-
-  .error {
-    color: var(--text-danger);
-    font-size: 0.9em;
   }
 
   /* Login identity card */
