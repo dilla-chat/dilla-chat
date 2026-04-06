@@ -212,12 +212,12 @@
 /* Webcam replaces avatar — circular crop */
 /* Webcam replaces avatar — same tile layout */
 .voice-tile-webcam-fill {
-  width: 100%;
-  border-radius: var(--radius-md);
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-full);
   object-fit: cover;
   background: var(--bg-tertiary);
   transform: scaleX(-1);
-  aspect-ratio: 4 / 3;
 }
 
 .voice-tile-overlay {
