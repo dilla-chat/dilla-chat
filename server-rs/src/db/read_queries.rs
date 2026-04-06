@@ -29,7 +29,7 @@ pub fn get_unread_count(
          WHERE channel_id = ?1 AND deleted = 0
          AND created_at > COALESCE(
              (SELECT last_read_at FROM channel_reads WHERE user_id = ?2 AND channel_id = ?1),
-             '1970-01-01'
+             datetime('now')
          )",
         params![channel_id, user_id],
         |row| row.get(0),
@@ -52,7 +52,7 @@ pub fn get_unread_counts_for_team(
              AND m.created_at > COALESCE(
                  (SELECT cr.last_read_at FROM channel_reads cr
                   WHERE cr.user_id = ?1 AND cr.channel_id = c.id),
-                 '1970-01-01'
+                 datetime('now')
              )
          WHERE c.team_id = ?2
          GROUP BY c.id",
