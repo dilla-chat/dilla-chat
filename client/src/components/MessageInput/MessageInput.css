@@ -331,11 +331,10 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  background: var(--bg-secondary);
-  border: 1px solid var(--divider);
+  padding: var(--spacing-sm);
   border-radius: var(--radius-md);
-  padding: 6px 10px;
-  max-width: 220px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--divider);
 }
 
 .file-preview-thumb {
@@ -347,9 +346,15 @@
 }
 
 .file-preview-icon {
-  font-size: var(--font-size-2xl);
-  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  background: rgba(14, 165, 192, 0.08);
   display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--brand-500);
+  flex-shrink: 0;
 }
 
 .file-preview-details {
@@ -361,32 +366,47 @@
 }
 
 .file-preview-name {
-  font-size: var(--font-size-sm);
-  color: var(--text-normal);
+  font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .file-preview-size {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-micro);
   color: var(--text-muted);
 }
 
 .file-preview-remove {
   background: none;
   border: none;
-  color: var(--interactive-normal);
-  font-size: var(--font-size-lg);
-  padding: 0;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: var(--spacing-xs);
+  margin-left: auto;
+  transition: color var(--duration-fast) var(--ease-out);
 }
 
 .file-preview-remove:hover {
-  color: var(--text-danger);
+  color: var(--danger);
+}
+
+/* Upload progress bar */
+.file-upload-progress {
+  margin-top: var(--spacing-xs);
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+}
+
+.file-upload-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--brand-500), var(--brand-560));
+  border-radius: 2px;
+  transition: width var(--duration-fast) var(--ease-out);
 }
 
 /* Upload progress / error */
