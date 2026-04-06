@@ -7,6 +7,17 @@
   z-index: 10;
 }
 
+.message-input-wrapper::before {
+  content: '';
+  position: absolute;
+  top: calc(-1 * var(--spacing-2xl));
+  left: 0;
+  right: 0;
+  height: var(--spacing-2xl);
+  background: linear-gradient(to bottom, transparent, var(--bg-primary));
+  pointer-events: none;
+}
+
 .message-input-composer {
   background: var(--glass-bg-secondary);
   -webkit-backdrop-filter: blur(var(--glass-blur-heavy));
