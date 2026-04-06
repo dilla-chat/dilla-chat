@@ -610,3 +610,38 @@
   font-size: var(--font-size-micro);
   color: var(--text-muted);
 }
+
+/* Mobile swipe gesture support */
+@media (max-width: 767px) {
+  .content-wrapper {
+    touch-action: pan-y;
+    transition: transform var(--duration-normal) var(--ease-out);
+  }
+
+  .content-wrapper.swipe-right {
+    transform: translateX(var(--channel-sidebar-width));
+  }
+
+  .content-wrapper.swipe-left {
+    transform: translateX(calc(-1 * var(--member-sidebar-width)));
+  }
+
+  /* Swipe reply indicator on messages */
+  .message-item {
+    touch-action: pan-y;
+  }
+
+  .message-swipe-reply-indicator {
+    position: absolute;
+    right: var(--spacing-sm);
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--brand-500);
+    opacity: 0;
+    transition: opacity var(--duration-fast) var(--ease-out);
+  }
+
+  .message-item.swiping .message-swipe-reply-indicator {
+    opacity: 1;
+  }
+}
