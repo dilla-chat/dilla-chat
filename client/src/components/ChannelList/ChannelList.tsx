@@ -118,7 +118,7 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
                 speaking: false,
                 voiceLevel: 0,
               };
-              voicePeerList = [localUser, ...voicePeerValues];
+              voicePeerList = [localUser, ...voicePeerValues.filter(p => p.user_id !== currentUserId)];
             } else if (isVoice) {
               voicePeerList = voiceOccupants[ch.id] ?? [];
             } else {
