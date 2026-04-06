@@ -195,7 +195,6 @@ export default function AppLayout() {
             </>
           )}
           <div className="flex gap-lg ml-auto max-md:gap-2">
-            <SearchBar onJumpToMessage={handleJumpToMessage} />
             {activeDM.is_group && (
               <button
                 className={`bg-none border-none text-interactive cursor-pointer p-xs rounded-sm text-xl transition-colors duration-150 ease-linear hover:text-interactive-hover ${showDMMembers ? 'text-interactive-active' : ''}`}
@@ -205,6 +204,7 @@ export default function AppLayout() {
                 <Group width={20} height={20} strokeWidth={2} />
               </button>
             )}
+            <SearchBar onJumpToMessage={handleJumpToMessage} />
           </div>
         </>
       );
@@ -228,7 +228,6 @@ export default function AppLayout() {
             </>
           )}
           <div className="flex gap-lg ml-auto max-md:gap-2">
-            <SearchBar onJumpToMessage={handleJumpToMessage} />
             <button
               className={`bg-none border-none text-interactive cursor-pointer p-xs rounded-sm text-xl transition-colors duration-150 ease-linear hover:text-interactive-hover ${showMembers ? 'text-interactive-active' : ''}`}
               onClick={() => setShowMembers(v => !v)}
@@ -236,6 +235,7 @@ export default function AppLayout() {
             >
               <Group width={20} height={20} strokeWidth={2} />
             </button>
+            <SearchBar onJumpToMessage={handleJumpToMessage} />
           </div>
         </>
       );
@@ -244,7 +244,6 @@ export default function AppLayout() {
       <>
         <span className="font-display title">{t('app.name')}</span>
         <div className="flex gap-lg ml-auto max-md:gap-2">
-          <SearchBar onJumpToMessage={handleJumpToMessage} />
           <button
             className={`bg-none border-none text-interactive cursor-pointer p-xs rounded-sm text-xl transition-colors duration-150 ease-linear hover:text-interactive-hover ${showMembers ? 'text-interactive-active' : ''}`}
             onClick={() => setShowMembers(!showMembers)}
@@ -252,6 +251,7 @@ export default function AppLayout() {
           >
             <Group width={20} height={20} strokeWidth={2} />
           </button>
+          <SearchBar onJumpToMessage={handleJumpToMessage} />
         </div>
       </>
     );
