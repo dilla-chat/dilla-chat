@@ -529,3 +529,84 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* Server picker modal */
+.server-picker-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-heavy);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-modal);
+}
+
+.server-picker {
+  background: var(--bg-floating);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  padding: var(--spacing-xl);
+  width: 320px;
+  max-width: 90vw;
+  box-shadow: 0 var(--spacing-lg) 48px rgba(0, 0, 0, 0.5);
+  animation: scaleIn var(--duration-normal) var(--ease-spring);
+}
+
+.server-picker-title {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  text-align: center;
+  margin-bottom: var(--spacing-xs);
+}
+
+.server-picker-subtitle {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  text-align: center;
+  margin-bottom: var(--spacing-xl);
+}
+
+.server-picker-option {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  width: 100%;
+  padding: var(--spacing-md);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--divider);
+  background: rgba(255, 255, 255, 0.02);
+  cursor: pointer;
+  margin-bottom: var(--spacing-sm);
+  text-align: left;
+  font-family: inherit;
+  transition: background-color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
+}
+
+.server-picker-option:hover {
+  background: var(--brand-alpha-10);
+  border-color: var(--brand-alpha-15);
+}
+
+.server-picker-option-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: rgba(14, 165, 192, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--brand-500);
+  flex-shrink: 0;
+}
+
+.server-picker-option-title {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+}
+
+.server-picker-option-desc {
+  font-size: var(--font-size-micro);
+  color: var(--text-muted);
+}
