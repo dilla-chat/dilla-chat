@@ -175,7 +175,7 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
                           <span className="voice-user-name">{peer.username}</span>
                           {isMuted && <MicrophoneMute width={14} height={14} strokeWidth={2} className="voice-user-icon" />}
                           {isDeafened && <HeadsetWarning width={14} height={14} strokeWidth={2} className="voice-user-icon" />}
-                          {isWebcamSharing && <VideoCamera width={14} height={14} strokeWidth={2} className="voice-user-icon" />}
+                          {isWebcamSharing && <VideoCamera width={14} height={14} strokeWidth={2} className="voice-user-icon webcam-sharing" />}
                           {isScreenSharing && <AppWindow width={14} height={14} strokeWidth={2} className="voice-user-icon screen-sharing" />}
                         </div>
                       );

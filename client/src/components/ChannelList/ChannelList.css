@@ -247,7 +247,8 @@
   opacity: 0.7;
 }
 
-.voice-user-icon.screen-sharing {
+.voice-user-icon.screen-sharing,
+.voice-user-icon.webcam-sharing {
   color: var(--status-online);
   opacity: 1;
 }
