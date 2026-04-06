@@ -17,27 +17,27 @@
   --text-secondary: #8fa3b8;
   --text-muted: #7a8e9e;
   --text-link: #3ba8ba;
-  --text-positive: #4caf82;
-  --text-danger: #d05a4a;
-  --text-warning: #e8b84b;
+  --text-positive: #10b981;
+  --text-danger: #ef4444;
+  --text-warning: #f59e0b;
 
   /* Header colors */
   --header-primary: #f0f4f8;
   --header-secondary: #8fa3b8;
 
   /* Brand colors */
-  --brand-500: #2e8b9a;
-  --brand-560: #3ba8ba;
-  --bg-accent: #e8b84b;
-  --bg-accent-hover: #f0ca6a;
+  --brand-500: #0ea5c0;
+  --brand-560: #22d3ee;
+  --bg-accent: #f59e0b;
+  --bg-accent-hover: #fbbf24;
 
   /* Status colors */
-  --green-360: #4caf82;
-  --yellow-300: #e8b84b;
-  --red-400: #d05a4a;
-  --status-online: #4caf82;
-  --status-idle: #e8b84b;
-  --status-dnd: #d05a4a;
+  --green-360: #10b981;
+  --yellow-300: #f59e0b;
+  --red-400: #ef4444;
+  --status-online: #10b981;
+  --status-idle: #f59e0b;
+  --status-dnd: #ef4444;
   --status-offline: #4d6478;
 
   /* Interactive colors */
@@ -61,18 +61,18 @@
   --input-bg: #0a1016;
 
   /* Aliases */
-  --accent: #e8b84b;
-  --accent-hover: #f0ca6a;
-  --danger: #d05a4a;
-  --success: #4caf82;
-  --warning: #e8b84b;
+  --accent: #f59e0b;
+  --accent-hover: #fbbf24;
+  --danger: #ef4444;
+  --success: #10b981;
+  --warning: #f59e0b;
   --hover: rgba(143, 163, 184, 0.12);
   --active: rgba(143, 163, 184, 0.20);
 
   /* Brand-specific */
-  --color-encrypted: #4caf82;
-  --shadow-glow-brand: 0 0 16px rgba(46,139,154,0.3);
-  --shadow-glow-accent: 0 0 16px rgba(232,184,75,0.25);
+  --color-encrypted: #10b981;
+  --shadow-glow-brand: 0 0 20px rgba(14, 165, 192, 0.35);
+  --shadow-glow-accent: 0 0 20px rgba(245, 158, 11, 0.3);
 
   /* Glass effects */
   --glass-blur: 12px;
@@ -105,28 +105,28 @@
   --white-overlay-medium: rgba(255, 255, 255, 0.7);
 
   /* Brand alpha variants */
-  --brand-alpha-10: rgba(46, 139, 154, 0.1);
-  --brand-alpha-12: rgba(46, 139, 154, 0.12);
-  --brand-alpha-15: rgba(46, 139, 154, 0.15);
-  --brand-alpha-20: rgba(46, 139, 154, 0.2);
-  --brand-alpha-25: rgba(46, 139, 154, 0.25);
+  --brand-alpha-10: rgba(14, 165, 192, 0.1);
+  --brand-alpha-12: rgba(14, 165, 192, 0.12);
+  --brand-alpha-15: rgba(14, 165, 192, 0.15);
+  --brand-alpha-20: rgba(14, 165, 192, 0.2);
+  --brand-alpha-25: rgba(14, 165, 192, 0.25);
 
   /* Accent alpha variants */
-  --accent-alpha-08: rgba(232, 184, 75, 0.08);
-  --accent-alpha-10: rgba(232, 184, 75, 0.10);
-  --accent-alpha-15: rgba(232, 184, 75, 0.15);
-  --accent-alpha-20: rgba(232, 184, 75, 0.2);
-  --accent-alpha-25: rgba(232, 184, 75, 0.25);
-  --accent-alpha-30: rgba(232, 184, 75, 0.3);
+  --accent-alpha-08: rgba(245, 158, 11, 0.08);
+  --accent-alpha-10: rgba(245, 158, 11, 0.10);
+  --accent-alpha-15: rgba(245, 158, 11, 0.15);
+  --accent-alpha-20: rgba(245, 158, 11, 0.2);
+  --accent-alpha-25: rgba(245, 158, 11, 0.25);
+  --accent-alpha-30: rgba(245, 158, 11, 0.3);
 
   /* Danger alpha variants */
-  --danger-alpha-15: rgba(208, 90, 74, 0.15);
-  --danger-alpha-25: rgba(208, 90, 74, 0.25);
+  --danger-alpha-15: rgba(239, 68, 68, 0.15);
+  --danger-alpha-25: rgba(239, 68, 68, 0.25);
 
   /* Success alpha variants */
-  --success-alpha-15: rgba(76, 175, 130, 0.15);
-  --success-alpha-35: rgba(52, 211, 122, 0.35);
-  --success-alpha-40: rgba(76, 175, 130, 0.4);
+  --success-alpha-15: rgba(16, 185, 129, 0.15);
+  --success-alpha-35: rgba(16, 185, 129, 0.35);
+  --success-alpha-40: rgba(16, 185, 129, 0.4);
 }
 
 /* Shared dialog backdrop button — invisible full-area close target */

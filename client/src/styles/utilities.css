@@ -62,7 +62,7 @@
   cursor: pointer;
   transition: background-color var(--duration-fast) var(--ease-out),
               color var(--duration-fast) var(--ease-out);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
 }
 
 .clickable:hover {
