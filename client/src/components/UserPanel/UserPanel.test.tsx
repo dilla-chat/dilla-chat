@@ -88,10 +88,10 @@ describe('UserPanel', () => {
     expect(avatar?.textContent).toContain('A');
   });
 
-  it('renders presence indicator', () => {
+  it('renders presence ring via data-status on avatar', () => {
     render(<UserPanel username="alice" />);
-    expect(screen.getByTestId('presence-indicator')).toBeInTheDocument();
-    expect(screen.getByTestId('presence-indicator')).toHaveAttribute('data-status', 'online');
+    const avatar = document.querySelector('.user-panel-avatar');
+    expect(avatar).toHaveAttribute('data-status', 'online');
   });
 
   it('shows presence status text', () => {

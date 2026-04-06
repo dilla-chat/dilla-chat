@@ -31,15 +31,16 @@
   box-shadow: 0 0 0 4px var(--white-overlay-subtle);
 }
 
-.user-panel-status-dot {
-  position: absolute;
-  bottom: -2px;
-  right: -2px;
-  width: 10px;
-  height: 10px;
-  border-radius: var(--radius-full);
-  border: 3px solid var(--bg-secondary);
-  box-sizing: border-box;
+.user-panel-avatar[data-status="online"] {
+  box-shadow: 0 0 0 2px var(--bg-tertiary), 0 0 0 3.5px var(--success);
+}
+
+.user-panel-avatar[data-status="idle"] {
+  box-shadow: 0 0 0 2px var(--bg-tertiary), 0 0 0 3.5px var(--warning);
+}
+
+.user-panel-avatar[data-status="dnd"] {
+  box-shadow: 0 0 0 2px var(--bg-tertiary), 0 0 0 3.5px var(--danger);
 }
 
 .user-panel-info {

@@ -5,7 +5,6 @@ import { usePresenceStore } from '../../stores/presenceStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useDMStore } from '../../stores/dmStore';
 import { api } from '../../services/api';
-import PresenceIndicator from '../PresenceIndicator/PresenceIndicator';
 import UserProfile from '../UserProfile/UserProfile';
 import './MemberList.css';
 
@@ -116,9 +115,8 @@ export default function MemberList() {
         onClick={(e) => handleMemberClick(e, member)}
         type="button"
       >
-        <div className="member-avatar">
+        <div className="member-avatar" data-status={status}>
           {getInitials(member)}
-          <PresenceIndicator status={status} size="medium" />
         </div>
         <div className="member-info">
           <div className="member-display-name truncate">

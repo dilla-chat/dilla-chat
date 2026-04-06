@@ -67,15 +67,16 @@
   position: relative;
 }
 
-.member-status-dot {
-  position: absolute;
-  bottom: -2px;
-  right: -2px;
-  width: 10px;
-  height: 10px;
-  border-radius: var(--radius-full);
-  border: 3px solid var(--bg-secondary);
-  box-sizing: border-box;
+.member-avatar[data-status="online"] {
+  box-shadow: 0 0 0 2px var(--bg-secondary), 0 0 0 3.5px var(--success);
+}
+
+.member-avatar[data-status="idle"] {
+  box-shadow: 0 0 0 2px var(--bg-secondary), 0 0 0 3.5px var(--warning);
+}
+
+.member-avatar[data-status="dnd"] {
+  box-shadow: 0 0 0 2px var(--bg-secondary), 0 0 0 3.5px var(--danger);
 }
 
 .member-info {

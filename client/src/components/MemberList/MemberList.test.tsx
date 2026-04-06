@@ -96,10 +96,14 @@ describe('MemberList', () => {
     expect(screen.getByText('Working')).toBeInTheDocument();
   });
 
-  it('renders presence indicators for each member', () => {
-    render(<MemberList />);
-    const indicators = screen.getAllByTestId('presence');
-    expect(indicators.length).toBe(3);
+  it('renders presence rings for each member via data-status', () => {
+    const { container } = render(<MemberList />);
+    const avatars = container.querySelectorAll('.member-avatar[data-status]');
+    expect(avatars.length).toBe(3);
+    const statuses = Array.from(avatars).map((a) => a.getAttribute('data-status'));
+    expect(statuses).toContain('online');
+    expect(statuses).toContain('idle');
+    expect(statuses).toContain('offline');
   });
 
   it('shows member initials', () => {

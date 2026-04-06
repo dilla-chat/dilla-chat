@@ -8,7 +8,6 @@ import { useVoiceStore } from '../../stores/voiceStore';
 import { ws } from '../../services/websocket';
 import { webrtcService } from '../../services/webrtc';
 import { playMuteSound, playUnmuteSound } from '../../utils/sounds';
-import PresenceIndicator from '../PresenceIndicator/PresenceIndicator';
 import StatusPicker from '../StatusPicker/StatusPicker';
 import type { PresenceStatus } from '../PresenceIndicator/PresenceIndicator';
 import './UserPanel.css';
@@ -117,6 +116,7 @@ export default function UserPanel({
     <div className="user-panel">
       <button
         className="user-panel-avatar"
+        data-status={myStatus}
         onClick={(e) => {
           e.stopPropagation();
           setShowStatusPicker(!showStatusPicker);
@@ -124,7 +124,6 @@ export default function UserPanel({
         type="button"
       >
         {initials}
-        <PresenceIndicator status={myStatus} size="medium" className="border-tertiary" />
       </button>
       <button
         className="user-panel-info"
