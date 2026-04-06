@@ -2,7 +2,7 @@ import { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { IconMoodSmile, IconPlus, IconArrowBackUp, IconMessages, IconEdit, IconTrash, IconMessage } from '@tabler/icons-react';
+import { IconMoodSmile, IconPlus, IconArrowBackUp, IconMessages, IconEdit, IconTrash, IconMessage, IconArrowDown } from '@tabler/icons-react';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import { useMessageStore, type Message } from '../../stores/messageStore';
 import Reactions from '../Reactions/Reactions';
@@ -59,9 +59,17 @@ export default function MessageList({
   const canLoadMore = hasMore.get(channelId) ?? true;
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<string | null>(null);
+  const [atBottom, setAtBottom] = useState(true);
+  const [newMessageCount, setNewMessageCount] = useState(0);
   const groups = groupMessages(channelMessages);
 
   const firstItemIndex = useMemo(() => START_INDEX - groups.length, [groups.length]);
+
+  // Reset pill state on channel change
+  useEffect(() => {
+    setNewMessageCount(0);
+    setAtBottom(true);
+  }, [channelId]);
 
   // Scroll to bottom on channel change
   useEffect(() => {
@@ -70,17 +78,21 @@ export default function MessageList({
     }
   }, [channelId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Scroll to bottom when new messages arrive (e.g. after send + server echo)
+  // Track new messages when scrolled up; scroll to bottom automatically when at bottom
   const prevMsgCount = useRef(channelMessages.length);
   useEffect(() => {
-    if (channelMessages.length > prevMsgCount.current && virtuosoRef.current) {
-      // Small delay to let Virtuoso render the new item first
-      setTimeout(() => {
-        virtuosoRef.current?.scrollToIndex({ index: groups.length - 1, behavior: 'smooth' });
-      }, 50);
+    if (channelMessages.length > prevMsgCount.current) {
+      if (atBottom) {
+        // Small delay to let Virtuoso render the new item first
+        setTimeout(() => {
+          virtuosoRef.current?.scrollToIndex({ index: groups.length - 1, behavior: 'smooth' });
+        }, 50);
+      } else {
+        setNewMessageCount((prev) => prev + (channelMessages.length - prevMsgCount.current));
+      }
     }
     prevMsgCount.current = channelMessages.length;
-  }, [channelMessages.length, groups.length]);
+  }, [channelMessages.length, groups.length, atBottom]);
 
   const handleStartReached = useCallback(() => {
     if (canLoadMore && !isLoading) {
@@ -89,6 +101,7 @@ export default function MessageList({
   }, [canLoadMore, isLoading, onLoadMore]);
 
   return (
+    <div className="message-list-container">
     <Virtuoso
       ref={virtuosoRef}
       style={{ flex: 1 }}
@@ -100,6 +113,10 @@ export default function MessageList({
       data={groups}
       followOutput={() => 'smooth'}
       startReached={handleStartReached}
+      atBottomStateChange={(bottom) => {
+        setAtBottom(bottom);
+        if (bottom) setNewMessageCount(0);
+      }}
       components={{
         Footer: () => <div style={{ height: 'var(--spacing-2xl)', minHeight: 32 }} />,
         Header: () => (
@@ -285,5 +302,20 @@ export default function MessageList({
         );
       }}
     />
+    {!atBottom && (
+      <button
+        className="scroll-to-bottom-pill"
+        onClick={() =>
+          virtuosoRef.current?.scrollToIndex({ index: groups.length - 1, behavior: 'smooth' })
+        }
+        type="button"
+      >
+        <IconArrowDown size={14} stroke={1.75} />
+        {newMessageCount > 0
+          ? `${newMessageCount} new message${newMessageCount > 1 ? 's' : ''}`
+          : 'Jump to latest'}
+      </button>
+    )}
+    </div>
   );
 }

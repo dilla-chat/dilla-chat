@@ -1,3 +1,11 @@
+.message-list-container {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .message-list {
   flex: 1;
   padding: var(--spacing-sm) 0 0;
@@ -299,6 +307,37 @@
 .message-emoji-picker-anchor {
   position: relative;
   z-index: 100;
+}
+
+/* Scroll-to-bottom floating pill */
+.scroll-to-bottom-pill {
+  position: absolute;
+  bottom: var(--spacing-lg);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-lg);
+  border-radius: var(--radius-full);
+  border: none;
+  background: var(--brand-500);
+  color: white;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  font-family: inherit;
+  cursor: pointer;
+  box-shadow: 0 4px var(--spacing-lg) rgba(14, 165, 192, 0.3);
+  z-index: 10;
+  transition: background-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+}
+
+.scroll-to-bottom-pill:hover {
+  background: var(--brand-560);
+}
+
+.scroll-to-bottom-pill:active {
+  transform: translateX(-50%) scale(0.98);
 }
 
 /* Jump-to-message highlight animation */
