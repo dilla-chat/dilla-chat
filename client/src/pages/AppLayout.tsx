@@ -15,6 +15,7 @@ import CreateChannel from '../components/CreateChannel/CreateChannel';
 import ThreadPanel from '../components/ThreadPanel/ThreadPanel';
 import SearchBar from '../components/SearchBar/SearchBar';
 import ShortcutsModal from '../components/ShortcutsModal/ShortcutsModal';
+import QuickSwitcher, { type QuickSwitcherItem } from '../components/QuickSwitcher/QuickSwitcher';
 import ResizeHandle from '../components/ResizeHandle/ResizeHandle';
 import MobileTabBar, { type MobileTab } from '../components/MobileTabBar/MobileTabBar';
 import ChannelView from './ChannelView';
@@ -104,6 +105,7 @@ export default function AppLayout() {
 
   const [showNewDM, setShowNewDM] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
   const [channelWidth, setChannelWidth] = useState(240);
 
   const handleChannelResize = useCallback((delta: number) => {
@@ -323,6 +325,18 @@ export default function AppLayout() {
     [activeChannelId, setActiveChannel],
   );
 
+  const handleQuickSwitch = useCallback(
+    (item: QuickSwitcherItem) => {
+      if (item.type === 'dm') {
+        setActiveDM(item.id);
+      } else {
+        setActiveChannel(item.id);
+      }
+      setQuickSwitcherOpen(false);
+    },
+    [setActiveChannel, setActiveDM],
+  );
+
   const handleNavigateChannel = useCallback(
     (direction: 'up' | 'down') => {
       const textChannels = teamChannels.filter((c) => c.type === 'text');
@@ -341,9 +355,7 @@ export default function AppLayout() {
 
   useKeyboardShortcuts({
     onOpenSearch: () => {
-      // Focus the inline search input
-      const searchInput = document.querySelector('.header-search-input') as HTMLInputElement | null;
-      searchInput?.focus();
+      setQuickSwitcherOpen((prev) => !prev);
     },
     onClosePanel: () => {
       if (shortcutsOpen) {
@@ -526,6 +538,12 @@ export default function AppLayout() {
         <ShortcutsModal onClose={() => setShortcutsOpen(false)} />
       )}
     </div>
+
+    <QuickSwitcher
+      open={quickSwitcherOpen}
+      onClose={() => setQuickSwitcherOpen(false)}
+      onSelect={handleQuickSwitch}
+    />
     </>
   );
 }
