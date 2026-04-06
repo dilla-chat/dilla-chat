@@ -106,7 +106,7 @@ export default function AppLayout() {
   const [channelWidth, setChannelWidth] = useState(240);
 
   const handleChannelResize = useCallback((delta: number) => {
-    setChannelWidth(prev => Math.min(Math.max(prev + delta, 180), 340));
+    setChannelWidth(prev => Math.min(Math.max(prev + delta, 200), 400));
   }, []);
 
   // Get current user info from auth store

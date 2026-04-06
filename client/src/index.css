@@ -806,6 +806,10 @@
   /* Resize handle */
   .resize-handle {
     width: 4px;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: none;
     cursor: col-resize;
     flex-shrink: 0;
     transition: background-color 0.15s ease;
