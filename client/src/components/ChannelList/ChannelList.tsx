@@ -107,9 +107,23 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
             // Show rich peer data if connected, otherwise show occupants from server
             const voicePeerValues = Object.values(voicePeers);
             let voicePeerList: typeof voicePeerValues;
-            if (isVoiceConnected) voicePeerList = voicePeerValues;
-            else if (isVoice) voicePeerList = voiceOccupants[ch.id] ?? [];
-            else voicePeerList = [];
+            if (isVoiceConnected) {
+              // Add local user to the peer list (WebRTC peers are remote only)
+              const localUser = {
+                user_id: currentUserId,
+                username: teams.get(authActiveTeamId ?? '')?.user?.username ?? '',
+                muted: localMuted,
+                deafened: localDeafened,
+                screen_sharing: localScreenSharing,
+                speaking: false,
+                voiceLevel: 0,
+              };
+              voicePeerList = [localUser, ...voicePeerValues];
+            } else if (isVoice) {
+              voicePeerList = voiceOccupants[ch.id] ?? [];
+            } else {
+              voicePeerList = [];
+            }
 
             const unreadCount = unreadCounts[ch.id] ?? 0;
             const hasUnread = !isVoice && unreadCount > 0;
