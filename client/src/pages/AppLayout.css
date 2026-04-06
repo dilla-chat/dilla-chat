@@ -150,7 +150,6 @@
   display: flex;
   gap: var(--spacing-sm);
   margin-left: auto;
-  width: var(--member-sidebar-width);
   flex-shrink: 0;
 }
 

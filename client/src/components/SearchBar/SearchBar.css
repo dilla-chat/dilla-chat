@@ -11,8 +11,7 @@
   border-radius: var(--radius-lg);
   padding: 0 var(--spacing-sm);
   height: 28px;
-  flex: 1;
-  min-width: 0;
+  width: calc(var(--member-sidebar-width) - var(--spacing-2xl));
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
   box-sizing: border-box;
 }
