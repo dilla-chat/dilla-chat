@@ -3,6 +3,59 @@ import { useTeamStore } from '../../stores/teamStore';
 import { ws } from '../../services/websocket';
 import './ConnectionStatus.css';
 
+type BarStatus = 'disconnected' | 'reconnecting' | 'connected' | 'hidden';
+
+/** Slim top-of-content banner shown when the WS connection is lost or reconnecting.
+ *  Renders nothing once "connected" flash fades. */
+export function ConnectionStatusBar() {
+  const { activeTeamId } = useTeamStore();
+  const [status, setStatus] = useState<BarStatus>(() =>
+    activeTeamId && ws.isConnected(activeTeamId) ? 'hidden' : 'disconnected',
+  );
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout>>(null);
+
+  useEffect(() => {
+    const onConnected = () => {
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+      setStatus('connected');
+      hideTimerRef.current = setTimeout(() => setStatus('hidden'), 2500);
+    };
+    const onDisconnected = () => {
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+      // Start as disconnected; flip to reconnecting after a brief moment
+      // to avoid a flash on transient drops that resolve immediately.
+      setStatus('disconnected');
+      hideTimerRef.current = setTimeout(() => {
+        setStatus(prev => (prev === 'disconnected' ? 'reconnecting' : prev));
+      }, 1500);
+    };
+
+    const unsub1 = ws.on('ws:connected', onConnected);
+    const unsub2 = ws.on('ws:disconnected', onDisconnected);
+    return () => {
+      unsub1();
+      unsub2();
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    };
+  }, []);
+
+  if (status === 'hidden') return null;
+
+  const labels: Record<BarStatus, string> = {
+    disconnected: 'No connection',
+    reconnecting: 'Reconnecting…',
+    connected: 'Back online',
+    hidden: '',
+  };
+
+  return (
+    <div className={`connection-status-bar ${status}`} role="status" aria-live="polite">
+      <div className="connection-status-dot" aria-hidden="true" />
+      <span>{labels[status]}</span>
+    </div>
+  );
+}
+
 type Quality = 'excellent' | 'good' | 'poor' | 'disconnected';
 
 interface ConnectionState {
