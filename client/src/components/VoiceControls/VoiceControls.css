@@ -1,7 +1,7 @@
 .voice-controls {
   padding: 10px 12px 6px 12px;
   overflow: visible;
-  animation: voice-slide-in 0.25s ease-out;
+  animation: voice-slide-in 0.25s var(--ease-spring);
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
 
