@@ -79,7 +79,6 @@
   gap: var(--spacing-sm);
   transition: box-shadow var(--duration-fast) var(--ease-out);
   position: relative;
-  min-height: 160px;
   overflow: hidden;
 }
 
@@ -236,15 +235,9 @@
   margin-top: auto;
 }
 
-/* When webcam active: gradient overlay for text readability */
-.voice-tile:has(.voice-tile-webcam-fill) {
-  padding: 0;
-}
-
+/* When webcam active: name/icons overlay on top of video */
 .voice-tile:has(.voice-tile-webcam-fill) .voice-tile-overlay {
-  width: 100%;
-  padding: var(--spacing-sm) var(--spacing-sm) var(--spacing-md);
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.7) 0%, transparent 100%);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
 }
 
 /* Fullscreen screen share overlay */
