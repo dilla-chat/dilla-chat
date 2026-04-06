@@ -96,7 +96,8 @@ class WebRTCService {
         console.log('[Voice] Using TURN relay (no IP leaks)');
       }
     } catch {
-      console.log('[Voice] TURN not available, using STUN');
+      // TURN credentials endpoint not available — expected when no TURN
+      // server is configured. Voice falls back to STUN (peer-to-peer).
     }
 
     // Create peer connection
@@ -442,7 +443,14 @@ class WebRTCService {
   async toggleMute(): Promise<boolean> {
     // PTT mode: toggleMute is a no-op
     if (useAudioSettingsStore.getState().pushToTalk) return false;
-    if (!this.pc) return false;
+
+    // Allow toggling mute even when not in a voice channel (pre-set state)
+    if (!this.pc) {
+      const store = useVoiceStore.getState();
+      const newMuted = !store.muted;
+      store.setMuted(newMuted);
+      return newMuted;
+    }
 
     const store = useVoiceStore.getState();
     const wasMuted = store.muted;
@@ -509,6 +517,14 @@ class WebRTCService {
   async toggleDeafen(): Promise<boolean> {
     const store = useVoiceStore.getState();
     const deafened = !store.deafened;
+
+    // Allow toggling deafen even when not in a voice channel (pre-set state)
+    if (!this.pc) {
+      store.setDeafened(deafened);
+      if (deafened) store.setMuted(true);
+      return deafened;
+    }
+
     // Mute all remote audio
     for (const stream of this.remoteStreams.values()) {
       for (const track of stream.getAudioTracks()) {

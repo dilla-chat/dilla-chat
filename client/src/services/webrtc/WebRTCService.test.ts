@@ -409,9 +409,10 @@ describe('WebRTCService', () => {
       expect(typeof muted).toBe('boolean');
     });
 
-    it('returns false when not connected', async () => {
+    it('toggles mute state when not connected (pre-set)', async () => {
       const result = await webrtcService.toggleMute();
-      expect(result).toBe(false);
+      expect(result).toBe(true); // was unmuted → now muted
+      expect(useVoiceStore.getState().muted).toBe(true);
     });
 
     it('returns false when pushToTalk is enabled', async () => {
@@ -441,6 +442,20 @@ describe('WebRTCService', () => {
   });
 
   describe('toggleDeafen', () => {
+    it('toggles deafen state when not connected (pre-set)', async () => {
+      const result = await webrtcService.toggleDeafen();
+      expect(result).toBe(true);
+      expect(useVoiceStore.getState().deafened).toBe(true);
+      expect(useVoiceStore.getState().muted).toBe(true); // deafen also mutes
+    });
+
+    it('toggles deafen off when not connected', async () => {
+      useVoiceStore.setState({ deafened: true, muted: true });
+      const result = await webrtcService.toggleDeafen();
+      expect(result).toBe(false);
+      expect(useVoiceStore.getState().deafened).toBe(false);
+    });
+
     it('toggles deafen and sends via websocket', async () => {
       await webrtcService.connect('ch-1', 'team-1');
       const deafened = await webrtcService.toggleDeafen();

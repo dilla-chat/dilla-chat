@@ -148,8 +148,10 @@
 
 .content-header-actions {
   display: flex;
-  gap: var(--spacing-lg);
+  gap: var(--spacing-sm);
   margin-left: auto;
+  width: calc(var(--member-sidebar-width) - var(--spacing-lg));
+  flex-shrink: 0;
 }
 
 .header-action-btn {
