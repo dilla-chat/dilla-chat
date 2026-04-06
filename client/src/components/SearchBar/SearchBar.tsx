@@ -90,21 +90,20 @@ export default function SearchBar({ onJumpToMessage }: Readonly<Props>) {
 
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdown on click outside
+  // Collapse search bar and close dropdown on click outside
   useEffect(() => {
-    if (!showDropdown) return;
+    if (!focused) return;
     const handleClick = (e: MouseEvent) => {
       const target = e.target as Node;
-      if (
-        containerRef.current && !containerRef.current.contains(target) &&
-        dropdownRef.current && !dropdownRef.current.contains(target)
-      ) {
+      const inContainer = containerRef.current?.contains(target);
+      const inDropdown = dropdownRef.current?.contains(target);
+      if (!inContainer && !inDropdown) {
         setFocused(false);
       }
     };
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
-  }, [showDropdown]);
+  }, [focused]);
 
   return (
     <div className="relative" ref={containerRef}>
