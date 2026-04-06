@@ -80,6 +80,15 @@
   transition: box-shadow var(--duration-fast) var(--ease-out);
   position: relative;
   overflow: hidden;
+  min-width: 0;
+}
+
+/* Webcam tile: invisible spacer maintains avatar-equivalent height */
+.voice-tile:has(.voice-tile-webcam-fill)::before {
+  content: '';
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
 }
 
 .voice-tile.speaking {
@@ -213,7 +222,7 @@
 
 /* Webcam replaces avatar — circular crop */
 /* Webcam replaces avatar — same tile layout */
-/* Webcam fills entire tile */
+/* Webcam fills entire tile — absolute so it doesn't affect tile size */
 .voice-tile-webcam-fill {
   position: absolute;
   inset: 0;
@@ -223,6 +232,7 @@
   background: var(--bg-tertiary);
   transform: scaleX(-1);
   border-radius: inherit;
+  z-index: 0;
 }
 
 .voice-tile-overlay {
