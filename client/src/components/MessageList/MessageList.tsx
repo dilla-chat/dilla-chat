@@ -5,9 +5,14 @@ import remarkGfm from 'remark-gfm';
 import { IconMoodSmile, IconPlus, IconArrowBackUp, IconMessages, IconEdit, IconTrash, IconMessage, IconArrowDown } from '@tabler/icons-react';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import { useMessageStore, type Message } from '../../stores/messageStore';
+import { useTeamStore, type Member } from '../../stores/teamStore';
+import { usePresenceStore } from '../../stores/presenceStore';
+import { api } from '../../services/api';
+import { useDMStore } from '../../stores/dmStore';
 import Reactions from '../Reactions/Reactions';
 import FilePreview from '../FilePreview/FilePreview';
 import EmojiPicker from '../EmojiPicker/EmojiPicker';
+import UserProfile from '../UserProfile/UserProfile';
 import type { Attachment } from '../../services/api';
 import MessageSkeleton from '../Skeleton/MessageSkeleton';
 import { usernameColor, getInitials } from '../../utils/colors';
@@ -72,7 +77,46 @@ export default function MessageList({
   const [emojiPickerMsgId, setEmojiPickerMsgId] = useState<string | null>(null);
   const [atBottom, setAtBottom] = useState(true);
   const [newMessageCount, setNewMessageCount] = useState(0);
+  const [profilePopup, setProfilePopup] = useState<{ member: Member; x: number; y: number } | null>(null);
   const groups = groupMessages(channelMessages);
+
+  const { members: membersMap, activeTeamId } = useTeamStore();
+  const teamPresences = usePresenceStore((s) => (activeTeamId ? s.teamPresences.get(activeTeamId) : undefined)) ?? {};
+  const { setActiveDM } = useDMStore();
+  const teamMembers = (activeTeamId ? membersMap.get(activeTeamId) : undefined) ?? [];
+
+  const handleUserClick = useCallback((e: React.MouseEvent, authorId: string) => {
+    e.stopPropagation();
+    const member = teamMembers.find((m) => m.userId === authorId);
+    if (!member) return;
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setProfilePopup({ member, x: rect.left + 40, y: rect.top });
+  }, [teamMembers]);
+
+  const handleSendMessage = useCallback(async (member: Member) => {
+    if (!activeTeamId || member.userId === currentUserId) return;
+    try {
+      const dm = await api.createDM(activeTeamId, [member.userId]) as { id: string };
+      setActiveDM(dm.id);
+      setProfilePopup(null);
+    } catch {
+      // ignore
+    }
+  }, [activeTeamId, currentUserId, setActiveDM]);
+
+  useEffect(() => {
+    if (!profilePopup) return;
+    const close = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('.user-profile-popover')) return;
+      setProfilePopup(null);
+    };
+    const timer = setTimeout(() => document.addEventListener('mousedown', close), 0);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('mousedown', close);
+    };
+  }, [profilePopup]);
 
   const firstItemIndex = useMemo(() => START_INDEX - groups.length, [groups.length]);
 
@@ -178,6 +222,9 @@ export default function MessageList({
                 <div
                   className="message-avatar"
                   style={{ backgroundColor: usernameColor(group.username) }}
+                  onClick={(e) => handleUserClick(e, group.authorId)}
+                  role="button"
+                  tabIndex={0}
                 >
                   {getInitials(group.username)}
                 </div>
@@ -187,6 +234,9 @@ export default function MessageList({
                   <span
                     className="message-username"
                     style={{ color: usernameColor(group.username) }}
+                    onClick={(e) => handleUserClick(e, group.authorId)}
+                    role="button"
+                    tabIndex={0}
                   >
                     {group.username}
                   </span>
@@ -346,6 +396,19 @@ export default function MessageList({
           ? `${newMessageCount} new message${newMessageCount > 1 ? 's' : ''}`
           : 'Jump to latest'}
       </button>
+    )}
+    {profilePopup && (
+      <UserProfile
+        member={profilePopup.member}
+        presence={teamPresences[profilePopup.member.userId]}
+        x={profilePopup.x}
+        y={profilePopup.y}
+        onSendMessage={
+          profilePopup.member.userId === currentUserId
+            ? undefined
+            : () => handleSendMessage(profilePopup.member)
+        }
+      />
     )}
     </div>
   );
