@@ -96,10 +96,14 @@ describe('MemberList', () => {
     expect(screen.getByText('Working')).toBeInTheDocument();
   });
 
-  it('renders presence indicators for each member', () => {
-    render(<MemberList />);
-    const indicators = screen.getAllByTestId('presence');
-    expect(indicators.length).toBe(3);
+  it('renders presence rings for each member via data-status', () => {
+    const { container } = render(<MemberList />);
+    const avatars = container.querySelectorAll('.member-avatar[data-status]');
+    expect(avatars.length).toBe(3);
+    const statuses = Array.from(avatars).map((a) => a.getAttribute('data-status'));
+    expect(statuses).toContain('online');
+    expect(statuses).toContain('idle');
+    expect(statuses).toContain('offline');
   });
 
   it('shows member initials', () => {
@@ -130,11 +134,13 @@ describe('MemberList', () => {
     expect(screen.getByTestId('user-profile')).toBeInTheDocument();
   });
 
-  it('closes popup on close button click', () => {
+  it('closes popup on outside mousedown', async () => {
     render(<MemberList />);
     fireEvent.click(screen.getByText('Alice'));
     expect(screen.getByTestId('user-profile')).toBeInTheDocument();
-    fireEvent.click(screen.getByText('Close'));
+    // Wait for the setTimeout(0) that defers registering the document listener
+    await new Promise((r) => setTimeout(r, 0));
+    fireEvent.mouseDown(document.body);
     expect(screen.queryByTestId('user-profile')).not.toBeInTheDocument();
   });
 
@@ -213,12 +219,12 @@ describe('MemberList', () => {
     expect(names[1]).toBe('Zebra');
   });
 
-  it('closes popup on document click', () => {
+  it('closes popup on document mousedown', async () => {
     render(<MemberList />);
     fireEvent.click(screen.getByText('Alice'));
     expect(screen.getByTestId('user-profile')).toBeInTheDocument();
-    // Simulate document click
-    fireEvent.click(document);
+    await new Promise((r) => setTimeout(r, 0));
+    fireEvent.mouseDown(document.body);
     expect(screen.queryByTestId('user-profile')).not.toBeInTheDocument();
   });
 

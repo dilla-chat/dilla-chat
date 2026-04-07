@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { useRef, useEffect, useState } from 'react';
-import { SoundHigh, MicrophoneMute, HeadsetWarning, AppWindow, Collapse, VideoCamera } from 'iconoir-react';
+import { IconVolume, IconMicrophoneOff, IconHeadphonesOff, IconScreenShare, IconArrowsMinimize, IconVideo } from '@tabler/icons-react';
 import { useVoiceStore } from '../../stores/voiceStore';
 import { useTeamStore, type Channel } from '../../stores/teamStore';
 import './VoiceChannel.css';
@@ -80,10 +80,10 @@ export default function VoiceChannel({ channel }: Readonly<Props>) {
       <div className="voice-channel-view">
         <div className="screen-share-fullscreen">
           <div className="screen-share-header">
-            <AppWindow width={16} height={16} strokeWidth={2} />
+            <IconScreenShare size={16} stroke={1.75} />
             <span>{screenSharing ? 'You are sharing your screen' : `${sharerName} is sharing their screen`}</span>
             <button className="screen-share-close" onClick={() => setFullscreen(false)}>
-              <Collapse width={16} height={16} strokeWidth={2} />
+              <IconArrowsMinimize size={16} stroke={1.75} />
             </button>
           </div>
 
@@ -130,7 +130,7 @@ export default function VoiceChannel({ channel }: Readonly<Props>) {
                       </div>
                     )}
                     <span className="fullscreen-thumbnail-name">{peer.username}</span>
-                    {peer.muted && <MicrophoneMute width={12} height={12} strokeWidth={2} className="fullscreen-thumbnail-icon" />}
+                    {peer.muted && <IconMicrophoneOff size={12} stroke={1.75} className="fullscreen-thumbnail-icon" />}
                   </button>
                 );
               })}
@@ -152,7 +152,7 @@ export default function VoiceChannel({ channel }: Readonly<Props>) {
               <button className="voice-screen-share-banner" onClick={() => setFullscreen(true)} type="button">
                 <VideoPreview stream={activeScreenStream} className="voice-screen-share-video" onClick={() => setFullscreen(true)} />
                 <div className="voice-screen-share-label">
-                  <AppWindow width={14} height={14} strokeWidth={2} />
+                  <IconScreenShare size={14} stroke={1.75} />
                   <span>{screenSharing ? 'You' : sharerName} — Screen Share</span>
                 </div>
               </button>
@@ -183,10 +183,10 @@ export default function VoiceChannel({ channel }: Readonly<Props>) {
                     <div className="voice-tile-overlay">
                       <div className="voice-tile-name truncate">{peer.username}</div>
                       <div className="voice-tile-icons">
-                        {peer.muted && <span title={t('voice.mute')}><MicrophoneMute width={16} height={16} strokeWidth={2} /></span>}
-                        {peer.deafened && <span title={t('voice.deafen')}><HeadsetWarning width={16} height={16} strokeWidth={2} /></span>}
-                        {peer.screen_sharing && <span title="Sharing screen"><AppWindow width={16} height={16} strokeWidth={2} /></span>}
-                        {isSharingWebcam && <span title="Camera on"><VideoCamera width={16} height={16} strokeWidth={2} /></span>}
+                        {peer.muted && <span title={t('voice.mute')}><IconMicrophoneOff size={16} stroke={1.75} /></span>}
+                        {peer.deafened && <span title={t('voice.deafen')}><IconHeadphonesOff size={16} stroke={1.75} /></span>}
+                        {peer.screen_sharing && <span title="Sharing screen"><IconScreenShare size={16} stroke={1.75} /></span>}
+                        {isSharingWebcam && <span title="Camera on"><IconVideo size={16} stroke={1.75} /></span>}
                         {peer.speaking && <span className="voice-tile-speaking-label">{t('voice.speaking')}</span>}
                       </div>
                     </div>
@@ -197,7 +197,7 @@ export default function VoiceChannel({ channel }: Readonly<Props>) {
           </>
         ) : (
           <div className="voice-channel-empty">
-            <div className="voice-channel-empty-icon"><SoundHigh width={48} height={48} strokeWidth={1.5} /></div>
+            <div className="voice-channel-empty-icon"><IconVolume size={48} stroke={1.5} /></div>
             <h3>{t('voice.noOneHere')}</h3>
             <p>{t('voice.joinPrompt')}</p>
           </div>

@@ -7,8 +7,8 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
 }));
 
-vi.mock('iconoir-react', () => ({
-  Xmark: () => <span data-testid="Xmark" />,
+vi.mock('@tabler/icons-react', () => ({
+  IconX: () => <span data-testid="Xmark" />,
 }));
 
 vi.mock('../services/api', () => ({

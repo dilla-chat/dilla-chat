@@ -3,13 +3,13 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import MessageInput from './MessageInput';
 
-// Mock iconoir-react
-vi.mock('iconoir-react', () => ({
-  Xmark: () => <span data-testid="xmark" />,
-  Emoji: () => <span data-testid="emoji-icon" />,
-  Hourglass: () => <span data-testid="hourglass" />,
-  Page: () => <span data-testid="page" />,
-  Link: () => <span data-testid="link-icon" />,
+// Mock @tabler/icons-react
+vi.mock('@tabler/icons-react', () => ({
+  IconX: () => <span data-testid="xmark" />,
+  IconMoodSmile: () => <span data-testid="emoji-icon" />,
+  IconHourglass: () => <span data-testid="hourglass" />,
+  IconFile: () => <span data-testid="page" />,
+  IconLink: () => <span data-testid="link-icon" />,
 }));
 
 // Mock EmojiPicker - call onSelect when a button inside is clicked

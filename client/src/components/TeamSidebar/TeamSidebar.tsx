@@ -1,15 +1,17 @@
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { Plus } from 'iconoir-react';
+import { IconPlus } from '@tabler/icons-react';
 import { useAuthStore } from '../../stores/authStore';
 import { useTeamStore } from '../../stores/teamStore';
+import { useUnreadStore } from '../../stores/unreadStore';
 import './TeamSidebar.css';
 
 export default function TeamSidebar() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { teams, servers } = useAuthStore();
-  const { activeTeamId, setActiveTeam, teams: teamMap } = useTeamStore();
+  const { activeTeamId, setActiveTeam, teams: teamMap, channels: teamChannels } = useTeamStore();
+  const unreadCounts = useUnreadStore((s) => s.counts);
 
   // Group teams by server
   const serverGroups: { serverId: string; serverUrl: string; teamIds: string[] }[] = [];
@@ -40,10 +42,18 @@ export default function TeamSidebar() {
     const name = freshTeam?.name ?? (authInfo?.name as string | undefined) ?? teamId;
     const initial = name.charAt(0).toUpperCase();
     const isActive = teamId === activeTeamId;
+
+    const teamChannelList = teamChannels.get(teamId) ?? [];
+    const teamUnreadCount = teamChannelList.reduce(
+      (sum, ch) => sum + (unreadCounts[ch.id] ?? 0),
+      0,
+    );
+
     return (
-      <div 
-        key={teamId} 
+      <div
+        key={teamId}
         className={`team-icon-wrapper ${isActive ? 'active' : ''}`}
+        data-tooltip={name}
       >
         <button
           className={`team-icon ${isActive ? 'active' : ''}`}
@@ -52,6 +62,11 @@ export default function TeamSidebar() {
         >
           {initial}
         </button>
+        {teamUnreadCount > 0 && (
+          <span className="team-badge">
+            {teamUnreadCount > 99 ? '99+' : teamUnreadCount}
+          </span>
+        )}
       </div>
     );
   };
@@ -85,7 +100,7 @@ export default function TeamSidebar() {
         onClick={() => navigate('/join')}
         title={t('sidebar.addTeam')}
       >
-        <Plus width={20} height={20} strokeWidth={2} />
+        <IconPlus size={20} stroke={1.75} />
       </button>
     </div>
   );

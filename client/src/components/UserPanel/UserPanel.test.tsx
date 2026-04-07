@@ -6,12 +6,12 @@ import { useTeamStore } from '../../stores/teamStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useVoiceStore } from '../../stores/voiceStore';
 
-vi.mock('iconoir-react', () => ({
-  Settings: () => <span data-testid="icon-settings" />,
-  Microphone: () => <span data-testid="icon-mic" />,
-  MicrophoneMute: () => <span data-testid="icon-mic-mute" />,
-  Headset: () => <span data-testid="icon-headset" />,
-  HeadsetWarning: () => <span data-testid="icon-headset-warning" />,
+vi.mock('@tabler/icons-react', () => ({
+  IconSettings: () => <span data-testid="icon-settings" />,
+  IconMicrophone: () => <span data-testid="icon-mic" />,
+  IconMicrophoneOff: () => <span data-testid="icon-mic-mute" />,
+  IconHeadphones: () => <span data-testid="icon-headset" />,
+  IconHeadphonesOff: () => <span data-testid="icon-headset-warning" />,
 }));
 
 vi.mock('../../services/websocket', () => ({
@@ -88,10 +88,10 @@ describe('UserPanel', () => {
     expect(avatar?.textContent).toContain('A');
   });
 
-  it('renders presence indicator', () => {
+  it('renders presence ring via data-status on avatar', () => {
     render(<UserPanel username="alice" />);
-    expect(screen.getByTestId('presence-indicator')).toBeInTheDocument();
-    expect(screen.getByTestId('presence-indicator')).toHaveAttribute('data-status', 'online');
+    const avatar = document.querySelector('.user-panel-avatar');
+    expect(avatar).toHaveAttribute('data-status', 'online');
   });
 
   it('shows presence status text', () => {

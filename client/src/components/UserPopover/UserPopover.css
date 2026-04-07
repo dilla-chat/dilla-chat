@@ -1,0 +1,87 @@
+.user-popover {
+  position: fixed;
+  width: 220px;
+  background: var(--bg-floating);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  box-shadow: 0 var(--spacing-md) 40px rgba(0, 0, 0, 0.5);
+  z-index: var(--z-tooltip);
+}
+
+.user-popover-banner {
+  height: 50px;
+}
+
+.user-popover-body {
+  padding: 0 var(--spacing-lg) var(--spacing-lg);
+  margin-top: calc(-1 * var(--spacing-xl));
+}
+
+.user-popover-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  box-shadow: 0 0 0 3px var(--bg-floating);
+}
+
+.user-popover-name {
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  font-size: var(--font-size-base);
+  margin-top: var(--spacing-sm);
+}
+
+.user-popover-fingerprint {
+  font-size: var(--font-size-micro);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  margin-top: 2px;
+}
+
+.user-popover-roles {
+  display: flex;
+  gap: var(--spacing-xs);
+  flex-wrap: wrap;
+  margin-top: var(--spacing-sm);
+}
+
+.user-popover-role {
+  font-size: var(--font-size-micro);
+  padding: 2px var(--spacing-sm);
+  border-radius: var(--radius-full);
+  background: var(--brand-alpha-10);
+  color: var(--brand-500);
+  border: 1px solid var(--brand-alpha-15);
+}
+
+.user-popover-actions {
+  display: flex;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-md);
+}
+
+.user-popover-action {
+  flex: 1;
+  text-align: center;
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  font-family: inherit;
+  border: 1px solid var(--divider);
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+
+.user-popover-action:hover {
+  background: var(--bg-modifier-hover);
+  color: var(--text-primary);
+}

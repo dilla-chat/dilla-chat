@@ -20,10 +20,10 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-vi.mock('iconoir-react', () => ({
-  Xmark: () => <span data-testid="Xmark" />,
-  EditPencil: () => <span data-testid="EditPencil" />,
-  Trash: () => <span data-testid="Trash" />,
+vi.mock('@tabler/icons-react', () => ({
+  IconX: () => <span data-testid="Xmark" />,
+  IconEdit: () => <span data-testid="EditPencil" />,
+  IconTrash: () => <span data-testid="Trash" />,
 }));
 
 vi.mock('../../services/api', () => ({

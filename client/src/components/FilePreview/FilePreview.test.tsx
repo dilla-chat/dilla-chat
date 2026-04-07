@@ -3,10 +3,10 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import FilePreview from './FilePreview';
 import type { Attachment } from '../../services/api';
 
-vi.mock('iconoir-react', () => ({
-  MusicNote: () => <span data-testid="icon-music" />,
-  Page: () => <span data-testid="icon-page" />,
-  Download: () => <span data-testid="icon-download" />,
+vi.mock('@tabler/icons-react', () => ({
+  IconMusic: () => <span data-testid="icon-music" />,
+  IconFile: () => <span data-testid="icon-page" />,
+  IconDownload: () => <span data-testid="icon-download" />,
 }));
 
 const imageAttachment: Attachment = {

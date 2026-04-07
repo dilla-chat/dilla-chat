@@ -3,9 +3,9 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import NewDMModal from './NewDMModal';
 import { useTeamStore } from '../../stores/teamStore';
 
-vi.mock('iconoir-react', () => ({
-  Xmark: () => <span data-testid="Xmark" />,
-  Check: () => <span data-testid="Check" />,
+vi.mock('@tabler/icons-react', () => ({
+  IconX: () => <span data-testid="Xmark" />,
+  IconCheck: () => <span data-testid="Check" />,
 }));
 
 vi.mock('../../services/api', () => ({

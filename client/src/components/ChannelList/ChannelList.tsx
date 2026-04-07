@@ -1,6 +1,7 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { SoundHigh, Plus, MicrophoneMute, HeadsetWarning, AppWindow, VideoCamera } from 'iconoir-react';
+import { IconVolume, IconPlus, IconMicrophoneOff, IconHeadphonesOff, IconScreenShare, IconVideo } from '@tabler/icons-react';
 import { useTeamStore, type Channel } from '../../stores/teamStore';
 import { useVoiceStore } from '../../stores/voiceStore';
 import { useUnreadStore } from '../../stores/unreadStore';
@@ -26,53 +27,37 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
   const { counts: unreadCounts } = useUnreadStore();
   const authTeams = useAuthStore((s) => s.teams);
   const currentUserId = (activeTeamId ? authTeams.get(activeTeamId)?.user?.id : '') ?? '';
-  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
   const [editingChannel, setEditingChannel] = useState<Channel | null>(null);
 
   const rawChannels = activeTeamId ? channels.get(activeTeamId) : undefined;
   const teamChannels = Array.isArray(rawChannels) ? rawChannels : [];
 
-  // Separate text and voice channels
-  const textChannels = teamChannels.filter((ch) => ch.type !== 'voice');
-  const voiceChannels = teamChannels.filter((ch) => ch.type === 'voice');
+  // Build the three sections: unread, active voice, remaining
+  const unreadChannels = teamChannels.filter((ch) => {
+    const count = unreadCounts[ch.id] ?? 0;
+    return ch.type !== 'voice' && count > 0;
+  });
 
-  const voiceLabel = t('channels.voiceChannels', 'Voice Channels');
-  const textDefaultLabel = t('channels.textChannels', 'Text Channels');
+  const activeVoiceChannels = teamChannels.filter((ch) => {
+    if (ch.type !== 'voice') return false;
+    const occupants = voiceOccupants[ch.id] ?? [];
+    const isConnected = voiceConnected && voiceChannelId === ch.id;
+    const peerCount = isConnected ? Object.keys(voicePeers).length + 1 : occupants.length;
+    return peerCount > 0;
+  });
 
-  const groupByCategory = (chs: Channel[], defaultLabel: string, reservedLabel?: string) => {
-    const grouped = chs.reduce<Record<string, Channel[]>>((acc, ch) => {
-      let cat = ch.category || defaultLabel;
-      if (reservedLabel && cat === reservedLabel) cat = defaultLabel;
-      if (!acc[cat]) acc[cat] = [];
-      acc[cat].push(ch);
-      return acc;
-    }, {});
-    for (const cat of Object.keys(grouped)) {
-      grouped[cat].sort((a, b) => a.position - b.position);
-    }
-    return grouped;
-  };
+  const remainingChannels = teamChannels.filter((ch) => {
+    const isUnread = ch.type !== 'voice' && (unreadCounts[ch.id] ?? 0) > 0;
+    const isActiveVoice =
+      ch.type === 'voice' && activeVoiceChannels.some((v) => v.id === ch.id);
+    return !isUnread && !isActiveVoice;
+  });
 
-  const textGrouped = groupByCategory(textChannels, textDefaultLabel, voiceLabel);
-  const voiceGrouped: Record<string, Channel[]> = {};
-  if (voiceChannels.length > 0) {
-    voiceGrouped[voiceLabel] = [...voiceChannels].sort((a, b) => a.position - b.position);
-  }
-
-  const toggleCategory = (cat: string) => {
-    setCollapsedCategories((prev) => {
-      const next = new Set(prev);
-      if (next.has(cat)) next.delete(cat);
-      else next.add(cat);
-      return next;
-    });
-  };
-
-  const handleContextMenu = useCallback((e: React.MouseEvent, channel: Channel) => {
+  const handleContextMenu = (e: React.MouseEvent, channel: Channel) => {
     e.preventDefault();
     setContextMenu({ x: e.clientX, y: e.clientY, channel });
-  }, []);
+  };
 
   useEffect(() => {
     const close = () => setContextMenu(null);
@@ -80,127 +65,160 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
     return () => document.removeEventListener('click', close);
   }, []);
 
-  const renderCategory = (cat: string, chs: Channel[]) => {
-    const isCollapsed = collapsedCategories.has(cat);
+  const renderChannelItem = (ch: Channel) => {
+    const isVoice = ch.type === 'voice';
+    const isVoiceConnected = isVoice && voiceConnected && voiceChannelId === ch.id;
+    // Show rich peer data if connected, otherwise show occupants from server
+    const voicePeerValues = Object.values(voicePeers);
+    let voicePeerList: typeof voicePeerValues;
+    if (isVoiceConnected) {
+      // WebRTC peers = remote users only. Add local user with store state.
+      const localUsername =
+        (activeTeamId ? authTeams.get(activeTeamId)?.user?.username : '') ?? 'You';
+      const localEntry = {
+        user_id: currentUserId,
+        username: localUsername,
+        muted: localMuted,
+        deafened: localDeafened,
+        screen_sharing: localScreenSharing,
+        speaking: false,
+        voiceLevel: 0,
+      };
+      voicePeerList = [localEntry, ...voicePeerValues.filter((p) => p.user_id !== currentUserId)];
+    } else if (isVoice) {
+      voicePeerList = voiceOccupants[ch.id] ?? [];
+    } else {
+      voicePeerList = [];
+    }
+
+    const unreadCount = unreadCounts[ch.id] ?? 0;
+    const hasUnread = !isVoice && unreadCount > 0;
+
     return (
-      <div key={cat} className="channel-category">
-        <div className="channel-category-header">
-          <button className="channel-category-name micro" onClick={() => toggleCategory(cat)} type="button">
-            <span className={`category-arrow ${isCollapsed ? 'collapsed' : ''}`}>▼</span>
-            {cat}
-          </button>
-          {onCreateChannel && (
-            <button
-              type="button"
-              className="channel-category-add"
-              onClick={(e) => { e.stopPropagation(); onCreateChannel(cat); }}
-              title={t('channels.create')}
-            >
-              <Plus width={16} height={16} strokeWidth={2} />
-            </button>
-          )}
-        </div>
-        {!isCollapsed &&
-          chs.map((ch) => {
-            const isVoice = ch.type === 'voice';
-            const isVoiceConnected = isVoice && voiceConnected && voiceChannelId === ch.id;
-            // Show rich peer data if connected, otherwise show occupants from server
-            const voicePeerValues = Object.values(voicePeers);
-            let voicePeerList: typeof voicePeerValues;
-            if (isVoiceConnected) {
-              // WebRTC peers = remote users only. Add local user with store state.
-              const localUsername = (activeTeamId ? authTeams.get(activeTeamId)?.user?.username : '') ?? 'You';
-              const localEntry = {
-                user_id: currentUserId,
-                username: localUsername,
-                muted: localMuted,
-                deafened: localDeafened,
-                screen_sharing: localScreenSharing,
-                speaking: false,
-                voiceLevel: 0,
-              };
-              voicePeerList = [localEntry, ...voicePeerValues.filter(p => p.user_id !== currentUserId)];
-            } else if (isVoice) {
-              voicePeerList = voiceOccupants[ch.id] ?? [];
-            } else {
-              voicePeerList = [];
+      <div key={ch.id}>
+        <button
+          className={`channel-item clickable ${activeChannelId === ch.id ? 'active' : ''}`}
+          onClick={() => {
+            setActiveChannel(ch.id);
+            if (isVoice && !isVoiceConnected && activeTeamId) {
+              voiceJoin(activeTeamId, ch.id);
             }
-
-            const unreadCount = unreadCounts[ch.id] ?? 0;
-            const hasUnread = !isVoice && unreadCount > 0;
-
-            return (
-              <div key={ch.id}>
-                <button
-                  className={`channel-item clickable ${activeChannelId === ch.id ? 'active' : ''}`}
-                  onClick={() => {
-                    setActiveChannel(ch.id);
-                    if (isVoice && !isVoiceConnected && activeTeamId) {
-                      voiceJoin(activeTeamId, ch.id);
-                    }
-                  }}
-                  onContextMenu={(e) => handleContextMenu(e, ch)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'F10' && e.shiftKey) {
-                      e.preventDefault();
-                      handleContextMenu(e as unknown as React.MouseEvent, ch);
-                    }
-                  }}
+          }}
+          onContextMenu={(e) => handleContextMenu(e, ch)}
+          onKeyDown={(e) => {
+            if (e.key === 'F10' && e.shiftKey) {
+              e.preventDefault();
+              handleContextMenu(e as unknown as React.MouseEvent, ch);
+            }
+          }}
+        >
+          <span
+            className={`channel-icon ${isVoice && voicePeerList.length > 0 ? 'voice-active' : ''}`}
+          >
+            {isVoice ? (
+              <IconVolume size={16} stroke={1.75} />
+            ) : (
+              <span className="channel-tilde">~</span>
+            )}
+          </span>
+          <span className={`channel-name truncate${hasUnread ? ' channel-name--unread' : ''}`}>
+            {ch.name}
+          </span>
+          {hasUnread && (
+            <span className="channel-unread-badge" aria-label={`${unreadCount} unread messages`}>
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </span>
+          )}
+        </button>
+        {voicePeerList.length > 0 && (
+          <div className="voice-channel-users">
+            {voicePeerList.map((peer) => {
+              const isLocal = peer.user_id === currentUserId;
+              const isMuted = isLocal ? localMuted : peer.muted;
+              const isDeafened = isLocal ? localDeafened : peer.deafened;
+              const isScreenSharing = isLocal ? localScreenSharing : peer.screen_sharing;
+              const isWebcamSharing = isLocal ? localWebcamSharing : false;
+              return (
+                <div
+                  key={peer.user_id}
+                  className={`voice-channel-user ${peer.speaking ? 'speaking' : ''}`}
+                  style={{ '--voice-level': peer.voiceLevel ?? 0 } as React.CSSProperties}
                 >
-                  <span className={`channel-icon ${isVoice && voicePeerList.length > 0 ? 'voice-active' : ''}`}>{isVoice ? <SoundHigh width={16} height={16} strokeWidth={2} /> : <span className="channel-tilde">~</span>}</span>
-                  <span className={`channel-name truncate${hasUnread ? ' channel-name--unread' : ''}`}>{ch.name}</span>
-                  {hasUnread && (
-                    <span className="channel-unread-badge" aria-label={`${unreadCount} unread messages`}>
-                      {unreadCount > 99 ? '99+' : unreadCount}
-                    </span>
+                  <span className="voice-user-avatar">
+                    {peer.username.slice(0, 1).toUpperCase()}
+                  </span>
+                  <span className="voice-user-name">{peer.username}</span>
+                  {isMuted && (
+                    <IconMicrophoneOff size={14} stroke={1.75} className="voice-user-icon" />
                   )}
-                </button>
-                {voicePeerList.length > 0 && (
-                  <div className="voice-channel-users">
-                    {voicePeerList.map((peer) => {
-                      const isLocal = peer.user_id === currentUserId;
-                      const isMuted = isLocal ? localMuted : peer.muted;
-                      const isDeafened = isLocal ? localDeafened : peer.deafened;
-                      const isScreenSharing = isLocal ? localScreenSharing : peer.screen_sharing;
-                      const isWebcamSharing = isLocal ? localWebcamSharing : false;
-                      return (
-                        <div
-                          key={peer.user_id}
-                          className={`voice-channel-user ${peer.speaking ? 'speaking' : ''}`}
-                          style={{ '--voice-level': peer.voiceLevel ?? 0 } as React.CSSProperties}
-                        >
-                          <span className="voice-user-avatar">
-                            {peer.username.slice(0, 1).toUpperCase()}
-                          </span>
-                          <span className="voice-user-name">{peer.username}</span>
-                          {isMuted && <MicrophoneMute width={14} height={14} strokeWidth={2} className="voice-user-icon" />}
-                          {isDeafened && <HeadsetWarning width={14} height={14} strokeWidth={2} className="voice-user-icon" />}
-                          {isWebcamSharing && <VideoCamera width={14} height={14} strokeWidth={2} className="voice-user-icon webcam-sharing" />}
-                          {isScreenSharing && <AppWindow width={14} height={14} strokeWidth={2} className="voice-user-icon screen-sharing" />}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                  {isDeafened && (
+                    <IconHeadphonesOff size={14} stroke={1.75} className="voice-user-icon" />
+                  )}
+                  {isWebcamSharing && (
+                    <IconVideo
+                      size={14}
+                      stroke={1.75}
+                      className="voice-user-icon webcam-sharing"
+                    />
+                  )}
+                  {isScreenSharing && (
+                    <IconScreenShare
+                      size={14}
+                      stroke={1.75}
+                      className="voice-user-icon screen-sharing"
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     );
   };
 
-  const textCategories = Object.keys(textGrouped).sort((a, b) => a.localeCompare(b));
-  const voiceCategories = Object.keys(voiceGrouped).sort((a, b) => a.localeCompare(b));
-
   return (
     <div className="channel-list">
-      {textCategories.map((cat) => renderCategory(cat, textGrouped[cat]))}
-      {voiceCategories.map((cat) => renderCategory(cat, voiceGrouped[cat]))}
+      {unreadChannels.length > 0 && (
+        <>
+          <div className="channel-section-header unread-section">
+            {t('channels.unread', 'UNREAD')}
+          </div>
+          {unreadChannels.map(renderChannelItem)}
+          <div className="channel-section-divider" />
+        </>
+      )}
 
-      {contextMenu && (
+      {activeVoiceChannels.length > 0 && (
+        <>
+          <div className="channel-section-header">
+            {t('channels.activeVoice', 'ACTIVE VOICE')}
+          </div>
+          {activeVoiceChannels.map(renderChannelItem)}
+          <div className="channel-section-divider" />
+        </>
+      )}
+
+      <div className="channel-section-header">
+        {t('channels.channels', 'CHANNELS')}
+        {onCreateChannel && (
+          <button
+            type="button"
+            className="channel-category-add"
+            onClick={() => onCreateChannel()}
+            title={t('channels.create')}
+          >
+            <IconPlus size={16} stroke={1.75} />
+          </button>
+        )}
+      </div>
+      {remainingChannels.map(renderChannelItem)}
+
+      {contextMenu && createPortal(
         <div
           className="channel-context-menu"
           style={{ left: contextMenu.x, top: contextMenu.y }}
+          onMouseDown={(e) => e.stopPropagation()}
         >
           <button
             className="channel-context-item"
@@ -212,6 +230,7 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
           >
             {t('channels.edit', 'Edit Channel')}
           </button>
+          <div className="channel-context-separator" />
           <button
             className="channel-context-item danger"
             onClick={async () => {
@@ -229,7 +248,8 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
           >
             {t('channels.delete', 'Delete Channel')}
           </button>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {editingChannel && (

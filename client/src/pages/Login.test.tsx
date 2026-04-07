@@ -7,7 +7,7 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
 }));
 
-vi.mock('iconoir-react', () =>
+vi.mock('@tabler/icons-react', () =>
   new Proxy(
     {},
     { get: (_, name) => () => <span data-testid={String(name)} /> },

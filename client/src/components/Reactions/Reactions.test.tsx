@@ -3,9 +3,9 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import Reactions from './Reactions';
 import type { Reaction } from '../../stores/messageStore';
 
-// Mock iconoir-react and EmojiPicker
-vi.mock('iconoir-react', () => ({
-  Plus: () => <span data-testid="plus-icon" />,
+// Mock @tabler/icons-react and EmojiPicker
+vi.mock('@tabler/icons-react', () => ({
+  IconPlus: () => <span data-testid="plus-icon" />,
 }));
 vi.mock('../EmojiPicker/EmojiPicker', () => ({
   default: ({ onSelect, onClose }: { onSelect: (emoji: string) => void; onClose: () => void }) => (

@@ -10,7 +10,7 @@
 /* ───── Left brand panel ───── */
 
 .public-brand {
-  width: 45%;
+  width: 40%;
   height: 100%;
   position: relative;
   display: flex;
@@ -19,31 +19,23 @@
   justify-content: center;
   padding: 3rem;
   overflow: hidden;
-  background: var(--bg-secondary);
+  background: var(--bg-tertiary);
 }
 
 .public-brand::before {
   content: '';
   position: absolute;
   inset: 0;
-  background:
-    radial-gradient(ellipse 80% 60% at 30% 40%, var(--brand-alpha-30) 0%, transparent 70%),
-    radial-gradient(ellipse 60% 70% at 70% 70%, var(--accent-alpha-15) 0%, transparent 70%);
-  animation: public-brand-drift 16s ease-in-out infinite alternate;
+  background: radial-gradient(circle at 30% 40%, rgba(14,165,192,0.06) 0%, transparent 60%);
   pointer-events: none;
 }
 
-@keyframes public-brand-drift {
-  0% {
-    background:
-      radial-gradient(ellipse 80% 60% at 30% 40%, var(--brand-alpha-30) 0%, transparent 70%),
-      radial-gradient(ellipse 60% 70% at 70% 70%, var(--accent-alpha-15) 0%, transparent 70%);
-  }
-  100% {
-    background:
-      radial-gradient(ellipse 70% 70% at 40% 50%, var(--brand-alpha-25) 0%, transparent 70%),
-      radial-gradient(ellipse 80% 50% at 60% 30%, var(--accent-alpha-20) 0%, transparent 70%);
-  }
+.public-brand::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 70% 80%, rgba(245,158,11,0.04) 0%, transparent 50%);
+  pointer-events: none;
 }
 
 .public-brand > * {
@@ -52,15 +44,17 @@
 }
 
 .public-brand-logo {
-  width: 72px;
-  height: 72px;
+  width: 60px;
+  height: 60px;
   margin-bottom: 1.25rem;
-  filter: drop-shadow(0 0 20px var(--brand-alpha-25));
+  border-radius: var(--radius-xl);
+  box-shadow: 0 0 50px rgba(14,165,192,0.15);
 }
 
 .public-brand-tagline {
   font-family: var(--font-display);
-  font-size: 1.3rem;
+  font-size: 1.5rem;
+  font-weight: 300;
   color: var(--text-primary);
   margin: 0 0 0.5rem;
   text-align: center;
@@ -73,50 +67,25 @@
   text-align: center;
 }
 
-.public-brand-pills {
-  display: flex;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-  justify-content: center;
-  margin-top: auto;
-  padding-top: 2rem;
-}
-
-.public-brand-pill {
-  font-size: 0.78rem;
-  font-weight: var(--font-weight-medium);
-  color: var(--text-secondary);
-  background: var(--glass-bg-primary);
-  border: 1px solid var(--glass-border);
-  border-radius: 100px;
-  padding: 0.4em 1em;
-  backdrop-filter: blur(var(--glass-blur-light));
-  -webkit-backdrop-filter: blur(var(--glass-blur-light));
-  white-space: nowrap;
-}
-
 /* ───── Right content panel ───── */
 
 .public-content {
-  width: 55%;
+  width: 60%;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 2rem;
-  background: var(--bg-primary);
+  background: var(--bg-secondary);
   overflow-y: auto;
 }
 
 .public-card {
   width: 100%;
-  max-width: 420px;
-  background: var(--glass-bg-primary);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-lg);
+  max-width: 320px;
+  background: var(--bg-primary);
+  border: 1px solid rgba(255,255,255,0.03);
+  border-radius: var(--radius-xl);
   padding: 2.5rem 2rem;
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  box-shadow: var(--glass-shadow);
   overflow: hidden;
 }
 
@@ -150,8 +119,14 @@
   outline: none;
 }
 
+.public-card .btn-primary {
+  background: linear-gradient(135deg, var(--brand-500) 0%, var(--brand-560) 100%);
+  box-shadow: 0 4px 16px var(--brand-alpha-25);
+}
+
 .public-card .btn-primary:hover:not(:disabled) {
   transform: translateY(-1px);
+  box-shadow: 0 6px 20px var(--brand-alpha-25);
 }
 
 .public-card .btn-primary:active:not(:disabled) {
@@ -202,15 +177,13 @@
     width: 100%;
     min-height: 100vh;
     padding: 1.5rem;
+    background: var(--bg-primary);
   }
 
   .public-card {
     max-width: none;
     background: transparent;
     border: none;
-    box-shadow: none;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
     padding: 1.5rem 0;
   }
 
@@ -243,10 +216,6 @@
 /* ───── Reduced motion ───── */
 
 @media (prefers-reduced-motion: reduce) {
-  .public-brand::before {
-    animation: none;
-  }
-
   .public-card .btn-primary:hover:not(:disabled) {
     transform: none;
   }

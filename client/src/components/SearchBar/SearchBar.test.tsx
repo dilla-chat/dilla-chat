@@ -3,10 +3,10 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import SearchBar from './SearchBar';
 
-// Mock iconoir-react
-vi.mock('iconoir-react', () => ({
-  Search: () => <span data-testid="search-icon" />,
-  Xmark: () => <span data-testid="xmark-icon" />,
+// Mock @tabler/icons-react
+vi.mock('@tabler/icons-react', () => ({
+  IconSearch: () => <span data-testid="search-icon" />,
+  IconX: () => <span data-testid="xmark-icon" />,
 }));
 
 describe('SearchBar', () => {

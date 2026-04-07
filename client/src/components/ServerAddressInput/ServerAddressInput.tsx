@@ -1,4 +1,4 @@
-import { CloudCheck, CloudXmark, CloudSync } from 'iconoir-react';
+import { IconCloudCheck, IconCloudOff, IconCloudComputing } from '@tabler/icons-react';
 
 export type ServerStatus = 'unknown' | 'checking' | 'online' | 'offline';
 
@@ -34,13 +34,13 @@ export default function ServerAddressInput({
         style={{ paddingRight: '2.5rem' }}
       />
       {serverStatus === 'online' && (
-        <CloudCheck style={{ ...statusIconStyle, color: 'var(--text-positive)' }} />
+        <IconCloudCheck style={{ ...statusIconStyle, color: 'var(--text-positive)' }} />
       )}
       {serverStatus === 'offline' && (
-        <CloudXmark style={{ ...statusIconStyle, color: 'var(--text-danger)' }} />
+        <IconCloudOff style={{ ...statusIconStyle, color: 'var(--text-danger)' }} />
       )}
       {serverStatus === 'checking' && (
-        <CloudSync
+        <IconCloudComputing
           style={{
             ...statusIconStyle,
             color: 'var(--text-warning)',

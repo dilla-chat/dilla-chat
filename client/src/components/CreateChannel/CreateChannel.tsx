@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Hashtag, SoundHigh } from 'iconoir-react';
+import { IconHash, IconVolume } from '@tabler/icons-react';
 import { useTeamStore } from '../../stores/teamStore';
 import { api } from '../../services/api';
 import { useFocusTrap } from '../../hooks/useFocusTrap';
@@ -67,13 +67,13 @@ export default function CreateChannel({ defaultCategory, onClose }: Readonly<Pro
               className={`channel-type-btn ${type === 'text' ? 'active' : ''}`}
               onClick={() => setType('text')}
             >
-              <Hashtag width={16} height={16} strokeWidth={2} /> {t('channels.text')}
+              <IconHash size={16} stroke={1.75} /> {t('channels.text')}
             </button>
             <button
               className={`channel-type-btn ${type === 'voice' ? 'active' : ''}`}
               onClick={() => setType('voice')}
             >
-              <SoundHigh width={16} height={16} strokeWidth={2} /> {t('channels.voice')}
+              <IconVolume size={16} stroke={1.75} /> {t('channels.voice')}
             </button>
           </div>
         </div>

@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { Xmark, Page } from 'iconoir-react';
+import { IconX, IconFile } from '@tabler/icons-react';
 
 export interface PendingFile {
   file: File;
@@ -40,7 +40,7 @@ export default function FileUploadArea({
                 <img src={pf.preview} alt={pf.file.name} className="file-preview-thumb" />
               ) : (
                 <span className="file-preview-icon">
-                  <Page width={20} height={20} strokeWidth={2} />
+                  <IconFile size={20} stroke={1.75} />
                 </span>
               )}
               <div className="file-preview-details">
@@ -52,7 +52,7 @@ export default function FileUploadArea({
                 onClick={() => onRemoveFile(idx)}
                 title="Remove"
               >
-                <Xmark width={16} height={16} strokeWidth={2} />
+                <IconX size={16} stroke={1.75} />
               </button>
             </div>
           ))}

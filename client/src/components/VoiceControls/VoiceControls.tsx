@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { PhoneXmark, AppWindow, VideoCamera, VideoCameraOff } from 'iconoir-react';
+import { IconPhoneOff, IconScreenShare, IconVideo, IconVideoOff } from '@tabler/icons-react';
 import { useVoiceConnection } from '../../hooks/useVoiceConnection';
 import { useVoiceMediaState } from '../../stores/selectors';
 import { useTeamStore, type Channel } from '../../stores/teamStore';
@@ -65,21 +65,21 @@ export default function VoiceControls() {
             onClick={handleWebcam}
             title={webcamSharing ? t('voice.stopWebcam', 'Stop camera') : t('voice.startWebcam', 'Share camera')}
           >
-            {webcamSharing ? <VideoCameraOff width={18} height={18} strokeWidth={2} /> : <VideoCamera width={18} height={18} strokeWidth={2} />}
+            {webcamSharing ? <IconVideoOff size={18} stroke={1.75} /> : <IconVideo size={18} stroke={1.75} />}
           </button>
           <button
             className={`voice-btn screen-share ${screenSharing ? 'active' : ''}`}
             onClick={handleScreenShare}
             title={screenSharing ? t('voice.stopScreenShare', 'Stop sharing') : t('voice.startScreenShare', 'Share screen')}
           >
-            <AppWindow width={18} height={18} strokeWidth={2} />
+            <IconScreenShare size={18} stroke={1.75} />
           </button>
           <button
             className="voice-btn disconnect"
             onClick={leave}
             title={t('voice.leave')}
           >
-            <PhoneXmark width={20} height={20} strokeWidth={2} />
+            <IconPhoneOff size={20} stroke={1.75} />
           </button>
         </div>
       </div>

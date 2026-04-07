@@ -8,7 +8,7 @@ vi.mock('react-router-dom', () => ({
   useSearchParams: () => [new URLSearchParams()],
 }));
 
-vi.mock('iconoir-react', () =>
+vi.mock('@tabler/icons-react', () =>
   new Proxy(
     {},
     { get: (_, name) => () => <span data-testid={String(name)} /> },

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, Group } from 'iconoir-react';
+import { IconPlus, IconUsers } from '@tabler/icons-react';
 import { useDMStore, type DMChannel } from '../../stores/dmStore';
 import { useTeamStore } from '../../stores/teamStore';
 import { api } from '../../services/api';
@@ -90,7 +90,7 @@ export default function DMList({ currentUserId, onNewDM }: Readonly<Props>) {
     <div className="dm-list">
       <div className="dm-list-actions">
         <button className="dm-new-btn" onClick={onNewDM} title={t('dm.newDM', 'New Message')}>
-          <Plus width={16} height={16} strokeWidth={2} />
+          <IconPlus size={16} stroke={1.75} />
         </button>
       </div>
 
@@ -125,7 +125,7 @@ export default function DMList({ currentUserId, onNewDM }: Readonly<Props>) {
             >
               <div className="dm-item-avatar" style={{ backgroundColor: usernameColor(avatarName) }}>
                 {dm.is_group ? (
-                  <span className="dm-group-icon"><Group width={16} height={16} strokeWidth={2} /></span>
+                  <span className="dm-group-icon"><IconUsers size={16} stroke={1.75} /></span>
                 ) : (
                   getInitials(avatarName)
                 )}

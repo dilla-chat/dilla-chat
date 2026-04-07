@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Hashtag, ChatBubble, Group, SoundHigh, Lock, Settings } from 'iconoir-react';
+import { IconHash, IconMessage, IconUsers, IconVolume, IconLock, IconSettings } from '@tabler/icons-react';
 import TeamSidebar from '../components/TeamSidebar/TeamSidebar';
 import ChannelList from '../components/ChannelList/ChannelList';
 import DMList from '../components/DMList/DMList';
@@ -15,6 +15,7 @@ import CreateChannel from '../components/CreateChannel/CreateChannel';
 import ThreadPanel from '../components/ThreadPanel/ThreadPanel';
 import SearchBar from '../components/SearchBar/SearchBar';
 import ShortcutsModal from '../components/ShortcutsModal/ShortcutsModal';
+import QuickSwitcher, { type QuickSwitcherItem } from '../components/QuickSwitcher/QuickSwitcher';
 import ResizeHandle from '../components/ResizeHandle/ResizeHandle';
 import MobileTabBar, { type MobileTab } from '../components/MobileTabBar/MobileTabBar';
 import ChannelView from './ChannelView';
@@ -104,6 +105,7 @@ export default function AppLayout() {
 
   const [showNewDM, setShowNewDM] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
   const [channelWidth, setChannelWidth] = useState(240);
 
   const handleChannelResize = useCallback((delta: number) => {
@@ -172,7 +174,7 @@ export default function AppLayout() {
       return (
         <>
           <span className="content-header-icon">
-            {activeDM.is_group ? <Group width={20} height={20} strokeWidth={2} /> : <ChatBubble width={20} height={20} strokeWidth={2} />}
+            {activeDM.is_group ? <IconUsers size={20} stroke={1.75} /> : <IconMessage size={20} stroke={1.75} />}
           </span>
           <span className="content-header-name title">
             {activeDM.is_group
@@ -184,7 +186,7 @@ export default function AppLayout() {
           </span>
           {derivedKey && (
             <span className="content-header-encrypted" title="End-to-end encrypted">
-              <Lock width={14} height={14} strokeWidth={2} />
+              <IconLock size={14} stroke={1.75} />
             </span>
           )}
           {activeDM.is_group && (
@@ -202,7 +204,7 @@ export default function AppLayout() {
                 onClick={() => setShowDMMembers(v => !v)}
                 title={t('members.toggle', 'Toggle Member List')}
               >
-                <Group width={20} height={20} strokeWidth={2} />
+                <IconUsers size={20} stroke={1.75} />
               </button>
             )}
             <SearchBar onJumpToMessage={handleJumpToMessage} />
@@ -214,12 +216,12 @@ export default function AppLayout() {
       return (
         <>
           <span className="content-header-icon">
-            {activeChannel.type === 'voice' ? <SoundHigh width={20} height={20} strokeWidth={2} /> : <span className="channel-tilde">~</span>}
+            {activeChannel.type === 'voice' ? <IconVolume size={20} stroke={1.75} /> : <span className="channel-tilde">~</span>}
           </span>
           <span className="content-header-name title">{activeChannel.name}</span>
           {derivedKey && (
             <span className="content-header-encrypted" title="End-to-end encrypted">
-              <Lock width={14} height={14} strokeWidth={2} />
+              <IconLock size={14} stroke={1.75} />
             </span>
           )}
           {activeChannel.topic && (
@@ -234,7 +236,7 @@ export default function AppLayout() {
               onClick={() => setShowMembers(v => !v)}
               title={t('members.toggle', 'Toggle Member List')}
             >
-              <Group width={20} height={20} strokeWidth={2} />
+              <IconUsers size={20} stroke={1.75} />
             </button>
             <SearchBar onJumpToMessage={handleJumpToMessage} />
           </div>
@@ -250,7 +252,7 @@ export default function AppLayout() {
             onClick={() => setShowMembers(!showMembers)}
             title={t('members.toggle', 'Toggle Member List')}
           >
-            <Group width={20} height={20} strokeWidth={2} />
+            <IconUsers size={20} stroke={1.75} />
           </button>
           <SearchBar onJumpToMessage={handleJumpToMessage} />
         </div>
@@ -292,11 +294,19 @@ export default function AppLayout() {
     }
     return (
       <div className="message-area">
-        <div className="message-area-empty">
-          <p>
+        <div className="empty-state">
+          <div className="empty-state-icon">
+            <IconMessage size={48} stroke={1.25} />
+          </div>
+          <h3 className="empty-state-title">
             {isDMMode
               ? t('dm.noDMs', 'No direct messages yet')
-              : t('channels.selectChannel', 'Select a channel to start chatting')}
+              : t('channels.selectChannel', 'Select a kanal')}
+          </h3>
+          <p className="empty-state-description">
+            {isDMMode
+              ? t('dm.noDMsHint', 'Start a conversation by opening a new direct message')
+              : t('channels.selectChannelHint', 'Pick a channel from the sidebar to start chatting')}
           </p>
         </div>
       </div>
@@ -323,6 +333,18 @@ export default function AppLayout() {
     [activeChannelId, setActiveChannel],
   );
 
+  const handleQuickSwitch = useCallback(
+    (item: QuickSwitcherItem) => {
+      if (item.type === 'dm') {
+        setActiveDM(item.id);
+      } else {
+        setActiveChannel(item.id);
+      }
+      setQuickSwitcherOpen(false);
+    },
+    [setActiveChannel, setActiveDM],
+  );
+
   const handleNavigateChannel = useCallback(
     (direction: 'up' | 'down') => {
       const textChannels = teamChannels.filter((c) => c.type === 'text');
@@ -341,9 +363,7 @@ export default function AppLayout() {
 
   useKeyboardShortcuts({
     onOpenSearch: () => {
-      // Focus the inline search input
-      const searchInput = document.querySelector('.header-search-input') as HTMLInputElement | null;
-      searchInput?.focus();
+      setQuickSwitcherOpen((prev) => !prev);
     },
     onClosePanel: () => {
       if (shortcutsOpen) {
@@ -397,7 +417,7 @@ export default function AppLayout() {
             title={t('teams.settings', 'Team Settings')}
             style={isDMMode ? { visibility: 'hidden' } : undefined}
           >
-            <Settings width={18} height={18} strokeWidth={2} />
+            <IconSettings size={18} stroke={1.75} />
           </button>
         </div>
         <div className="channel-sidebar-tabs">
@@ -406,14 +426,14 @@ export default function AppLayout() {
             onClick={switchToChannels}
             title={t('channels.uncategorized', 'Channels')}
           >
-            <Hashtag width={16} height={16} strokeWidth={2} /> {t('channels.title', 'Kanals')}
+            <IconHash size={16} stroke={1.75} /> {t('channels.title', 'Kanals')}
           </button>
           <button
             className={`sidebar-tab ${isDMMode ? 'active' : ''}`}
             onClick={switchToDMs}
             title={t('dm.title', 'Direct Messages')}
           >
-            <ChatBubble width={16} height={16} strokeWidth={2} /> {t('dm.short', 'PMs')}
+            <IconMessage size={16} stroke={1.75} /> {t('dm.short', 'PMs')}
           </button>
         </div>
       </div>
@@ -526,6 +546,12 @@ export default function AppLayout() {
         <ShortcutsModal onClose={() => setShortcutsOpen(false)} />
       )}
     </div>
+
+    <QuickSwitcher
+      open={quickSwitcherOpen}
+      onClose={() => setQuickSwitcherOpen(false)}
+      onSelect={handleQuickSwitch}
+    />
     </>
   );
 }

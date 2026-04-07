@@ -51,15 +51,15 @@ vi.mock('react-router-dom', () => ({
   useLocation: () => ({ pathname: '/app' }),
 }));
 
-vi.mock('iconoir-react', () => ({
-  Hashtag: () => <span data-testid="Hashtag" />,
-  ChatBubble: () => <span data-testid="ChatBubble" />,
-  Group: () => <span data-testid="Group" />,
-  SoundHigh: () => <span data-testid="SoundHigh" />,
-  Lock: () => <span data-testid="Lock" />,
-  Settings: () => <span data-testid="Settings" />,
-  HomeSimple: () => <span data-testid="HomeSimple" />,
-  Xmark: () => <span data-testid="Xmark" />,
+vi.mock('@tabler/icons-react', () => ({
+  IconHash: () => <span data-testid="Hashtag" />,
+  IconMessage: () => <span data-testid="ChatBubble" />,
+  IconUsers: () => <span data-testid="Group" />,
+  IconVolume: () => <span data-testid="SoundHigh" />,
+  IconLock: () => <span data-testid="Lock" />,
+  IconSettings: () => <span data-testid="Settings" />,
+  IconHome: () => <span data-testid="HomeSimple" />,
+  IconX: () => <span data-testid="Xmark" />,
 }));
 
 const mockUseIsMobile = vi.fn(() => false);
@@ -290,7 +290,7 @@ describe('AppLayout behavioral', () => {
     useTeamStore.setState({ activeChannelId: null });
     render(<AppLayout />);
     await waitFor(() => {
-      expect(screen.getByText('Select a channel to start chatting')).toBeInTheDocument();
+      expect(screen.getByText('Select a kanal')).toBeInTheDocument();
     });
   });
 
@@ -992,7 +992,7 @@ describe('AppLayout behavioral', () => {
     useDMStore.setState({ activeDMId: null, setActiveDM: vi.fn(), dmChannels: {} });
     render(<AppLayout />);
     await waitFor(() => {
-      expect(screen.getByText('Select a channel to start chatting')).toBeInTheDocument();
+      expect(screen.getByText('Select a kanal')).toBeInTheDocument();
     });
 
     // Switch to DM mode
@@ -1257,7 +1257,7 @@ describe('AppLayout behavioral', () => {
     useDMStore.setState({ activeDMId: null, setActiveDM: vi.fn(), dmChannels: {} });
     render(<AppLayout />);
     await waitFor(() => {
-      expect(screen.getByText('Select a channel to start chatting')).toBeInTheDocument();
+      expect(screen.getByText('Select a kanal')).toBeInTheDocument();
     });
     // In empty state, the member list toggle button should exist but MemberList not shown for DM mode
     // The toggle buttons are in the empty state header

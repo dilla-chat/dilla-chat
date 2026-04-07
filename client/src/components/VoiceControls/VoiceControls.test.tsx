@@ -4,11 +4,11 @@ import VoiceControls from './VoiceControls';
 import { useVoiceStore } from '../../stores/voiceStore';
 import { useTeamStore } from '../../stores/teamStore';
 
-vi.mock('iconoir-react', () => ({
-  PhoneXmark: () => <span data-testid="icon-phone-xmark" />,
-  AppWindow: () => <span data-testid="icon-screen" />,
-  VideoCamera: () => <span data-testid="icon-camera" />,
-  VideoCameraOff: () => <span data-testid="icon-camera-off" />,
+vi.mock('@tabler/icons-react', () => ({
+  IconPhoneOff: () => <span data-testid="icon-phone-xmark" />,
+  IconScreenShare: () => <span data-testid="icon-screen" />,
+  IconVideo: () => <span data-testid="icon-camera" />,
+  IconVideoOff: () => <span data-testid="icon-camera-off" />,
 }));
 
 vi.mock('../ConnectionStatus/ConnectionStatus', () => ({

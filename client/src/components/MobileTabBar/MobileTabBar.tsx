@@ -1,4 +1,4 @@
-import { HomeSimple, Hashtag, ChatBubble, Group } from 'iconoir-react';
+import { IconHome, IconHash, IconMessage, IconUsers } from '@tabler/icons-react';
 import './MobileTabBar.css';
 
 export type MobileTab = 'teams' | 'channels' | 'chat' | 'members';
@@ -8,11 +8,11 @@ interface MobileTabBarProps {
   onTabChange: (tab: MobileTab) => void;
 }
 
-const tabs: { id: MobileTab; label: string; Icon: typeof HomeSimple }[] = [
-  { id: 'teams', label: 'Teams', Icon: HomeSimple },
-  { id: 'channels', label: 'Kanals', Icon: Hashtag },
-  { id: 'chat', label: 'Chat', Icon: ChatBubble },
-  { id: 'members', label: 'Members', Icon: Group },
+const tabs: { id: MobileTab; label: string; Icon: typeof IconHome }[] = [
+  { id: 'teams', label: 'Teams', Icon: IconHome },
+  { id: 'channels', label: 'Kanals', Icon: IconHash },
+  { id: 'chat', label: 'Chat', Icon: IconMessage },
+  { id: 'members', label: 'Members', Icon: IconUsers },
 ];
 
 export default function MobileTabBar({ activeTab, onTabChange }: Readonly<MobileTabBarProps>) {
@@ -25,7 +25,7 @@ export default function MobileTabBar({ activeTab, onTabChange }: Readonly<Mobile
           className={`mobile-tab-bar-item ${activeTab === id ? 'active' : ''}`}
           onClick={() => onTabChange(id)}
         >
-          <Icon width={22} height={22} strokeWidth={2} />
+          <Icon size={22} stroke={1.75} />
           <span className="mobile-tab-bar-label">{label}</span>
         </button>
       ))}

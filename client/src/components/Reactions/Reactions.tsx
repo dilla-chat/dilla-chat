@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus } from 'iconoir-react';
+import { IconPlus } from '@tabler/icons-react';
 import type { Reaction } from '../../stores/messageStore';
 import EmojiPicker from '../EmojiPicker/EmojiPicker';
 import './Reactions.css';
@@ -60,7 +60,7 @@ export default function Reactions({ reactions, currentUserId, onToggleReaction, 
           onClick={() => setShowPicker(!showPicker)}
           title={t('reactions.addReaction', 'Add Reaction')}
         >
-          <Plus width={18} height={18} strokeWidth={2.5} />
+          <IconPlus size={18} stroke={2.5} />
         </button>
         {showPicker && (
           <EmojiPicker

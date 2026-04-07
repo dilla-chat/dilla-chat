@@ -2,7 +2,7 @@ import { useRef, useEffect, useCallback, useState, useMemo, type UIEvent } from 
 import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Xmark, EditPencil, Trash } from 'iconoir-react';
+import { IconX, IconEdit, IconTrash } from '@tabler/icons-react';
 import { useThreadStore, type Thread } from '../../stores/threadStore';
 import { useMessageStore, type Message } from '../../stores/messageStore';
 import { useAuthStore } from '../../stores/authStore';
@@ -309,7 +309,7 @@ export default function ThreadPanel({ thread, onClose }: Readonly<Props>) {
           </div>
         </div>
         <button className="thread-panel-close" onClick={onClose} title={t('thread.closeThread', 'Close')}>
-          <Xmark width={20} height={20} strokeWidth={2} />
+          <IconX size={20} stroke={1.75} />
         </button>
       </div>
 
@@ -392,14 +392,14 @@ export default function ThreadPanel({ thread, onClose }: Readonly<Props>) {
                         onClick={() => setEditingMessage({ id: msg.id, content: msg.content })}
                         title={t('messages.edit', 'Edit Message')}
                       >
-                        <EditPencil width={16} height={16} strokeWidth={2} />
+                        <IconEdit size={16} stroke={1.75} />
                       </button>
                       <button
                         className="thread-message-action-btn danger"
                         onClick={() => handleDelete(msg.id)}
                         title={t('messages.delete', 'Delete Message')}
                       >
-                        <Trash width={16} height={16} strokeWidth={2} />
+                        <IconTrash size={16} stroke={1.75} />
                       </button>
                     </div>
                   )}

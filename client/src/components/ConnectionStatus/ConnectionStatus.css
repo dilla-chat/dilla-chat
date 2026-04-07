@@ -120,3 +120,45 @@
   background: var(--danger-alpha-15);
   color: var(--status-dnd);
 }
+
+/* ─── Slim connection status bar (top-of-content banner) ─── */
+
+.connection-status-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-lg);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  flex-shrink: 0;
+  transition: all var(--duration-normal) var(--ease-out);
+}
+
+.connection-status-bar.disconnected {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
+  border-bottom: 1px solid rgba(239, 68, 68, 0.15);
+}
+
+.connection-status-bar.reconnecting {
+  background: rgba(245, 158, 11, 0.08);
+  color: var(--warning);
+  border-bottom: 1px solid rgba(245, 158, 11, 0.1);
+}
+
+.connection-status-bar.connected {
+  background: rgba(16, 185, 129, 0.06);
+  color: var(--success);
+  border-bottom: 1px solid rgba(16, 185, 129, 0.1);
+}
+
+.connection-status-dot {
+  width: var(--spacing-sm);
+  height: var(--spacing-sm);
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.disconnected .connection-status-dot { background: var(--danger); }
+.reconnecting .connection-status-dot { background: var(--warning); }
+.connected .connection-status-dot { background: var(--success); }

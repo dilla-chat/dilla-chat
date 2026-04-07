@@ -1,6 +1,6 @@
 import { memo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MusicNote, Page, Download } from 'iconoir-react';
+import { IconMusic, IconFile, IconDownload } from '@tabler/icons-react';
 import type { Attachment } from '../../services/api';
 import './FilePreview.css';
 
@@ -73,7 +73,7 @@ function AudioPreview({ attachment }: Readonly<{ attachment: Attachment }>) {
   return (
     <div className="file-preview-audio-container">
       <div className="file-preview-audio-info">
-        <span className="file-preview-audio-icon"><MusicNote width={20} height={20} /></span>
+        <span className="file-preview-audio-icon"><IconMusic size={20} stroke={1.75} /></span>
         <span className="file-preview-audio-name">{attachment.filename}</span>
       </div>
       <audio src={attachment.url} controls className="file-preview-audio" preload="metadata">
@@ -88,7 +88,7 @@ function FileCard({ attachment }: Readonly<{ attachment: Attachment }>) {
 
   return (
     <div className="file-preview-card">
-      <div className="file-preview-card-icon"><Page width={24} height={24} /></div>
+      <div className="file-preview-card-icon"><IconFile size={24} stroke={1.75} /></div>
       <div className="file-preview-card-info">
         <span className="file-preview-card-name truncate">{attachment.filename}</span>
         <span className="file-preview-card-size">{formatFileSize(attachment.size)}</span>
@@ -99,7 +99,7 @@ function FileCard({ attachment }: Readonly<{ attachment: Attachment }>) {
         className="file-preview-card-download clickable"
         title={t('upload.download', 'Download')}
       >
-        <Download width={16} height={16} />
+        <IconDownload size={16} stroke={1.75} />
       </a>
     </div>
   );

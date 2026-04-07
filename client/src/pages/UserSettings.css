@@ -445,3 +445,49 @@
   border-radius: 4px;
   border: 1px solid var(--border-color);
 }
+
+/* Theme picker in settings */
+.theme-picker {
+  display: flex;
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
+}
+
+.theme-card {
+  width: 120px;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  cursor: pointer;
+  border: 2px solid var(--divider);
+  transition: border-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+}
+
+.theme-card:hover {
+  transform: scale(1.02);
+}
+
+.theme-card.active {
+  border-color: var(--brand-500);
+}
+
+.theme-card-preview {
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.theme-card-dot {
+  width: var(--spacing-sm);
+  height: var(--spacing-sm);
+  border-radius: var(--radius-full);
+}
+
+.theme-card-label {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  text-align: center;
+  font-size: var(--font-size-micro);
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.02);
+}

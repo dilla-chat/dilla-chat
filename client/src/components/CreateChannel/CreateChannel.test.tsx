@@ -3,9 +3,9 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import CreateChannel from './CreateChannel';
 import { useTeamStore } from '../../stores/teamStore';
 
-vi.mock('iconoir-react', () => ({
-  Hashtag: () => <span data-testid="Hashtag" />,
-  SoundHigh: () => <span data-testid="SoundHigh" />,
+vi.mock('@tabler/icons-react', () => ({
+  IconHash: () => <span data-testid="Hashtag" />,
+  IconVolume: () => <span data-testid="SoundHigh" />,
 }));
 
 vi.mock('../../services/api', () => ({

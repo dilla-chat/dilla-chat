@@ -4,9 +4,9 @@ import DMList from './DMList';
 import { useTeamStore } from '../../stores/teamStore';
 import { useDMStore } from '../../stores/dmStore';
 
-vi.mock('iconoir-react', () => ({
-  Plus: () => <span data-testid="Plus" />,
-  Group: () => <span data-testid="Group" />,
+vi.mock('@tabler/icons-react', () => ({
+  IconPlus: () => <span data-testid="Plus" />,
+  IconUsers: () => <span data-testid="Group" />,
 }));
 
 vi.mock('react-i18next', () => ({

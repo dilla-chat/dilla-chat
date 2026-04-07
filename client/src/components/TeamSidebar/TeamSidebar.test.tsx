@@ -9,8 +9,8 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
 }));
 
-vi.mock('iconoir-react', () => ({
-  Plus: () => <span data-testid="Plus" />,
+vi.mock('@tabler/icons-react', () => ({
+  IconPlus: () => <span data-testid="Plus" />,
 }));
 
 describe('TeamSidebar', () => {

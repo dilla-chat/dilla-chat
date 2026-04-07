@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Xmark, Check } from 'iconoir-react';
+import { IconX, IconCheck } from '@tabler/icons-react';
 import { useTeamStore, type Member } from '../../stores/teamStore';
 import { api } from '../../services/api';
 import { useDMStore, type DMChannel } from '../../stores/dmStore';
@@ -85,7 +85,7 @@ export default function NewDMModal({ currentUserId, onClose, onDMCreated }: Read
       <div className="new-dm-modal" ref={modalRef}>
         <div className="new-dm-header">
           <h3 id="new-dm-title">{t('dm.newDM', 'New Message')}</h3>
-          <button className="new-dm-close" onClick={onClose}><Xmark width={20} height={20} strokeWidth={2} /></button>
+          <button className="new-dm-close" onClick={onClose}><IconX size={20} stroke={1.75} /></button>
         </div>
 
         {selected.length > 0 && (
@@ -94,7 +94,7 @@ export default function NewDMModal({ currentUserId, onClose, onDMCreated }: Read
               <span key={m.userId} className="new-dm-chip">
                 {m.displayName || m.username}
                 <button className="new-dm-chip-remove" onClick={() => removeMember(m.userId)}>
-                  <Xmark width={14} height={14} strokeWidth={2} />
+                  <IconX size={14} stroke={1.75} />
                 </button>
               </span>
             ))}
@@ -127,7 +127,7 @@ export default function NewDMModal({ currentUserId, onClose, onDMCreated }: Read
                   <span className="new-dm-member-username">@{member.username}</span>
                 </div>
                 <div className={`new-dm-checkbox ${isSelected ? 'checked' : ''}`}>
-                  {isSelected && <Check width={16} height={16} strokeWidth={2} />}
+                  {isSelected && <IconCheck size={16} stroke={1.75} />}
                 </div>
               </button>
             );

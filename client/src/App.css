@@ -198,7 +198,7 @@
 .login-identity-avatar {
   width: 44px;
   height: 44px;
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-lg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -210,6 +210,8 @@
 
 .login-identity-info {
   min-width: 0;
+  flex: 1;
+  overflow: hidden;
 }
 
 .login-identity-name {
@@ -220,9 +222,12 @@
 
 .login-identity-fingerprint {
   font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font-size: 0.7rem;
   color: var(--text-muted);
   letter-spacing: 0.03em;
+  word-break: break-all;
+  line-height: 1.4;
+  margin-top: 2px;
 }
 
 .login-identity-servers {

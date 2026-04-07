@@ -2,9 +2,9 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import SettingsLayout, { type NavSection } from './SettingsLayout';
 
-// Mock iconoir-react
-vi.mock('iconoir-react', () => ({
-  Xmark: () => <span data-testid="xmark-icon" />,
+// Mock @tabler/icons-react
+vi.mock('@tabler/icons-react', () => ({
+  IconX: () => <span data-testid="xmark-icon" />,
 }));
 
 // Mock TitleBar component

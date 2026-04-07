@@ -5,7 +5,6 @@ import { usePresenceStore } from '../../stores/presenceStore';
 import { useAuthStore } from '../../stores/authStore';
 import { useDMStore } from '../../stores/dmStore';
 import { api } from '../../services/api';
-import PresenceIndicator from '../PresenceIndicator/PresenceIndicator';
 import UserProfile from '../UserProfile/UserProfile';
 import './MemberList.css';
 
@@ -91,9 +90,20 @@ export default function MemberList() {
 
   useEffect(() => {
     if (!popup) return;
-    const close = () => setPopup(null);
-    document.addEventListener('click', close);
-    return () => document.removeEventListener('click', close);
+    const close = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      // Don't close if clicking inside the user profile popup
+      if (target.closest('.user-profile-popover')) return;
+      setPopup(null);
+    };
+    // Defer registration so the click that opened the popup doesn't immediately close it
+    const timer = setTimeout(() => {
+      document.addEventListener('mousedown', close);
+    }, 0);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('mousedown', close);
+    };
   }, [popup]);
 
   const getInitials = (m: Member) =>
@@ -116,9 +126,8 @@ export default function MemberList() {
         onClick={(e) => handleMemberClick(e, member)}
         type="button"
       >
-        <div className="member-avatar">
+        <div className="member-avatar" data-status={status}>
           {getInitials(member)}
-          <PresenceIndicator status={status} size="medium" />
         </div>
         <div className="member-info">
           <div className="member-display-name truncate">

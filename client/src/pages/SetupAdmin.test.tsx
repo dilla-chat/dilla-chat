@@ -8,10 +8,10 @@ vi.mock('react-router-dom', () => ({
   useSearchParams: () => [new URLSearchParams()],
 }));
 
-vi.mock('iconoir-react', () => ({
-  CloudCheck: () => <span data-testid="CloudCheck" />,
-  CloudXmark: () => <span data-testid="CloudXmark" />,
-  CloudSync: () => <span data-testid="CloudSync" />,
+vi.mock('@tabler/icons-react', () => ({
+  IconCloudCheck: () => <span data-testid="CloudCheck" />,
+  IconCloudOff: () => <span data-testid="CloudXmark" />,
+  IconCloudComputing: () => <span data-testid="CloudSync" />,
 }));
 
 vi.mock('../services/api', () => ({

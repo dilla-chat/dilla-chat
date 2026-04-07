@@ -1,0 +1,111 @@
+.quick-switcher-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-heavy);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 20vh;
+  z-index: var(--z-modal);
+}
+
+.quick-switcher {
+  width: 100%;
+  max-width: 540px;
+  background: var(--bg-floating);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 var(--spacing-lg) 48px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.quick-switcher-input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-lg);
+  border-bottom: 1px solid var(--divider);
+}
+
+.quick-switcher-search-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.quick-switcher-input {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: var(--font-size-lg);
+  font-family: inherit;
+  outline: none;
+}
+
+.quick-switcher-input::placeholder {
+  color: var(--text-muted);
+}
+
+.quick-switcher-kbd {
+  font-size: var(--font-size-micro);
+  font-family: inherit;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 2px var(--spacing-sm);
+  border-radius: var(--radius-sm);
+}
+
+.quick-switcher-results {
+  padding: var(--spacing-xs);
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.quick-switcher-empty {
+  padding: var(--spacing-xl);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.quick-switcher-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: none;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text-secondary);
+  font-size: var(--font-size-base);
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+
+.quick-switcher-item.selected {
+  background: var(--brand-alpha-10);
+  color: var(--text-primary);
+}
+
+.quick-switcher-item-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.quick-switcher-item.selected .quick-switcher-item-icon {
+  color: var(--brand-500);
+}
+
+.quick-switcher-item-name {
+  font-weight: var(--font-weight-medium);
+}
+
+.quick-switcher-item-team {
+  margin-left: auto;
+  font-size: var(--font-size-micro);
+  color: var(--text-muted);
+}

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Xmark } from 'iconoir-react';
+import { IconX } from '@tabler/icons-react';
 import TitleBar from '../TitleBar/TitleBar';
 import './SettingsLayout.css';
 
@@ -57,7 +57,7 @@ export default function SettingsLayout({ sections, activeId, onSelect, onClose, 
         </div>
         <div className="settings-close-col">
           <button className="settings-close-btn" onClick={onClose}>
-            <Xmark width={18} height={18} strokeWidth={2} />
+            <IconX size={18} stroke={1.75} />
           </button>
           <span className="settings-close-esc">ESC</span>
         </div>

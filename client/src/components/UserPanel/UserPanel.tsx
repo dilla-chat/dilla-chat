@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Settings, Microphone, MicrophoneMute, Headset, HeadsetWarning } from 'iconoir-react';
+import { IconSettings, IconMicrophone, IconMicrophoneOff, IconHeadphones, IconHeadphonesOff } from '@tabler/icons-react';
 import { usePresenceStore } from '../../stores/presenceStore';
 import { useTeamStore } from '../../stores/teamStore';
 import { useAuthStore } from '../../stores/authStore';
@@ -8,7 +8,6 @@ import { useVoiceStore } from '../../stores/voiceStore';
 import { ws } from '../../services/websocket';
 import { webrtcService } from '../../services/webrtc';
 import { playMuteSound, playUnmuteSound } from '../../utils/sounds';
-import PresenceIndicator from '../PresenceIndicator/PresenceIndicator';
 import StatusPicker from '../StatusPicker/StatusPicker';
 import type { PresenceStatus } from '../PresenceIndicator/PresenceIndicator';
 import './UserPanel.css';
@@ -117,6 +116,7 @@ export default function UserPanel({
     <div className="user-panel">
       <button
         className="user-panel-avatar"
+        data-status={myStatus}
         onClick={(e) => {
           e.stopPropagation();
           setShowStatusPicker(!showStatusPicker);
@@ -124,7 +124,6 @@ export default function UserPanel({
         type="button"
       >
         {initials}
-        <PresenceIndicator status={myStatus} size="medium" className="border-tertiary" />
       </button>
       <button
         className="user-panel-info"
@@ -144,21 +143,21 @@ export default function UserPanel({
           disabled={deafened}
           title={muteTitle}
         >
-          {muted ? <MicrophoneMute width={20} height={20} strokeWidth={2} /> : <Microphone width={20} height={20} strokeWidth={2} />}
+          {muted ? <IconMicrophoneOff size={20} stroke={1.75} /> : <IconMicrophone size={20} stroke={1.75} />}
         </button>
         <button
           className={`user-panel-btn clickable ${deafened ? 'user-panel-btn-active' : ''}`}
           onClick={handleDeafen}
           title={deafened ? t('voice.undeafen', 'Undeafen') : t('voice.deafen', 'Deafen')}
         >
-          {deafened ? <HeadsetWarning width={20} height={20} strokeWidth={2} /> : <Headset width={20} height={20} strokeWidth={2} />}
+          {deafened ? <IconHeadphonesOff size={20} stroke={1.75} /> : <IconHeadphones size={20} stroke={1.75} />}
         </button>
         <button
           className="user-panel-btn clickable"
           onClick={onSettingsClick}
           title={t('settings.general')}
         >
-          <Settings width={20} height={20} strokeWidth={2} />
+          <IconSettings size={20} stroke={1.75} />
         </button>
       </div>
 

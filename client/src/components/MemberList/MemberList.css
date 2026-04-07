@@ -26,21 +26,27 @@
 .member-item {
   background: none;
   border: none;
-  width: calc(100% - 16px);
+  width: calc(100% - var(--spacing-lg));
   text-align: left;
   font-family: inherit;
   font-size: inherit;
   color: inherit;
   display: flex;
   align-items: center;
-  padding: 1px 8px;
-  margin: 1px 8px 0;
+  padding: var(--spacing-xs) var(--spacing-md);
+  margin: var(--spacing-xs) var(--spacing-sm) 0;
   gap: var(--spacing-md);
   cursor: pointer;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   height: 42px;
   box-sizing: border-box;
+  outline: none;
   transition: background-color var(--duration-fast) var(--ease-out);
+}
+
+.member-item:focus-visible {
+  background: var(--bg-modifier-hover);
+  box-shadow: inset 0 0 0 1px var(--brand-alpha-25);
 }
 
 .member-item:hover {
@@ -48,13 +54,13 @@
 }
 
 .member-item.offline {
-  opacity: 0.55;
+  opacity: 0.5;
 }
 
 .member-avatar {
   width: 32px;
   height: 32px;
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-md);
   background: var(--bg-accent);
   color: white;
   display: flex;
@@ -66,15 +72,30 @@
   position: relative;
 }
 
-.member-status-dot {
+.member-avatar[data-status="online"]::after,
+.member-avatar[data-status="idle"]::after,
+.member-avatar[data-status="dnd"]::after {
+  content: '';
   position: absolute;
   bottom: -2px;
   right: -2px;
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   border-radius: var(--radius-full);
-  border: 3px solid var(--bg-secondary);
+  border: 2px solid var(--bg-secondary);
   box-sizing: border-box;
+}
+
+.member-avatar[data-status="online"]::after {
+  background: var(--success);
+}
+
+.member-avatar[data-status="idle"]::after {
+  background: var(--warning);
+}
+
+.member-avatar[data-status="dnd"]::after {
+  background: var(--danger);
 }
 
 .member-info {
@@ -125,7 +146,7 @@
 .member-profile-avatar {
   width: 80px;
   height: 80px;
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-lg);
   background: var(--bg-accent);
   color: white;
   display: flex;

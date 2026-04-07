@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search, Xmark } from 'iconoir-react';
+import { IconSearch, IconX } from '@tabler/icons-react';
 import { useMessageStore, type Message } from '../../stores/messageStore';
 import './SearchBar.css';
 
@@ -103,7 +103,7 @@ export default function SearchBar({ onJumpToMessage }: Readonly<Props>) {
   return (
     <div className="header-search" ref={containerRef}>
       <div className={`header-search-input-wrapper ${focused ? 'focused' : ''}`}>
-        <Search className="header-search-icon" width={16} height={16} strokeWidth={2} />
+        <IconSearch className="header-search-icon" size={16} stroke={1.75} />
         <input
           ref={inputRef}
           type="text"
@@ -116,7 +116,7 @@ export default function SearchBar({ onJumpToMessage }: Readonly<Props>) {
         />
         {query && (
           <button className="header-search-clear" onClick={handleClear}>
-            <Xmark width={14} height={14} strokeWidth={2} />
+            <IconX size={14} stroke={1.75} />
           </button>
         )}
       </div>

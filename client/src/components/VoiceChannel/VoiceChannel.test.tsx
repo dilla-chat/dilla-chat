@@ -15,13 +15,13 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-vi.mock('iconoir-react', () => ({
-  SoundHigh: () => <span data-testid="icon-sound" />,
-  MicrophoneMute: () => <span data-testid="icon-mic-mute" />,
-  HeadsetWarning: () => <span data-testid="icon-deafen" />,
-  AppWindow: () => <span data-testid="icon-screen" />,
-  Collapse: () => <span data-testid="icon-collapse" />,
-  VideoCamera: () => <span data-testid="icon-camera" />,
+vi.mock('@tabler/icons-react', () => ({
+  IconVolume: () => <span data-testid="icon-sound" />,
+  IconMicrophoneOff: () => <span data-testid="icon-mic-mute" />,
+  IconHeadphonesOff: () => <span data-testid="icon-deafen" />,
+  IconScreenShare: () => <span data-testid="icon-screen" />,
+  IconArrowsMinimize: () => <span data-testid="icon-collapse" />,
+  IconVideo: () => <span data-testid="icon-camera" />,
 }));
 
 const channel: Channel = {

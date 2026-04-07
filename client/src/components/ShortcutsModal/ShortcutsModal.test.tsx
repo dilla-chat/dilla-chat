@@ -2,8 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import ShortcutsModal from './ShortcutsModal';
 
-vi.mock('iconoir-react', () => ({
-  Xmark: () => <span data-testid="Xmark" />,
+vi.mock('@tabler/icons-react', () => ({
+  IconX: () => <span data-testid="Xmark" />,
 }));
 
 describe('ShortcutsModal', () => {

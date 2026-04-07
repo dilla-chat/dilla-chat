@@ -5,12 +5,12 @@ import { useTeamStore } from '../../stores/teamStore';
 import { useVoiceStore } from '../../stores/voiceStore';
 import { useUnreadStore } from '../../stores/unreadStore';
 
-vi.mock('iconoir-react', () => ({
-  SoundHigh: () => <span data-testid="SoundHigh" />,
-  Plus: () => <span data-testid="Plus" />,
-  MicrophoneMute: () => <span data-testid="MicrophoneMute" />,
-  HeadsetWarning: () => <span data-testid="HeadsetWarning" />,
-  AppWindow: () => <span data-testid="AppWindow" />,
+vi.mock('@tabler/icons-react', () => ({
+  IconVolume: () => <span data-testid="SoundHigh" />,
+  IconPlus: () => <span data-testid="Plus" />,
+  IconMicrophoneOff: () => <span data-testid="MicrophoneMute" />,
+  IconHeadphonesOff: () => <span data-testid="HeadsetWarning" />,
+  IconScreenShare: () => <span data-testid="AppWindow" />,
 }));
 
 vi.mock('../../services/api', () => ({
@@ -67,10 +67,9 @@ describe('ChannelList', () => {
     expect(screen.getByText('voice-lobby')).toBeInTheDocument();
   });
 
-  it('renders category headers', () => {
+  it('renders section headers', () => {
     render(<ChannelList />);
-    expect(screen.getByText('Text Channels')).toBeInTheDocument();
-    expect(screen.getByText('Voice Channels')).toBeInTheDocument();
+    expect(screen.getByText('CHANNELS')).toBeInTheDocument();
   });
 
   it('marks active channel', () => {
@@ -87,49 +86,49 @@ describe('ChannelList', () => {
     expect(useTeamStore.getState().activeChannelId).toBe('ch-1');
   });
 
-  it('collapses category on header click', () => {
+  it('shows unread section when channels have unread messages', () => {
+    useUnreadStore.setState({ counts: { 'ch-1': 3 } });
     render(<ChannelList />);
-    const header = screen.getByText('Text Channels');
-    fireEvent.click(header);
-    // After collapse, channel should not be visible
-    expect(screen.queryByText('general')).not.toBeInTheDocument();
+    expect(screen.getByText('UNREAD')).toBeInTheDocument();
   });
 
-  it('expands collapsed category on second click', () => {
+  it('shows active voice section when voice channels have participants', () => {
+    useVoiceStore.setState({
+      voiceOccupants: {
+        'ch-2': [{ user_id: 'u1', username: 'alice', muted: false, deafened: false, speaking: false, voiceLevel: 0 }],
+      },
+    });
     render(<ChannelList />);
-    const header = screen.getByText('Text Channels');
-    fireEvent.click(header);
-    fireEvent.click(header);
-    expect(screen.getByText('general')).toBeInTheDocument();
+    expect(screen.getByText('ACTIVE VOICE')).toBeInTheDocument();
   });
 
   it('renders add button when onCreateChannel is provided', () => {
     const onCreate = vi.fn();
     const { container } = render(<ChannelList onCreateChannel={onCreate} />);
-    const addBtns = container.querySelectorAll('.channel-category-add');
-    expect(addBtns.length).toBeGreaterThan(0);
+    const addBtn = container.querySelector('.channel-category-add');
+    expect(addBtn).toBeInTheDocument();
   });
 
   it('does not render add button when onCreateChannel is not provided', () => {
     const { container } = render(<ChannelList />);
-    const addBtns = container.querySelectorAll('.channel-category-add');
-    expect(addBtns.length).toBe(0);
+    const addBtn = container.querySelector('.channel-category-add');
+    expect(addBtn).not.toBeInTheDocument();
   });
 
   it('shows context menu on right click', () => {
-    const { container } = render(<ChannelList />);
+    render(<ChannelList />);
     const channelItem = screen.getByText('general').closest('.channel-item')!;
     fireEvent.contextMenu(channelItem);
-    expect(container.querySelector('.channel-context-menu')).toBeInTheDocument();
+    expect(document.body.querySelector('.channel-context-menu')).toBeInTheDocument();
     expect(screen.getByText('Edit Channel')).toBeInTheDocument();
     expect(screen.getByText('Delete Channel')).toBeInTheDocument();
   });
 
   it('shows context menu on Shift+F10 keyboard shortcut', () => {
-    const { container } = render(<ChannelList />);
+    render(<ChannelList />);
     const channelBtn = screen.getByText('general').closest('button')!;
     fireEvent.keyDown(channelBtn, { key: 'F10', shiftKey: true });
-    expect(container.querySelector('.channel-context-menu')).toBeInTheDocument();
+    expect(document.body.querySelector('.channel-context-menu')).toBeInTheDocument();
   });
 
   it('renders empty list when no team is active', () => {
@@ -184,17 +183,13 @@ describe('ChannelList', () => {
     expect(onCreate).toHaveBeenCalled();
   });
 
-  it('groups channels by category', () => {
-    const channels = new Map([['team-1', [
-      { id: 'ch-1', teamId: 'team-1', name: 'general', topic: '', type: 'text' as const, position: 0, category: 'Dev' },
-      { id: 'ch-3', teamId: 'team-1', name: 'random', topic: '', type: 'text' as const, position: 1, category: 'Dev' },
-      voiceChannel,
-    ]]]);
-    useTeamStore.setState({ channels });
+  it('separates unread channels from remaining channels', () => {
+    useUnreadStore.setState({ counts: { 'ch-1': 5 } });
     render(<ChannelList />);
-    expect(screen.getByText('Dev')).toBeInTheDocument();
+    expect(screen.getByText('UNREAD')).toBeInTheDocument();
+    expect(screen.getByText('CHANNELS')).toBeInTheDocument();
     expect(screen.getByText('general')).toBeInTheDocument();
-    expect(screen.getByText('random')).toBeInTheDocument();
+    expect(screen.getByText('voice-lobby')).toBeInTheDocument();
   });
 
   it('shows voice channel users when voice connected', () => {
@@ -255,12 +250,12 @@ describe('ChannelList', () => {
   });
 
   it('closes context menu on document click', () => {
-    const { container } = render(<ChannelList />);
+    render(<ChannelList />);
     const channelItem = screen.getByText('general').closest('.channel-item')!;
     fireEvent.contextMenu(channelItem);
-    expect(container.querySelector('.channel-context-menu')).toBeInTheDocument();
+    expect(document.body.querySelector('.channel-context-menu')).toBeInTheDocument();
     fireEvent.click(document);
-    expect(container.querySelector('.channel-context-menu')).not.toBeInTheDocument();
+    expect(document.body.querySelector('.channel-context-menu')).not.toBeInTheDocument();
   });
 
   describe('unread badge rendering', () => {
