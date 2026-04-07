@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import MessageList from './MessageList';
 import { useMessageStore, type Message } from '../../stores/messageStore';
+import { useTeamStore } from '../../stores/teamStore';
+import { usePresenceStore } from '../../stores/presenceStore';
 
 // Mock dependencies
 vi.mock('@tabler/icons-react', () => ({
@@ -12,6 +14,16 @@ vi.mock('@tabler/icons-react', () => ({
   IconEdit: () => <span data-testid="icon-edit" />,
   IconTrash: () => <span data-testid="icon-trash" />,
   IconMessage: () => <span data-testid="icon-chat-bubble" />,
+  IconArrowDown: () => <span data-testid="icon-arrow-down" />,
+}));
+
+vi.mock('../UserProfile/UserProfile', () => ({
+  default: ({ member, onSendMessage }: { member: { username: string }; onSendMessage?: () => void }) => (
+    <div data-testid="user-profile">
+      <span data-testid="profile-username">{member.username}</span>
+      {onSendMessage && <button data-testid="profile-send" onClick={onSendMessage}>Send</button>}
+    </div>
+  ),
 }));
 
 vi.mock('react-markdown', () => ({
@@ -975,5 +987,136 @@ describe('MessageList', () => {
     );
     expect(screen.getByText('{{count}} replies')).toBeInTheDocument();
     expect(screen.queryByText(/Last reply/)).not.toBeInTheDocument();
+  });
+
+  describe('user profile popup', () => {
+    beforeEach(() => {
+      const members = new Map([
+        [
+          'team-1',
+          [
+            {
+              id: 'm-1',
+              userId: 'user-1',
+              username: 'alice',
+              displayName: 'Alice',
+              nickname: '',
+              roles: [],
+              statusType: 'online',
+            },
+            {
+              id: 'm-2',
+              userId: 'user-2',
+              username: 'bob',
+              displayName: 'Bob',
+              nickname: '',
+              roles: [],
+              statusType: 'online',
+            },
+          ],
+        ],
+      ]);
+      useTeamStore.setState({ activeTeamId: 'team-1', members } as never);
+      usePresenceStore.setState({
+        presences: {
+          'team-1': {
+            'user-1': { user_id: 'user-1', status: 'online', custom_status: '', last_active: '' },
+          },
+        },
+      });
+    });
+
+    it('opens profile popup when username is clicked', () => {
+      const msgs = [makeMessage()];
+      useMessageStore.setState({
+        messages: new Map([['ch-1', msgs]]),
+        loadingHistory: new Map(),
+        hasMore: new Map(),
+      });
+      render(<MessageList channelId="ch-1" currentUserId="user-2" onLoadMore={vi.fn()} />);
+      fireEvent.click(screen.getByText('alice'));
+      expect(screen.getByTestId('user-profile')).toBeInTheDocument();
+      expect(screen.getByTestId('profile-username').textContent).toBe('alice');
+    });
+
+    it('opens profile popup when avatar is clicked', () => {
+      const msgs = [makeMessage()];
+      useMessageStore.setState({
+        messages: new Map([['ch-1', msgs]]),
+        loadingHistory: new Map(),
+        hasMore: new Map(),
+      });
+      const { container } = render(
+        <MessageList channelId="ch-1" currentUserId="user-2" onLoadMore={vi.fn()} />,
+      );
+      const avatar = container.querySelector('.message-avatar')!;
+      fireEvent.click(avatar);
+      expect(screen.getByTestId('user-profile')).toBeInTheDocument();
+    });
+
+    it('opens profile popup via keyboard (Enter)', () => {
+      const msgs = [makeMessage()];
+      useMessageStore.setState({
+        messages: new Map([['ch-1', msgs]]),
+        loadingHistory: new Map(),
+        hasMore: new Map(),
+      });
+      const { container } = render(
+        <MessageList channelId="ch-1" currentUserId="user-2" onLoadMore={vi.fn()} />,
+      );
+      const avatar = container.querySelector('.message-avatar')!;
+      fireEvent.keyDown(avatar, { key: 'Enter' });
+      expect(screen.getByTestId('user-profile')).toBeInTheDocument();
+    });
+
+    it('opens profile popup via keyboard (Space)', () => {
+      const msgs = [makeMessage()];
+      useMessageStore.setState({
+        messages: new Map([['ch-1', msgs]]),
+        loadingHistory: new Map(),
+        hasMore: new Map(),
+      });
+      render(<MessageList channelId="ch-1" currentUserId="user-2" onLoadMore={vi.fn()} />);
+      const username = screen.getByText('alice');
+      fireEvent.keyDown(username, { key: ' ' });
+      expect(screen.getByTestId('user-profile')).toBeInTheDocument();
+    });
+
+    it('does nothing when keyboard handler receives non-Enter/Space key', () => {
+      const msgs = [makeMessage()];
+      useMessageStore.setState({
+        messages: new Map([['ch-1', msgs]]),
+        loadingHistory: new Map(),
+        hasMore: new Map(),
+      });
+      render(<MessageList channelId="ch-1" currentUserId="user-2" onLoadMore={vi.fn()} />);
+      fireEvent.keyDown(screen.getByText('alice'), { key: 'Tab' });
+      expect(screen.queryByTestId('user-profile')).not.toBeInTheDocument();
+    });
+
+    it('does not open popup when clicked author has no member entry', () => {
+      const msgs = [makeMessage({ authorId: 'unknown-user', username: 'ghost' })];
+      useMessageStore.setState({
+        messages: new Map([['ch-1', msgs]]),
+        loadingHistory: new Map(),
+        hasMore: new Map(),
+      });
+      render(<MessageList channelId="ch-1" currentUserId="user-2" onLoadMore={vi.fn()} />);
+      fireEvent.click(screen.getByText('ghost'));
+      expect(screen.queryByTestId('user-profile')).not.toBeInTheDocument();
+    });
+
+    it('omits Send Message button when viewing own profile', () => {
+      const msgs = [makeMessage()];
+      useMessageStore.setState({
+        messages: new Map([['ch-1', msgs]]),
+        loadingHistory: new Map(),
+        hasMore: new Map(),
+      });
+      render(<MessageList channelId="ch-1" currentUserId="user-1" onLoadMore={vi.fn()} />);
+      fireEvent.click(screen.getByText('alice'));
+      expect(screen.getByTestId('user-profile')).toBeInTheDocument();
+      expect(screen.queryByTestId('profile-send')).not.toBeInTheDocument();
+    });
   });
 });
