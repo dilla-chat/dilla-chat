@@ -276,3 +276,218 @@ unblock Phase 1:
 
 **Phase 1 implementation may proceed once 0b and 0c are also green.**
 Spike 0a alone is *not* sufficient to unblock Milestone 1.
+
+---
+
+## Spike 0b.1 — DeepFilterNet 3 ONNX verification (2026-04-07)
+
+After the pivot from VoiceFilter-Lite to generic real-time noise suppression
+with DeepFilterNet 3 (DFN3), this spike verifies that a usable, permissively
+licensed ONNX export exists, characterizes its IO contract, and runs a smoke
+test inference.
+
+### Source
+
+- **Repository:** [Rikorose/DeepFilterNet](https://github.com/Rikorose/DeepFilterNet) (the official upstream).
+- **Direct URL of the ONNX bundle used:**
+  `https://raw.githubusercontent.com/Rikorose/DeepFilterNet/d375b2d8309e0935d165700c91da9de862a99c31/models/DeepFilterNet3_onnx.tar.gz`
+  (pinned to commit `d375b2d`, which is the tip of `main` at the time of this
+  spike — also reachable via the tracked file
+  `models/DeepFilterNet3_onnx.tar.gz`).
+- **License:** **Dual MIT / Apache-2.0**, at the user's option (LICENSE-MIT
+  and LICENSE-APACHE in the repo root). ✅ Compatible with Dilla AGPLv3.
+- **Variants available in the same `models/` directory:**
+  - `DeepFilterNet3_onnx.tar.gz` — standard DFN3 (8.0 MB packed).
+  - `DeepFilterNet3_ll_onnx.tar.gz` — "low-latency" DFN3 variant (36 MB
+    packed; larger because it removes lookahead frames at the cost of more
+    parameters per timestep). Reserved as the fallback if standard DFN3
+    blows the spike-0b.2 latency budget.
+  - `DeepFilterNet2_onnx.tar.gz` and `DeepFilterNet2_onnx_ll.tar.gz` — DFN2
+    fallbacks (8.6 MB each), available if DFN3 fails outright.
+
+### Bundle metadata
+
+| File | Size (bytes) | SHA-256 |
+|---|---:|---|
+| `DeepFilterNet3_onnx.tar.gz` (the bundle) | 7,983,136 | `c94d91f70911001c946e0fabb4aa9adc37045f45a03b56008cb0c8244cb63616` |
+| `enc.onnx` (encoder) | 1,954,042 | `7c5399d3da8a50ebef1c1a0ae421b33376aa5e45d0e92df16da7e83c9c131916` |
+| `erb_dec.onnx` (ERB-band gain decoder) | 3,292,397 | `ab669a1d10afe20911728b33053a452071042317a90581092b325da7b2f9d895` |
+| `df_dec.onnx` (deep filter coefficient decoder) | 3,340,803 | `23114ce3b0f6464b763ee62f7bb8aab6b2a129a21eabd5bcfe59413db05f278a` |
+
+Sum of the three sub-graphs: ~8.6 MB on disk. Comfortably within the model
+artifact budget for the client.
+
+### ⚠️ Critical finding: DFN3 is NOT a single end-to-end PCM-in/PCM-out ONNX
+
+The plan's milestone-1 design assumed DFN3 would expose a single ONNX graph
+shaped roughly `[1, 480]` float32 PCM in → `[1, 480]` float32 PCM out. **It
+does not.** The official `DeepFilterNet3_onnx.tar.gz` ships **three** ONNX
+sub-graphs that are designed to be driven by host code that handles STFT, ERB
+band feature extraction, deep-filter post-processing, and iSTFT. The Rust
+reference implementation is in `Rikorose/DeepFilterNet/libDF/src/tract.rs`.
+
+The three sub-graphs are:
+
+1. **`enc.onnx`** — encoder. Input: `(feat_erb, feat_spec)`, output:
+   `(e0, e1, e2, e3, emb, c0, lsnr)` (skip connections, GRU embedding, complex
+   feature path, predicted local SNR).
+2. **`erb_dec.onnx`** — ERB-band gain decoder. Input:
+   `(emb, e3, e2, e1, e0)`, output: `m` (per-band gain mask).
+3. **`df_dec.onnx`** — deep-filter coefficient decoder. Input: `(emb, c0)`,
+   output: `(coefs, 235)` (complex DF coefficients + an unnamed scalar; the
+   `235` output is an internal node ID, not used by the host).
+
+This means:
+
+- The Phase 1 inference worker has to implement (or wrap) a **streaming
+  STFT/ERB/DF host pipeline** in TS or Rust/WASM, not just a tensor copy. The
+  config from `config.ini` gives all the hyperparameters: `sr=48000`,
+  `fft_size=960`, `hop_size=480`, `nb_erb=32`, `nb_df=96`, `df_order=5`,
+  `conv_lookahead=2`, `df_lookahead=2`.
+- An "ONNX-only" path is impossible without re-exporting from the original
+  PyTorch checkpoint, which is out of scope for Phase 1.
+- The original `ModelIOSpec` abstraction in the plan, with a single
+  `inputName` / `outputName` / `windowSamples`, **does not fit** DFN3. The
+  spec needs to be a multi-graph descriptor.
+
+### Smoke test results
+
+`scripts/spike/test-dfn3-availability.mjs` loads each of the three ONNX
+graphs via `onnxruntime-node` and runs a single forward pass with synthetic
+random inputs of the shapes implied by `config.ini`. All three pass:
+
+```
+[enc] forward pass with dummy inputs
+    e0:    shape=[1,64,1,32]   NaN=0  range=[0.0000, 4.1464]
+    e1:    shape=[1,64,1,16]   NaN=0  range=[0.0000, 2.1935]
+    e2:    shape=[1,64,1,8]    NaN=0  range=[0.0000, 1.9888]
+    e3:    shape=[1,64,1,8]    NaN=0  range=[0.0000, 5.4360]
+    emb:   shape=[1,1,512]     NaN=0  range=[0.0000, 1.1724]
+    c0:    shape=[1,64,1,96]   NaN=0  range=[0.0000, 11.2875]
+    lsnr:  shape=[1,1,1]       NaN=0  range=[6.20, 6.20]
+
+[erb_dec] forward pass — wiring encoder outputs by name
+    m:     shape=[1,1,1,32]    NaN=0  range=[0.0033, 0.3540]
+
+[df_dec] forward pass — wiring encoder outputs by name
+    coefs: shape=[1,1,96,10]   NaN=0  range=[-0.0563, 0.6585]
+    235:   shape=[1,1,1]       NaN=0  range=[0.4966, 0.4966]
+```
+
+No NaNs, no shape mismatches, all outputs are finite floats in plausible
+ranges. The encoder + both decoders therefore *do* execute correctly under
+onnxruntime — confirming the artifacts themselves are well-formed and can be
+served to onnxruntime-web with the same shape contract.
+
+### IO contract — multi-graph variant of `ModelIOSpec`
+
+The plan's existing `ModelIOSpec` shape (`inputName`, `outputName`,
+`modelSampleRate`, `windowSamples`) cannot describe DFN3 honestly. We
+recommend Phase 1 introduce a `Dfn3ModelIOSpec` (or generalise `ModelIOSpec`
+to a tagged union). The verified contract is:
+
+```ts
+const DFN3_IO_SPEC: Dfn3ModelIOSpec = {
+  kind: 'dfn3-multigraph',
+  modelSampleRate: 48000,
+  hopSize: 480,        // 10 ms @ 48 kHz → 50 fps
+  fftSize: 960,
+  nbErb: 32,
+  nbDf: 96,
+  dfOrder: 5,
+  convLookahead: 2,
+  dfLookahead: 2,
+  encoder: {
+    file: 'enc.onnx',
+    inputs: {
+      featErb:  { name: 'feat_erb',  shape: [1, 1, /*T*/ -1, 32] }, // log-power ERB features
+      featSpec: { name: 'feat_spec', shape: [1, 2, /*T*/ -1, 96] }, // re/im of low-band spec
+    },
+    outputs: {
+      e0:   { name: 'e0',   shape: [1, 64, /*T*/ -1, 32] },
+      e1:   { name: 'e1',   shape: [1, 64, /*T*/ -1, 16] },
+      e2:   { name: 'e2',   shape: [1, 64, /*T*/ -1,  8] },
+      e3:   { name: 'e3',   shape: [1, 64, /*T*/ -1,  8] },
+      emb:  { name: 'emb',  shape: [1, /*T*/ -1, 512] },
+      c0:   { name: 'c0',   shape: [1, 64, /*T*/ -1, 96] },
+      lsnr: { name: 'lsnr', shape: [1, /*T*/ -1, 1] },
+    },
+  },
+  erbDecoder: {
+    file: 'erb_dec.onnx',
+    inputs: ['emb', 'e3', 'e2', 'e1', 'e0'], // names match encoder outputs
+    output: { name: 'm', shape: [1, 1, /*T*/ -1, 32] },           // ERB-band gain mask in [0,1]
+  },
+  dfDecoder: {
+    file: 'df_dec.onnx',
+    inputs: ['emb', 'c0'],
+    output: { name: 'coefs', shape: [1, /*T*/ -1, 96, /*2*df_order*/ 10] },
+    // df_dec also emits an unused scalar at output index '235'; ignore.
+  },
+};
+```
+
+(The `T` time dimension is dynamic; the smoke test ran with `T=1`. The
+inference worker will use `T=1` per audio frame in streaming mode.)
+
+For consumers that only need the legacy single-window shape, the closest
+honest values are:
+
+```ts
+// Conceptual / legacy view — DFN3 is NOT a single ONNX graph in practice.
+const DFN3_IO_SPEC_LEGACY: ModelIOSpec = {
+  inputName:  'feat_erb+feat_spec', // see Dfn3ModelIOSpec for the real wiring
+  outputName: 'm+coefs',            // ERB gain mask + DF complex coefficients
+  modelSampleRate: 48000,
+  windowSamples: 480,               // hop size — 10 ms frames at 48 kHz
+};
+```
+
+### Go / no-go for spike 0b.1
+
+✅ **GO** — a permissively licensed (MIT/Apache-2.0), well-formed DFN3 ONNX
+export exists, all three sub-graphs load and run cleanly via onnxruntime-node
+with shape-correct dummy inputs, and no NaNs are produced. The artifacts
+themselves are not the blocker for Phase 1.
+
+⚠️ **Concerns to flag for the controller before milestone 1 begins:**
+
+1. **The plan needs revision.** The "single ONNX, PCM-in/PCM-out" assumption
+   in milestone 1 (manifest entry, `ModelIOSpec`, the
+   `session.run({ [INPUT_NAME]: tensor })` snippets in spike 0b.2) is wrong
+   for DFN3. Either:
+   - (a) generalise `ModelIOSpec` into a multi-graph descriptor as shown
+     above and bundle all three ONNX files in the manifest, **or**
+   - (b) write a custom DFN3 → single-ONNX exporter that internalises STFT
+     and ERB feature extraction (significantly out of scope for Phase 1), **or**
+   - (c) drop DFN3 and pick a model that does ship as a single end-to-end
+     ONNX graph (e.g. RNNoise via [GregorR/rnnoise-nu](https://github.com/GregorR/rnnoise-nu) or the
+     Microsoft `nsnet2` ONNX). RNNoise is much smaller and ships as a single
+     graph, but is older and lower quality than DFN3.
+
+2. **Spike 0b.2's benchmark code must be rewritten.** The placeholder loop in
+   the plan (`session.run({ [INPUT_NAME]: new ort.Tensor('float32', new Float32Array(480), [1, 480]) })`)
+   will not run against DFN3. The real benchmark needs:
+   - A streaming STFT host harness (FFT 960, hop 480, Hann window).
+   - ERB band feature extraction (32 bands, log power).
+   - All three ONNX sessions chained per frame: enc → erb_dec → df_dec.
+   - Aggregate the per-frame `enc + erb_dec + df_dec` time as the latency
+     metric, not just one `session.run`.
+   - Pass criterion (p95 < 8 ms per 10 ms frame) still applies — but it's
+     now the **sum** across three graphs plus host-side STFT overhead.
+
+3. **`df_lookahead=2` and `conv_lookahead=2` impose a 4-frame (40 ms)
+   algorithmic delay** in the streaming path, on top of any audio thread
+   buffering. Phase 1 budget docs need to account for this.
+
+### Files written
+
+- `scripts/spike/test-dfn3-availability.mjs` — the verification harness (committed).
+- `scripts/spike/models/DeepFilterNet3_onnx.tar.gz` — the source bundle (gitignored; re-downloadable from the URL above).
+- `scripts/spike/models/tmp/export/{enc,erb_dec,df_dec}.onnx` — extracted graphs (gitignored).
+- `scripts/spike/.gitignore` — extended to ignore `*.tar.gz` and `models/tmp/`.
+
+**Verdict for Phase 1 controller:** the artifact side of DFN3 is unblocked,
+but the plan's milestone-1 ONNX integration design needs to be reworked
+**before** spike 0b.2 (latency benchmark) can be meaningfully executed. Bring
+this back to the planner.
