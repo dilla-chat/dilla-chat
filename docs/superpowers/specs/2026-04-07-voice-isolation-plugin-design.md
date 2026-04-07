@@ -1,9 +1,70 @@
 # Voice Isolation Plugin (`dilla-voice-focus`) — Design
 
-**Status:** Draft (revised after spec review, pending user approval)
+**Status:** Phase 1 scope reduced to DFN3-only after spike 0a results
 **Author:** brainstorming session, 2026-04-07
-**Target branch:** TBD
-**Revision:** v2 — addresses critical issues from first review pass
+**Target branch:** `feat/voice-isolation-phase1`
+**Revision:** v3 — DFN3-only pivot (see "v3 pivot notice" below)
+
+---
+
+## v3 pivot notice (2026-04-07, post-spike-0a)
+
+**Spike 0a found that VoiceFilter-Lite is unavailable as a public ONNX
+checkpoint.** The only viable substitute (the original ailia-models
+VoiceFilter, ~123MB, Apache-2.0) has a 3-second context window and ~1.5
+seconds of mouth-to-ear latency, which is incompatible with live voice
+calls.
+
+After reviewing the spike memo, the user chose **Option C: pivot to
+non-personalized real-time noise suppression with DeepFilterNet 3 only**.
+
+**What this scope reduction removes from the original spec:**
+
+- ❌ Personalized voice isolation (no VoiceFilter / target speaker extraction)
+- ❌ Speaker enrollment (no ECAPA-TDNN, no `runEnrollment`, no enrollment modal)
+- ❌ Embedding storage (no `embeddingStore`, no HKDF-derived blob store)
+- ❌ Embedding broadcast over Signal Protocol (no `embeddingTransport`, no new
+  WebSocket event types, no Ed25519 binding, no replay rejection rule)
+- ❌ Active-speaker tiered processing (every stream uses the same model now)
+- ❌ Symmetric per-peer personalization
+- ❌ Federation considerations for embedding distribution
+- ❌ Cross-device voice profile sync (Phase 2 milestone 14)
+
+**What this scope reduction keeps:**
+
+- ✅ Real-time noise suppression on all voice streams (your mic + every peer's
+  audio you receive)
+- ✅ AudioWorklet → SAB ring buffer → dedicated Web Worker → ORT Web inference
+  pipeline (the threading model is unchanged because it's still required to
+  run any ONNX model in real time without blocking the audio thread)
+- ✅ Server-side `rust-embed` model serving via `/api/voice/models/...`
+- ✅ COOP/COEP headers for cross-origin isolation (still required for SAB)
+- ✅ ORT WASM asset configuration via `ort.env.wasm.wasmPaths`
+- ✅ Single seam in `WebRTCService.ts` inside the SFrame boundary
+- ✅ Diagnostics counters (simplified — no enrollment counters)
+- ✅ Settings → Audio toggle ("Noise suppression: on/off")
+- ✅ Quality regression suite (DFN3-only)
+
+**What changes about the user-facing feature:**
+
+- The feature is now called **"Noise Suppression"**, not "Voice Isolation"
+- Strips background noise (keyboard, traffic, fans, etc.) from voice streams
+- **Does not** reject other human voices in your environment
+- **Does not** reject music with strong vocals
+- Closer to "what RNNoise tried to do, but with a better model" than to Krisp
+- Setup is one-click (no enrollment): user toggles it on in Settings, models
+  download once on first voice join, feature is active for all subsequent
+  calls
+
+**What's the same as before:**
+
+- Open source, self-hosted, no CDN, no third-party SDK
+- Runs entirely client-side (preserves Dilla's E2EE guarantee)
+- Lazy-loaded model from home server, IndexedDB cached
+- Both directions: own mic + every incoming peer's stream
+- Privacy-first: no telemetry off-device
+
+---
 
 ## Revision history
 
@@ -98,7 +159,7 @@ revisited, several downstream choices need to be re-evaluated.
 |---|---|---|---|
 | 1 | What does "Krisp-like" mean? | True voice isolation: reject other voices and music, not just background hiss | Forces personalized DNS approach |
 | 2 | Outgoing only or both directions? | **Both** (symmetric) | Embeddings must be broadcast to every peer; CPU scales with peer count |
-| 3 | Which model? | **VoiceFilter-Lite** (target speaker extraction) + **ECAPA-TDNN** (speaker encoder) + **DeepFilterNet 3** (fallback for unenrolled / background-tier peers) | ~12MB total model weights |
+| 3 | Which model? | **DeepFilterNet 3 only** (revised from VFL+ECAPA+DFN3 after spike 0a). VoiceFilter-Lite is unavailable as open ONNX; the substitute (full VoiceFilter, ~123MB, 1.5s lookahead) is incompatible with live calls. | ~2MB model weight, real-time WASM inference, generic noise suppression |
 | 4 | Runtime split | **WASM-only** with SIMD-128, AudioWorklet host, same artifact in browser and Tauri webview. Native virtual audio device deferred to Phase 2. | One codebase, no Tauri-IPC bridge needed |
 | 5 | Voice isolation strategy | **Personalized DNS** — enrollment captures the user's voice once, embedding conditions the model | Each user must enroll; embeddings must be exchanged between peers |
 | 6 | Symmetric or asymmetric? | **Symmetric** — every peer broadcasts their embedding so every receiver can run conditioned extraction on every stream | New WS event types; embedding distribution protocol |
