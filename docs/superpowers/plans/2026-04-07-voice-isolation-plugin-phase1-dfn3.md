@@ -17,6 +17,71 @@
 
 **Pivoted from:** `docs/superpowers/plans/2026-04-07-voice-isolation-plugin-phase1.md` — the original VoiceFilter-Lite plan, now obsolete except for the foundation milestones (1, 3, 4, 6, 8, 9 partial, 10) that are still valid with simplifications.
 
+## v2 amendment (post spike 0b.1) — DFN3 is multi-graph
+
+Spike 0b.1 found that DFN3 is **not** a single PCM-in/PCM-out ONNX. The
+official Rikorose/DeepFilterNet export ships three sub-graphs:
+
+- `enc.onnx` (1.95 MB) — encoder; in: `(feat_erb, feat_spec)`, out: `(e0..e3, emb, c0, lsnr)`
+- `erb_dec.onnx` (3.29 MB) — ERB-band gain decoder; out: `m` shape `[1,1,T,32]`
+- `df_dec.onnx` (3.34 MB) — deep-filter coefficient decoder; out: `coefs` shape `[1,T,96,10]`
+
+Wrapping these requires a host-side DSP pipeline (STFT, ERB feature
+extraction, deep-filter post-processing, iSTFT) that the original plan
+did not anticipate. **The user explicitly chose option A (wrap DFN3
+multi-graph in TypeScript) over the simpler-but-lower-quality
+NSNet2 substitute.** This adds substantial scope to milestone 2:
+
+- New file: `client/src/services/voiceIsolation/dfn3Pipeline.ts` (~500 lines
+  of DSP code: STFT/iSTFT, ERB band feature extraction, deep filter
+  post-processing). Port the relevant parts of `libDF/src/tract.rs` to
+  TypeScript.
+- The inference worker now runs three ONNX sessions per frame (encoder
+  → ERB decoder + DF decoder in parallel → host post-processing).
+- The model loader downloads and caches all three sub-graphs (and their
+  manifest entries) instead of one.
+- The benchmark in M0b.2 must measure end-to-end latency through the
+  full chain, not a single `session.run()` call.
+
+DFN3 hyperparameters (from the upstream `config.ini`):
+- Sample rate: 48000 Hz
+- FFT size: 960
+- Hop size: 480 (10 ms @ 50 fps)
+- Number of ERB bands: 32
+- Number of DF bands: 96
+- DF order: 5
+- Conv lookahead: 2 frames
+- DF lookahead: 2 frames
+- **Total algorithmic delay: 40 ms** (within the budget for live calls)
+
+The new `Dfn3ModelIOSpec` looks like:
+
+```ts
+interface Dfn3ModelIOSpec {
+  encoder: { sessionId: string; inputs: ['feat_erb', 'feat_spec']; outputs: ['e0','e1','e2','e3','emb','c0','lsnr'] };
+  erbDecoder: { sessionId: string; outputs: ['m'] };
+  dfDecoder: { sessionId: string; outputs: ['coefs'] };
+  sampleRate: 48000;
+  fftSize: 960;
+  hopSize: 480;
+  nbErb: 32;
+  nbDf: 96;
+  dfOrder: 5;
+  lookaheadFrames: 4; // conv + df = 40ms total
+}
+```
+
+The "M2 — Pipeline" milestone in this plan is now expanded to include
+the dfn3Pipeline.ts module and its tests. The other milestones (M1
+foundation, M3 dispatcher, M4 UX, M5 tests) are unaffected.
+
+**Estimated additional implementation effort vs the original DFN3 plan:**
+roughly +50% scope on milestone 2, mostly DSP code and tests. Risk
+factor: subtle DSP bugs that only show up as audible artifacts.
+Mitigation: per-frame numerical comparison against the upstream Python
+reference output (committed as fixtures).
+
+
 ---
 
 ## What this plan does NOT include (vs. the original)
