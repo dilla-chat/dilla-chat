@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:browser": "vitest run --config vitest.browser.config.ts"
+    "test:browser": "vitest run --config vitest.browser.config.ts",
+    "postinstall": "node scripts/copy-ort-wasm.cjs"
   },
   "dependencies": {
     "@noble/curves": "^2.0.1",

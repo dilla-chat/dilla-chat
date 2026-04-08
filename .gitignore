@@ -60,3 +60,6 @@ tmp/
 
 # === Voice models (generated) ===
 server-rs/assets/voice-models/manifest.json
+
+# === ORT Web runtime (copied by client postinstall) ===
+client/public/ort-wasm/
