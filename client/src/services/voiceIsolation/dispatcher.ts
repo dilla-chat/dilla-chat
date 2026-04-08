@@ -19,12 +19,43 @@
 //   4. On disconnect, `tearDownAll()` destroys all pipelines, terminates the
 //      worker, and closes the audio context.
 
+import { diagnostics } from './diagnostics';
 import {
   loadDfn3Model,
   type Dfn3Config,
   type LoadedDfn3Model,
 } from './modelLoader';
 import { createPipeline, type Pipeline } from './pipeline';
+
+interface DiagnosticsUpdateMsg {
+  type: 'diagnostics-update';
+  streamId: string;
+  frameTimeMs?: number;
+  dropped?: boolean;
+  error?: string;
+}
+
+function isDiagnosticsUpdate(data: unknown): data is DiagnosticsUpdateMsg {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    (data as { type?: unknown }).type === 'diagnostics-update'
+  );
+}
+
+function handleDiagnosticsMessage(e: MessageEvent): void {
+  const data = e.data;
+  if (!isDiagnosticsUpdate(data)) return;
+  if (typeof data.frameTimeMs === 'number') {
+    diagnostics.recordFrame(data.frameTimeMs);
+  }
+  if (data.dropped) {
+    diagnostics.recordDrop();
+  }
+  if (data.error) {
+    diagnostics.recordError(data.error);
+  }
+}
 
 export interface InitializedContext {
   audioContext: AudioContext;
@@ -71,6 +102,7 @@ export async function initializeVoiceIsolation(
       worker = new Worker(new URL('./inferenceWorker.ts', import.meta.url), {
         type: 'module',
       });
+      worker.addEventListener('message', handleDiagnosticsMessage);
 
       const sessionId = `dfn3-${crypto.randomUUID()}`;
 

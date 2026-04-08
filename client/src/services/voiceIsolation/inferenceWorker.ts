@@ -19,6 +19,9 @@
 //   { type: 'models-loaded', sessionId }
 //   { type: 'models-error',  sessionId, error }
 //   { type: 'stream-stats',  streamId, framesProcessed, framesDropped }
+//   { type: 'diagnostics-update', streamId, frameTimeMs?, dropped?, error? }
+//     — emitted on every processed frame so the main-thread `diagnostics`
+//       singleton can accumulate timings, drop counts, and recent errors.
 
 import * as ort from 'onnxruntime-web';
 import {
@@ -244,18 +247,30 @@ async function runStreamLoop(streamId: string): Promise<void> {
     }
     Atomics.store(stream.inputInts, 1, (readIdx + HOP) % stream.inputCapacity);
 
+    const t0 =
+      typeof performance !== 'undefined' && typeof performance.now === 'function'
+        ? performance.now()
+        : Date.now();
+    let frameError: string | null = null;
     try {
       await stream.pipeline.processFrame(inputFrame, outputFrame);
     } catch (err) {
       console.error('[inferenceWorker] processFrame failed', err);
       outputFrame.fill(0);
+      frameError = err instanceof Error ? err.message : String(err);
     }
+    const t1 =
+      typeof performance !== 'undefined' && typeof performance.now === 'function'
+        ? performance.now()
+        : Date.now();
+    const frameTimeMs = t1 - t0;
 
     // Write to the output ring (drop on overflow).
     const oWrite = Atomics.load(stream.outputInts, 0);
     const oRead = Atomics.load(stream.outputInts, 1);
     const used = (oWrite - oRead + stream.outputCapacity) % stream.outputCapacity;
     const free = stream.outputCapacity - used - 1;
+    let dropped = false;
     if (HOP <= free) {
       for (let i = 0; i < HOP; i++) {
         stream.outputFloats[(oWrite + i) % stream.outputCapacity] = outputFrame[i];
@@ -264,7 +279,18 @@ async function runStreamLoop(streamId: string): Promise<void> {
       stream.framesProcessed += 1;
     } else {
       stream.framesDropped += 1;
+      dropped = true;
     }
+
+    // Per-frame diagnostics fan-out. Cheap (one postMessage) and entirely
+    // local — never crosses the network.
+    postOut({
+      type: 'diagnostics-update',
+      streamId,
+      frameTimeMs: frameError ? undefined : frameTimeMs,
+      dropped,
+      error: frameError ?? undefined,
+    });
 
     // Periodic stats heartbeat to the main thread.
     if (stream.framesProcessed % 50 === 0) {
