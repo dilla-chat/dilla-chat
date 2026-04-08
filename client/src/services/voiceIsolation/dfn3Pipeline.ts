@@ -141,14 +141,19 @@ export class Dfn3Pipeline {
   private readonly meanNormState: Float32Array;
   private readonly unitNormState: Float32Array;
 
-  // Rolling buffers of (lookahead + dfOrder) recent complex spectrograms.
-  // libDF maintains two: `rolling_spec_buf_x` (noisy / un-modified) and
-  // `rolling_spec_buf_y` (gain-applied / enhanced). The deep filter reads
-  // from `_x` and writes to a separate output spectrum, so no aliasing.
+  // Rolling buffers of recent complex spectrograms. libDF maintains two with
+  // *different* lengths:
+  //   - `rolling_spec_buf_y` has length `df_order + conv_lookahead` and holds
+  //     the about-to-be-enhanced spectrum; the ERB gain is applied to
+  //     index `df_order - 1`.
+  //   - `rolling_spec_buf_x` has length `max(df_order, lookahead)` and holds
+  //     the noisy spectrum for the deep filter's causal+lookahead
+  //     convolution. The whole buffer is passed to `df()`.
   // Index 0 = oldest. Each entry length = 2 * nFreqs.
   private readonly rollingX: Float32Array[];
   private readonly rollingY: Float32Array[];
-  private readonly bufferLen: number;
+  private readonly bufferLenX: number;
+  private readonly bufferLenY: number;
   // Per-frame output spectrum (the buffer iSTFT actually consumes).
   private readonly specOut: Float32Array;
 
@@ -173,16 +178,19 @@ export class Dfn3Pipeline {
     this.meanNormState = initMeanNormState(hp.nbErb);
     this.unitNormState = initUnitNormState(hp.nbDf);
 
-    // Buffer must hold dfOrder + lookahead frames so that the deep filter
-    // sees `dfOrder` past frames AND `lookahead` future frames at every
-    // step. Match libDF: `df_order + lookahead`.
+    // Match libDF buffer sizing exactly (see `DfTract::init`):
+    //   y: df_order + conv_lookahead
+    //   x: max(df_order, lookahead)   where lookahead = max(conv_lookahead, df_lookahead)
     const lookahead = Math.max(hp.convLookahead, hp.dfLookahead);
-    this.bufferLen = hp.dfOrder + lookahead;
-    this.rollingX = [];
+    this.bufferLenY = hp.dfOrder + hp.convLookahead;
+    this.bufferLenX = Math.max(hp.dfOrder, lookahead);
     this.rollingY = [];
-    for (let i = 0; i < this.bufferLen; i++) {
-      this.rollingX.push(new Float32Array(2 * this.nFreqs));
+    for (let i = 0; i < this.bufferLenY; i++) {
       this.rollingY.push(new Float32Array(2 * this.nFreqs));
+    }
+    this.rollingX = [];
+    for (let i = 0; i < this.bufferLenX; i++) {
+      this.rollingX.push(new Float32Array(2 * this.nFreqs));
     }
     this.specOut = new Float32Array(2 * this.nFreqs);
 
@@ -270,10 +278,11 @@ export class Dfn3Pipeline {
     applyInterpBandGain(targetY, erbDec.m, this.erbFb);
 
     // 7) Copy the gained y-frame into specOut, then deep-filter the lowest
-    //    nb_df bins of specOut, reading from the noisy x-buffer.
+    //    nb_df bins of specOut, reading from the full noisy x-buffer. libDF
+    //    passes the entire `rolling_spec_buf_x` (length max(df_order,
+    //    lookahead) == df_order for DFN3) to `df()` — every frame is used.
     this.specOut.set(targetY);
-    const dfWindow = this.rollingX.slice(0, this.hp.dfOrder);
-    applyDeepFilter(dfWindow, dfDec.coefs, this.hp.nbDf, this.hp.dfOrder, this.specOut);
+    applyDeepFilter(this.rollingX, dfDec.coefs, this.hp.nbDf, this.hp.dfOrder, this.specOut);
 
     // 8) iSTFT specOut to produce hopSize output samples.
     this.istft.synthesise(this.specOut, output);
