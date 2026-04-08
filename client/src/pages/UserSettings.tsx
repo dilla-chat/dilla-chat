@@ -360,6 +360,12 @@ export default function UserSettings() {
                   <option value="none">{t('userSettings.nsNone', 'None')}</option>
                   <option value="browser">{t('userSettings.nsBrowser', 'Browser')}</option>
                 </select>
+                <div className="settings-toggle-description">
+                  {t(
+                    'noiseSuppression.help',
+                    'Removes background noise from your voice and from peers in voice channels using DeepFilterNet 3 (runs locally on your device, never sends audio anywhere).',
+                  )}
+                </div>
               </div>
 
               {/* Echo Cancellation toggle */}
