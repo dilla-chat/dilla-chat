@@ -65,25 +65,37 @@ export const DFN3_HYPERPARAMS: Dfn3Hyperparameters = {
 };
 
 /**
+ * Frame-batching factor. The encoder is called once per BATCH_T input
+ * frames. Within a single call, the model's 2-frame look-ahead (pad_feat
+ * shift baked into DFN3's training) becomes a within-batch reorder
+ * rather than a per-frame phase misalignment, so the streaming output
+ * matches libDF's reference behavior. At BATCH_T=8 the algorithmic delay
+ * grows from 40 ms to 80 ms, total mouth-to-ear latency ~120 ms — well
+ * within the human acceptability threshold (~200 ms) for live two-way
+ * voice. See spike 0d in the spike-results memo for the root-cause
+ * analysis.
+ */
+export const BATCH_T = 8;
+
+/**
  * Encoder output bundle. Shapes follow `Dfn3ModelIOSpec` from `types.ts`
- * with the time dimension fixed at T=1 (streaming, one frame at a time).
- *
- * All tensors are typed Float32Array. The worker is responsible for
- * extracting them from `ort.Tensor` outputs.
+ * with the time dimension fixed at T=BATCH_T (one ONNX call processes
+ * BATCH_T audio hops). All tensors are typed Float32Array. The worker is
+ * responsible for extracting them from `ort.Tensor` outputs.
  */
 export interface EncoderOutputs {
-  e0: Float32Array; // [1, 64, 1, 32]
-  e1: Float32Array; // [1, 64, 1, 16]
-  e2: Float32Array; // [1, 64, 1, 8]
-  e3: Float32Array; // [1, 64, 1, 8]
-  emb: Float32Array; // [1, 1, 512]
-  c0: Float32Array; // [1, 64, 1, 96]
-  lsnr: Float32Array; // [1, 1, 1]
+  e0: Float32Array; // [1, 64, BATCH_T, 32]
+  e1: Float32Array; // [1, 64, BATCH_T, 16]
+  e2: Float32Array; // [1, 64, BATCH_T, 8]
+  e3: Float32Array; // [1, 64, BATCH_T, 8]
+  emb: Float32Array; // [1, BATCH_T, 512]
+  c0: Float32Array; // [1, 64, BATCH_T, 96]
+  lsnr: Float32Array; // [1, BATCH_T, 1]
 }
 
 export interface EncoderInputs {
-  featErb: Float32Array; // [1, 1, 1, 32]
-  featSpec: Float32Array; // [1, 2, 1, 96]
+  featErb: Float32Array; // [1, 1, BATCH_T, 32]
+  featSpec: Float32Array; // [1, 2, BATCH_T, 96]
 }
 
 export interface ErbDecoderInputs {
@@ -158,10 +170,31 @@ export class Dfn3Pipeline {
   private readonly specOut: Float32Array;
 
   // Reusable scratch tensors.
-  private readonly featErb: Float32Array;
-  private readonly featSpec: Float32Array;
+  private readonly featErb: Float32Array; // [1, 1, BATCH_T, nb_erb] — accumulator
+  private readonly featSpec: Float32Array; // [1, 2, BATCH_T, nb_df] — accumulator
   private readonly tmpErbPower: Float32Array;
   private readonly tmpCplx: Float32Array; // length 2 * nb_df
+
+  // Frame batching state. Per processFrame call we accumulate one slot
+  // of features into featErb/featSpec. When `batchFill === BATCH_T`, we
+  // call all three sub-graphs (encoder + erb_dec + df_dec) with T=BATCH_T,
+  // slice the per-frame ERB masks and DF coefs into a queue, and consume
+  // them on the subsequent processFrame calls.
+  //
+  // The v2 ONNX exports were re-baked with T=BATCH_T, so calling any of
+  // the three sub-graphs with T=1 throws a shape mismatch — they all run
+  // in lock-step.
+  private batchFill = 0;
+  // Per-frame ERB masks and DF coefs sliced from the batched decoder
+  // outputs. Indexed 0..BATCH_T-1 within a batch.
+  private readonly maskCache: Float32Array[] = [];
+  private readonly coefsCache: Float32Array[] = [];
+  private readonly lsnrCache: Float32Array[] = [];
+  // Index into the cache for the next consume.
+  private cacheConsumeIdx = 0;
+  // Whether the very first batch has been issued. Until it is, the
+  // cache is empty and processFrame returns silence (warm-up).
+  private firstBatchIssued = false;
 
   constructor(
     private readonly backend: Dfn3InferenceBackend,
@@ -194,17 +227,29 @@ export class Dfn3Pipeline {
     }
     this.specOut = new Float32Array(2 * this.nFreqs);
 
-    this.featErb = new Float32Array(hp.nbErb);
-    this.featSpec = new Float32Array(2 * hp.nbDf);
+    // featErb: [1, 1, BATCH_T, nb_erb] — accumulator across BATCH_T frames
+    this.featErb = new Float32Array(BATCH_T * hp.nbErb);
+    // featSpec: [1, 2, BATCH_T, nb_df]  — channel-major (real then imag),
+    // with the time dimension (BATCH_T) inside each channel block. Layout:
+    //   [ch=0, t=0..BATCH_T-1, k=0..nb_df-1, ch=1, t=0..BATCH_T-1, k=0..nb_df-1]
+    this.featSpec = new Float32Array(2 * BATCH_T * hp.nbDf);
     this.tmpErbPower = new Float32Array(hp.nbErb);
     this.tmpCplx = new Float32Array(2 * hp.nbDf);
   }
 
   /**
    * Process one `hopSize`-sample input frame and return one `hopSize`-sample
-   * cleaned output frame. Output is delayed by `lookahead + 1` hops vs. the
-   * input (one hop is the inherent STFT framing delay; the rest comes from
-   * the conv + DF lookahead).
+   * cleaned output frame.
+   *
+   * **Frame batching semantics (Phase 1.5):** the encoder is called once
+   * per BATCH_T frames. Per-frame STFT and feature extraction still happen
+   * here, but we accumulate the features into a BATCH_T-sized buffer and
+   * trigger the encoder run only when the buffer fills. The decoders + DSP
+   * still run per-frame using the cached per-frame encoder outputs.
+   *
+   * Output is delayed by `BATCH_T + lookahead` hops vs. the input. The
+   * first BATCH_T calls return zero-filled output (warm-up); from call
+   * BATCH_T+1 onwards each call produces a cleaned hop.
    */
   async processFrame(input: Float32Array, output: Float32Array): Promise<number> {
     if (input.length !== this.hp.hopSize) {
@@ -223,71 +268,123 @@ export class Dfn3Pipeline {
     this.rollingX.push(droppedX);
     this.rollingY.push(droppedY);
     this.stft.analyse(input, droppedX);
-    // y starts as a copy of x; ERB gain is applied to y in step 6.
     droppedY.set(droppedX);
 
-    // 2) ERB log-power features (in place on tmpErbPower).
+    // 2) ERB log-power features for THIS frame, written into the
+    //    accumulator at slot `batchFill`.
     computeBandCorr(this.tmpErbPower, droppedX, this.erbFb);
     for (let i = 0; i < this.hp.nbErb; i++) {
       this.tmpErbPower[i] = Math.log10(this.tmpErbPower[i] + 1e-10) * 10;
     }
     bandMeanNormErb(this.tmpErbPower, this.meanNormState, this.alpha);
-    // featErb shape [1,1,1,nbErb] — single time step.
-    for (let i = 0; i < this.hp.nbErb; i++) this.featErb[i] = this.tmpErbPower[i];
-
-    // 3) Complex feat_spec = unit-norm of low-band spectrum (first nb_df bins).
-    for (let i = 0; i < 2 * this.hp.nbDf; i++) this.tmpCplx[i] = droppedX[i];
-    bandUnitNorm(this.tmpCplx, this.unitNormState, this.alpha);
-    // featSpec layout: ONNX expects [1, 2, T=1, nb_df] where the channel
-    // axis splits real/imag. Re-pack.
-    for (let k = 0; k < this.hp.nbDf; k++) {
-      this.featSpec[k] = this.tmpCplx[2 * k];
-      this.featSpec[this.hp.nbDf + k] = this.tmpCplx[2 * k + 1];
+    // featErb layout [1, 1, BATCH_T, nb_erb] → row-major offset for slot t:
+    //   featErb[t * nb_erb + i]
+    {
+      const base = this.batchFill * this.hp.nbErb;
+      for (let i = 0; i < this.hp.nbErb; i++) {
+        this.featErb[base + i] = this.tmpErbPower[i];
+      }
     }
 
-    // 4) Run encoder.
-    const enc = await this.backend.runEncoder({
-      featErb: this.featErb,
-      featSpec: this.featSpec,
-    });
+    // 3) Complex feat_spec for THIS frame (unit-norm of low-band).
+    for (let i = 0; i < 2 * this.hp.nbDf; i++) this.tmpCplx[i] = droppedX[i];
+    bandUnitNorm(this.tmpCplx, this.unitNormState, this.alpha);
+    // featSpec layout [1, 2, BATCH_T, nb_df] → channel-major:
+    //   featSpec[ch * BATCH_T * nb_df + t * nb_df + k]
+    {
+      const tStride = this.hp.nbDf;
+      const chStride = BATCH_T * tStride;
+      const baseRe = 0 * chStride + this.batchFill * tStride;
+      const baseIm = 1 * chStride + this.batchFill * tStride;
+      for (let k = 0; k < this.hp.nbDf; k++) {
+        this.featSpec[baseRe + k] = this.tmpCplx[2 * k];
+        this.featSpec[baseIm + k] = this.tmpCplx[2 * k + 1];
+      }
+    }
 
-    // 5) Run ERB decoder + DF decoder. (libDF gates these on lsnr; we
-    // always run both for simplicity in Phase 1 and let the ONNX outputs
-    // determine the gain — gating is a future optimisation.)
-    const erbDec = await this.backend.runErbDecoder({
-      emb: enc.emb,
-      e3: enc.e3,
-      e2: enc.e2,
-      e1: enc.e1,
-      e0: enc.e0,
-    });
-    const dfDec = await this.backend.runDfDecoder({
-      emb: enc.emb,
-      c0: enc.c0,
-    });
+    this.batchFill++;
 
-    // 6) Apply ERB band gains to the y-buffer frame at index (df_order - 1)
-    //    from the back, matching libDF's `rolling_spec_buf_y.get_mut(df_order - 1)`.
-    //    Note libDF's deque uses index 0 = front (oldest), so `get(df_order - 1)`
-    //    is the (df_order - 1)-th-from-front element, which equals
-    //    `bufferLen - 1 - (df_order - 1)` from the back when bufferLen = df_order + lookahead.
-    //    Wait — libDF uses index `df_order - 1` directly (not `bufferLen - df_order`).
-    //    Let me match exactly: `rolling_spec_buf_y[df_order - 1]`.
+    // 4) If we just filled a batch, run encoder + both decoders (all
+    //    baked at T=BATCH_T) and slice per-frame ERB masks + DF coefs
+    //    into the cache.
+    if (this.batchFill === BATCH_T) {
+      const encBatched = await this.backend.runEncoder({
+        featErb: this.featErb,
+        featSpec: this.featSpec,
+      });
+      // Decoders are baked at T=BATCH_T too — pass the encoder outputs
+      // through directly.
+      const erbBatched = await this.backend.runErbDecoder({
+        emb: encBatched.emb,
+        e3: encBatched.e3,
+        e2: encBatched.e2,
+        e1: encBatched.e1,
+        e0: encBatched.e0,
+      });
+      const dfBatched = await this.backend.runDfDecoder({
+        emb: encBatched.emb,
+        c0: encBatched.c0,
+      });
+
+      this.maskCache.length = 0;
+      this.coefsCache.length = 0;
+      this.lsnrCache.length = 0;
+      this.cacheConsumeIdx = 0;
+
+      // ERB mask `m` shape [1, 1, BATCH_T, nb_erb] — time-major.
+      // Per-frame slice = contiguous chunk of nb_erb floats.
+      for (let t = 0; t < BATCH_T; t++) {
+        const buf = new Float32Array(this.hp.nbErb);
+        for (let k = 0; k < this.hp.nbErb; k++) {
+          buf[k] = erbBatched.m[t * this.hp.nbErb + k];
+        }
+        this.maskCache.push(buf);
+      }
+      // DF coefs `coefs` shape [1, BATCH_T, nb_df, 2*df_order].
+      const coefsPerFrame = this.hp.nbDf * this.hp.dfOrder * 2;
+      for (let t = 0; t < BATCH_T; t++) {
+        const buf = new Float32Array(coefsPerFrame);
+        const base = t * coefsPerFrame;
+        for (let k = 0; k < coefsPerFrame; k++) {
+          buf[k] = dfBatched.coefs[base + k];
+        }
+        this.coefsCache.push(buf);
+      }
+      // lsnr shape [1, BATCH_T, 1]: contiguous BATCH_T scalars.
+      for (let t = 0; t < BATCH_T; t++) {
+        const buf = new Float32Array(1);
+        buf[0] = encBatched.lsnr[t];
+        this.lsnrCache.push(buf);
+      }
+
+      this.batchFill = 0;
+      this.firstBatchIssued = true;
+    }
+
+    // 5) Warmup: no decoder output yet → emit silence.
+    if (!this.firstBatchIssued || this.cacheConsumeIdx >= this.maskCache.length) {
+      output.fill(0);
+      return 0;
+    }
+
+    // 6) Consume the next per-frame mask + coefs.
+    const m = this.maskCache[this.cacheConsumeIdx];
+    const coefs = this.coefsCache[this.cacheConsumeIdx];
+    const lsnr = this.lsnrCache[this.cacheConsumeIdx];
+    this.cacheConsumeIdx++;
+
+    // 7) Apply ERB gains to the y-buffer frame at index (df_order - 1).
     const targetIdxLibDf = this.hp.dfOrder - 1;
     const targetY = this.rollingY[targetIdxLibDf];
-    applyInterpBandGain(targetY, erbDec.m, this.erbFb);
+    applyInterpBandGain(targetY, m, this.erbFb);
 
-    // 7) Copy the gained y-frame into specOut, then deep-filter the lowest
-    //    nb_df bins of specOut, reading from the full noisy x-buffer. libDF
-    //    passes the entire `rolling_spec_buf_x` (length max(df_order,
-    //    lookahead) == df_order for DFN3) to `df()` — every frame is used.
+    // 8) Deep-filter.
     this.specOut.set(targetY);
-    applyDeepFilter(this.rollingX, dfDec.coefs, this.hp.nbDf, this.hp.dfOrder, this.specOut);
+    applyDeepFilter(this.rollingX, coefs, this.hp.nbDf, this.hp.dfOrder, this.specOut);
 
-    // 8) iSTFT specOut to produce hopSize output samples.
+    // 9) iSTFT.
     this.istft.synthesise(this.specOut, output);
 
-    // Return local SNR estimate for diagnostics.
-    return enc.lsnr[0] ?? 0;
+    return lsnr[0] ?? 0;
   }
 }

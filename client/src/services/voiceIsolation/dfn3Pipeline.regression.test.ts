@@ -36,6 +36,7 @@ import { fileURLToPath } from 'node:url';
 import * as ort from 'onnxruntime-node';
 
 import {
+  BATCH_T,
   DFN3_HYPERPARAMS,
   Dfn3Pipeline,
   type Dfn3InferenceBackend,
@@ -168,9 +169,11 @@ class OrtNodeBackend implements Dfn3InferenceBackend {
 
   async runEncoder(inputs: EncoderInputs): Promise<EncoderOutputs> {
     const { nbErb, nbDf } = DFN3_HYPERPARAMS;
+    // Frame batching: encoder is now called once per BATCH_T input frames.
+    // Inputs are shape [1, 1, BATCH_T, nb_erb] / [1, 2, BATCH_T, nb_df].
     const feeds = {
-      feat_erb: new ort.Tensor('float32', inputs.featErb, [1, 1, 1, nbErb]),
-      feat_spec: new ort.Tensor('float32', inputs.featSpec, [1, 2, 1, nbDf]),
+      feat_erb: new ort.Tensor('float32', inputs.featErb, [1, 1, BATCH_T, nbErb]),
+      feat_spec: new ort.Tensor('float32', inputs.featSpec, [1, 2, BATCH_T, nbDf]),
       erb_ctx: new ort.Tensor('float32', this.erbCtx, [...STATE_SHAPES.erb_ctx]),
       spec_ctx: new ort.Tensor('float32', this.specCtx, [...STATE_SHAPES.spec_ctx]),
       h_enc: new ort.Tensor('float32', this.hEnc, [...STATE_SHAPES.h_enc]),
@@ -192,11 +195,11 @@ class OrtNodeBackend implements Dfn3InferenceBackend {
 
   async runErbDecoder(inputs: ErbDecoderInputs): Promise<ErbDecoderOutputs> {
     const feeds = {
-      emb: new ort.Tensor('float32', inputs.emb, [1, 1, 512]),
-      e3: new ort.Tensor('float32', inputs.e3, [1, 64, 1, 8]),
-      e2: new ort.Tensor('float32', inputs.e2, [1, 64, 1, 8]),
-      e1: new ort.Tensor('float32', inputs.e1, [1, 64, 1, 16]),
-      e0: new ort.Tensor('float32', inputs.e0, [1, 64, 1, 32]),
+      emb: new ort.Tensor('float32', inputs.emb, [1, BATCH_T, 512]),
+      e3: new ort.Tensor('float32', inputs.e3, [1, 64, BATCH_T, 8]),
+      e2: new ort.Tensor('float32', inputs.e2, [1, 64, BATCH_T, 8]),
+      e1: new ort.Tensor('float32', inputs.e1, [1, 64, BATCH_T, 16]),
+      e0: new ort.Tensor('float32', inputs.e0, [1, 64, BATCH_T, 32]),
       h_erb: new ort.Tensor('float32', this.hErb, [...STATE_SHAPES.h_erb]),
     };
     const out = await this.erbDec.run(feeds);
@@ -206,8 +209,8 @@ class OrtNodeBackend implements Dfn3InferenceBackend {
 
   async runDfDecoder(inputs: DfDecoderInputs): Promise<DfDecoderOutputs> {
     const feeds = {
-      emb: new ort.Tensor('float32', inputs.emb, [1, 1, 512]),
-      c0: new ort.Tensor('float32', inputs.c0, [1, 64, 1, 96]),
+      emb: new ort.Tensor('float32', inputs.emb, [1, BATCH_T, 512]),
+      c0: new ort.Tensor('float32', inputs.c0, [1, 64, BATCH_T, 96]),
       c0_ctx: new ort.Tensor('float32', this.c0Ctx, [...STATE_SHAPES.c0_ctx]),
       h_df: new ort.Tensor('float32', this.hDf, [...STATE_SHAPES.h_df]),
     };
@@ -284,6 +287,16 @@ describe('DFN3 numerical regression vs upstream Python reference', () => {
   // regenerated, this test should pass without further TS changes. Until
   // then it stays skipped so CI stays green. The smoke-level sanity test
   // further down still runs and catches gross regressions.
+  // Phase 1.5 frame batching brought SNR from -0.84 dB to -0.57 dB but
+  // didn't reach the 6 dB threshold. Root cause: the per-frame cache
+  // consumption breaks the libDF rolling-buffer-target alignment because
+  // each cached mask gets applied to a historical spectrum that has
+  // shifted out of position relative to when the mask was computed. Full
+  // fix requires either extending the rolling buffer to BATCH_T + lookahead
+  // entries AND threading per-batch consume indices, or running the entire
+  // DSP loop in lockstep with the batched encoder call. Both are non-
+  // trivial DSP refactors deferred to a follow-up session. See spike 0d
+  // and the Phase 1.5 commit messages for the detailed analysis.
   it.skip(
     `matches df.enhance() within ${SNR_THRESHOLD_DB} dB SNR`,
     async () => {

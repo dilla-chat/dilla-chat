@@ -25,6 +25,7 @@
 
 import * as ort from 'onnxruntime-web';
 import {
+  BATCH_T,
   DFN3_HYPERPARAMS,
   Dfn3Pipeline,
   type Dfn3InferenceBackend,
@@ -141,9 +142,11 @@ class OrtBackend implements Dfn3InferenceBackend {
   async runEncoder(inputs: EncoderInputs): Promise<EncoderOutputs> {
     const { nbErb, nbDf } = DFN3_HYPERPARAMS;
     const shapes = this.stateShapes;
+    // Frame batching: encoder is called once per BATCH_T input frames.
+    // Inputs are shape [1, 1, BATCH_T, nb_erb] / [1, 2, BATCH_T, nb_df].
     const feeds = {
-      feat_erb: new ort.Tensor('float32', inputs.featErb, [1, 1, 1, nbErb]),
-      feat_spec: new ort.Tensor('float32', inputs.featSpec, [1, 2, 1, nbDf]),
+      feat_erb: new ort.Tensor('float32', inputs.featErb, [1, 1, BATCH_T, nbErb]),
+      feat_spec: new ort.Tensor('float32', inputs.featSpec, [1, 2, BATCH_T, nbDf]),
       erb_ctx: new ort.Tensor('float32', this.erbCtx, shapes.erb_ctx.slice()),
       spec_ctx: new ort.Tensor('float32', this.specCtx, shapes.spec_ctx.slice()),
       h_enc: new ort.Tensor('float32', this.hEnc, shapes.h_enc.slice()),
@@ -168,16 +171,14 @@ class OrtBackend implements Dfn3InferenceBackend {
   }
 
   async runErbDecoder(inputs: ErbDecoderInputs): Promise<ErbDecoderOutputs> {
-    // Encoder output shapes from spike memo:
-    //   emb [1, 1, 512]    e0 [1, 64, 1, 32]    e1 [1, 64, 1, 16]
-    //   e2  [1, 64, 1, 8]  e3 [1, 64, 1, 8]
+    // Decoders are baked at T=BATCH_T, matching the batched encoder.
     const shapes = this.stateShapes;
     const feeds = {
-      emb: new ort.Tensor('float32', inputs.emb, [1, 1, 512]),
-      e3: new ort.Tensor('float32', inputs.e3, [1, 64, 1, 8]),
-      e2: new ort.Tensor('float32', inputs.e2, [1, 64, 1, 8]),
-      e1: new ort.Tensor('float32', inputs.e1, [1, 64, 1, 16]),
-      e0: new ort.Tensor('float32', inputs.e0, [1, 64, 1, 32]),
+      emb: new ort.Tensor('float32', inputs.emb, [1, BATCH_T, 512]),
+      e3: new ort.Tensor('float32', inputs.e3, [1, 64, BATCH_T, 8]),
+      e2: new ort.Tensor('float32', inputs.e2, [1, 64, BATCH_T, 8]),
+      e1: new ort.Tensor('float32', inputs.e1, [1, 64, BATCH_T, 16]),
+      e0: new ort.Tensor('float32', inputs.e0, [1, 64, BATCH_T, 32]),
       h_erb: new ort.Tensor('float32', this.hErb, shapes.h_erb.slice()),
     };
     const out = await this.sessions.erbDec.run(feeds);
@@ -188,8 +189,8 @@ class OrtBackend implements Dfn3InferenceBackend {
   async runDfDecoder(inputs: DfDecoderInputs): Promise<DfDecoderOutputs> {
     const shapes = this.stateShapes;
     const feeds = {
-      emb: new ort.Tensor('float32', inputs.emb, [1, 1, 512]),
-      c0: new ort.Tensor('float32', inputs.c0, [1, 64, 1, 96]),
+      emb: new ort.Tensor('float32', inputs.emb, [1, BATCH_T, 512]),
+      c0: new ort.Tensor('float32', inputs.c0, [1, 64, BATCH_T, 96]),
       c0_ctx: new ort.Tensor('float32', this.c0Ctx, shapes.c0_ctx.slice()),
       h_df: new ort.Tensor('float32', this.hDf, shapes.h_df.slice()),
     };

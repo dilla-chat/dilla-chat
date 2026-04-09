@@ -57,6 +57,12 @@ H_ENC_SHAPE = (1, 1, 256)
 H_ERB_SHAPE = (2, 1, 256)
 H_DF_SHAPE = (2, 1, 256)
 
+# Frame batching: the encoder is called with this many frames at a time.
+# At T=8 (8 hops × 10 ms = 80 ms batch), the model's 2-frame look-ahead
+# (pad_feat) becomes a within-batch reorder rather than a per-frame
+# misalignment, so the streaming output matches libDF's behavior.
+BATCH_T = 8
+
 
 def _neutralise_temporal_pad(conv_norm_act: nn.Module) -> None:
     first = conv_norm_act[0]
@@ -134,40 +140,17 @@ class StreamingDfDecoder(nn.Module):
 def _export_and_inline(module, dummy, out_path: Path, input_names, output_names, dynamic_axes) -> None:
     """Export via the dynamo exporter (required for Python 3.14 / torch 2.11),
     then rewrite the resulting model so all weights live inside the single
-    .onnx file instead of a sidecar .onnx.data blob. Keeping things in a
-    single file simplifies the manifest + modelLoader fetch flow.
+    .onnx file instead of a sidecar .onnx.data blob.
 
-    Note: with `dynamo=True` (the default in torch 2.11), the legacy
-    `dynamic_axes` parameter is silently ignored. We must translate it to
-    the new `dynamic_shapes` format using `torch.export.Dim` tokens, keyed
-    by the positional argument index — otherwise the tracer bakes the
-    dummy's literal shapes (T=1) into Reshape ops in the graph and the
-    exported ONNX rejects T>1 inputs.
+    Note: T is now baked at BATCH_T (see top-level constant). Streaming
+    inference uses frame batching at the dispatcher level: the inferenceWorker
+    accumulates BATCH_T frames of features before calling the encoder, which
+    sidesteps the 2-frame time-shift bug documented in spike 0d.
     """
-    import inspect
     import onnx
-    from torch.export import Dim, export as te_export
-
-    # Use Dim.AUTO so dynamo decides which dims can actually be dynamic
-    # vs which need to be specialized. This handles inner-module view()
-    # calls that bake constants while still allowing T to flow through
-    # when the model permits.
-    sig = inspect.signature(module.forward)
-    param_names = list(sig.parameters.keys())
-
-    dynamic_shapes_dict: dict[str, dict[int, object] | None] = {}
-    for i, pname in enumerate(param_names):
-        onnx_name = input_names[i] if i < len(input_names) else pname
-        axes = dynamic_axes.get(onnx_name)
-        if axes is None:
-            dynamic_shapes_dict[pname] = None
-            continue
-        dynamic_shapes_dict[pname] = {axis: Dim.AUTO for axis in axes.keys()}
-
-    exported = te_export(module, dummy, dynamic_shapes=dynamic_shapes_dict, strict=False)
 
     torch.onnx.export(
-        exported, dummy, str(out_path), opset_version=OPSET,
+        module, dummy, str(out_path), opset_version=OPSET,
         input_names=input_names,
         output_names=output_names,
         do_constant_folding=True,
@@ -185,11 +168,11 @@ def _export_and_inline(module, dummy, out_path: Path, input_names, output_names,
 
 
 def export_encoder(enc_wrap, out_path: Path) -> None:
-    # Use dummy T=2 (not T=1) so the dynamo tracer doesn't specialize
-    # T to a literal 1 inside DFN3's inner view() calls.
+    # Bake T=BATCH_T into the export. The streaming worker will buffer
+    # BATCH_T frames before each encoder call.
     dummy = (
-        torch.zeros(1, 1, 2, NB_ERB),
-        torch.zeros(1, 2, 2, NB_DF),
+        torch.zeros(1, 1, BATCH_T, NB_ERB),
+        torch.zeros(1, 2, BATCH_T, NB_DF),
         torch.zeros(1, 1, CONV_CTX_ENC_ERB, NB_ERB),
         torch.zeros(1, 2, CONV_CTX_ENC_DF, NB_DF),
         torch.zeros(*H_ENC_SHAPE),
@@ -201,39 +184,31 @@ def export_encoder(enc_wrap, out_path: Path) -> None:
             "e0", "e1", "e2", "e3", "emb", "c0", "lsnr",
             "erb_ctx_out", "spec_ctx_out", "h_enc_out",
         ],
-        dynamic_axes={
-            "feat_erb": {2: "T"}, "feat_spec": {2: "T"},
-            "e0": {2: "T"}, "e1": {2: "T"}, "e2": {2: "T"}, "e3": {2: "T"},
-            "emb": {1: "T"}, "c0": {2: "T"}, "lsnr": {1: "T"},
-        },
+        dynamic_axes={},
     )
 
 
 def export_erb_dec(dec_wrap, out_path: Path) -> None:
     dummy = (
-        torch.zeros(1, 2, 512),
-        torch.zeros(1, 64, 2, 8),
-        torch.zeros(1, 64, 2, 8),
-        torch.zeros(1, 64, 2, 16),
-        torch.zeros(1, 64, 2, 32),
+        torch.zeros(1, BATCH_T, 512),
+        torch.zeros(1, 64, BATCH_T, 8),
+        torch.zeros(1, 64, BATCH_T, 8),
+        torch.zeros(1, 64, BATCH_T, 16),
+        torch.zeros(1, 64, BATCH_T, 32),
         torch.zeros(*H_ERB_SHAPE),
     )
     _export_and_inline(
         dec_wrap, dummy, out_path,
         input_names=["emb", "e3", "e2", "e1", "e0", "h_erb"],
         output_names=["m", "h_erb_out"],
-        dynamic_axes={
-            "emb": {1: "T"},
-            "e3": {2: "T"}, "e2": {2: "T"}, "e1": {2: "T"}, "e0": {2: "T"},
-            "m": {2: "T"},
-        },
+        dynamic_axes={},
     )
 
 
 def export_df_dec(dec_wrap, out_path: Path) -> None:
     dummy = (
-        torch.zeros(1, 2, 512),
-        torch.zeros(1, 64, 2, NB_DF),
+        torch.zeros(1, BATCH_T, 512),
+        torch.zeros(1, 64, BATCH_T, NB_DF),
         torch.zeros(1, 64, CONV_CTX_DF_DEC, NB_DF),
         torch.zeros(*H_DF_SHAPE),
     )
@@ -241,9 +216,7 @@ def export_df_dec(dec_wrap, out_path: Path) -> None:
         dec_wrap, dummy, out_path,
         input_names=["emb", "c0", "c0_ctx", "h_df"],
         output_names=["coefs", "c0_ctx_out", "h_df_out"],
-        dynamic_axes={
-            "emb": {1: "T"}, "c0": {2: "T"}, "coefs": {1: "T"},
-        },
+        dynamic_axes={},
     )
 
 
