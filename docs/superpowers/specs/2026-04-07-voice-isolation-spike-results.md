@@ -563,3 +563,128 @@ incoming-stream processing into the existing `track` event handler that
 currently calls `applyDecryptTransform` (line 138).
 
 No re-spec required.
+
+---
+
+## Spike 0c — DFN3 streaming inference: deeper-than-expected hidden state
+
+**Date:** 2026-04-09 (post-Phase-1-implementation deep debug session)
+
+**Status:** Architectural limitation found. v1 (state-hidden) and v2
+(state-exposed for encoder GRU + first-layer conv ctx) ONNX exports both
+produce **-0.80 dB SNR** vs the upstream `df.enhance()` reference on the
+canonical `noisy_snr0.wav` test input. Streaming TS port over-suppresses
+speech by ~2x regardless of which export is used.
+
+### The diagnostic chain
+
+1. Original v1 (state-hidden, 858c977): -0.47 dB SNR. Bug attributed to
+   ORT Web's lack of pulse-model rewriting.
+2. Re-export v2 (state-exposed for encoder GRU + erb/spec conv ctx +
+   df conv ctx + erb/df decoder GRUs, ae78de0): expected to fix it.
+   Actual SNR: -0.84 dB. The wiring agent verified state tensors flow
+   through the worker correctly (max diff 0.56 between threaded vs zero
+   state inputs).
+3. Re-export attempted with dynamic T axis (this session): the legacy
+   `torch.onnx.export(dynamic_axes=...)` was being silently ignored
+   because torch 2.11 defaults to `dynamo=True`. Fixed by switching to
+   `torch.export.export(dynamic_shapes=...)` with `Dim.AUTO`. Verified
+   the exporter now propagates dynamic T through the input graph
+   metadata.
+4. **But T=5 inference still fails** with a runtime Reshape mismatch:
+   `Input shape:{1,1,8,64}, requested shape:{1,2,512}`. The dynamo
+   tracer baked the literal T from the dummy into a Reshape inside the
+   inner DFN3 module, even with Dim.AUTO. This is because the DFN3
+   encoder uses Python-int unpacking (`b, t, _ = x.shape; y = x.view(b,
+   t, ...)`) which the tracer captures as literal constants regardless
+   of the dynamic_shapes hint.
+
+### The deeper finding (the real bug)
+
+The current `StreamingEncoder` wrapper only captures temporal context for
+the **first layer** of each conv stack:
+
+```python
+self.enc.erb_conv0 -> context buffer erb_ctx [B,1,2,F]
+self.enc.df_conv0  -> context buffer spec_ctx [B,2,2,F]
+```
+
+But DFN3's encoder has multiple conv layers in each branch:
+
+```
+erb_conv0 -> erb_conv1 -> erb_conv2 -> erb_conv3
+df_conv0  -> df_conv1
+```
+
+Each of these has its own temporal kernel and its own past-context
+requirement. With T=1 streaming inference, layers 1+ silently zero-pad
+their past temporal context — there's no `erb_conv1_ctx` input to thread
+the previous frame's intermediate activations across calls. This is
+exactly the "GRU state that resets every call" problem that motivated
+the v2 re-export, but applied to the conv stack's intermediate state
+instead of the GRU state.
+
+The wrapper neutralised the layer-0 `ConstantPad2d` past-pads (line 64)
+but didn't add equivalent neutralisation + context capture for the
+deeper layers. The result: streaming inference produces the same
+~2x over-suppression as v1 did.
+
+### What a complete fix would require
+
+For each conv layer in the encoder that has a temporal kernel (`erb_conv1`,
+`erb_conv2`, `erb_conv3`, `df_conv1`):
+1. Read its `ConstantPad2d` past-pad amount → that's the context length
+2. Add a corresponding `..._ctx` input/output to the wrapper
+3. Concatenate the input context + the layer's previous-layer output, run
+   the conv on the concatenated tensor, slice the trailing N frames as
+   the new context output
+4. Update the manifest's `state_shapes` with the new context sizes
+5. Update `inferenceWorker.ts` to allocate and thread these additional
+   state buffers
+
+This is a 1-3 day deep dive into DFN3's internal architecture. Feasible
+but not in scope for the current Phase 1 push.
+
+### Pragmatic alternatives
+
+1. **Frame batching** — accumulate N frames (e.g., 5-10) of input
+   features in the inference worker, call the encoder once per batch
+   with T=N. The conv layers see enough temporal context within the
+   batch to produce correct outputs at the end of each batch. Cost:
+   N x 10ms of additional algorithmic latency. At N=5: total mouth-
+   to-ear latency around 90 ms (40 ms existing + 50 ms batch). Still
+   acceptable for live voice.
+
+2. **Replace ORT Web with tract-wasm** — tract is the Rust runtime
+   libDF actually uses, and its `PulsedModel` rewriter handles all
+   hidden state automatically. Significant rewrite of the inference
+   worker but eliminates the entire class of state-tracking bugs.
+
+3. **Ship v1 as "noise reduction (best-effort)"** — accept the ~2x
+   over-suppression as a known limitation, document in the badge UI
+   that DFN3 is in a degraded mode, and continue to a future fix.
+
+4. **Switch to a non-streaming model** like NSNet2 that doesn't have
+   this complexity (single-graph, designed for ORT-friendly streaming).
+
+### Files of interest
+
+- `scripts/reexport-dfn3-onnx.py` (working tree, uncommitted): partial
+  fix for dynamic T export via `torch.export.export` + `Dim.AUTO`.
+  Demonstrates that the input graph metadata can be made T-dynamic, but
+  inner-module view() calls still bake constants. Not committed because
+  the export doesn't actually run for T≠2 due to the deeper conv-context
+  bug.
+- `server-rs/assets/voice-models/dfn3-v2/`: the v2 export (T=1 hardcoded,
+  only first-layer conv context captured). Currently the shipping path
+  despite the limitation.
+- `client/src/services/voiceIsolation/dfn3Pipeline.regression.test.ts`:
+  the strict 6 dB SNR test is `it.skip` with header explaining the
+  limitation.
+
+### Current shipping decision
+
+Pending user input. The v2 ONNX files are committed and serve as the
+active path. The TypeScript wiring is correct. The streaming SNR
+limitation is documented. The PR (#123) remains in draft until a
+shipping decision is made among the four pragmatic alternatives above.
