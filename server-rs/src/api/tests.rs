@@ -3545,15 +3545,24 @@ async fn voice_models_manifest_returns_json_with_three_subgraphs() {
 
     let body = body_bytes(resp.into_body()).await;
     let manifest: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(manifest["version"], 1);
+    assert_eq!(manifest["version"], 2);
     for sub in ["enc", "erb_dec", "df_dec"] {
         let entry = &manifest["dfn3"][sub];
         let sha = entry["sha256"].as_str().unwrap_or_default();
         assert_eq!(sha.len(), 64, "{} sha256 should be 64 hex chars", sub);
         let url = entry["url"].as_str().unwrap_or_default();
-        assert!(url.starts_with("/api/voice/models/dfn3-v1/"), "{}", url);
+        assert!(url.starts_with("/api/voice/models/dfn3-v2/"), "{}", url);
     }
     assert_eq!(manifest["dfn3"]["config"]["sample_rate"], 48000);
+    // v2: config must include state_shapes for all six stateful tensors so
+    // the client worker can allocate correctly-shaped zero state buffers.
+    let state_shapes = &manifest["dfn3"]["config"]["state_shapes"];
+    for name in ["erb_ctx", "spec_ctx", "h_enc", "h_erb", "c0_ctx", "h_df"] {
+        let arr = state_shapes[name]
+            .as_array()
+            .unwrap_or_else(|| panic!("state_shapes.{} missing", name));
+        assert!(!arr.is_empty(), "state_shapes.{} empty", name);
+    }
 }
 
 #[tokio::test]
@@ -3566,7 +3575,7 @@ async fn voice_models_serve_returns_each_dfn3_subgraph() {
             .clone()
             .oneshot(
                 Request::builder()
-                    .uri(format!("/api/voice/models/dfn3-v1/{}", sub))
+                    .uri(format!("/api/voice/models/dfn3-v2/{}", sub))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -3593,9 +3602,9 @@ async fn voice_models_serve_404s_unknown_path() {
     let app = test_router(state);
 
     for bad in [
-        "dfn3-v1/nonexistent.onnx",
-        "dfn3-v1/enc.bin",
-        "dfn3-v2/enc.onnx",
+        "dfn3-v2/nonexistent.onnx",
+        "dfn3-v2/enc.bin",
+        "dfn3-v1/enc.onnx",
     ] {
         let resp = app
             .clone()

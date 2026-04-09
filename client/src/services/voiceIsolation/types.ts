@@ -40,6 +40,30 @@ export interface Dfn3ModelIOSpec {
   lookaheadFrames: 4;
 }
 
+/**
+ * Shapes of the streaming state tensors threaded through the three DFN3
+ * sub-graphs. The v2 ONNX re-export exposes these as explicit inputs/outputs
+ * so the worker can persist the encoder's conv temporal contexts and all
+ * three GRU hidden states across T=1 per-frame calls.
+ *
+ * Names match the ONNX graph tensor names exactly (verified via
+ * `onnx.load().graph.input` on the committed `dfn3-v2/*.onnx` files):
+ *   - `erb_ctx`  — encoder conv lookahead buffer for feat_erb
+ *   - `spec_ctx` — encoder conv lookahead buffer for feat_spec
+ *   - `h_enc`    — encoder GRU hidden state
+ *   - `h_erb`    — ERB decoder GRU hidden state (2 layers)
+ *   - `c0_ctx`   — DF decoder conv temporal context on c0
+ *   - `h_df`     — DF decoder GRU hidden state (2 layers)
+ */
+export interface Dfn3StateShapes {
+  erb_ctx: readonly number[];
+  spec_ctx: readonly number[];
+  h_enc: readonly number[];
+  h_erb: readonly number[];
+  c0_ctx: readonly number[];
+  h_df: readonly number[];
+}
+
 export interface PerStreamStats {
   framesProcessed: number;
   framesDropped: number;

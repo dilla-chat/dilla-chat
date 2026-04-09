@@ -69,7 +69,7 @@ const FAKE_LOADED_MODEL: modelLoader.LoadedDfn3Model = {
   encBytes: new Uint8Array([1]),
   erbDecBytes: new Uint8Array([2]),
   dfDecBytes: new Uint8Array([3]),
-  version: 1,
+  version: 2,
   config: {
     sample_rate: 48000,
     fft_size: 960,
@@ -78,6 +78,14 @@ const FAKE_LOADED_MODEL: modelLoader.LoadedDfn3Model = {
     nb_df: 96,
     df_order: 5,
     lookahead_frames: 4,
+    state_shapes: {
+      erb_ctx: [1, 1, 2, 32],
+      spec_ctx: [1, 2, 2, 96],
+      h_enc: [1, 1, 256],
+      h_erb: [2, 1, 256],
+      c0_ctx: [1, 64, 4, 96],
+      h_df: [2, 1, 256],
+    },
   },
 };
 

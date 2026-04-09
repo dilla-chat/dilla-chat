@@ -17,11 +17,19 @@ const SAMPLE_CONFIG = {
   nb_df: 96,
   df_order: 5,
   lookahead_frames: 4,
+  state_shapes: {
+    erb_ctx: [1, 1, 2, 32],
+    spec_ctx: [1, 2, 2, 96],
+    h_enc: [1, 1, 256],
+    h_erb: [2, 1, 256],
+    c0_ctx: [1, 64, 4, 96],
+    h_df: [2, 1, 256],
+  },
 };
 
 function makeManifest(overrides: Partial<Dfn3Manifest> = {}): Dfn3Manifest {
   return {
-    version: 1,
+    version: 2,
     minClientVersion: 0,
     dfn3: {
       enc: {
@@ -166,7 +174,7 @@ describe('loadDfn3Model', () => {
     expect(result.encBytes).toEqual(enc);
     expect(result.erbDecBytes).toEqual(erbDec);
     expect(result.dfDecBytes).toEqual(dfDec);
-    expect(result.version).toBe(1);
+    expect(result.version).toBe(2);
     expect(result.config.sample_rate).toBe(48000);
   });
 

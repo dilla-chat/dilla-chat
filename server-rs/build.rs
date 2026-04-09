@@ -18,7 +18,7 @@ fn main() {
     println!("cargo:rerun-if-changed=assets/voice-models");
 
     let models_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/voice-models");
-    let dfn3_dir = models_dir.join("dfn3-v1");
+    let dfn3_dir = models_dir.join("dfn3-v2");
 
     let enc_path = dfn3_dir.join("enc.onnx");
     let erb_dec_path = dfn3_dir.join("erb_dec.onnx");
@@ -34,13 +34,20 @@ fn main() {
     let erb_dec_hash = hash_file(&erb_dec_path);
     let df_dec_hash = hash_file(&df_dec_path);
 
+    // v2 manifest: the DFN3 sub-graphs have been re-exported with explicit
+    // streaming state I/O (conv temporal contexts + GRU hidden states). The
+    // client must thread these as inputs/outputs across frames to preserve
+    // the encoder's recurrent state between calls. See
+    // `scripts/reexport-dfn3-onnx.py` for the export itself and
+    // `docs/voice-isolation/reexport-notes.md` for background.
     let manifest = serde_json::json!({
-        "version": 1,
+        "version": 2,
         "minClientVersion": 0,
         "dfn3": {
-            "enc":     { "url": "/api/voice/models/dfn3-v1/enc.onnx",     "sha256": enc_hash },
-            "erb_dec": { "url": "/api/voice/models/dfn3-v1/erb_dec.onnx", "sha256": erb_dec_hash },
-            "df_dec":  { "url": "/api/voice/models/dfn3-v1/df_dec.onnx",  "sha256": df_dec_hash },
+            "streaming": true,
+            "enc":     { "url": "/api/voice/models/dfn3-v2/enc.onnx",     "sha256": enc_hash },
+            "erb_dec": { "url": "/api/voice/models/dfn3-v2/erb_dec.onnx", "sha256": erb_dec_hash },
+            "df_dec":  { "url": "/api/voice/models/dfn3-v2/df_dec.onnx",  "sha256": df_dec_hash },
             "config": {
                 "sample_rate": 48000,
                 "fft_size": 960,
@@ -48,7 +55,15 @@ fn main() {
                 "nb_erb": 32,
                 "nb_df": 96,
                 "df_order": 5,
-                "lookahead_frames": 4
+                "lookahead_frames": 4,
+                "state_shapes": {
+                    "erb_ctx":  [1, 1, 2, 32],
+                    "spec_ctx": [1, 2, 2, 96],
+                    "h_enc":    [1, 1, 256],
+                    "h_erb":    [2, 1, 256],
+                    "c0_ctx":   [1, 64, 4, 96],
+                    "h_df":     [2, 1, 256]
+                }
             }
         }
     });

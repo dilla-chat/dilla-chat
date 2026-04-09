@@ -7,7 +7,9 @@
 // ONNX sub-graphs, so the loader returns three Uint8Arrays and caches each
 // under a separate IndexedDB key.
 
-const SUPPORTED_MANIFEST_VERSION = 1;
+import type { Dfn3StateShapes } from './types';
+
+const SUPPORTED_MANIFEST_VERSION = 2;
 const DB_NAME = 'dilla-voice-models';
 const STORE_NAME = 'models';
 
@@ -34,6 +36,12 @@ export interface Dfn3Config {
   nb_df: number;
   df_order: number;
   lookahead_frames: number;
+  /**
+   * Streaming-state tensor shapes (v2 manifest only). Mirrors the JSON
+   * manifest's `dfn3.config.state_shapes` object verbatim. Present when the
+   * server ships the v2 re-exported ONNX sub-graphs with explicit state I/O.
+   */
+  state_shapes: Dfn3StateShapes;
 }
 
 export interface Dfn3Manifest {
@@ -70,6 +78,28 @@ function isSubGraphEntry(value: unknown): value is Dfn3SubGraphEntry {
   );
 }
 
+const STATE_SHAPE_KEYS = [
+  'erb_ctx',
+  'spec_ctx',
+  'h_enc',
+  'h_erb',
+  'c0_ctx',
+  'h_df',
+] as const;
+
+function isStateShapes(value: unknown): value is Dfn3StateShapes {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  for (const k of STATE_SHAPE_KEYS) {
+    const dim = v[k];
+    if (!Array.isArray(dim) || dim.length === 0) return false;
+    for (const d of dim) {
+      if (typeof d !== 'number' || !Number.isInteger(d) || d <= 0) return false;
+    }
+  }
+  return true;
+}
+
 function isDfn3Config(value: unknown): value is Dfn3Config {
   if (typeof value !== 'object' || value === null) return false;
   const v = value as Record<string, unknown>;
@@ -80,7 +110,8 @@ function isDfn3Config(value: unknown): value is Dfn3Config {
     typeof v.nb_erb === 'number' &&
     typeof v.nb_df === 'number' &&
     typeof v.df_order === 'number' &&
-    typeof v.lookahead_frames === 'number'
+    typeof v.lookahead_frames === 'number' &&
+    isStateShapes(v.state_shapes)
   );
 }
 

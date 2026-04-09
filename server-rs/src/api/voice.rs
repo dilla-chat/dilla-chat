@@ -27,9 +27,9 @@ struct VoiceModels;
 /// The DFN3 model ships as three ONNX sub-graphs in a versioned subdirectory.
 /// Anything not in this list returns 404 to prevent path traversal attacks.
 const ALLOWED_MODEL_PATHS: &[&str] = &[
-    "dfn3-v1/enc.onnx",
-    "dfn3-v1/erb_dec.onnx",
-    "dfn3-v1/df_dec.onnx",
+    "dfn3-v2/enc.onnx",
+    "dfn3-v2/erb_dec.onnx",
+    "dfn3-v2/df_dec.onnx",
 ];
 
 pub async fn models_manifest() -> Response {
