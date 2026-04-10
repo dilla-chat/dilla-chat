@@ -154,13 +154,6 @@ function readWavF32(buf: Buffer): WavData {
  * exercises the same state-carrying path.
  */
 class OrtNodeBackend implements Dfn3InferenceBackend {
-  private erbCtx = new Float32Array(stateSize(STATE_SHAPES.erb_ctx));
-  private specCtx = new Float32Array(stateSize(STATE_SHAPES.spec_ctx));
-  private hEnc = new Float32Array(stateSize(STATE_SHAPES.h_enc));
-  private hErb = new Float32Array(stateSize(STATE_SHAPES.h_erb));
-  private c0Ctx = new Float32Array(stateSize(STATE_SHAPES.c0_ctx));
-  private hDf = new Float32Array(stateSize(STATE_SHAPES.h_df));
-
   constructor(
     private readonly encoder: ort.InferenceSession,
     private readonly erbDec: ort.InferenceSession,
@@ -169,19 +162,11 @@ class OrtNodeBackend implements Dfn3InferenceBackend {
 
   async runEncoder(inputs: EncoderInputs): Promise<EncoderOutputs> {
     const { nbErb, nbDf } = DFN3_HYPERPARAMS;
-    // Frame batching: encoder is now called once per BATCH_T input frames.
-    // Inputs are shape [1, 1, BATCH_T, nb_erb] / [1, 2, BATCH_T, nb_df].
     const feeds = {
       feat_erb: new ort.Tensor('float32', inputs.featErb, [1, 1, BATCH_T, nbErb]),
       feat_spec: new ort.Tensor('float32', inputs.featSpec, [1, 2, BATCH_T, nbDf]),
-      erb_ctx: new ort.Tensor('float32', this.erbCtx, [...STATE_SHAPES.erb_ctx]),
-      spec_ctx: new ort.Tensor('float32', this.specCtx, [...STATE_SHAPES.spec_ctx]),
-      h_enc: new ort.Tensor('float32', this.hEnc, [...STATE_SHAPES.h_enc]),
     };
     const out = await this.encoder.run(feeds);
-    this.erbCtx = new Float32Array(out.erb_ctx_out.data as Float32Array);
-    this.specCtx = new Float32Array(out.spec_ctx_out.data as Float32Array);
-    this.hEnc = new Float32Array(out.h_enc_out.data as Float32Array);
     return {
       e0: out.e0.data as Float32Array,
       e1: out.e1.data as Float32Array,
@@ -200,10 +185,8 @@ class OrtNodeBackend implements Dfn3InferenceBackend {
       e2: new ort.Tensor('float32', inputs.e2, [1, 64, BATCH_T, 8]),
       e1: new ort.Tensor('float32', inputs.e1, [1, 64, BATCH_T, 16]),
       e0: new ort.Tensor('float32', inputs.e0, [1, 64, BATCH_T, 32]),
-      h_erb: new ort.Tensor('float32', this.hErb, [...STATE_SHAPES.h_erb]),
     };
     const out = await this.erbDec.run(feeds);
-    this.hErb = new Float32Array(out.h_erb_out.data as Float32Array);
     return { m: out.m.data as Float32Array };
   }
 
@@ -211,12 +194,8 @@ class OrtNodeBackend implements Dfn3InferenceBackend {
     const feeds = {
       emb: new ort.Tensor('float32', inputs.emb, [1, BATCH_T, 512]),
       c0: new ort.Tensor('float32', inputs.c0, [1, 64, BATCH_T, 96]),
-      c0_ctx: new ort.Tensor('float32', this.c0Ctx, [...STATE_SHAPES.c0_ctx]),
-      h_df: new ort.Tensor('float32', this.hDf, [...STATE_SHAPES.h_df]),
     };
     const out = await this.dfDec.run(feeds);
-    this.c0Ctx = new Float32Array(out.c0_ctx_out.data as Float32Array);
-    this.hDf = new Float32Array(out.h_df_out.data as Float32Array);
     return { coefs: out.coefs.data as Float32Array };
   }
 }
@@ -287,16 +266,11 @@ describe('DFN3 numerical regression vs upstream Python reference', () => {
   // regenerated, this test should pass without further TS changes. Until
   // then it stays skipped so CI stays green. The smoke-level sanity test
   // further down still runs and catches gross regressions.
-  // Phase 1.5 frame batching brought SNR from -0.84 dB to -0.57 dB but
-  // didn't reach the 6 dB threshold. Root cause: the per-frame cache
-  // consumption breaks the libDF rolling-buffer-target alignment because
-  // each cached mask gets applied to a historical spectrum that has
-  // shifted out of position relative to when the mask was computed. Full
-  // fix requires either extending the rolling buffer to BATCH_T + lookahead
-  // entries AND threading per-batch consume indices, or running the entire
-  // DSP loop in lockstep with the batched encoder call. Both are non-
-  // trivial DSP refactors deferred to a follow-up session. See spike 0d
-  // and the Phase 1.5 commit messages for the detailed analysis.
+  // Remaining bug is in the TypeScript DSP pipeline (STFT/ERB/gain/DF/iSTFT),
+  // not the ONNX or state threading. With T=full-clip via a direct batched
+  // oracle test (bypassing our TS DSP) the model achieves 56 dB. Our pipeline
+  // achieves -1.5 dB even at T=300. Needs per-frame intermediate-value
+  // comparison against the Python reference to localize the divergence.
   it.skip(
     `matches df.enhance() within ${SNR_THRESHOLD_DB} dB SNR`,
     async () => {

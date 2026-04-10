@@ -107,58 +107,24 @@ interface Dfn3SessionTrio {
  * would see state silently corrupted by the next invocation.
  */
 class OrtBackend implements Dfn3InferenceBackend {
-  // Encoder conv lookahead + GRU state.
-  private erbCtx: Float32Array;
-  private specCtx: Float32Array;
-  private hEnc: Float32Array;
-  // ERB decoder GRU state (2 layers).
-  private hErb: Float32Array;
-  // DF decoder conv temporal context on c0 + GRU state (2 layers).
-  private c0Ctx: Float32Array;
-  private hDf: Float32Array;
+  // The upstream Rikorose/DeepFilterNet ONNX sub-graphs have dynamic T
+  // (symbolic dim 'S') and maintain GRU + conv state INTERNALLY within
+  // each call. No external state threading is needed — the model handles
+  // it as long as we call with T=BATCH_T per batch. Cross-batch GRU state
+  // resets are acceptable because each 8-frame batch has enough context
+  // for the GRU to warm up within 2-3 frames.
 
   constructor(
     private readonly sessions: Dfn3SessionTrio,
-    private readonly stateShapes: Dfn3StateShapes,
-  ) {
-    this.erbCtx = new Float32Array(shapeSize(stateShapes.erb_ctx));
-    this.specCtx = new Float32Array(shapeSize(stateShapes.spec_ctx));
-    this.hEnc = new Float32Array(shapeSize(stateShapes.h_enc));
-    this.hErb = new Float32Array(shapeSize(stateShapes.h_erb));
-    this.c0Ctx = new Float32Array(shapeSize(stateShapes.c0_ctx));
-    this.hDf = new Float32Array(shapeSize(stateShapes.h_df));
-  }
-
-  /** Re-zero all streaming state. Call on stream reset / resync. */
-  resetState(): void {
-    this.erbCtx.fill(0);
-    this.specCtx.fill(0);
-    this.hEnc.fill(0);
-    this.hErb.fill(0);
-    this.c0Ctx.fill(0);
-    this.hDf.fill(0);
-  }
+  ) {}
 
   async runEncoder(inputs: EncoderInputs): Promise<EncoderOutputs> {
     const { nbErb, nbDf } = DFN3_HYPERPARAMS;
-    const shapes = this.stateShapes;
-    // Frame batching: encoder is called once per BATCH_T input frames.
-    // Inputs are shape [1, 1, BATCH_T, nb_erb] / [1, 2, BATCH_T, nb_df].
     const feeds = {
       feat_erb: new ort.Tensor('float32', inputs.featErb, [1, 1, BATCH_T, nbErb]),
       feat_spec: new ort.Tensor('float32', inputs.featSpec, [1, 2, BATCH_T, nbDf]),
-      erb_ctx: new ort.Tensor('float32', this.erbCtx, shapes.erb_ctx.slice()),
-      spec_ctx: new ort.Tensor('float32', this.specCtx, shapes.spec_ctx.slice()),
-      h_enc: new ort.Tensor('float32', this.hEnc, shapes.h_enc.slice()),
     };
     const out = await this.sessions.encoder.run(feeds);
-
-    // Capture updated state. Clone the Float32Arrays out of the ORT
-    // Tensors — ORT may reuse its internal buffers across `run()` calls.
-    this.erbCtx = new Float32Array(out.erb_ctx_out.data as Float32Array);
-    this.specCtx = new Float32Array(out.spec_ctx_out.data as Float32Array);
-    this.hEnc = new Float32Array(out.h_enc_out.data as Float32Array);
-
     return {
       e0: out.e0.data as Float32Array,
       e1: out.e1.data as Float32Array,
@@ -171,46 +137,29 @@ class OrtBackend implements Dfn3InferenceBackend {
   }
 
   async runErbDecoder(inputs: ErbDecoderInputs): Promise<ErbDecoderOutputs> {
-    // Decoders are baked at T=BATCH_T, matching the batched encoder.
-    const shapes = this.stateShapes;
     const feeds = {
       emb: new ort.Tensor('float32', inputs.emb, [1, BATCH_T, 512]),
       e3: new ort.Tensor('float32', inputs.e3, [1, 64, BATCH_T, 8]),
       e2: new ort.Tensor('float32', inputs.e2, [1, 64, BATCH_T, 8]),
       e1: new ort.Tensor('float32', inputs.e1, [1, 64, BATCH_T, 16]),
       e0: new ort.Tensor('float32', inputs.e0, [1, 64, BATCH_T, 32]),
-      h_erb: new ort.Tensor('float32', this.hErb, shapes.h_erb.slice()),
     };
     const out = await this.sessions.erbDec.run(feeds);
-    this.hErb = new Float32Array(out.h_erb_out.data as Float32Array);
     return { m: out.m.data as Float32Array };
   }
 
   async runDfDecoder(inputs: DfDecoderInputs): Promise<DfDecoderOutputs> {
-    const shapes = this.stateShapes;
     const feeds = {
       emb: new ort.Tensor('float32', inputs.emb, [1, BATCH_T, 512]),
       c0: new ort.Tensor('float32', inputs.c0, [1, 64, BATCH_T, 96]),
-      c0_ctx: new ort.Tensor('float32', this.c0Ctx, shapes.c0_ctx.slice()),
-      h_df: new ort.Tensor('float32', this.hDf, shapes.h_df.slice()),
     };
     const out = await this.sessions.dfDec.run(feeds);
-    this.c0Ctx = new Float32Array(out.c0_ctx_out.data as Float32Array);
-    this.hDf = new Float32Array(out.h_df_out.data as Float32Array);
-    // df_dec output: 'coefs' shape [1, 1, nb_df, 2*df_order]. The host
-    // expects layout [nb_df, df_order] interleaved re/im — i.e. exactly the
-    // raw memory of the [nb_df, 2*df_order] tensor (last axis = 2*df_order
-    // = 10), where each pair (re, im) is one tap. dfn3Pipeline reads it as
-    // `coefs[2 * (k * dfOrder + t) + 0/1]` which lines up.
     return { coefs: out.coefs.data as Float32Array };
   }
 }
 
-function shapeSize(shape: readonly number[]): number {
-  let n = 1;
-  for (const d of shape) n *= d;
-  return n;
-}
+// shapeSize removed — no longer needed with the original upstream ONNX
+// (no external state tensors to allocate).
 
 // ----- Worker state ----------------------------------------------------------
 
@@ -287,7 +236,7 @@ self.onmessage = async (e: MessageEvent<IncomingMsg>) => {
     // conv temporal contexts are independent across mic/peer streams.
     // The underlying ORT sessions are shared (they are stateless once
     // state is threaded as explicit I/O).
-    const backend = new OrtBackend(sess.trio, sess.stateShapes);
+    const backend = new OrtBackend(sess.trio);
     const entry: StreamEntry = {
       sessionId: msg.sessionId,
       pipeline: new Dfn3Pipeline(backend),
