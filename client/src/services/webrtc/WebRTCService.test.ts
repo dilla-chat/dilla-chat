@@ -363,6 +363,23 @@ describe('WebRTCService', () => {
       expect(useVoiceStore.getState().peerConnection).not.toBeNull();
     });
 
+    it('passes mic track through addTrack unchanged when noise suppression is off', async () => {
+      // setupStores() sets noiseSuppression: false. The voice isolation
+      // dispatcher must stay dormant and addTrack must receive the raw
+      // audio track straight from the local MediaStream — no wrapping.
+      useAudioSettingsStore.setState({ noiseSuppression: false });
+
+      await webrtcService.connect('ch-1', 'team-1');
+
+      const localStream = (webrtcService as any).localStream;
+      const rawTrack = localStream?.getAudioTracks()[0];
+      expect(rawTrack).toBeDefined();
+      expect(mockPc.addTrack).toHaveBeenCalled();
+      const firstCallTrack = (mockPc.addTrack as ReturnType<typeof vi.fn>).mock
+        .calls[0]?.[0];
+      expect(firstCallTrack).toBe(rawTrack);
+    });
+
     it('connects with push-to-talk enabled', async () => {
       useAudioSettingsStore.setState({ pushToTalk: true, pushToTalkKey: 'KeyV' });
       await webrtcService.connect('ch-1', 'team-1');

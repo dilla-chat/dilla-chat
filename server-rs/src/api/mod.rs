@@ -101,6 +101,10 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/version", get(version))
         .route("/api/v1/config", get(get_config))
         .route("/theme/custom.css", get(theme::get_custom_theme))
+        // Voice isolation model assets — manifest + DFN3 sub-graphs.
+        // Public so the client can fetch before WS auth completes.
+        .route("/api/voice/models/manifest.json", get(voice::models_manifest))
+        .route("/api/voice/models/{*path}", get(voice::models_serve))
         .merge(auth_routes)
         .route(
             "/api/v1/invites/{token}/info",

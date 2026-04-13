@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 export type InputProfile = 'voice-isolation' | 'studio' | 'custom';
-export type NoiseSuppressionMode = 'none' | 'browser';
+export type NoiseSuppressionMode = 'none' | 'browser' | 'dfn3';
 
 interface AudioSettingsStore {
   echoCancellation: boolean;
@@ -52,7 +52,7 @@ export const useAudioSettingsStore = create<AudioSettingsStore>()(
       setInputProfile: (v) => {
         const updates: Partial<AudioSettingsStore> = { inputProfile: v };
         if (v === 'voice-isolation') {
-          updates.noiseSuppressionMode = 'browser';
+          updates.noiseSuppressionMode = 'dfn3';
           updates.noiseSuppression = true;
           updates.echoCancellation = true;
           updates.autoGainControl = true;
@@ -70,6 +70,10 @@ export const useAudioSettingsStore = create<AudioSettingsStore>()(
         const updates: Partial<AudioSettingsStore> = { noiseSuppressionMode: v };
         if (v === 'none') {
           updates.noiseSuppression = false;
+        } else if (v === 'dfn3') {
+          // Keep browser NS on — it helps the VAD see a clean signal.
+          // DFN3 adds deeper suppression on top in the WebRTC pipeline.
+          updates.noiseSuppression = true;
         } else if (v === 'browser') {
           updates.noiseSuppression = true;
         }

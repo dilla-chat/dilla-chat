@@ -282,6 +282,19 @@
     "andMore": "and {{count}} more",
     "search": "Search emoji..."
   },
+  "noiseSuppression": {
+    "heading": "Noise Suppression",
+    "help": "Removes background noise from your voice and from peers in voice channels using DeepFilterNet 3 (runs locally on your device, never sends audio anywhere).",
+    "toggle": "Enabled",
+    "active": "Noise suppression active",
+    "diagnostics": "Diagnostics (local only)",
+    "diagnosticsMedian": "Median frame time",
+    "diagnosticsP95": "p95 frame time",
+    "diagnosticsProcessed": "Frames processed",
+    "diagnosticsDropped": "Frames dropped",
+    "diagnosticsErrors": "Recent errors",
+    "noErrors": "No errors"
+  },
   "voice": {
     "join": "Join Voice",
     "leave": "Disconnect",

@@ -359,7 +359,24 @@ export default function UserSettings() {
                 >
                   <option value="none">{t('userSettings.nsNone', 'None')}</option>
                   <option value="browser">{t('userSettings.nsBrowser', 'Browser')}</option>
+                  <option value="dfn3">{t('userSettings.nsDfn3', 'DeepFilterNet 3')}</option>
                 </select>
+                <div className="settings-toggle-description">
+                  {noiseSuppressionMode === 'dfn3'
+                    ? t(
+                        'noiseSuppression.helpDfn3',
+                        'AI-powered noise suppression using DeepFilterNet 3. Runs locally on your device — never sends audio anywhere. Applied to both your mic and incoming peer audio in voice channels.',
+                      )
+                    : noiseSuppressionMode === 'browser'
+                      ? t(
+                          'noiseSuppression.helpBrowser',
+                          'Uses your browser\'s built-in noise suppression. Lightweight but less effective than DeepFilterNet 3.',
+                        )
+                      : t(
+                          'noiseSuppression.helpNone',
+                          'No noise suppression. Background noise will be transmitted as-is.',
+                        )}
+                </div>
               </div>
 
               {/* Echo Cancellation toggle */}

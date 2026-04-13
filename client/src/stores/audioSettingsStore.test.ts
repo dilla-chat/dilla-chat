@@ -36,11 +36,11 @@ describe('default values', () => {
 });
 
 describe('setInputProfile', () => {
-  it('voice-isolation sets browser suppression and processing on', () => {
+  it('voice-isolation sets dfn3 suppression and processing on', () => {
     getState().setInputProfile('studio'); // change first
     getState().setInputProfile('voice-isolation');
-    expect(getState().noiseSuppressionMode).toBe('browser');
-    expect(getState().noiseSuppression).toBe(true);
+    expect(getState().noiseSuppressionMode).toBe('dfn3');
+    expect(getState().noiseSuppression).toBe(true); // browser NS stays on for VAD; DFN3 adds deeper suppression
     expect(getState().echoCancellation).toBe(true);
     expect(getState().autoGainControl).toBe(true);
   });
@@ -66,7 +66,7 @@ describe('setInputProfile', () => {
     getState().setInputProfile('studio');
     getState().setInputProfile('voice-isolation');
     expect(getState().echoCancellation).toBe(true);
-    expect(getState().noiseSuppression).toBe(true);
+    expect(getState().noiseSuppressionMode).toBe('dfn3');
   });
 });
 
@@ -79,6 +79,12 @@ describe('setNoiseSuppressionMode', () => {
   it('browser enables native suppression', () => {
     getState().setNoiseSuppressionMode('browser');
     expect(getState().noiseSuppression).toBe(true);
+  });
+
+  it('dfn3 keeps native suppression on (helps VAD)', () => {
+    getState().setNoiseSuppressionMode('dfn3');
+    expect(getState().noiseSuppression).toBe(true);
+    expect(getState().noiseSuppressionMode).toBe('dfn3');
   });
 });
 

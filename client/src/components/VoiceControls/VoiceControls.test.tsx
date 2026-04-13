@@ -3,12 +3,18 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import VoiceControls from './VoiceControls';
 import { useVoiceStore } from '../../stores/voiceStore';
 import { useTeamStore } from '../../stores/teamStore';
+import { useAudioSettingsStore } from '../../stores/audioSettingsStore';
+import {
+  diagnostics,
+  resetDiagnosticsForTest,
+} from '../../services/voiceIsolation/diagnostics';
 
 vi.mock('@tabler/icons-react', () => ({
   IconPhoneOff: () => <span data-testid="icon-phone-xmark" />,
   IconScreenShare: () => <span data-testid="icon-screen" />,
   IconVideo: () => <span data-testid="icon-camera" />,
   IconVideoOff: () => <span data-testid="icon-camera-off" />,
+  IconWaveSine: () => <span data-testid="icon-wave-sine" />,
 }));
 
 vi.mock('../ConnectionStatus/ConnectionStatus', () => ({
@@ -47,6 +53,10 @@ describe('VoiceControls', () => {
       teams: new Map([['team-1', { id: 'team-1', name: 'My Team' }]]),
     } as never);
     setVoiceState({});
+    // Disable the noise-suppression badge by default so existing layout tests
+    // are unaffected; the dedicated NS describe block re-enables it.
+    useAudioSettingsStore.setState({ noiseSuppression: false } as never);
+    resetDiagnosticsForTest();
   });
 
   it('returns null when not connected and not connecting', () => {
@@ -207,6 +217,66 @@ describe('VoiceControls', () => {
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('[Voice] Webcam failed:'), expect.any(Error));
     });
     consoleSpy.mockRestore();
+  });
+
+  describe('noise suppression badge', () => {
+    beforeEach(() => {
+      resetDiagnosticsForTest();
+      useAudioSettingsStore.setState({ noiseSuppression: true } as never);
+    });
+
+    it('renders the noise suppression badge when noiseSuppression is enabled', () => {
+      render(<VoiceControls />);
+      expect(screen.getByTestId('voice-ns-badge')).toBeInTheDocument();
+    });
+
+    it('hides the badge when noiseSuppression is disabled', () => {
+      useAudioSettingsStore.setState({ noiseSuppression: false } as never);
+      render(<VoiceControls />);
+      expect(screen.queryByTestId('voice-ns-badge')).not.toBeInTheDocument();
+    });
+
+    it('opens the diagnostics popover when the badge is clicked', () => {
+      render(<VoiceControls />);
+      fireEvent.click(screen.getByTestId('voice-ns-badge'));
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(screen.getByText('Diagnostics (local only)')).toBeInTheDocument();
+    });
+
+    it('shows snapshot stats inside the popover', () => {
+      diagnostics.recordFrame(2);
+      diagnostics.recordFrame(4);
+      diagnostics.recordFrame(6);
+      diagnostics.recordDrop();
+      render(<VoiceControls />);
+      fireEvent.click(screen.getByTestId('voice-ns-badge'));
+      expect(screen.getByTestId('voice-ns-processed').textContent).toBe('3');
+      expect(screen.getByTestId('voice-ns-dropped').textContent).toBe('1');
+      // median of [2,4,6] = 4
+      expect(screen.getByTestId('voice-ns-median').textContent).toContain('4.00');
+    });
+
+    it('shows "no errors" placeholder when error ring is empty', () => {
+      render(<VoiceControls />);
+      fireEvent.click(screen.getByTestId('voice-ns-badge'));
+      expect(screen.getByTestId('voice-ns-no-errors')).toBeInTheDocument();
+    });
+
+    it('lists recorded errors inside the popover', () => {
+      diagnostics.recordError('inference timeout');
+      render(<VoiceControls />);
+      fireEvent.click(screen.getByTestId('voice-ns-badge'));
+      expect(screen.getByText('inference timeout')).toBeInTheDocument();
+    });
+
+    it('toggles the popover closed on a second click', () => {
+      render(<VoiceControls />);
+      const badge = screen.getByTestId('voice-ns-badge');
+      fireEvent.click(badge);
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      fireEvent.click(badge);
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
   });
 
   it('shows voice channel name fallback when channel not found', () => {

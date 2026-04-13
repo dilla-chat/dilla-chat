@@ -9,12 +9,13 @@
 
 use axum::{
     body::Body,
-    http::{header, StatusCode, Uri},
+    http::{header, HeaderValue, StatusCode, Uri},
     response::{IntoResponse, Response},
     routing::get,
     Router,
 };
 use rust_embed::Embed;
+use tower_http::set_header::SetResponseHeaderLayer;
 
 /// Embedded client dist/ directory.
 /// At compile time the `dist/` folder (relative to the crate root) is baked
@@ -35,7 +36,21 @@ struct EmbeddedFiles;
 /// ```
 #[allow(dead_code)]
 pub fn webapp_fallback() -> Router {
-    Router::new().fallback(get(serve_webapp))
+    // COOP/COEP are required for SharedArrayBuffer + cross-origin isolation,
+    // which the voice isolation pipeline (AudioWorklet + dedicated Worker)
+    // depends on. They are scoped to the webapp routes only — federation
+    // and other API endpoints must NOT have COEP=require-corp, or
+    // cross-server traffic and third-party resources will break.
+    Router::new()
+        .fallback(get(serve_webapp))
+        .layer(SetResponseHeaderLayer::overriding(
+            axum::http::header::HeaderName::from_static("cross-origin-opener-policy"),
+            HeaderValue::from_static("same-origin"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            axum::http::header::HeaderName::from_static("cross-origin-embedder-policy"),
+            HeaderValue::from_static("require-corp"),
+        ))
 }
 
 /// Main handler — decides between static file, SPA fallback, or 404.
@@ -133,6 +148,32 @@ mod tests {
                 path
             );
         }
+    }
+
+    #[tokio::test]
+    async fn webapp_routes_have_cross_origin_isolation_headers() {
+        let app = webapp_fallback();
+
+        let req = Request::builder()
+            .uri("/some/spa/route")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+
+        assert_eq!(
+            resp.headers()
+                .get("cross-origin-opener-policy")
+                .and_then(|v| v.to_str().ok()),
+            Some("same-origin"),
+            "missing/incorrect COOP header",
+        );
+        assert_eq!(
+            resp.headers()
+                .get("cross-origin-embedder-policy")
+                .and_then(|v| v.to_str().ok()),
+            Some("require-corp"),
+            "missing/incorrect COEP header",
+        );
     }
 
     #[tokio::test]

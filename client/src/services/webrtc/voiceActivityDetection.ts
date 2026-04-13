@@ -78,9 +78,11 @@ export class VoiceActivityDetector {
     rawStream: MediaStream | null,
     localStream: MediaStream | null,
     localUserId: string | null,
+    processedStream?: MediaStream | null,
   ): void {
-    // Use raw (unprocessed) stream for VAD -- gives more accurate threshold detection
-    const vadStream = rawStream ?? localStream;
+    // When DFN3 is active, use the processed stream for VAD so the
+    // speaking indicator reflects the cleaned audio, not the raw mic.
+    const vadStream = processedStream ?? rawStream ?? localStream;
     if (!vadStream) return;
 
     try {
@@ -131,6 +133,7 @@ export class VoiceActivityDetector {
       clearInterval(this.vadTimer);
       this.vadTimer = null;
     }
+    useVoiceStore.getState().setSpeaking(false);
   }
 
   /** Clean up all audio resources. Call on disconnect. */

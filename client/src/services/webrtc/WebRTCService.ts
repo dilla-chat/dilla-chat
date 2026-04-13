@@ -9,6 +9,15 @@ import { supportsE2EVoice } from '../voiceCrypto';
 import { VoiceActivityDetector } from './voiceActivityDetection';
 import { PushToTalkManager } from './pushToTalk';
 import { VoiceEncryptionManager } from './voiceEncryption';
+import {
+  initializeVoiceIsolation,
+  processIncoming as voiceIsoProcessIncoming,
+  processOutgoing as voiceIsoProcessOutgoing,
+  tearDownAll as voiceIsoTearDownAll,
+  tearDownOutgoing as voiceIsoTearDownOutgoing,
+  tearDownPeer as voiceIsoTearDownPeer,
+  type InitializedContext as VoiceIsolationContext,
+} from '../voiceIsolation/dispatcher';
 
 class WebRTCService {
   private pc: RTCPeerConnection | null = null;
@@ -28,6 +37,8 @@ class WebRTCService {
   private webcamSender: RTCRtpSender | null = null;
   private gainNode: GainNode | null = null;
   private storeUnsubscribers: Array<() => void> = [];
+  private voiceIsolationContext: VoiceIsolationContext | null = null;
+  private readonly peerIdByStreamId: Map<string, string> = new Map();
 
   // Composed modules
   private readonly vad = new VoiceActivityDetector();
@@ -104,9 +115,51 @@ class WebRTCService {
     this.pc = new RTCPeerConnection({ iceServers, iceTransportPolicy });
     store.setPeerConnection(this.pc);
 
-    // Add local tracks
+    // Initialize DFN3 voice isolation if enabled. We await the init (with
+    // a timeout) so the first voice join gets processed tracks, not just
+    // subsequent joins. The model bundle is cached in IndexedDB after the
+    // first load, so repeat joins are fast.
+    const dfn3Enabled = useAudioSettingsStore.getState().noiseSuppressionMode === 'dfn3';
+    if (dfn3Enabled && !this.voiceIsolationContext) {
+      // SharedArrayBuffer is required for the DFN3 AudioWorklet ring buffer.
+      // It's available on localhost in Chromium without COEP, but Firefox
+      // requires full cross-origin isolation. Skip init if unavailable.
+      if (typeof SharedArrayBuffer === 'undefined') {
+        console.warn('[Voice] SharedArrayBuffer not available — DFN3 disabled');
+      } else {
+        const authEntry = useAuthStore.getState().teams.get(teamId);
+        const serverUrl = authEntry?.baseUrl ?? '';
+        if (serverUrl) {
+          try {
+            const ctx = await Promise.race([
+              initializeVoiceIsolation(serverUrl),
+              new Promise<null>((resolve) => setTimeout(() => resolve(null), 10_000)),
+            ]);
+            if (ctx) {
+              this.voiceIsolationContext = ctx;
+              console.log('[Voice] DFN3 noise suppression ready');
+            } else {
+              console.warn('[Voice] DFN3 init timed out — falling back to pass-through');
+            }
+          } catch (err) {
+            console.error('[Voice] DFN3 init failed:', err);
+          }
+        }
+      }
+    }
+
+    // Add local tracks. Wrap audio tracks with the voice isolation pipeline
+    // when available.
+    let dfn3ProcessedStream: MediaStream | null = null;
     for (const track of this.localStream.getTracks()) {
-      this.pc.addTrack(track, this.localStream);
+      const processed =
+        dfn3Enabled && this.voiceIsolationContext && track.kind === 'audio'
+          ? voiceIsoProcessOutgoing(this.voiceIsolationContext, track)
+          : track;
+      if (processed !== track) {
+        dfn3ProcessedStream = new MediaStream([processed]);
+      }
+      this.pc.addTrack(processed, this.localStream);
     }
 
     // Set up E2E voice encryption if supported
@@ -151,18 +204,41 @@ class WebRTCService {
           useVoiceStore.getState().setRemoteScreenStream(stream);
         }
       } else {
+        // Extract userId from stream ID (format: "stream-{userId}") for
+        // both VAD analyser labeling and voice-isolation peer keying.
+        const userId = stream.id.startsWith('stream-') ? stream.id.slice(7) : undefined;
+
+        // Run incoming audio through the DFN3 pipeline when isolation is
+        // enabled and the dispatcher has finished initializing. Otherwise
+        // pass through. SFrame decryption is applied upstream by
+        // `applyDecryptTransform` on the RTCRtpReceiver, so by the time
+        // we see the MediaStreamTrack here the bytes are already
+        // plaintext PCM.
+        const dfn3EnabledForIncoming = useAudioSettingsStore.getState().noiseSuppressionMode === 'dfn3';
+        const peerId = userId ?? streamId;
+        let playbackStream: MediaStream = stream;
+        if (dfn3EnabledForIncoming && this.voiceIsolationContext) {
+          const processedTrack = voiceIsoProcessIncoming(
+            this.voiceIsolationContext,
+            track,
+            peerId,
+          );
+          if (processedTrack !== track) {
+            playbackStream = new MediaStream([processedTrack]);
+            this.peerIdByStreamId.set(streamId, peerId);
+          }
+        }
+
         // Audio track -- must append to DOM for playback in some browsers
-        this.remoteStreams.set(streamId, stream);
+        this.remoteStreams.set(streamId, playbackStream);
         const audio = document.createElement('audio');
-        audio.srcObject = stream;
+        audio.srcObject = playbackStream;
         audio.autoplay = true;
         audio.dataset.streamId = streamId;
         audio.volume = useUserSettingsStore.getState().outputVolume;
         audio.style.display = 'none';
         document.body.appendChild(audio);
         audio.play().catch(() => {});
-        // Extract userId from stream ID (format: "stream-{userId}")
-        const userId = stream.id.startsWith('stream-') ? stream.id.slice(7) : undefined;
         this.vad.addRemoteAnalyser(stream, userId);
       }
     };
@@ -176,8 +252,9 @@ class WebRTCService {
     // Setup push-to-talk if enabled
     this.ptt.setupPTT(this.localStream, this.teamId, this.channelId);
 
-    // Start VAD
-    this.vad.startVAD(this.rawStream, this.localStream, this.localUserId);
+    // Start VAD — use DFN3-processed stream when available so the speaking
+    // indicator reflects the cleaned audio, not raw mic noise.
+    this.vad.startVAD(this.rawStream, this.localStream, this.localUserId, dfn3ProcessedStream);
 
     // Send WS join (server will send voice:state + voice:offer back via WS)
     console.log('[Voice] Sending WS voice:join for channel', channelId);
@@ -278,6 +355,7 @@ class WebRTCService {
       }),
       ws.on('voice:user-left', (payload: { user_id: string }) => {
         store().removePeer(payload.user_id);
+        voiceIsoTearDownPeer(payload.user_id);
         if (payload.user_id !== this.localUserId) playLeaveSound();
       }),
       ws.on('voice:speaking', (payload: { user_id: string; speaking: boolean }) => {
@@ -424,6 +502,13 @@ class WebRTCService {
     }
 
     this.remoteStreams.clear();
+    this.peerIdByStreamId.clear();
+
+    // Tear down DFN3 voice-isolation pipelines (per-peer + outgoing),
+    // terminate the inference worker, and close its audio context. The
+    // next voice join will lazy-reinit from scratch.
+    voiceIsoTearDownAll();
+    this.voiceIsolationContext = null;
 
     // Remove orphaned audio elements from DOM
     document.querySelectorAll('audio[data-stream-id]').forEach((el) => el.remove());
@@ -462,6 +547,12 @@ class WebRTCService {
       }
       // Stop VAD so it doesn't try to read a dead stream
       this.vad.stopVAD();
+      // Clear per-peer speaking state for the local user
+      if (this.localUserId && store.peers[this.localUserId]) {
+        store.updatePeer(this.localUserId, { voiceLevel: 0, speaking: false });
+      }
+      // Tear down the DFN3 outgoing pipeline so it stops processing silence
+      voiceIsoTearDownOutgoing();
 
       // Replace the sender's track with null (sends silence)
       const sender = this.pc.getSenders().find((s) => s.track?.kind === 'audio');
@@ -490,15 +581,26 @@ class WebRTCService {
         gainNode.connect(destination);
         this.localStream = destination.stream;
 
-        // Replace sender track with new processed audio
-        const newTrack = this.localStream.getAudioTracks()[0];
+        // Replace sender track with new processed audio, wrapping through
+        // DFN3 if voice isolation is active.
+        let newTrack: MediaStreamTrack | undefined = this.localStream.getAudioTracks()[0];
+        if (
+          newTrack &&
+          this.voiceIsolationContext &&
+          useAudioSettingsStore.getState().noiseSuppressionMode === 'dfn3'
+        ) {
+          newTrack = voiceIsoProcessOutgoing(this.voiceIsolationContext, newTrack);
+        }
         const sender = this.pc.getSenders().find((s) => s.track === null || s.track?.kind === 'audio');
         if (sender && newTrack) {
           await sender.replaceTrack(newTrack);
         }
 
-        // Restart VAD
-        this.vad.startVAD(this.rawStream, this.localStream, this.localUserId);
+        // Restart VAD — use DFN3-processed stream when available
+        const processedStream = newTrack && newTrack !== this.localStream.getAudioTracks()[0]
+          ? new MediaStream([newTrack])
+          : null;
+        this.vad.startVAD(this.rawStream, this.localStream, this.localUserId, processedStream);
 
         store.setLocalStream(this.localStream);
       } catch (err) {

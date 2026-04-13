@@ -108,6 +108,8 @@ vi.mock('react-i18next', () => ({
 // ─── Cleanup after each test ────────────────────────────────────────────────
 afterEach(() => {
   cleanup();
-  sessionStorage.clear();
-  localStorage.clear();
+  // Guard for tests that opt into the `node` environment via
+  // `// @vitest-environment node` — those don't have window storage globals.
+  if (typeof sessionStorage !== 'undefined') sessionStorage.clear();
+  if (typeof localStorage !== 'undefined') localStorage.clear();
 });
