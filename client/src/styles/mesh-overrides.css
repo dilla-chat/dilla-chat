@@ -1162,41 +1162,73 @@
   border-radius: 0;
 }
 
-/* ===== Settings modal ===== */
+/* ===== Settings overlay (handoff .settings) ===== */
 
-[data-theme='mesh'] .settings-modal,
-[data-theme='mesh'] .settings-modal-content {
-  background: var(--surface);
-  border: 0.0625rem solid var(--accent);
-  border-radius: var(--r-md);
-  font-family: var(--font-ui);
+[data-theme='mesh'] .settings-overlay {
+  background: var(--bg);
 }
 
-[data-theme='mesh'] .settings-nav,
-[data-theme='mesh'] .settings-sidebar {
+[data-theme='mesh'] .settings-nav-wrapper {
   background: var(--bg-2);
-  border-right: 0.0625rem solid var(--hairline);
+  border-right: 0.0625rem solid var(--hairline-2, var(--hairline));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+[data-theme='mesh'] .settings-nav-header {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+[data-theme='mesh'] .settings-nav-separator {
+  background: var(--hairline);
 }
 
 [data-theme='mesh'] .settings-nav-item {
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  padding: 0.4375rem 0.625rem;
+  border-radius: var(--r-sm);
+  font-family: var(--font-ui);
+  font-size: 0.78125rem;
   color: var(--fg-2);
-  border-radius: 0;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+[data-theme='mesh'] .settings-nav-item:hover {
+  background: var(--surface-hi);
+  color: var(--fg);
 }
 
 [data-theme='mesh'] .settings-nav-item.active {
-  color: var(--accent);
   background: var(--accent-soft);
-  border-left: 0.125rem solid var(--accent);
+  color: var(--accent);
+  font-weight: 500;
+  border-left: none;
+}
+
+[data-theme='mesh'] .settings-nav-item.danger {
+  color: var(--danger);
+}
+
+[data-theme='mesh'] .settings-nav-item.danger:hover {
+  background: rgba(255, 110, 110, 0.12);
+  color: var(--danger);
+}
+
+[data-theme='mesh'] .settings-content-wrapper {
+  background: var(--bg);
 }
 
 [data-theme='mesh'] .settings-pane-title,
 [data-theme='mesh'] .settings-section-title {
   font-family: var(--font-display);
   font-weight: var(--fw-display, 700);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 [data-theme='mesh'] .settings-row-label {
@@ -1205,6 +1237,28 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--fg-2);
+}
+
+[data-theme='mesh'] .settings-close-btn {
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--r-sm);
+  border: 0.0625rem solid var(--hairline-2, var(--hairline));
+  background: var(--surface);
+  color: var(--fg-2);
+}
+
+[data-theme='mesh'] .settings-close-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--surface);
+}
+
+[data-theme='mesh'] .settings-close-esc {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.06em;
+  color: var(--fg-3);
 }
 
 [data-theme='mesh'] .settings-row-hint {
@@ -1448,6 +1502,118 @@
 [data-theme='mesh'] .toast-close:hover {
   background: var(--surface-hi);
   color: var(--fg);
+}
+
+/* ===== Status picker dropdown (handoff .status-pop) ===== */
+
+[data-theme='mesh'] dialog.status-picker {
+  width: 16.25rem;
+  min-width: 16.25rem;
+  background: var(--surface);
+  border: 0.0625rem solid var(--hairline-2, var(--hairline));
+  border-radius: var(--r-md);
+  box-shadow: 0 0.75rem 1.875rem rgba(0, 0, 0, 0.5);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  padding: 0.375rem 0;
+}
+
+[data-theme='mesh'] .status-picker-header {
+  font-family: var(--font-mono);
+  font-size: 0.59375rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+  padding: 0.375rem 0.875rem 0.5rem;
+}
+
+[data-theme='mesh'] .status-picker-options {
+  gap: 0;
+}
+
+[data-theme='mesh'] .status-picker-option {
+  padding: 0.375rem 0.875rem;
+  border-radius: 0;
+  font-family: var(--font-ui);
+  font-size: 0.78125rem;
+  color: var(--fg);
+  gap: 0.5rem;
+}
+
+[data-theme='mesh'] .status-picker-option:hover {
+  background: var(--surface-hi);
+  color: var(--accent);
+}
+
+[data-theme='mesh'] .status-picker-option.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+[data-theme='mesh'] .status-picker-divider {
+  background: var(--hairline);
+  margin: 0.25rem 0;
+}
+
+[data-theme='mesh'] .status-picker-custom {
+  padding: 0.5rem 0.875rem;
+}
+
+[data-theme='mesh'] .status-picker-custom-label {
+  font-family: var(--font-mono);
+  font-size: 0.59375rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+  margin-bottom: 0.375rem;
+}
+
+[data-theme='mesh'] .status-picker-custom-input {
+  background: var(--bg);
+  border: 0.0625rem solid var(--hairline-2, var(--hairline));
+  border-radius: var(--r-sm);
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  padding: 0.375rem 0.5rem;
+}
+
+[data-theme='mesh'] .status-picker-custom-input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+[data-theme='mesh'] .status-picker-btn {
+  border-radius: var(--r-sm);
+  font-family: var(--font-ui);
+}
+
+[data-theme='mesh'] .status-picker-btn.save {
+  background: var(--accent);
+  color: var(--accent-ink, #111);
+  border: 0.0625rem solid var(--accent);
+  box-shadow: none;
+  filter: none;
+  font-weight: 600;
+  font-size: 0.6875rem;
+  padding: 0.375rem 0.625rem;
+}
+
+[data-theme='mesh'] .status-picker-btn.save:hover {
+  background: var(--accent-2, var(--accent));
+  filter: none;
+  box-shadow: none;
+}
+
+[data-theme='mesh'] .status-picker-btn.clear {
+  font-size: 0.6875rem;
+  color: var(--fg-3);
+  text-decoration: underline dotted;
+  padding: 0;
+}
+
+[data-theme='mesh'] .status-picker-btn.clear:hover {
+  color: var(--accent);
+  background: transparent;
 }
 
 /* ===== Profile popover ===== */
