@@ -10,6 +10,7 @@ vi.mock('@tabler/icons-react', () => ({
   IconMoodSmile: () => <span data-testid="icon-emoji" />,
   IconPlus: () => <span data-testid="icon-plus" />,
   IconArrowBackUp: () => <span data-testid="icon-reply" />,
+  IconArrowForwardUp: () => <span data-testid="icon-forward" />,
   IconMessages: () => <span data-testid="icon-threads" />,
   IconEdit: () => <span data-testid="icon-edit" />,
   IconTrash: () => <span data-testid="icon-trash" />,

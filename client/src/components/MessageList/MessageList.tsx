@@ -2,7 +2,7 @@ import { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { IconMoodSmile, IconPlus, IconArrowBackUp, IconMessages, IconEdit, IconTrash, IconMessage, IconArrowDown } from '@tabler/icons-react';
+import { IconMoodSmile, IconPlus, IconArrowBackUp, IconArrowForwardUp, IconMessages, IconEdit, IconTrash, IconMessage, IconArrowDown } from '@tabler/icons-react';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import { useMessageStore, type Message } from '../../stores/messageStore';
 import { useTeamStore, type Member } from '../../stores/teamStore';
@@ -327,6 +327,31 @@ export default function MessageList({
                           <IconMessages size={20} stroke={1.75} />
                         </button>
                       )}
+                      <button
+                        className="message-action-btn clickable"
+                        onClick={() =>
+                          window.dispatchEvent(
+                            new CustomEvent('mesh:open-forward', {
+                              detail: {
+                                messageId: msg.id,
+                                channelId: msg.channelId,
+                                author: msg.username,
+                                timestamp: new Date(
+                                  msg.createdAt,
+                                ).toLocaleTimeString([], {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                  hour12: false,
+                                }),
+                                body: msg.content,
+                              },
+                            }),
+                          )
+                        }
+                        title={t('messages.forward', 'Forward')}
+                      >
+                        <IconArrowForwardUp size={20} stroke={1.75} />
+                      </button>
                       {msg.authorId === currentUserId && onEdit && (
                         <button
                           className="message-action-btn clickable"
