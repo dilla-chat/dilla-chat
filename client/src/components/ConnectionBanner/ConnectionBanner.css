@@ -1,0 +1,80 @@
+.connection-banner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  background: var(--surface, var(--bg-floating));
+  border-bottom: 1px solid var(--hairline, var(--divider));
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--fg-2, var(--text-secondary));
+  flex-shrink: 0;
+  animation: connection-banner-slide-down 0.18s ease-out;
+}
+
+@keyframes connection-banner-slide-down {
+  from {
+    max-height: 0;
+    opacity: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+  to {
+    max-height: 40px;
+    opacity: 1;
+  }
+}
+
+.connection-banner-label {
+  text-transform: uppercase;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: var(--r-sm, 0);
+  background: var(--surface-2, var(--bg-modifier-hover));
+  flex-shrink: 0;
+}
+
+.connection-banner-reconnecting .connection-banner-label {
+  background: var(--accent-soft, rgba(124, 255, 142, 0.14));
+  color: var(--accent, var(--brand-500));
+  border: 1px solid var(--accent, var(--brand-500));
+}
+
+.connection-banner-offline .connection-banner-label,
+.connection-banner-error .connection-banner-label {
+  background: rgba(255, 110, 110, 0.16);
+  color: var(--danger, var(--text-danger));
+  border: 1px solid var(--danger, var(--text-danger));
+}
+
+.connection-banner-restored .connection-banner-label {
+  background: var(--accent-soft, rgba(124, 255, 142, 0.14));
+  color: var(--accent, var(--brand-500));
+  border: 1px solid var(--accent, var(--brand-500));
+}
+
+.connection-banner-message {
+  flex: 1;
+  color: var(--fg, var(--text-primary));
+  font-family: var(--font-ui);
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.connection-banner-close {
+  background: none;
+  border: none;
+  color: var(--fg-3, var(--text-muted));
+  cursor: pointer;
+  padding: 2px 6px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1;
+}
+
+.connection-banner-close:hover {
+  color: var(--fg, var(--interactive-hover));
+}

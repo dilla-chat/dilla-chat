@@ -37,6 +37,7 @@ import { useLayoutStore } from '../stores/layoutStore';
 import MeshTopBar from '../components/MeshChrome/MeshTopBar';
 import MeshBottomBar from '../components/MeshChrome/MeshBottomBar';
 import CommandPalette, { type PaletteCommand } from '../components/CommandPalette/CommandPalette';
+import ConnectionBanner from '../components/ConnectionBanner/ConnectionBanner';
 import { useMeshStore } from '../stores/meshStore';
 import { useUserSettingsStore } from '../stores/userSettingsStore';
 import './AppLayout.css';
@@ -571,6 +572,8 @@ export default function AppLayout() {
         data-bottombar={bottomBarEnabled || undefined}
       >
         {!isMobile && topBarEnabled && <MeshTopBar />}
+
+        <ConnectionBanner />
 
         {!isMobile && (
           <div
