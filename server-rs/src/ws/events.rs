@@ -17,6 +17,7 @@ pub const EVENT_VOICE_JOIN: &str = "voice:join";
 pub const EVENT_VOICE_LEAVE: &str = "voice:leave";
 pub const EVENT_VOICE_ANSWER: &str = "voice:answer";
 pub const EVENT_VOICE_ICE_CANDIDATE: &str = "voice:ice-candidate";
+pub const EVENT_VOICE_INVITE: &str = "voice:invite";
 pub const EVENT_VOICE_MUTE: &str = "voice:mute";
 pub const EVENT_VOICE_DEAFEN: &str = "voice:deafen";
 pub const EVENT_VOICE_SCREEN_START: &str = "voice:screen-start";
@@ -74,6 +75,7 @@ pub const EVENT_REACTION_ADDED: &str = "reaction:added";
 pub const EVENT_REACTION_REMOVED: &str = "reaction:removed";
 
 // Voice server events
+pub const EVENT_VOICE_INCOMING_CALL: &str = "voice:incoming-call";
 pub const EVENT_VOICE_OFFER: &str = "voice:offer";
 pub const EVENT_VOICE_USER_JOINED: &str = "voice:user-joined";
 pub const EVENT_VOICE_USER_LEFT: &str = "voice:user-left";
@@ -211,6 +213,22 @@ pub struct ChannelJoinPayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VoiceJoinPayload {
     pub channel_id: String,
+}
+
+/// Client → server: invite a specific user to join a voice channel (1:1 ring).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceInvitePayload {
+    pub target_user_id: String,
+    pub channel_id: String,
+}
+
+/// Server → invited client: notify them of an incoming voice call.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceIncomingCallPayload {
+    pub caller_user_id: String,
+    pub caller_username: String,
+    pub channel_id: String,
+    pub channel_name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

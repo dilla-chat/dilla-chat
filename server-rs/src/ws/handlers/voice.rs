@@ -105,6 +105,53 @@ async fn initiate_sfu_join(hub: &Hub, channel_id: &str, user_id: &str) {
     }
 }
 
+/// Client → server: deliver a voice-call ring to a specific peer. The server
+/// resolves the channel name and forwards a `voice:incoming-call` event to the
+/// target user's WS connections. No-op if the channel doesn't belong to the
+/// caller's team or if the target user isn't connected.
+pub(in crate::ws) async fn handle_voice_invite(
+    hub: &Hub,
+    user_id: &str,
+    username: &str,
+    team_id: &str,
+    p: VoiceInvitePayload,
+) {
+    if !verify_channel_team(&hub.db, &p.channel_id, team_id).await {
+        tracing::warn!(
+            user_id = user_id,
+            channel_id = %p.channel_id,
+            "voice:invite denied — channel not in caller's team"
+        );
+        return;
+    }
+
+    // Look up the channel name so the recipient knows where they're being invited.
+    let channel_name = {
+        let db = hub.db.clone();
+        let cid = p.channel_id.clone();
+        tokio::task::spawn_blocking(move || {
+            db.with_conn(|conn| crate::db::get_channel_by_id(conn, &cid))
+        })
+        .await
+        .ok()
+        .and_then(|r| r.ok().flatten())
+        .map(|ch| ch.name)
+        .unwrap_or_else(|| p.channel_id.clone())
+    };
+
+    let payload = VoiceIncomingCallPayload {
+        caller_user_id: user_id.to_string(),
+        caller_username: username.to_string(),
+        channel_id: p.channel_id,
+        channel_name,
+    };
+    if let Ok(evt) = Event::new(EVENT_VOICE_INCOMING_CALL, payload) {
+        if let Ok(data) = evt.to_bytes() {
+            hub.send_to_user(&p.target_user_id, data).await;
+        }
+    }
+}
+
 pub(in crate::ws) async fn handle_voice_leave(
     hub: &Hub,
     client_id: &str,

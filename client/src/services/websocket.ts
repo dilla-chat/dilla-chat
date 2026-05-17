@@ -498,6 +498,15 @@ export class WebSocketService {
     });
   }
 
+  // Ring a specific user with a voice-call invite. The server forwards a
+  // voice:incoming-call event to the target's WS connection (if connected).
+  sendVoiceInvite(teamId: string, targetUserId: string, channelId: string): void {
+    this.send(teamId, {
+      type: 'voice:invite',
+      payload: { target_user_id: targetUserId, channel_id: channelId },
+    });
+  }
+
   // DM WebSocket methods
   sendDMMessage(teamId: string, dmId: string, content: string, type: string = 'text'): void {
     this.send(teamId, {

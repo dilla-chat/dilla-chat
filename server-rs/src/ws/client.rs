@@ -149,7 +149,7 @@ pub(crate) async fn handle_event(
         | EVENT_VOICE_ICE_CANDIDATE | EVENT_VOICE_MUTE | EVENT_VOICE_DEAFEN
         | EVENT_VOICE_SCREEN_START | EVENT_VOICE_SCREEN_STOP
         | EVENT_VOICE_WEBCAM_START | EVENT_VOICE_WEBCAM_STOP
-        | EVENT_VOICE_KEY_DISTRIBUTE => {
+        | EVENT_VOICE_KEY_DISTRIBUTE | EVENT_VOICE_INVITE => {
             handle_voice_event(hub, client_id, user_id, username, team_id, &event.event_type, event.payload).await;
         }
         ACTION_CHANNEL_READ => {
@@ -274,6 +274,11 @@ pub(crate) async fn handle_voice_event(
         }
         EVENT_VOICE_KEY_DISTRIBUTE => {
             handle_voice_key_distribute(hub, client_id, user_id, payload).await;
+        }
+        EVENT_VOICE_INVITE => {
+            if let Ok(p) = serde_json::from_value::<VoiceInvitePayload>(payload) {
+                handle_voice_invite(hub, user_id, username, team_id, p).await;
+            }
         }
         _ => {}
     }

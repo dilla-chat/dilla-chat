@@ -97,6 +97,28 @@ export function useMeshSync() {
       },
     );
 
+    // Forward voice:incoming-call → mesh:incoming-call so the IncomingCall
+    // overlay mounted by AppLayout picks it up via custom event.
+    const offIncoming = ws.on(
+      'voice:incoming-call',
+      (data: {
+        caller_user_id: string;
+        caller_username: string;
+        channel_id: string;
+        channel_name: string;
+      }) => {
+        if (!data?.caller_username) return;
+        window.dispatchEvent(
+          new CustomEvent('mesh:incoming-call', {
+            detail: {
+              callerName: data.caller_username,
+              channelName: data.channel_name,
+            },
+          }),
+        );
+      },
+    );
+
     return () => {
       offMsg?.();
       offDm?.();
@@ -105,6 +127,7 @@ export function useMeshSync() {
       offPeer?.();
       offLamport?.();
       offLatency?.();
+      offIncoming?.();
     };
   }, []);
 }
