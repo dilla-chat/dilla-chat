@@ -288,11 +288,11 @@ export default function MessageInput({
             {uploading ? <IconHourglass size={18} stroke={1.75} /> : <PlusCircleIcon />}
           </button>
 
-          <div className="toolbar-separator" />
-
-          <FormattingToolbar textareaRef={textareaRef} setValue={setValue} />
-
-          <div className="toolbar-separator" />
+          <div className="message-input-formatting">
+            <div className="toolbar-separator" />
+            <FormattingToolbar textareaRef={textareaRef} setValue={setValue} />
+            <div className="toolbar-separator" />
+          </div>
 
           <div style={{ position: 'relative' }}>
             {showEmojiPicker && (
