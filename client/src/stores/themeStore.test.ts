@@ -4,8 +4,9 @@ import { useUserSettingsStore } from './userSettingsStore';
 import { useThemeStore } from './themeStore';
 
 beforeEach(() => {
-  useUserSettingsStore.setState({ theme: 'dark' });
+  useUserSettingsStore.setState({ theme: 'dark', density: 'regular' });
   useThemeStore.setState({ theme: 'dark' });
+  document.documentElement.dataset.density = 'regular';
 });
 
 describe('themeStore', () => {
@@ -52,5 +53,14 @@ describe('themeStore', () => {
     // Legacy tokens get repointed to Mesh equivalents
     expect(root.style.getPropertyValue('--bg-primary')).toBe('#070809');
     expect(root.style.getPropertyValue('--text-primary')).toBe('#E8ECE8');
+  });
+
+  it('applies density as data-density on <html>', () => {
+    useUserSettingsStore.getState().setDensity('compact');
+    expect(document.documentElement.dataset.density).toBe('compact');
+    useUserSettingsStore.getState().setDensity('cozy');
+    expect(document.documentElement.dataset.density).toBe('cozy');
+    useUserSettingsStore.getState().setDensity('regular');
+    expect(document.documentElement.dataset.density).toBe('regular');
   });
 });

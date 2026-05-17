@@ -3,6 +3,7 @@ import { darkTheme, lightTheme, meshTheme, minimalTheme } from '../themes/themes
 import { useUserSettingsStore } from './userSettingsStore';
 
 type ThemeName = 'dark' | 'light' | 'minimal' | 'mesh';
+type Density = 'compact' | 'regular' | 'cozy';
 
 function applyTheme(theme: ThemeName) {
   const root = document.documentElement;
@@ -23,21 +24,29 @@ function applyTheme(theme: ThemeName) {
   root.style.colorScheme = theme === 'light' ? 'light' : 'dark';
 }
 
+function applyDensity(density: Density) {
+  document.documentElement.dataset.density = density;
+}
+
 interface ThemeState {
   theme: ThemeName;
 }
 
 export const useThemeStore = create<ThemeState>(() => {
-  const theme = useUserSettingsStore.getState().theme;
-  applyTheme(theme);
-  return { theme };
+  const settings = useUserSettingsStore.getState();
+  applyTheme(settings.theme);
+  applyDensity(settings.density);
+  return { theme: settings.theme };
 });
 
-// Sync theme whenever userSettingsStore changes
+// Sync theme + density whenever userSettingsStore changes
 useUserSettingsStore.subscribe((state) => {
   const current = useThemeStore.getState().theme;
   if (state.theme !== current) {
     applyTheme(state.theme);
     useThemeStore.setState({ theme: state.theme });
+  }
+  if (document.documentElement.dataset.density !== state.density) {
+    applyDensity(state.density);
   }
 });
