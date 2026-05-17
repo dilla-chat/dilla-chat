@@ -1,0 +1,19 @@
+.mesh-top-bar {
+  height: var(--topbar-h);
+  min-height: var(--topbar-h);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--spacing-md);
+  background: var(--bg-2, var(--bg-secondary));
+  border-bottom: 1px solid var(--hairline, var(--divider));
+  font-family: var(--font-mono);
+  font-size: var(--font-size-micro);
+  color: var(--fg-2, var(--text-secondary));
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.mesh-top-bar-placeholder {
+  opacity: 0.7;
+}
