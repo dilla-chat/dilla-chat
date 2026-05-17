@@ -32,6 +32,7 @@ import { useIdentityBackup } from '../hooks/useIdentityBackup';
 import { usePresenceEvents } from '../hooks/usePresenceEvents';
 import { useCustomTheme } from '../hooks/useCustomTheme';
 import { telemetryClient } from '../services/telemetryClient';
+import { ws } from '../services/websocket';
 import ContentErrorBoundary from '../components/ErrorBoundary/ContentErrorBoundary';
 import { useLayoutStore } from '../stores/layoutStore';
 import MeshTopBar from '../components/MeshChrome/MeshTopBar';
@@ -798,7 +799,14 @@ export default function AppLayout() {
         })()}
         onClose={() => setForwardSource(null)}
         onForward={(target) => {
-          console.info('TODO: forward message to', target);
+          if (!activeTeamId || !forwardSource) return;
+          // Compose a forwarded message body: keep the source body, prepend an attribution.
+          const body = `> from ${forwardSource.author} (${forwardSource.timestamp})\n${forwardSource.body}`;
+          if (target.kind === 'channel') {
+            ws.sendMessage(activeTeamId, target.id, body);
+          } else {
+            ws.sendDMMessage(activeTeamId, target.id, body);
+          }
           setForwardSource(null);
         }}
       />
