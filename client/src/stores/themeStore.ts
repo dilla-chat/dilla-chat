@@ -1,14 +1,18 @@
 import { create } from 'zustand';
-import { darkTheme, lightTheme, minimalTheme } from '../themes/themes';
+import { darkTheme, lightTheme, meshTheme, minimalTheme } from '../themes/themes';
 import { useUserSettingsStore } from './userSettingsStore';
 
-function applyTheme(theme: 'dark' | 'light' | 'minimal') {
+type ThemeName = 'dark' | 'light' | 'minimal' | 'mesh';
+
+function applyTheme(theme: ThemeName) {
   const root = document.documentElement;
   let colors;
   if (theme === 'light') {
     colors = lightTheme;
   } else if (theme === 'minimal') {
     colors = minimalTheme;
+  } else if (theme === 'mesh') {
+    colors = meshTheme;
   } else {
     colors = darkTheme;
   }
@@ -20,7 +24,7 @@ function applyTheme(theme: 'dark' | 'light' | 'minimal') {
 }
 
 interface ThemeState {
-  theme: 'dark' | 'light' | 'minimal';
+  theme: ThemeName;
 }
 
 export const useThemeStore = create<ThemeState>(() => {
