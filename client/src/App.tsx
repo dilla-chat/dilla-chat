@@ -62,9 +62,9 @@ function AuthRedirect() {
       try {
         const { hasIdentity } = await import('./services/keyStore');
         const exists = await hasIdentity();
-        setTarget(exists ? '/login' : '/create-identity');
+        setTarget(exists ? '/login' : '/onboarding');
       } catch {
-        setTarget('/create-identity');
+        setTarget('/onboarding');
       }
     })();
   }, [isAuthenticated]);
@@ -86,7 +86,11 @@ function App() {
             <Suspense fallback={null}><DemoWrapper /></Suspense>
           } />
         )}
-        <Route path="/create-identity" element={<CreateIdentity />} />
+        {/* /create-identity now routes to the Mesh onboarding wizard. The
+            legacy CreateIdentity page is preserved at /create-identity-legacy
+            for fallback. */}
+        <Route path="/create-identity" element={<Navigate to="/onboarding" replace />} />
+        <Route path="/create-identity-legacy" element={<CreateIdentity />} />
         <Route path="/login" element={<Login />} />
         <Route path="/join/:token?" element={<JoinTeam />} />
         <Route path="/recover" element={<RecoverFromServer />} />

@@ -641,8 +641,12 @@ export default function AppLayout() {
           <div
             className="app-grid-shell"
             style={{
-              gridTemplateColumns: `var(--rail-w) ${sidebarWidth}px 1fr ${
-                !isDMMode && showMembers ? `${membersWidth}px` : '0px'
+              // 6 tracks: rail | sidebar | handle | main | handle | members
+              // The handle tracks are 4px (visible drag area); when the
+              // members panel is hidden, both the handle and members
+              // tracks collapse to 0px.
+              gridTemplateColumns: `var(--rail-w) ${sidebarWidth}px 4px 1fr ${
+                !isDMMode && showMembers ? `4px ${membersWidth}px` : '0px 0px'
               }`,
             }}
           >

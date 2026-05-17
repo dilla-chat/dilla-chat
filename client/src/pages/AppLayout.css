@@ -45,6 +45,11 @@
   background: var(--bg, var(--bg-tertiary));
 }
 
+/* Grid track assignments. The grid has 6 columns:
+   1 rail | 2 sidebar | 3 handle | 4 main | 5 handle | 6 members
+   ResizeHandle elements flow into tracks 3 and 5 automatically based on
+   render order; rail/sidebar/main/members get explicit assignments to
+   keep the layout stable if children re-order. */
 .app-grid-rail {
   grid-column: 1;
   display: flex;
@@ -62,6 +67,22 @@
   background: var(--bg-2, var(--bg-secondary));
   overflow: hidden;
   min-height: 0;
+}
+
+.app-grid-shell .resize-handle:nth-of-type(1) {
+  grid-column: 3;
+}
+
+.app-grid-shell .content-wrapper {
+  grid-column: 4;
+}
+
+.app-grid-shell .resize-handle:nth-of-type(2) {
+  grid-column: 5;
+}
+
+.app-grid-shell .app-grid-members {
+  grid-column: 6;
 }
 
 .app-grid-sidebar-top {
