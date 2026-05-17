@@ -28,8 +28,8 @@ export const useLayoutStore = create<LayoutStore>()(
     (set, get) => ({
       sidebarWidth: 240,
       membersWidth: 232,
-      topBarEnabled: false,
-      bottomBarEnabled: false,
+      topBarEnabled: true,
+      bottomBarEnabled: true,
 
       setSidebarWidth: (v) =>
         set({ sidebarWidth: clamp(v, SIDEBAR_MIN, SIDEBAR_MAX) }),
@@ -54,6 +54,17 @@ export const useLayoutStore = create<LayoutStore>()(
       toggleTopBar: () => set({ topBarEnabled: !get().topBarEnabled }),
       toggleBottomBar: () => set({ bottomBarEnabled: !get().bottomBarEnabled }),
     }),
-    { name: 'dilla-layout' },
+    {
+      name: 'dilla-layout',
+      version: 1,
+      migrate: (persistedState, version) => {
+        const state = (persistedState ?? {}) as Partial<LayoutStore>;
+        if (version < 1) {
+          // Mesh chrome (top + bottom bars) is on by default now.
+          return { ...state, topBarEnabled: true, bottomBarEnabled: true };
+        }
+        return state;
+      },
+    },
   ),
 );
