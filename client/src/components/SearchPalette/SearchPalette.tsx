@@ -56,6 +56,7 @@ export default function SearchPalette({
 
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional reset of form state when palette reopens
       setQuery('');
       setSelectedIdx(0);
       setScope(scopedChannelName ? 'channel' : 'all');

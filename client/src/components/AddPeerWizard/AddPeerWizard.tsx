@@ -39,6 +39,7 @@ export default function AddPeerWizard({ open, onClose, onComplete }: Readonly<Pr
   // Reset on open
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional reset of form state when modal reopens
       setStep('token');
       setTokenInput('');
       setPeerUrl('');
@@ -49,6 +50,7 @@ export default function AddPeerWizard({ open, onClose, onComplete }: Readonly<Pr
   // Auto-run handshake animation
   useEffect(() => {
     if (step !== 'handshake') return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional reset when entering handshake phase
     setLogLines(0);
     intervalRef.current = setInterval(() => {
       setLogLines((n) => {

@@ -24,6 +24,7 @@ export default function NewServerModal({
 
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional reset of form state when modal reopens
       setMode('join');
       setName('');
       setServerUrl('');

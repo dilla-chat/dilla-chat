@@ -48,6 +48,7 @@ export default function CommandPalette({ open, onClose, commands }: Readonly<Pro
   // Reset on open
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional reset of form state when palette reopens
       setQuery('');
       setSelectedIdx(0);
       // Focus the input on next tick

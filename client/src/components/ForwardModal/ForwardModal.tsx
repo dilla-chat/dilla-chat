@@ -44,6 +44,7 @@ export default function ForwardModal({
 
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional reset of form state when modal reopens
       setQuery('');
       setSelectedIdx(0);
     }

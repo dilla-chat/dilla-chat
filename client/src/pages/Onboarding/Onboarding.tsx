@@ -66,6 +66,7 @@ export default function Onboarding() {
   // Auto-advance keys step
   useEffect(() => {
     if (step !== 'keys') return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional reset when entering keys step
     setKeysShown(1);
     keysIntervalRef.current = setInterval(() => {
       setKeysShown((n) => {
