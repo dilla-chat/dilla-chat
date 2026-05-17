@@ -39,6 +39,9 @@ import MeshBottomBar from '../components/MeshChrome/MeshBottomBar';
 import CommandPalette, { type PaletteCommand } from '../components/CommandPalette/CommandPalette';
 import SearchPalette, { type SearchHit } from '../components/SearchPalette/SearchPalette';
 import ConnectionBanner from '../components/ConnectionBanner/ConnectionBanner';
+import AddPeerWizard from '../components/AddPeerWizard/AddPeerWizard';
+import SafetyCompare from '../components/SafetyCompare/SafetyCompare';
+import ForwardModal, { type ForwardTarget, type ForwardSource } from '../components/ForwardModal/ForwardModal';
 import { useMeshStore } from '../stores/meshStore';
 import { useUserSettingsStore } from '../stores/userSettingsStore';
 import { useMessageStore } from '../stores/messageStore';
@@ -126,16 +129,31 @@ export default function AppLayout() {
   const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [searchPaletteOpen, setSearchPaletteOpen] = useState(false);
+  const [addPeerOpen, setAddPeerOpen] = useState(false);
+  const [safetyCompareOpen, setSafetyCompareOpen] = useState(false);
+  const [forwardSource, setForwardSource] = useState<ForwardSource | null>(null);
 
-  // Listen for mesh:open-command-palette + mesh:open-search events from the top bar
+  // Listen for mesh:* events from the top bar, bottom bar, and other components
   useEffect(() => {
     const openCmd = () => setCommandPaletteOpen(true);
     const openSearch = () => setSearchPaletteOpen(true);
+    const openAddPeer = () => setAddPeerOpen(true);
+    const openSafety = () => setSafetyCompareOpen(true);
+    const openForward = (e: Event) => {
+      const detail = (e as CustomEvent<ForwardSource>).detail;
+      if (detail) setForwardSource(detail);
+    };
     window.addEventListener('mesh:open-command-palette', openCmd);
     window.addEventListener('mesh:open-search', openSearch);
+    window.addEventListener('mesh:open-add-peer', openAddPeer);
+    window.addEventListener('mesh:open-safety-compare', openSafety);
+    window.addEventListener('mesh:open-forward', openForward as EventListener);
     return () => {
       window.removeEventListener('mesh:open-command-palette', openCmd);
       window.removeEventListener('mesh:open-search', openSearch);
+      window.removeEventListener('mesh:open-add-peer', openAddPeer);
+      window.removeEventListener('mesh:open-safety-compare', openSafety);
+      window.removeEventListener('mesh:open-forward', openForward as EventListener);
     };
   }, []);
 
@@ -222,6 +240,14 @@ export default function AppLayout() {
 
     // FEDERATION
     cmds.push({
+      id: 'fed.add-peer',
+      label: 'Add a federation peer',
+      hint: 'opens 4-step wizard',
+      section: 'FEDERATION',
+      run: () =>
+        window.dispatchEvent(new CustomEvent('mesh:open-add-peer')),
+    });
+    cmds.push({
       id: 'fed.peers',
       label: 'Show peer status',
       hint: 'opens federation settings',
@@ -245,16 +271,18 @@ export default function AppLayout() {
 
     // ENCRYPTION
     cmds.push({
+      id: 'enc.verify',
+      label: 'Verify safety number',
+      hint: 'side-by-side fingerprint compare',
+      section: 'ENCRYPTION',
+      run: () =>
+        window.dispatchEvent(new CustomEvent('mesh:open-safety-compare')),
+    });
+    cmds.push({
       id: 'enc.settings',
       label: 'Open privacy & encryption settings',
       section: 'ENCRYPTION',
       run: () => navigate('/app/user-settings'),
-    });
-    cmds.push({
-      id: 'enc.verify',
-      label: 'Verify safety number',
-      section: 'ENCRYPTION',
-      run: () => console.warn('TODO: open SafetyCompare overlay'),
     });
 
     // ACCOUNT
@@ -707,6 +735,72 @@ export default function AppLayout() {
         open={commandPaletteOpen}
         onClose={() => setCommandPaletteOpen(false)}
         commands={paletteCommands}
+      />
+
+      <AddPeerWizard
+        open={addPeerOpen}
+        onClose={() => setAddPeerOpen(false)}
+        onComplete={(peer) => {
+          useMeshStore.getState().setPeers(
+            useMeshStore.getState().peersConnected + 1,
+            useMeshStore.getState().peersTotal + 1,
+          );
+          useMeshStore.getState().setStatus('ok');
+          useMeshStore.getState().showConnectionBanner({
+            kind: 'restored',
+            message: `Peer ${peer.label} added`,
+          });
+          setTimeout(() => useMeshStore.getState().hideConnectionBanner(), 4000);
+        }}
+      />
+
+      <SafetyCompare
+        open={safetyCompareOpen}
+        yours="57842 19034 88291 60017 33920 11458 90442 17763"
+        theirs="57842 19034 88291 60017 33920 11458 90442 17763"
+        yourName={`@${username}`}
+        theirName="@peer"
+        onClose={() => setSafetyCompareOpen(false)}
+        onMarkVerified={() => {
+          setSafetyCompareOpen(false);
+          useMeshStore.getState().showConnectionBanner({
+            kind: 'restored',
+            message: 'Safety number verified',
+          });
+          setTimeout(() => useMeshStore.getState().hideConnectionBanner(), 3000);
+        }}
+        onMarkMismatch={() => {
+          setSafetyCompareOpen(false);
+          useMeshStore.getState().showConnectionBanner({
+            kind: 'error',
+            message: 'Safety number mismatch — stop messaging this contact',
+          });
+        }}
+      />
+
+      <ForwardModal
+        open={forwardSource !== null}
+        source={forwardSource}
+        targets={(() => {
+          const tgts: ForwardTarget[] = [];
+          for (const ch of teamChannels) {
+            if (ch.type === 'text') {
+              tgts.push({ id: ch.id, label: ch.name, kind: 'channel' });
+            }
+          }
+          for (const dm of teamDMs) {
+            const otherName = dm.is_group
+              ? dm.members.map((m) => m.display_name || m.username).join(', ')
+              : dm.members.find((m) => m.user_id !== currentUserId)?.username ?? dm.id;
+            tgts.push({ id: dm.id, label: otherName, kind: 'dm' });
+          }
+          return tgts;
+        })()}
+        onClose={() => setForwardSource(null)}
+        onForward={(target) => {
+          console.info('TODO: forward message to', target);
+          setForwardSource(null);
+        }}
       />
 
       <SearchPalette
