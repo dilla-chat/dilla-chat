@@ -332,6 +332,16 @@
   display: none;
 }
 
+/* User panel — verified against handoff .user-panel: bg is page bg
+   (not bg-3 surface), padding 10px 12px, height 56px. */
+[data-theme='mesh'] .user-panel {
+  background: var(--bg);
+  padding: 0.625rem 0.75rem;
+  height: 3.5rem;
+  min-height: 3.5rem;
+  border-top: 0.0625rem solid var(--hairline);
+}
+
 /* User panel — match handoff .user-panel .name / .sub typography */
 [data-theme='mesh'] .user-panel-name {
   font-family: var(--font-ui);
@@ -624,11 +634,27 @@
   font-weight: 500;
 }
 
+/* Section headers (.cat) — handoff is padding 6px 8px 4px, 10.5px mono. */
+[data-theme='mesh'] .channel-section-header {
+  padding: 0.375rem 0.5rem 0.25rem;
+  margin-top: 0.875rem;
+  font-family: var(--font-mono);
+  font-size: 0.65625rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+[data-theme='mesh'] .channel-section-header:first-child {
+  margin-top: 0;
+}
+
 /* Sidebar tabs (Kanals / PMs) — handoff Mesh style is an underline
    indicator, not a chip. Transparent bg, 2px accent border-bottom on
-   active, mono uppercase. */
+   active, mono uppercase. Container gets 8px top padding (handoff). */
 [data-theme='mesh'] .channel-sidebar-tabs {
-  padding: 0;
+  padding: 0.5rem 0.75rem 0;
   gap: 0;
   border-top: none;
   border-bottom: 0.0625rem solid var(--hairline);
