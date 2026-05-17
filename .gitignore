@@ -63,3 +63,8 @@ server-rs/assets/voice-models/manifest.json
 
 # === ORT Web runtime (copied by client postinstall) ===
 client/public/ort-wasm/
+
+# Playwright + dev screenshots
+.playwright-mcp/
+mesh-*.png
+handoff-*.png
