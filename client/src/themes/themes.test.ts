@@ -68,3 +68,20 @@ describe('meshTheme', () => {
     );
   });
 });
+
+describe('layout-width tokens', () => {
+  it('base-tokens.css defines mesh rail + bar tokens', async () => {
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const css = await fs.readFile(
+      path.resolve(__dirname, '../styles/base-tokens.css'),
+      'utf8',
+    );
+    expect(css).toMatch(/--rail-w:\s*60px/);
+    expect(css).toMatch(/--sidebar-w-default:\s*240px/);
+    expect(css).toMatch(/--members-w-default:\s*232px/);
+    expect(css).toMatch(/--topbar-h:\s*32px/);
+    expect(css).toMatch(/--bottombar-h:\s*26px/);
+    expect(css).toMatch(/--team-sidebar-width:\s*var\(--rail-w\)/);
+  });
+});

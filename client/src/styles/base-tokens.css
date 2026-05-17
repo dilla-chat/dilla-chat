@@ -55,9 +55,16 @@
   --duration-normal: 200ms;
   --duration-slow: 300ms;
 
+  /* Mesh shell dimensions */
+  --rail-w: 60px;
+  --sidebar-w-default: 240px;
+  --members-w-default: 232px;
+  --topbar-h: 32px;
+  --bottombar-h: 26px;
+
   /* Layout dimensions */
   --header-height: 48px;
-  --team-sidebar-width: 72px;
+  --team-sidebar-width: var(--rail-w);
   --channel-sidebar-width: 240px;
   --member-sidebar-width: 240px;
   --user-panel-height: 52px;
