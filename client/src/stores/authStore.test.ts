@@ -298,3 +298,35 @@ describe('loadPersistedDerivedKey catch block', () => {
     vi.restoreAllMocks();
   });
 });
+
+describe('setTeamOrder', () => {
+  it('reorders the teams Map to match the given id sequence', () => {
+    useAuthStore.setState({
+      teams: new Map([
+        ['t1', { token: '1', user: null, teamInfo: {}, baseUrl: 'a' }],
+        ['t2', { token: '2', user: null, teamInfo: {}, baseUrl: 'b' }],
+        ['t3', { token: '3', user: null, teamInfo: {}, baseUrl: 'c' }],
+      ]),
+    });
+    useAuthStore.getState().setTeamOrder(['t3', 't1', 't2']);
+    expect(Array.from(useAuthStore.getState().teams.keys())).toEqual([
+      't3',
+      't1',
+      't2',
+    ]);
+  });
+
+  it('ignores unknown ids and appends missing teams at the end', () => {
+    useAuthStore.setState({
+      teams: new Map([
+        ['t1', { token: '1', user: null, teamInfo: {}, baseUrl: 'a' }],
+        ['t2', { token: '2', user: null, teamInfo: {}, baseUrl: 'b' }],
+      ]),
+    });
+    useAuthStore.getState().setTeamOrder(['t2', 'unknown']);
+    expect(Array.from(useAuthStore.getState().teams.keys())).toEqual([
+      't2',
+      't1',
+    ]);
+  });
+});

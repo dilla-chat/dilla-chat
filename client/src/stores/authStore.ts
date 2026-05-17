@@ -47,6 +47,8 @@ interface AuthState {
   updateTeamUser: (teamId: string, userUpdates: Partial<User>) => void;
   /** Update server token (propagates to all teams on that server) */
   setServerToken: (serverId: string, token: string) => void;
+  /** Reorder teams Map to match the given id sequence; unknown ids ignored. */
+  setTeamOrder: (ids: string[]) => void;
   logout: () => void;
 }
 
@@ -330,6 +332,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       persistServers(servers);
       persistTeams(teams);
       return { servers, teams };
+    }),
+
+  setTeamOrder: (ids) =>
+    set((state) => {
+      const next = new Map<string, TeamEntry>();
+      for (const id of ids) {
+        const entry = state.teams.get(id);
+        if (entry) next.set(id, entry);
+      }
+      for (const [id, entry] of state.teams) {
+        if (!next.has(id)) next.set(id, entry);
+      }
+      persistTeams(next);
+      return { teams: next };
     }),
 
   logout: () => {
