@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { IconHash, IconMessage, IconUsers, IconVolume, IconLock, IconSettings } from '@tabler/icons-react';
+import { IconHash, IconMessage, IconUsers, IconVolume, IconLock, IconSettings, IconShield, IconSearch } from '@tabler/icons-react';
 import TeamSidebar from '../components/TeamSidebar/TeamSidebar';
 import ChannelList from '../components/ChannelList/ChannelList';
 import DMList from '../components/DMList/DMList';
@@ -352,7 +352,7 @@ export default function AppLayout() {
           </span>
           {derivedKey && (
             <span className="content-header-encrypted" title="End-to-end encrypted">
-              <IconLock size={14} stroke={1.75} />
+              <IconShield size={11} stroke={1.75} /> E2E
             </span>
           )}
           {activeDM.is_group && (
@@ -373,7 +373,16 @@ export default function AppLayout() {
                 <IconUsers size={20} stroke={1.75} />
               </button>
             )}
-            <SearchBar onJumpToMessage={handleJumpToMessage} />
+            <button
+              type="button"
+              className="header-action-btn"
+              onClick={() =>
+                window.dispatchEvent(new CustomEvent('mesh:open-search'))
+              }
+              title={t('search.placeholder', 'Search')}
+            >
+              <IconSearch size={18} stroke={1.75} />
+            </button>
           </div>
         </>
       );
@@ -382,12 +391,12 @@ export default function AppLayout() {
       return (
         <>
           <span className="content-header-icon">
-            {activeChannel.type === 'voice' ? <IconVolume size={20} stroke={1.75} /> : <span className="channel-tilde">~</span>}
+            {activeChannel.type === 'voice' ? <IconVolume size={18} stroke={1.75} /> : <span className="channel-tilde">#</span>}
           </span>
           <span className="content-header-name title">{activeChannel.name}</span>
           {derivedKey && (
             <span className="content-header-encrypted" title="End-to-end encrypted">
-              <IconLock size={14} stroke={1.75} />
+              <IconShield size={11} stroke={1.75} /> E2E
             </span>
           )}
           {activeChannel.topic && (
@@ -404,7 +413,16 @@ export default function AppLayout() {
             >
               <IconUsers size={20} stroke={1.75} />
             </button>
-            <SearchBar onJumpToMessage={handleJumpToMessage} />
+            <button
+              type="button"
+              className="header-action-btn"
+              onClick={() =>
+                window.dispatchEvent(new CustomEvent('mesh:open-search'))
+              }
+              title={t('search.placeholder', 'Search')}
+            >
+              <IconSearch size={18} stroke={1.75} />
+            </button>
           </div>
         </>
       );

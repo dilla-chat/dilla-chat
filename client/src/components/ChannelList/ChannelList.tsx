@@ -196,7 +196,7 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
       {activeVoiceChannels.length > 0 && (
         <>
           <div className="channel-section-header active-voice-section">
-            <span>{t('channels.activeVoice', 'ACTIVE VOICE')}</span>
+            <span>{t('channels.sidebar.activeVoice')}</span>
             <span className="channel-section-header-live">● live</span>
           </div>
           {activeVoiceChannels.map(renderChannelItem)}
@@ -204,7 +204,7 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
       )}
 
       <div className="channel-section-header">
-        <span>{t('channels.channels', 'KANALS')}</span>
+        <span>{t('channels.sidebar.kanals')}</span>
         {onCreateChannel && (
           <button
             type="button"
@@ -221,7 +221,7 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
       {idleVoiceChannels.length > 0 && (
         <>
           <div className="channel-section-header">
-            <span>{t('channels.voice', 'VOICE')}</span>
+            <span>{t('channels.sidebar.voice')}</span>
           </div>
           {idleVoiceChannels.map(renderChannelItem)}
         </>

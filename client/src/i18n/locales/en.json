@@ -113,7 +113,12 @@
     "topicPlaceholder": "What is this kanal about?",
     "welcomeTitle": "Welcome to ~{{name}}",
     "welcomeDesc": "This is the start of the ~{{name}} kanal.",
-    "selectChannel": "Select a kanal to start chatting"
+    "selectChannel": "Select a kanal to start chatting",
+    "sidebar": {
+      "activeVoice": "Active voice",
+      "kanals": "Kanals",
+      "voice": "Voice"
+    }
   },
   "messages": {
     "placeholder": "Message ~{{channel}}",

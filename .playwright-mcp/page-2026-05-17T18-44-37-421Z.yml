@@ -1,0 +1,42 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - generic [ref=e5]:
+        - generic [ref=e6]: D
+        - generic [ref=e7]: DILLA
+        - generic [ref=e8]: _
+      - navigation "Onboarding progress" [ref=e9]:
+        - generic [ref=e10]:
+          - generic [ref=e11]: "1"
+          - generic [ref=e12]: CONNECT
+        - generic [ref=e13]:
+          - generic [ref=e14]: "2"
+          - generic [ref=e15]: IDENTITY
+        - generic [ref=e16]:
+          - generic [ref=e17]: "3"
+          - generic [ref=e18]: KEYS
+        - generic [ref=e19]:
+          - generic [ref=e20]: "4"
+          - generic [ref=e21]: SAFETY
+        - generic [ref=e22]:
+          - generic [ref=e23]: "5"
+          - generic [ref=e24]: DONE
+    - main [ref=e25]:
+      - generic [ref=e26]:
+        - heading "Connect to a mesh node" [level=1] [ref=e27]
+        - paragraph [ref=e28]: Choose how this device joins the network.
+        - generic [ref=e29]:
+          - button "BOOTSTRAP NEW" [ref=e30] [cursor=pointer]
+          - button "JOIN VIA INVITE" [ref=e31] [cursor=pointer]
+          - button "ALREADY ENROLLED" [ref=e32] [cursor=pointer]
+        - generic [ref=e33]:
+          - generic [ref=e34]:
+            - text: Server URL
+            - textbox "Server URL" [ref=e35]:
+              - /placeholder: https://gbg-1.dilla.local
+          - generic [ref=e36]:
+            - text: Invite token
+            - textbox "Invite token" [ref=e37]:
+              - /placeholder: paste token here
+        - button "Continue →" [disabled] [ref=e39]
+  - status
