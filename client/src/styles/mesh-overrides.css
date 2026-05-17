@@ -1057,6 +1057,73 @@
   text-align: center;
 }
 
+/* ===== Command + search palettes ===== */
+
+[data-theme='mesh'] .command-palette,
+[data-theme='mesh'] .search-palette {
+  background: var(--surface);
+  border: 0.0625rem solid var(--accent);
+  box-shadow: 0 0 0 0.0625rem var(--accent), 0 1.5rem 3.125rem rgba(0, 0, 0, 0.5);
+  font-family: var(--font-mono);
+}
+
+[data-theme='mesh'] .command-palette-overlay,
+[data-theme='mesh'] .search-palette-overlay {
+  background: color-mix(in oklab, var(--bg) 70%, transparent);
+  backdrop-filter: blur(0.125rem);
+  -webkit-backdrop-filter: blur(0.125rem);
+}
+
+[data-theme='mesh'] .command-palette-prompt,
+[data-theme='mesh'] .search-palette-prompt {
+  background: var(--bg);
+  border-bottom: 0.0625rem solid var(--hairline);
+}
+
+[data-theme='mesh'] .command-palette-prompt-glyph,
+[data-theme='mesh'] .search-palette-prompt-glyph {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.875rem;
+  color: var(--accent);
+}
+
+[data-theme='mesh'] .command-palette-item.selected,
+[data-theme='mesh'] .command-palette-item.selected:hover,
+[data-theme='mesh'] .search-palette-hit.selected,
+[data-theme='mesh'] .search-palette-hit.selected:hover {
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+  color: var(--accent);
+}
+
+[data-theme='mesh'] .command-palette-item:hover {
+  background: var(--surface-hi);
+  border-left-color: transparent;
+  color: var(--fg);
+}
+
+[data-theme='mesh'] .search-palette-hit:hover {
+  background: var(--surface-hi);
+  border-left-color: transparent;
+}
+
+[data-theme='mesh'] .command-palette-section-label {
+  font-family: var(--font-mono);
+}
+
+[data-theme='mesh'] .search-palette-hit-body {
+  font-family: var(--font-ui);
+  font-size: 0.78125rem;
+  line-height: 1.45;
+}
+
+[data-theme='mesh'] .search-palette-hit-body mark {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 0;
+}
+
 /* ===== Settings modal ===== */
 
 [data-theme='mesh'] .settings-modal,
