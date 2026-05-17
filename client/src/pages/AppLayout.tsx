@@ -37,9 +37,11 @@ import { useLayoutStore } from '../stores/layoutStore';
 import MeshTopBar from '../components/MeshChrome/MeshTopBar';
 import MeshBottomBar from '../components/MeshChrome/MeshBottomBar';
 import CommandPalette, { type PaletteCommand } from '../components/CommandPalette/CommandPalette';
+import SearchPalette, { type SearchHit } from '../components/SearchPalette/SearchPalette';
 import ConnectionBanner from '../components/ConnectionBanner/ConnectionBanner';
 import { useMeshStore } from '../stores/meshStore';
 import { useUserSettingsStore } from '../stores/userSettingsStore';
+import { useMessageStore } from '../stores/messageStore';
 import './AppLayout.css';
 
 export default function AppLayout() {
@@ -123,12 +125,18 @@ export default function AppLayout() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [searchPaletteOpen, setSearchPaletteOpen] = useState(false);
 
-  // Listen for mesh:open-command-palette events from the top bar
+  // Listen for mesh:open-command-palette + mesh:open-search events from the top bar
   useEffect(() => {
-    const handler = () => setCommandPaletteOpen(true);
-    window.addEventListener('mesh:open-command-palette', handler);
-    return () => window.removeEventListener('mesh:open-command-palette', handler);
+    const openCmd = () => setCommandPaletteOpen(true);
+    const openSearch = () => setSearchPaletteOpen(true);
+    window.addEventListener('mesh:open-command-palette', openCmd);
+    window.addEventListener('mesh:open-search', openSearch);
+    return () => {
+      window.removeEventListener('mesh:open-command-palette', openCmd);
+      window.removeEventListener('mesh:open-search', openSearch);
+    };
   }, []);
 
   // Get current user info from auth store
@@ -699,6 +707,43 @@ export default function AppLayout() {
         open={commandPaletteOpen}
         onClose={() => setCommandPaletteOpen(false)}
         commands={paletteCommands}
+      />
+
+      <SearchPalette
+        open={searchPaletteOpen}
+        onClose={() => setSearchPaletteOpen(false)}
+        scopedChannelName={activeChannel?.name ?? null}
+        search={(query, scope) => {
+          const q = query.toLowerCase();
+          const messages = useMessageStore.getState().messages;
+          const hits: SearchHit[] = [];
+          const filterChannelId =
+            scope === 'channel' ? (activeChannel?.id ?? null) : null;
+          for (const [chId, msgs] of messages) {
+            if (filterChannelId && chId !== filterChannelId) continue;
+            const channel = teamChannels.find((c) => c.id === chId);
+            if (!channel) continue;
+            for (const m of msgs) {
+              if (m.deleted) continue;
+              if (!m.content.toLowerCase().includes(q)) continue;
+              hits.push({
+                id: m.id,
+                channelId: chId,
+                channelName: channel.name,
+                author: m.username,
+                timestamp: new Date(m.createdAt).toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  hour12: false,
+                }),
+                body: m.content,
+              });
+              if (hits.length >= 60) return hits;
+            }
+          }
+          return hits;
+        }}
+        onSelectHit={(hit) => handleJumpToMessage(hit.channelId, hit.id)}
       />
     </>
   );
