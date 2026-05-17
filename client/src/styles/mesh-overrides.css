@@ -291,6 +291,12 @@
   color: var(--fg-3);
 }
 
+/* In Mesh, mic + deafen belong on the voice dock (visible only when voice
+   is connected) — not on the user panel. Hide them here. Settings cog stays. */
+[data-theme='mesh'] .user-panel-actions .user-panel-btn:not(:last-child) {
+  display: none;
+}
+
 [data-theme='mesh'] .message-input-textarea {
   font-family: var(--font-body);
   color: var(--fg);
@@ -638,16 +644,21 @@
 
 [data-theme='mesh'] .member-name,
 [data-theme='mesh'] .member-display-name {
-  font-family: var(--font-display);
-  font-weight: var(--fw-display, 700);
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 0.8125rem;
+  color: var(--fg);
+  letter-spacing: 0;
+  text-transform: none;
+  line-height: 1.2;
 }
 
 [data-theme='mesh'] .member-status,
 [data-theme='mesh'] .member-custom-status {
   font-family: var(--font-mono);
-  font-size: 0.625rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: 0.6875rem;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--fg-3);
 }
 

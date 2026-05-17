@@ -308,11 +308,20 @@ export const MOCK_THREAD_MESSAGES: Record<string, Message[]> = {
 // ─── Presences ───────────────────────────────────────────────────────────────
 
 export const MOCK_PRESENCES: Record<string, UserPresence> = {
-  'user-1': { user_id: 'user-1', status: 'online', custom_status: '', last_active: ts(0) },
-  'user-2': { user_id: 'user-2', status: 'idle', custom_status: '', last_active: ts(5) },
+  'user-1': { user_id: 'user-1', status: 'online', custom_status: 'pushing pixels', last_active: ts(0) },
+  'user-2': { user_id: 'user-2', status: 'idle', custom_status: 'lunch', last_active: ts(5) },
   'user-3': { user_id: 'user-3', status: 'online', custom_status: '', last_active: ts(0) },
   'user-4': { user_id: 'user-4', status: 'dnd', custom_status: 'In a meeting', last_active: ts(0) },
   'user-5': { user_id: 'user-5', status: 'offline', custom_status: '', last_active: ts(60) },
+};
+
+// Voice channel occupants — populated for the "Voice Lounge" so the
+// Active voice section renders in the sidebar.
+export const MOCK_VOICE_STATES = {
+  'ch-3': [
+    { user_id: 'user-3', username: 'charlie', muted: false, deafened: false, speaking: true, voiceLevel: 0.6 },
+    { user_id: 'user-2', username: 'bob', muted: true, deafened: false, speaking: false, voiceLevel: 0 },
+  ],
 };
 
 // ─── Random message content for simulated new messages ───────────────────────

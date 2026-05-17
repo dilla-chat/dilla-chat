@@ -14,8 +14,9 @@ import {
   MOCK_TEAM, MOCK_CHANNELS, MOCK_MEMBERS, MOCK_ROLES,
   MOCK_GENERAL_MESSAGES, MOCK_WELCOME_MESSAGES,
   MOCK_DM_CHANNELS,
-  MOCK_PRESENCES, MOCK_THREADS, MOCK_THREAD_MESSAGES,
+  MOCK_PRESENCES, MOCK_THREADS, MOCK_THREAD_MESSAGES, MOCK_VOICE_STATES,
 } from './services/mockData';
+import { useVoiceStore } from './stores/voiceStore';
 import AppLayout from './pages/AppLayout';
 
 export default function DemoWrapper() {
@@ -63,6 +64,9 @@ export default function DemoWrapper() {
     setPresences(DEMO_TEAM_ID, MOCK_PRESENCES);
     setMyStatus('online');
     setMyCustomStatus('pushing pixels');
+
+    // Seed voice occupants so the Active voice section appears in the sidebar.
+    useVoiceStore.getState().setVoiceOccupants(MOCK_VOICE_STATES);
 
     setThreads('ch-2', MOCK_THREADS);
     for (const [threadId, messages] of Object.entries(MOCK_THREAD_MESSAGES)) {
