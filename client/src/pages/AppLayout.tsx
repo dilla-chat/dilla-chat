@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { IconHash, IconMessage, IconUsers, IconVolume, IconLock, IconSettings, IconShield, IconSearch, IconMessageCircle, IconBookmark, IconPin } from '@tabler/icons-react';
+import { IconHash, IconMessage, IconUsers, IconVolume, IconSettings, IconShield, IconSearch, IconMessageCircle, IconBookmark, IconPin } from '@tabler/icons-react';
 import TeamSidebar from '../components/TeamSidebar/TeamSidebar';
 import ChannelList from '../components/ChannelList/ChannelList';
 import DMList from '../components/DMList/DMList';

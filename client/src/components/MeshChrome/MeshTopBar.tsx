@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { useMeshStore } from '../../stores/meshStore';
-import { useAuthStore } from '../../stores/authStore';
 import { useTeamStore } from '../../stores/teamStore';
 import './MeshTopBar.css';
 
