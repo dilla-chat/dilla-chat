@@ -26,6 +26,8 @@ export function useMeshSync() {
       useMeshStore.getState().setNodeName('');
       return;
     }
+    // Defensive: test mocks may pass a non-Map object through the selector.
+    if (!teams || typeof (teams as { get?: unknown }).get !== 'function') return;
     const entry = teams.get(activeTeamId);
     const url = entry?.baseUrl ?? '';
     const node = url.replace(/^https?:\/\//, '').replace(/\/$/, '');

@@ -44,6 +44,7 @@ import ConnectionBanner from '../components/ConnectionBanner/ConnectionBanner';
 import AddPeerWizard from '../components/AddPeerWizard/AddPeerWizard';
 import SafetyCompare from '../components/SafetyCompare/SafetyCompare';
 import ForwardModal, { type ForwardTarget, type ForwardSource } from '../components/ForwardModal/ForwardModal';
+import IncomingCall from '../components/IncomingCall/IncomingCall';
 import { useMeshStore } from '../stores/meshStore';
 import { useUserSettingsStore } from '../stores/userSettingsStore';
 import { useMessageStore } from '../stores/messageStore';
@@ -135,6 +136,10 @@ export default function AppLayout() {
   const [addPeerOpen, setAddPeerOpen] = useState(false);
   const [safetyCompareOpen, setSafetyCompareOpen] = useState(false);
   const [forwardSource, setForwardSource] = useState<ForwardSource | null>(null);
+  const [incomingCall, setIncomingCall] = useState<{
+    callerName: string;
+    channelName?: string;
+  } | null>(null);
 
   // Listen for mesh:* events from the top bar, bottom bar, and other components
   useEffect(() => {
@@ -146,17 +151,23 @@ export default function AppLayout() {
       const detail = (e as CustomEvent<ForwardSource>).detail;
       if (detail) setForwardSource(detail);
     };
+    const openIncoming = (e: Event) => {
+      const detail = (e as CustomEvent<{ callerName: string; channelName?: string }>).detail;
+      if (detail) setIncomingCall(detail);
+    };
     window.addEventListener('mesh:open-command-palette', openCmd);
     window.addEventListener('mesh:open-search', openSearch);
     window.addEventListener('mesh:open-add-peer', openAddPeer);
     window.addEventListener('mesh:open-safety-compare', openSafety);
     window.addEventListener('mesh:open-forward', openForward as EventListener);
+    window.addEventListener('mesh:incoming-call', openIncoming as EventListener);
     return () => {
       window.removeEventListener('mesh:open-command-palette', openCmd);
       window.removeEventListener('mesh:open-search', openSearch);
       window.removeEventListener('mesh:open-add-peer', openAddPeer);
       window.removeEventListener('mesh:open-safety-compare', openSafety);
       window.removeEventListener('mesh:open-forward', openForward as EventListener);
+      window.removeEventListener('mesh:incoming-call', openIncoming as EventListener);
     };
   }, []);
 
@@ -240,6 +251,18 @@ export default function AppLayout() {
         run: () => setActiveChannel(ch.id),
       });
     }
+    cmds.push({
+      id: 'voice.simulate-incoming',
+      label: 'Simulate: incoming call',
+      hint: 'dev',
+      section: 'VOICE',
+      run: () =>
+        window.dispatchEvent(
+          new CustomEvent('mesh:incoming-call', {
+            detail: { callerName: 'Ada Lovelace', channelName: 'voice-lounge' },
+          }),
+        ),
+    });
 
     // FEDERATION
     cmds.push({
@@ -738,6 +761,17 @@ export default function AppLayout() {
         open={commandPaletteOpen}
         onClose={() => setCommandPaletteOpen(false)}
         commands={paletteCommands}
+      />
+
+      <IncomingCall
+        open={incomingCall !== null}
+        callerName={incomingCall?.callerName ?? ''}
+        channelName={incomingCall?.channelName}
+        onAccept={() => {
+          setIncomingCall(null);
+          // TODO: actually join the call once voice signaling exposes incoming-call accept
+        }}
+        onDecline={() => setIncomingCall(null)}
       />
 
       <AddPeerWizard
