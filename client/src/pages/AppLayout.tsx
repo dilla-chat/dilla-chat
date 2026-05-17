@@ -36,6 +36,9 @@ import ContentErrorBoundary from '../components/ErrorBoundary/ContentErrorBounda
 import { useLayoutStore } from '../stores/layoutStore';
 import MeshTopBar from '../components/MeshChrome/MeshTopBar';
 import MeshBottomBar from '../components/MeshChrome/MeshBottomBar';
+import CommandPalette, { type PaletteCommand } from '../components/CommandPalette/CommandPalette';
+import { useMeshStore } from '../stores/meshStore';
+import { useUserSettingsStore } from '../stores/userSettingsStore';
 import './AppLayout.css';
 
 export default function AppLayout() {
@@ -118,6 +121,14 @@ export default function AppLayout() {
   const [showNewDM, setShowNewDM] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+
+  // Listen for mesh:open-command-palette events from the top bar
+  useEffect(() => {
+    const handler = () => setCommandPaletteOpen(true);
+    window.addEventListener('mesh:open-command-palette', handler);
+    return () => window.removeEventListener('mesh:open-command-palette', handler);
+  }, []);
 
   // Get current user info from auth store
   const currentTeamEntry = activeTeamId ? authTeams.get(activeTeamId) : null;
@@ -174,6 +185,91 @@ export default function AppLayout() {
   };
 
   const isDMMode = viewMode === 'dms';
+
+  // Build CommandPalette commands from current state
+  const paletteCommands = useMemo<PaletteCommand[]>(() => {
+    const cmds: PaletteCommand[] = [];
+
+    // NAVIGATE — current team's channels
+    for (const ch of teamChannels.filter((c) => c.type === 'text').slice(0, 8)) {
+      cmds.push({
+        id: `nav.channel.${ch.id}`,
+        label: `Open #${ch.name}`,
+        hint: ch.topic || undefined,
+        section: 'NAVIGATE',
+        run: () => setActiveChannel(ch.id),
+      });
+    }
+
+    // VOICE — voice channels
+    for (const ch of teamChannels.filter((c) => c.type === 'voice').slice(0, 4)) {
+      cmds.push({
+        id: `voice.${ch.id}`,
+        label: `Join ${ch.name}`,
+        section: 'VOICE',
+        run: () => setActiveChannel(ch.id),
+      });
+    }
+
+    // FEDERATION
+    cmds.push({
+      id: 'fed.peers',
+      label: 'Show peer status',
+      hint: 'opens federation settings',
+      section: 'FEDERATION',
+      run: () => navigate('/app/settings'),
+    });
+    cmds.push({
+      id: 'fed.simulate-degraded',
+      label: 'Simulate: peer drop',
+      hint: 'dev',
+      section: 'FEDERATION',
+      run: () => useMeshStore.getState().setStatus('degraded'),
+    });
+    cmds.push({
+      id: 'fed.simulate-ok',
+      label: 'Simulate: peers OK',
+      hint: 'dev',
+      section: 'FEDERATION',
+      run: () => useMeshStore.getState().setStatus('ok'),
+    });
+
+    // ENCRYPTION
+    cmds.push({
+      id: 'enc.settings',
+      label: 'Open privacy & encryption settings',
+      section: 'ENCRYPTION',
+      run: () => navigate('/app/user-settings'),
+    });
+    cmds.push({
+      id: 'enc.verify',
+      label: 'Verify safety number',
+      section: 'ENCRYPTION',
+      run: () => console.warn('TODO: open SafetyCompare overlay'),
+    });
+
+    // ACCOUNT
+    cmds.push({
+      id: 'acct.settings',
+      label: 'Open user settings',
+      section: 'ACCOUNT',
+      run: () => navigate('/app/user-settings'),
+    });
+    cmds.push({
+      id: 'acct.theme.mesh',
+      label: 'Switch to mesh theme',
+      section: 'ACCOUNT',
+      run: () => useUserSettingsStore.getState().setTheme('mesh'),
+    });
+    cmds.push({
+      id: 'acct.theme.dark',
+      label: 'Switch to dark theme',
+      section: 'ACCOUNT',
+      run: () => useUserSettingsStore.getState().setTheme('dark'),
+    });
+
+    return cmds;
+  }, [teamChannels, setActiveChannel, navigate]);
 
   // Pre-compute content header for S3358 (no nested ternaries in JSX)
   const renderContentHeader = () => {
@@ -594,6 +690,12 @@ export default function AppLayout() {
         open={quickSwitcherOpen}
         onClose={() => setQuickSwitcherOpen(false)}
         onSelect={handleQuickSwitch}
+      />
+
+      <CommandPalette
+        open={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        commands={paletteCommands}
       />
     </>
   );
