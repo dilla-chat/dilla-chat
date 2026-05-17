@@ -5,6 +5,7 @@ import { IconPlus } from '@tabler/icons-react';
 import { useAuthStore } from '../../stores/authStore';
 import { useTeamStore } from '../../stores/teamStore';
 import { useUnreadStore } from '../../stores/unreadStore';
+import NewServerModal from '../NewServerModal/NewServerModal';
 import TeamRailContextMenu from './TeamRailContextMenu';
 import './TeamSidebar.css';
 
@@ -21,6 +22,7 @@ export default function TeamSidebar() {
   const { activeTeamId, setActiveTeam, teams: teamMap, channels: teamChannels } = useTeamStore();
   const unreadCounts = useUnreadStore((s) => s.counts);
   const [menu, setMenu] = useState<MenuState | null>(null);
+  const [newServerOpen, setNewServerOpen] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const dragOriginRef = useRef<string | null>(null);
@@ -163,11 +165,29 @@ export default function TeamSidebar() {
       </div>
       <button
         className="team-add"
-        onClick={() => navigate('/join')}
+        onClick={() => setNewServerOpen(true)}
         title={t('sidebar.addTeam')}
       >
         <IconPlus size={20} stroke={1.75} />
       </button>
+
+      <NewServerModal
+        open={newServerOpen}
+        onClose={() => setNewServerOpen(false)}
+        onJoin={({ serverUrl, invite }) => {
+          // Hand off to existing /join flow with prefilled state via URL params
+          const params = new URLSearchParams();
+          params.set('server', serverUrl);
+          params.set('invite', invite);
+          navigate(`/join?${params.toString()}`);
+        }}
+        onCreate={({ name, serverUrl }) => {
+          const params = new URLSearchParams();
+          params.set('name', name);
+          params.set('server', serverUrl);
+          navigate(`/setup?${params.toString()}`);
+        }}
+      />
 
       {menu && (
         <TeamRailContextMenu

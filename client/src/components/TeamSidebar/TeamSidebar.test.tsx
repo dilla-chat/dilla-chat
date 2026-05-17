@@ -52,11 +52,27 @@ describe('TeamSidebar', () => {
     expect(useTeamStore.getState().activeTeamId).toBe('team-2');
   });
 
-  it('navigates to /join when add button is clicked', () => {
+  it('opens NewServerModal when add button is clicked', () => {
     render(<TeamSidebar />);
     const addBtn = screen.getByTestId('Plus').closest('button')!;
     fireEvent.click(addBtn);
-    expect(mockNavigate).toHaveBeenCalledWith('/join');
+    // Modal is mounted via portal; look in document.body
+    expect(document.querySelector('.new-server-modal')).toBeInTheDocument();
+  });
+
+  it('submitting Join in modal navigates to /join with params', () => {
+    render(<TeamSidebar />);
+    const addBtn = screen.getByTestId('Plus').closest('button')!;
+    fireEvent.click(addBtn);
+    // Modal defaults to Join mode
+    const urlInput = screen.getByLabelText(/server url/i);
+    const inviteInput = screen.getByLabelText(/invite token/i);
+    fireEvent.change(urlInput, { target: { value: 'https://x.example' } });
+    fireEvent.change(inviteInput, { target: { value: 'tok123' } });
+    fireEvent.click(screen.getByText(/join →/i));
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.stringMatching(/^\/join\?.*invite=tok123/),
+    );
   });
 
   it('renders add team button', () => {
