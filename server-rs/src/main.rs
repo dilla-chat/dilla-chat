@@ -301,7 +301,7 @@ fn spawn_federation_status_broadcaster(
             let connected = peers.iter().filter(|p| p.status == "connected").count();
             let degraded = connected < total;
 
-            let payload = serde_json::json!({
+            let peer_payload = serde_json::json!({
                 "type": ws::events::EVENT_FEDERATION_PEER_STATUS,
                 "payload": {
                     "connected": connected,
@@ -309,7 +309,18 @@ fn spawn_federation_status_broadcaster(
                     "degraded": degraded,
                 },
             });
-            if let Ok(bytes) = serde_json::to_vec(&payload) {
+            if let Ok(bytes) = serde_json::to_vec(&peer_payload) {
+                hub.broadcast_to_all(bytes).await;
+            }
+
+            // Broadcast current Lamport clock value so clients can render it
+            // without needing to track every incoming message.
+            let lamport = mesh_node.sync_manager().current();
+            let lamport_payload = serde_json::json!({
+                "type": ws::events::EVENT_FEDERATION_LAMPORT,
+                "payload": { "value": lamport },
+            });
+            if let Ok(bytes) = serde_json::to_vec(&lamport_payload) {
                 hub.broadcast_to_all(bytes).await;
             }
         }
