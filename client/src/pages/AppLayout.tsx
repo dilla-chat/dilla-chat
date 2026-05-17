@@ -33,6 +33,9 @@ import { usePresenceEvents } from '../hooks/usePresenceEvents';
 import { useCustomTheme } from '../hooks/useCustomTheme';
 import { telemetryClient } from '../services/telemetryClient';
 import ContentErrorBoundary from '../components/ErrorBoundary/ContentErrorBoundary';
+import { useLayoutStore } from '../stores/layoutStore';
+import MeshTopBar from '../components/MeshChrome/MeshTopBar';
+import MeshBottomBar from '../components/MeshChrome/MeshBottomBar';
 import './AppLayout.css';
 
 export default function AppLayout() {
@@ -49,6 +52,15 @@ export default function AppLayout() {
   const [showDMMembers, setShowDMMembers] = useState(false);
 
   useCustomTheme();
+
+  const {
+    sidebarWidth,
+    membersWidth,
+    topBarEnabled,
+    bottomBarEnabled,
+    nudgeSidebarWidth,
+    nudgeMembersWidth,
+  } = useLayoutStore();
 
   // --- Extracted hooks ---
   const { cryptoReady } = useCryptoRestore();
@@ -106,11 +118,6 @@ export default function AppLayout() {
   const [showNewDM, setShowNewDM] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
-  const [channelWidth, setChannelWidth] = useState(240);
-
-  const handleChannelResize = useCallback((delta: number) => {
-    setChannelWidth(prev => Math.min(Math.max(prev + delta, 240), 400));
-  }, []);
 
   // Get current user info from auth store
   const currentTeamEntry = activeTeamId ? teams.get(activeTeamId) : null;
@@ -405,7 +412,7 @@ export default function AppLayout() {
   }
 
   const channelSidebarContent = (
-    <div className={`channel-sidebar ${isMobile ? 'mobile-fullwidth' : ''}`} style={isMobile ? undefined : { width: channelWidth }}>
+    <div className={`channel-sidebar ${isMobile ? 'mobile-fullwidth' : ''}`}>
       <div className="channel-sidebar-header">
         <div className="channel-sidebar-header-top">
           <span className="channel-sidebar-header-name title truncate">
@@ -452,106 +459,133 @@ export default function AppLayout() {
         {t('a11y.skipToContent', 'Skip to content')}
       </a>
       <TitleBar />
-      <div className={`app-layout-main ${isMobile ? 'mobile' : ''}`}>
-      {!isMobile && (
-        <>
-          <div className="left-panels" style={{ width: 72 + channelWidth }}>
-            <div className="left-panels-top">
+
+      <div
+        className={`app-layout-main ${isMobile ? 'mobile' : ''}`}
+        data-topbar={topBarEnabled || undefined}
+        data-bottombar={bottomBarEnabled || undefined}
+      >
+        {!isMobile && topBarEnabled && <MeshTopBar />}
+
+        {!isMobile && (
+          <div
+            className="app-grid-shell"
+            style={{
+              gridTemplateColumns: `var(--rail-w) ${sidebarWidth}px 1fr ${
+                !isDMMode && showMembers ? `${membersWidth}px` : '0px'
+              }`,
+            }}
+          >
+            <div className="app-grid-rail">
               <TeamSidebar />
-              {channelSidebarContent}
             </div>
 
-            <div className="left-panels-bottom">
-              <VoiceControls />
-              <UserPanel
-                username={username}
-                displayName={displayName}
-                onSettingsClick={() => navigate('/app/user-settings')}
-              />
+            <div className="app-grid-sidebar">
+              <div className="app-grid-sidebar-top">{channelSidebarContent}</div>
+              <div className="app-grid-sidebar-bottom">
+                <VoiceControls />
+                <UserPanel
+                  username={username}
+                  displayName={displayName}
+                  onSettingsClick={() => navigate('/app/user-settings')}
+                />
+              </div>
+            </div>
+
+            <ResizeHandle onResize={nudgeSidebarWidth} />
+
+            <div id="main-content" className="content-wrapper">
+              <div className="content-header">{renderContentHeader()}</div>
+              <div className="content-body">
+                <div className="content-area">{renderContentArea()}</div>
+                {threadPanelOpen && activeThread && (
+                  <ContentErrorBoundary fallbackLabel="Thread panel failed to load.">
+                    <ThreadPanel thread={activeThread} onClose={handleCloseThread} />
+                  </ContentErrorBoundary>
+                )}
+              </div>
+            </div>
+
+            {!isDMMode && showMembers && (
+              <>
+                <ResizeHandle onResize={nudgeMembersWidth} side="right" />
+                <div className="app-grid-members">
+                  <MemberList />
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {isMobile && mobileTab === 'teams' && (
+          <div className="mobile-tab-content">
+            <TeamSidebar />
+          </div>
+        )}
+
+        {isMobile && mobileTab === 'channels' && (
+          <div className="mobile-tab-content">{channelSidebarContent}</div>
+        )}
+
+        {isMobile && mobileTab === 'members' && (
+          <div className="mobile-tab-content">
+            <MemberList />
+          </div>
+        )}
+
+        {isMobile && mobileTab === 'chat' && (
+          <div id="main-content" className="content-wrapper">
+            <div className="content-header">{renderContentHeader()}</div>
+            <div className="content-body">
+              <div className="content-area">{renderContentArea()}</div>
+              {threadPanelOpen && activeThread && (
+                <ContentErrorBoundary fallbackLabel="Thread panel failed to load.">
+                  <ThreadPanel thread={activeThread} onClose={handleCloseThread} />
+                </ContentErrorBoundary>
+              )}
             </div>
           </div>
+        )}
 
-          <ResizeHandle onResize={handleChannelResize} />
-        </>
-      )}
-
-      {isMobile && mobileTab === 'teams' && (
-        <div className="mobile-tab-content">
-          <TeamSidebar />
-        </div>
-      )}
-
-      {isMobile && mobileTab === 'channels' && (
-        <div className="mobile-tab-content">
-          {channelSidebarContent}
-        </div>
-      )}
-
-      {isMobile && mobileTab === 'members' && (
-        <div className="mobile-tab-content">
-          <MemberList />
-        </div>
-      )}
-
-      {(!isMobile || mobileTab === 'chat') && (
-      <div id="main-content" className="content-wrapper">
-        <div className="content-header">
-          {renderContentHeader()}
-        </div>
-
-        <div className="content-body">
-          <div className="content-area">
-            {renderContentArea()}
+        {isMobile && (
+          <div className="mobile-bottom-controls">
+            <VoiceControls />
+            <UserPanel
+              username={username}
+              displayName={displayName}
+              onSettingsClick={() => navigate('/app/user-settings')}
+            />
+            <MobileTabBar activeTab={mobileTab} onTabChange={setMobileTab} />
           </div>
+        )}
 
-          {threadPanelOpen && activeThread && (
-            <ContentErrorBoundary fallbackLabel="Thread panel failed to load.">
-              <ThreadPanel thread={activeThread} onClose={handleCloseThread} />
-            </ContentErrorBoundary>
-          )}
+        {!isMobile && bottomBarEnabled && <MeshBottomBar />}
 
-          {!isMobile && !isDMMode && showMembers && <MemberList />}
-        </div>
-      </div>
-      )}
-
-      {isMobile && (
-        <div className="mobile-bottom-controls">
-          <VoiceControls />
-          <UserPanel
-            username={username}
-            displayName={displayName}
-            onSettingsClick={() => navigate('/app/user-settings')}
+        {showCreateChannel && (
+          <CreateChannel
+            defaultCategory={createChannelCategory}
+            onClose={() => setShowCreateChannel(false)}
           />
-          <MobileTabBar activeTab={mobileTab} onTabChange={setMobileTab} />
-        </div>
-      )}
+        )}
 
-      {showCreateChannel && (
-        <CreateChannel
-          defaultCategory={createChannelCategory}
-          onClose={() => setShowCreateChannel(false)}
-        />
-      )}
+        {showNewDM && (
+          <NewDMModal
+            currentUserId={currentUserId}
+            onClose={() => setShowNewDM(false)}
+            onDMCreated={handleDMCreated}
+          />
+        )}
 
-      {showNewDM && (
-        <NewDMModal
-          currentUserId={currentUserId}
-          onClose={() => setShowNewDM(false)}
-          onDMCreated={handleDMCreated}
-        />
-      )}
+        {shortcutsOpen && (
+          <ShortcutsModal onClose={() => setShortcutsOpen(false)} />
+        )}
+      </div>
 
-      {shortcutsOpen && (
-        <ShortcutsModal onClose={() => setShortcutsOpen(false)} />
-      )}
-    </div>
-
-    <QuickSwitcher
-      open={quickSwitcherOpen}
-      onClose={() => setQuickSwitcherOpen(false)}
-      onSelect={handleQuickSwitch}
-    />
+      <QuickSwitcher
+        open={quickSwitcherOpen}
+        onClose={() => setQuickSwitcherOpen(false)}
+        onSelect={handleQuickSwitch}
+      />
     </>
   );
 }
