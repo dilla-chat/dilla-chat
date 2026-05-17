@@ -25,6 +25,11 @@ const DemoWrapper = DEMO_ENABLED
   ? lazy(() => import('./DemoWrapper'))
   : () => <Navigate to="/" replace />;
 
+// Lazy-load Mesh sandbox (handoff JSX port) only when VITE_DEMO=true
+const MeshSandbox = DEMO_ENABLED
+  ? lazy(() => import('./ports/mesh/MeshSandbox'))
+  : () => <Navigate to="/" replace />;
+
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null };
   static getDerivedStateFromError(error: Error) { return { error }; }
@@ -84,6 +89,13 @@ function App() {
         {DEMO_ENABLED && (
           <Route path="/demo" element={
             <Suspense fallback={null}><DemoWrapper /></Suspense>
+          } />
+        )}
+        {/* Mesh design-first sandbox — ported handoff JSX rendering against
+            its own mock data. Behind VITE_DEMO so it shares the demo gate. */}
+        {DEMO_ENABLED && (
+          <Route path="/mesh" element={
+            <Suspense fallback={null}><MeshSandbox /></Suspense>
           } />
         )}
         {/* /create-identity now routes to the Mesh onboarding wizard. The
