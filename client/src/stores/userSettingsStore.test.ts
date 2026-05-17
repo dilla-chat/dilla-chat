@@ -15,6 +15,7 @@ beforeEach(() => {
     desktopNotifications: true,
     soundNotifications: true,
     theme: 'dark',
+    density: 'regular',
   });
 });
 
@@ -76,6 +77,14 @@ describe('setters', () => {
     getState().setTheme('light');
     getState().setTheme('dark');
     expect(getState().theme).toBe('dark');
+  });
+
+  it('exposes density default of regular and updates via setter', () => {
+    expect(getState().density).toBe('regular');
+    getState().setDensity('compact');
+    expect(getState().density).toBe('compact');
+    getState().setDensity('cozy');
+    expect(getState().density).toBe('cozy');
   });
 });
 
