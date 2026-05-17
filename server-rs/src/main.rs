@@ -275,7 +275,45 @@ async fn init_federation_mesh(
         tracing::error!("failed to start federation mesh: {}", e);
     }
 
+    spawn_federation_status_broadcaster(&mesh_node, hub);
+
     Some(mesh_node)
+}
+
+/// Periodically broadcasts the peer-status snapshot to all connected clients
+/// so the Mesh top/bottom bars stay in sync. The cadence is intentionally
+/// generous (30s) — clients also tick lamport per message and react to
+/// connection events, so this is a backstop, not the hot path.
+fn spawn_federation_status_broadcaster(
+    mesh_node: &Arc<federation::MeshNode>,
+    hub: &Arc<ws::Hub>,
+) {
+    let mesh_node = Arc::clone(mesh_node);
+    let hub = Arc::clone(hub);
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+        // Skip the first tick (fires immediately on construction).
+        interval.tick().await;
+        loop {
+            interval.tick().await;
+            let peers = mesh_node.get_peers().await;
+            let total = peers.len();
+            let connected = peers.iter().filter(|p| p.status == "connected").count();
+            let degraded = connected < total;
+
+            let payload = serde_json::json!({
+                "type": ws::events::EVENT_FEDERATION_PEER_STATUS,
+                "payload": {
+                    "connected": connected,
+                    "total": total,
+                    "degraded": degraded,
+                },
+            });
+            if let Ok(bytes) = serde_json::to_vec(&payload) {
+                hub.broadcast_to_all(bytes).await;
+            }
+        }
+    });
 }
 
 fn init_telemetry_relay(cfg: &Config) -> Option<Arc<telemetry::TelemetryRelay>> {

@@ -93,6 +93,14 @@ pub const EVENT_DM_MESSAGE_DELETED: &str = "dm:message:deleted";
 #[allow(dead_code)]
 pub const EVENT_DM_CREATED: &str = "dm:created";
 
+// Federation server events (broadcast to all subscribed clients)
+#[allow(dead_code)]
+pub const EVENT_FEDERATION_PEER_STATUS: &str = "federation:peer-status";
+#[allow(dead_code)]
+pub const EVENT_FEDERATION_LAMPORT: &str = "federation:lamport";
+#[allow(dead_code)]
+pub const EVENT_FEDERATION_LATENCY: &str = "federation:latency";
+
 // ── Channel read event types ─────────────────────────────────────────────────
 pub const ACTION_CHANNEL_READ: &str = "channel:mark-read";
 #[allow(dead_code)]
