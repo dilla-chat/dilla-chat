@@ -9,73 +9,85 @@ export default function MeshBottomBar() {
   const { nodeName, peersConnected, peersTotal, lamport, latencyMs, status } =
     useMeshStore();
   const voiceConnected = useVoiceStore((s) => s.connected);
-
-  const peersChunk = peersTotal > 0 ? `peers ${peersConnected}/${peersTotal}` : 'peers 0/0';
-  const peersDegraded = status === 'degraded';
-  const peersArrow = peersDegraded ? ' ⚠' : ' ▲';
+  const federated = status !== 'ready';
+  const degraded = status === 'degraded';
 
   return (
-    <footer
-      className="mesh-bottom-bar"
-      role="contentinfo"
-      aria-label="Mesh bottom bar"
-    >
+    <div className="mesh-bottom" role="contentinfo" aria-label="Mesh bottom bar">
       <button
         type="button"
-        className="mesh-bottom-bar-chunk"
-        onClick={() => window.dispatchEvent(new CustomEvent('mesh:open-federation'))}
-        title="Federation"
+        className="mb-chunk mb-clickable"
+        title="Click for federation settings"
+        onClick={() =>
+          window.dispatchEvent(new CustomEvent('mesh:open-federation'))
+        }
       >
-        node {nodeName || 'local'}
+        <span className="mb-k">node</span> {nodeName || 'local'}
       </button>
 
-      <button
-        type="button"
-        className={`mesh-bottom-bar-chunk ${peersDegraded ? 'degraded' : ''}`}
-        onClick={() => window.dispatchEvent(new CustomEvent('mesh:open-federation'))}
-        title="Federation"
-      >
-        {peersChunk}
-        <span aria-hidden="true">{peersArrow}</span>
-      </button>
-
-      <span className="mesh-bottom-bar-chunk static">
-        lamport {lamport.toLocaleString('en-US')}↑
-      </span>
-
-      {!peersDegraded && (
-        <span className="mesh-bottom-bar-chunk static">
-          latency {latencyMs}ms p50
-        </span>
+      {federated && (
+        <>
+          <button
+            type="button"
+            className="mb-chunk mb-clickable"
+            title="Click for peer status"
+            onClick={() =>
+              window.dispatchEvent(new CustomEvent('mesh:open-federation'))
+            }
+          >
+            <span className="mb-k">peers</span>{' '}
+            {degraded ? (
+              <span style={{ color: 'var(--warn)', fontWeight: 600 }}>
+                {peersConnected}/{peersTotal || 1} ⚠
+              </span>
+            ) : (
+              <span className="mb-ok">
+                {peersConnected}/{peersTotal} ▲
+              </span>
+            )}
+          </button>
+          <div className="mb-chunk">
+            <span className="mb-k">lamport</span> {lamport.toLocaleString('en-US')}↑
+          </div>
+          <div className="mb-chunk">
+            <span className="mb-k">latency</span>{' '}
+            {degraded ? '—' : `${latencyMs}ms p50`}
+          </div>
+        </>
       )}
 
       <button
         type="button"
-        className="mesh-bottom-bar-chunk"
-        onClick={() => window.dispatchEvent(new CustomEvent('mesh:open-privacy'))}
-        title="Privacy & encryption"
+        className="mb-chunk mb-clickable"
+        title="Click for encryption details"
+        onClick={() =>
+          window.dispatchEvent(new CustomEvent('mesh:open-privacy'))
+        }
       >
-        e2e SIGNAL · X3DH · AES-256-GCM
+        <span className="mb-k">e2e</span> SIGNAL · X3DH · AES-256-GCM
       </button>
 
       {voiceConnected ? (
         <button
           type="button"
-          className="mesh-bottom-bar-chunk"
-          onClick={() => window.dispatchEvent(new CustomEvent('mesh:open-voice-settings'))}
-          title="Voice & video"
+          className="mb-chunk mb-voice mb-clickable"
+          title="Click for voice settings"
+          onClick={() =>
+            window.dispatchEvent(new CustomEvent('mesh:open-voice-settings'))
+          }
         >
-          voice SRTP · OPUS 48kHz @ 96kbps
+          <span className="mb-k">voice</span> SRTP · OPUS 48kHz @ 96kbps
         </button>
       ) : (
-        <span className="mesh-bottom-bar-chunk static">
-          db SQLCIPHER · AES-256
-        </span>
+        <div className="mb-chunk">
+          <span className="mb-k">db</span> SQLCIPHER · AES-256
+        </div>
       )}
 
-      <span className="mesh-bottom-bar-chunk static mesh-bottom-bar-version">
-        v {APP_VERSION} · build {BUILD_HASH}
-      </span>
-    </footer>
+      <div className="mb-chunk mb-grow" />
+      <div className="mb-chunk">
+        <span className="mb-k">v</span> {APP_VERSION} · build {BUILD_HASH}
+      </div>
+    </div>
   );
 }

@@ -1,91 +1,82 @@
 import { useEffect, useState } from 'react';
 import { useMeshStore } from '../../stores/meshStore';
-import { useLayoutStore } from '../../stores/layoutStore';
+import { useAuthStore } from '../../stores/authStore';
+import { useTeamStore } from '../../stores/teamStore';
 import './MeshTopBar.css';
 
 function formatClock(d: Date): string {
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-}
-
-function statusLabel(status: 'ok' | 'degraded' | 'ready'): string {
-  if (status === 'degraded') return '● MESH DEGRADED';
-  if (status === 'ok') return '● MESH OK';
-  return '● READY';
+  return d.toTimeString().slice(0, 8);
 }
 
 export default function MeshTopBar() {
   const { nodeName, status } = useMeshStore();
-  const toggleTopBar = useLayoutStore((s) => s.toggleTopBar);
-  const [now, setNow] = useState(() => new Date());
+  const activeTeamId = useTeamStore((s) => s.activeTeamId);
+  const teams = useTeamStore((s) => s.teams);
+  const teamName = activeTeamId ? teams.get(activeTeamId)?.name ?? '' : '';
+  const shortNode = nodeName ? nodeName.split('.')[0] : 'local';
+  const federated = status !== 'ready';
+  const degraded = status === 'degraded';
 
+  const [, setTick] = useState(0);
   useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 1000);
+    const id = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(id);
   }, []);
+  const time = formatClock(new Date());
 
-  const statusClass =
-    status === 'degraded'
-      ? 'mesh-top-bar-status degraded'
-      : status === 'ok'
-        ? 'mesh-top-bar-status ok'
-        : 'mesh-top-bar-status ready';
+  let statusEl;
+  if (degraded) {
+    statusEl = <span className="mt-warn">● MESH DEGRADED</span>;
+  } else if (federated) {
+    statusEl = <span className="mt-ok">● MESH OK</span>;
+  } else {
+    statusEl = <span className="mt-ok">● READY</span>;
+  }
 
   return (
-    <header className="mesh-top-bar" role="banner" aria-label="Mesh top bar">
-      <div className="mesh-top-bar-section left">
-        <span className="mesh-brand-mark" aria-hidden="true">
-          <span className="mesh-brand-tile">D</span>
-          <span className="mesh-brand-word">DILLA</span>
-          <span className="mesh-brand-caret">_</span>
-        </span>
-        {nodeName && (
-          <span className="mesh-top-bar-node">
-            team · node {nodeName}
-          </span>
-        )}
-        <span className={statusClass}>{statusLabel(status)}</span>
+    <div className="mesh-top" role="banner" aria-label="Mesh top bar">
+      <div className="mt-left">
+        <span className="mt-brand">DILLA</span>
+        <span className="mt-sep">─</span>
+        <span className="mt-dim">team</span>{' '}
+        <span>{teamName ? teamName.toUpperCase() : 'LOCAL'}</span>
+        <span className="mt-sep">─</span>
+        <span className="mt-dim">node</span> <span>{shortNode}</span>
+        <span className="mt-sep">─</span>
+        {statusEl}
       </div>
-
-      <div className="mesh-top-bar-section center">
-        <span className="mesh-top-bar-clock" aria-label="Current time">
-          {formatClock(now)}
-        </span>
+      <div className="mt-center" aria-label="Current time">
+        {time}
       </div>
-
-      <div className="mesh-top-bar-section right">
+      <div className="mt-right">
         <button
           type="button"
-          className="mesh-top-bar-keybind"
-          title="Command palette"
+          className="mt-key"
           onClick={() =>
             window.dispatchEvent(new CustomEvent('mesh:open-command-palette'))
           }
         >
-          <kbd>⌘K</kbd>
-          <span>CMD</span>
+          <span className="mt-kbd">⌘K</span> CMD
         </button>
         <button
           type="button"
-          className="mesh-top-bar-keybind"
-          title="Search"
+          className="mt-key"
           onClick={() =>
             window.dispatchEvent(new CustomEvent('mesh:open-search'))
           }
         >
-          <kbd>/</kbd>
-          <span>SEARCH</span>
+          <span className="mt-kbd">/</span> SEARCH
         </button>
         <button
           type="button"
-          className="mesh-top-bar-keybind"
-          title="Hide top bar"
-          onClick={toggleTopBar}
+          className="mt-key"
+          onClick={() =>
+            window.dispatchEvent(new CustomEvent('mesh:open-shortcuts'))
+          }
         >
-          <kbd>?</kbd>
-          <span>HIDE</span>
+          <span className="mt-kbd">?</span> HELP
         </button>
       </div>
-    </header>
+    </div>
   );
 }

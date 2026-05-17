@@ -21,58 +21,70 @@ beforeEach(() => {
 });
 
 describe('MeshBottomBar', () => {
-  it('renders a content-info landmark', () => {
-    render(<MeshBottomBar />);
-    const bar = screen.getByRole('contentinfo', { name: /mesh bottom bar/i });
-    expect(bar).toBeInTheDocument();
-    expect(bar).toHaveClass('mesh-bottom-bar');
+  it('renders a contentinfo landmark with the mesh-bottom class', () => {
+    const { container } = render(<MeshBottomBar />);
+    expect(screen.getByRole('contentinfo', { name: /mesh bottom bar/i })).toBeInTheDocument();
+    expect(container.querySelector('.mesh-bottom')).toBeInTheDocument();
   });
 
-  it('shows node name when set', () => {
+  it('shows node name', () => {
     useMeshStore.setState({ nodeName: 'gbg-1.dilla.local' });
     const { container } = render(<MeshBottomBar />);
-    expect(container.textContent).toMatch(/node gbg-1\.dilla\.local/i);
+    expect(container.textContent).toMatch(/gbg-1\.dilla\.local/i);
   });
 
-  it('shows peers count and lamport', () => {
-    useMeshStore.setState({ peersConnected: 2, peersTotal: 2, lamport: 12944 });
+  it('shows peers + lamport + latency when federated and not degraded', () => {
+    useMeshStore.setState({
+      status: 'ok',
+      peersConnected: 2,
+      peersTotal: 2,
+      lamport: 12944,
+      latencyMs: 14,
+    });
     const { container } = render(<MeshBottomBar />);
-    expect(container.textContent).toMatch(/peers 2\/2/i);
+    expect(container.textContent).toMatch(/peers/i);
+    expect(container.textContent).toMatch(/2\/2/);
     expect(container.textContent).toMatch(/lamport 12,944/i);
-  });
-
-  it('shows latency when not degraded', () => {
-    useMeshStore.setState({ status: 'ok', latencyMs: 14 });
-    const { container } = render(<MeshBottomBar />);
     expect(container.textContent).toMatch(/latency 14ms p50/i);
   });
 
-  it('hides latency and shows warning glyph when degraded', () => {
+  it('shows warning indicator and dashes latency when degraded', () => {
     useMeshStore.setState({
       status: 'degraded',
       peersConnected: 1,
       peersTotal: 2,
     });
     const { container } = render(<MeshBottomBar />);
-    expect(container.textContent).toMatch(/peers 1\/2/i);
-    expect(container.textContent).not.toMatch(/latency/i);
+    expect(container.textContent).toMatch(/1\/2 ⚠/);
+    expect(container.textContent).toMatch(/latency —/i);
   });
 
-  it('clicking a chunk dispatches a custom event', () => {
+  it('hides federation chunks (peers/lamport/latency) when status is ready', () => {
+    useMeshStore.setState({ status: 'ready' });
+    const { container } = render(<MeshBottomBar />);
+    expect(container.textContent).not.toMatch(/peers/i);
+    expect(container.textContent).not.toMatch(/lamport/i);
+  });
+
+  it('clicking the e2e chunk dispatches mesh:open-privacy', () => {
     const spy = vi.spyOn(window, 'dispatchEvent');
     render(<MeshBottomBar />);
-    fireEvent.click(screen.getByTitle(/privacy/i));
+    fireEvent.click(screen.getByTitle(/encryption/i));
     expect(
       spy.mock.calls.some(
         (call) =>
-          call[0] instanceof CustomEvent &&
-          call[0].type === 'mesh:open-privacy',
+          call[0] instanceof CustomEvent && call[0].type === 'mesh:open-privacy',
       ),
     ).toBe(true);
     spy.mockRestore();
   });
 
-  it('shows version + build at the right', () => {
+  it('shows the db chunk when voice is not connected', () => {
+    const { container } = render(<MeshBottomBar />);
+    expect(container.textContent).toMatch(/db SQLCIPHER/i);
+  });
+
+  it('shows version + build in the rightmost chunk', () => {
     const { container } = render(<MeshBottomBar />);
     expect(container.textContent).toMatch(/v 0\.4\.2-nightly/i);
     expect(container.textContent).toMatch(/build c0ffee/i);

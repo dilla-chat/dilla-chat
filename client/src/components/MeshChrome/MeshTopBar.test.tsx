@@ -16,42 +16,41 @@ beforeEach(() => {
 });
 
 describe('MeshTopBar', () => {
-  it('renders a top-bar landmark with brand mark', () => {
-    render(<MeshTopBar />);
-    const bar = screen.getByRole('banner', { name: /mesh top bar/i });
-    expect(bar).toBeInTheDocument();
-    expect(bar).toHaveClass('mesh-top-bar');
-    expect(screen.getByText(/dilla/i)).toBeInTheDocument();
+  it('renders the brand mark, banner role, and three keybind buttons', () => {
+    const { container } = render(<MeshTopBar />);
+    expect(screen.getByRole('banner', { name: /mesh top bar/i })).toBeInTheDocument();
+    expect(container.querySelector('.mesh-top')).toBeInTheDocument();
+    expect(screen.getByText('DILLA')).toBeInTheDocument();
+    expect(container.querySelectorAll('.mt-key').length).toBe(3);
   });
 
-  it('shows live HH:MM:SS clock', () => {
+  it('shows HH:MM:SS clock', () => {
     render(<MeshTopBar />);
-    const clock = screen.getByLabelText(/current time/i);
-    expect(clock.textContent).toMatch(/^\d{2}:\d{2}:\d{2}$/);
+    const center = screen.getByLabelText(/current time/i);
+    expect(center.textContent).toMatch(/^\d{2}:\d{2}:\d{2}$/);
   });
 
-  it('shows MESH OK status when meshStore.status is ok', () => {
+  it('shows READY when meshStore.status is ready', () => {
+    useMeshStore.setState({ status: 'ready' });
+    render(<MeshTopBar />);
+    expect(screen.getByText(/READY/i)).toBeInTheDocument();
+  });
+
+  it('shows MESH OK when status is ok', () => {
     useMeshStore.setState({ status: 'ok' });
     render(<MeshTopBar />);
     expect(screen.getByText(/MESH OK/i)).toBeInTheDocument();
   });
 
-  it('shows MESH DEGRADED status when meshStore.status is degraded', () => {
+  it('shows MESH DEGRADED when status is degraded', () => {
     useMeshStore.setState({ status: 'degraded' });
     render(<MeshTopBar />);
     expect(screen.getByText(/MESH DEGRADED/i)).toBeInTheDocument();
   });
 
-  it('shows node name when present', () => {
-    useMeshStore.setState({ nodeName: 'gbg-1.dilla.local', status: 'ok' });
+  it('uses the short node name (first dotted segment)', () => {
+    useMeshStore.setState({ nodeName: 'gbg-1.dilla.local' });
     render(<MeshTopBar />);
-    expect(screen.getByText(/gbg-1\.dilla\.local/i)).toBeInTheDocument();
-  });
-
-  it('renders keybind hints (⌘K, /, ?)', () => {
-    render(<MeshTopBar />);
-    expect(screen.getByTitle(/command palette/i)).toBeInTheDocument();
-    expect(screen.getByTitle(/search/i)).toBeInTheDocument();
-    expect(screen.getByTitle(/hide top bar/i)).toBeInTheDocument();
+    expect(screen.getByText('gbg-1')).toBeInTheDocument();
   });
 });

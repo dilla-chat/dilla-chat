@@ -1,66 +1,71 @@
-.mesh-bottom-bar {
-  height: var(--bottombar-h);
-  min-height: var(--bottombar-h);
+/* Ported verbatim from design_handoff_dilla_mesh/mesh-chrome.css §Bottom bar. */
+
+.mesh-bottom {
+  flex: 0 0 26px;
   display: flex;
-  align-items: stretch;
-  padding: 0;
-  background: var(--bg-2, var(--bg-secondary));
-  border-top: 1px solid var(--hairline, var(--divider));
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--fg-2, var(--text-secondary));
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  flex-shrink: 0;
-  user-select: none;
-  overflow: hidden;
-}
-
-.mesh-bottom-bar-chunk {
-  display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 0 10px;
-  background: transparent;
-  border: none;
-  border-right: 1px solid var(--hairline, var(--divider));
-  color: inherit;
-  font-family: inherit;
-  font-size: inherit;
-  letter-spacing: inherit;
-  text-transform: inherit;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.12s ease-out, color 0.12s ease-out;
+  gap: 0;
+  padding: 0;
+  background: var(--bg-2);
+  border-top: 1px solid var(--hairline);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  color: var(--fg-2);
+  font-family: var(--font-mono);
+  user-select: none;
 }
 
-.mesh-bottom-bar-chunk:last-child {
+.mb-chunk {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  height: 100%;
+  border-right: 1px solid var(--hairline);
+  white-space: nowrap;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+}
+
+.mb-chunk:last-child {
   border-right: none;
 }
 
-.mesh-bottom-bar-chunk:hover {
-  background: var(--surface-2, var(--bg-modifier-hover));
-  color: var(--accent, var(--text-primary));
+.mb-chunk.mb-grow {
+  flex: 1;
+  border-right: none;
 }
 
-.mesh-bottom-bar-chunk.static {
-  cursor: default;
+.mb-chunk.mb-clickable {
+  cursor: pointer;
+  border: none;
+  border-right: 1px solid var(--hairline);
+  transition: background 0.12s, color 0.12s;
 }
 
-.mesh-bottom-bar-chunk.static:hover {
-  background: transparent;
-  color: var(--fg-2, var(--text-secondary));
+.mb-chunk.mb-clickable:hover {
+  background: var(--surface-hi);
+  color: var(--accent);
 }
 
-.mesh-bottom-bar-chunk.degraded {
-  color: var(--warn, var(--yellow-300));
+.mb-chunk.mb-clickable:hover .mb-k {
+  color: var(--accent);
 }
 
-.mesh-bottom-bar-chunk.degraded:hover {
-  color: var(--warn, var(--yellow-300));
+.mb-k {
+  color: var(--fg-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 9.5px;
 }
 
-.mesh-bottom-bar-version {
-  margin-left: auto;
-  color: var(--fg-3, var(--text-muted));
+.mb-ok {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.mb-voice {
+  color: var(--accent);
 }
