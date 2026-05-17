@@ -33,7 +33,7 @@ export const useUserSettingsStore = create<UserSettingsStore>()(
       outputVolume: 1,
       desktopNotifications: true,
       soundNotifications: true,
-      theme: 'dark',
+      theme: 'mesh',
       density: 'regular',
 
       setSelectedInputDevice: (v) => set({ selectedInputDevice: v }),
@@ -48,11 +48,20 @@ export const useUserSettingsStore = create<UserSettingsStore>()(
     }),
     {
       name: 'dilla-user-settings',
-      version: 1,
+      version: 2,
       migrate: (persistedState, version) => {
-        const state = (persistedState ?? {}) as Partial<UserSettingsStore>;
+        let state = (persistedState ?? {}) as Partial<UserSettingsStore>;
         if (version < 1) {
-          return { ...state, density: 'regular' as const };
+          state = { ...state, density: 'regular' as const };
+        }
+        if (version < 2) {
+          // Mesh is the new default; users on the previous default ('dark')
+          // get flipped to mesh. Anyone who explicitly chose light/minimal
+          // keeps their pick.
+          state = {
+            ...state,
+            theme: state.theme === 'dark' ? 'mesh' : (state.theme ?? 'mesh'),
+          };
         }
         return state;
       },
