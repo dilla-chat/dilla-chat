@@ -2,3 +2,5 @@
 /* Custom themes override visual tokens via a server-provided CSS file */
 @import './base-tokens.css';
 @import './theme-default.css';
+/* Mesh design overrides — activate when <html data-theme="mesh"> */
+@import './mesh-overrides.css';
