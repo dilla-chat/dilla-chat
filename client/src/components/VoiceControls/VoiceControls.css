@@ -1,9 +1,12 @@
 .voice-controls {
   display: flex;
   flex-direction: column;
-  padding: var(--spacing-sm) var(--spacing-lg);
-  gap: var(--spacing-sm);
-  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: 8px 10px;
+  gap: 6px;
+  background: var(--surface, var(--bg-floating));
+  border-top: 1px solid var(--hairline, var(--divider));
+  border-radius: 0;
+  font-family: var(--font-ui);
   animation: voice-slide-in var(--duration-slow) var(--ease-spring);
 }
 
@@ -52,9 +55,12 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  color: var(--status-online);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
+  color: var(--accent, var(--status-online));
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   line-height: 18px;
 }
 
@@ -67,13 +73,16 @@
 }
 
 .voice-controls-title-text {
-  color: var(--status-online);
+  color: var(--accent, var(--status-online));
 }
 
 .voice-controls-channel {
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  font-weight: var(--font-weight-normal);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-3, var(--text-muted));
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-weight: normal;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -159,18 +168,19 @@
   color: var(--text-danger);
 }
 
+/* Cam/Screen turn green when transmitting (Mesh spec) */
 .voice-btn.screen-share.active {
-  color: var(--text-danger);
-  background: var(--danger-alpha-15);
+  color: var(--accent, var(--text-positive));
+  background: var(--accent-soft, var(--success-alpha-15));
 }
 
 .voice-btn.screen-share.active:hover {
-  background: var(--danger-alpha-25);
+  background: var(--success-alpha-15);
 }
 
 .voice-btn.webcam.active {
-  color: var(--text-danger);
-  background: var(--danger-alpha-15);
+  color: var(--accent, var(--text-positive));
+  background: var(--accent-soft, var(--success-alpha-15));
 }
 
 .voice-btn.webcam.active:hover {
