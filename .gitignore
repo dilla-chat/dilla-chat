@@ -68,3 +68,6 @@ client/public/ort-wasm/
 .playwright-mcp/
 mesh-*.png
 handoff-*.png
+mine.png
+mine*.png
+handoff.png
