@@ -75,3 +75,40 @@
   /* Disabled state */
   --opacity-disabled: 0.4;
 }
+
+/* Density modes — applied via [data-density] on <html> by themeStore */
+:root {
+  --row-pad-y: 6px;
+  --row-pad-x: 18px;
+  --row-gap: 2px;
+  --group-gap: 14px;
+  --avatar-size: 32px;
+  --line-height-density: 1.5;
+}
+
+:root[data-density='compact'] {
+  --row-pad-y: 4px;
+  --row-pad-x: 16px;
+  --row-gap: 0px;
+  --group-gap: 8px;
+  --avatar-size: 28px;
+  --line-height-density: 1.4;
+}
+
+:root[data-density='regular'] {
+  --row-pad-y: 6px;
+  --row-pad-x: 18px;
+  --row-gap: 2px;
+  --group-gap: 14px;
+  --avatar-size: 32px;
+  --line-height-density: 1.5;
+}
+
+:root[data-density='cozy'] {
+  --row-pad-y: 10px;
+  --row-pad-x: 20px;
+  --row-gap: 4px;
+  --group-gap: 22px;
+  --avatar-size: 36px;
+  --line-height-density: 1.55;
+}
