@@ -120,6 +120,7 @@ fn seed_team_channel(db: &Database, team_id: &str, user_id: &str, channel_id: &s
                 created_by: user_id.to_string(),
                 max_file_size: 10_000_000,
                 allow_member_invites: true,
+                federated: false,
                 created_at: db::now_str(),
                 updated_at: db::now_str(),
             },

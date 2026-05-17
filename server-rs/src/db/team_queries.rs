@@ -4,8 +4,8 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 pub fn create_team(conn: &Connection, team: &Team) -> Result<(), rusqlite::Error> {
     conn.execute(
-        "INSERT INTO teams (id, name, description, icon_url, created_by, max_file_size, allow_member_invites, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        "INSERT INTO teams (id, name, description, icon_url, created_by, max_file_size, allow_member_invites, federated, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params![
             team.id,
             team.name,
@@ -14,6 +14,7 @@ pub fn create_team(conn: &Connection, team: &Team) -> Result<(), rusqlite::Error
             team.created_by,
             team.max_file_size,
             team.allow_member_invites as i32,
+            team.federated as i32,
             team.created_at,
             team.updated_at,
         ],
@@ -23,7 +24,7 @@ pub fn create_team(conn: &Connection, team: &Team) -> Result<(), rusqlite::Error
 
 pub fn get_team(conn: &Connection, id: &str) -> Result<Option<Team>, rusqlite::Error> {
     conn.query_row(
-        "SELECT id, name, description, icon_url, created_by, max_file_size, allow_member_invites, created_at, updated_at FROM teams WHERE id = ?1",
+        "SELECT id, name, description, icon_url, created_by, max_file_size, allow_member_invites, federated, created_at, updated_at FROM teams WHERE id = ?1",
         [id],
         row_to_team,
     )
@@ -32,7 +33,7 @@ pub fn get_team(conn: &Connection, id: &str) -> Result<Option<Team>, rusqlite::E
 
 pub fn get_first_team(conn: &Connection) -> Result<Option<Team>, rusqlite::Error> {
     conn.query_row(
-        "SELECT id, name, description, icon_url, created_by, max_file_size, allow_member_invites, created_at, updated_at FROM teams ORDER BY created_at ASC LIMIT 1",
+        "SELECT id, name, description, icon_url, created_by, max_file_size, allow_member_invites, federated, created_at, updated_at FROM teams ORDER BY created_at ASC LIMIT 1",
         [],
         row_to_team,
     )
@@ -44,7 +45,7 @@ pub fn get_teams_by_user(
     user_id: &str,
 ) -> Result<Vec<Team>, rusqlite::Error> {
     let mut stmt = conn.prepare(
-        "SELECT t.id, t.name, t.description, t.icon_url, t.created_by, t.max_file_size, t.allow_member_invites, t.created_at, t.updated_at
+        "SELECT t.id, t.name, t.description, t.icon_url, t.created_by, t.max_file_size, t.allow_member_invites, t.federated, t.created_at, t.updated_at
          FROM teams t
          JOIN members m ON m.team_id = t.id
          WHERE m.user_id = ?1",
@@ -55,13 +56,14 @@ pub fn get_teams_by_user(
 
 pub fn update_team(conn: &Connection, team: &Team) -> Result<(), rusqlite::Error> {
     conn.execute(
-        "UPDATE teams SET name = ?1, description = ?2, icon_url = ?3, max_file_size = ?4, allow_member_invites = ?5, updated_at = ?6 WHERE id = ?7",
+        "UPDATE teams SET name = ?1, description = ?2, icon_url = ?3, max_file_size = ?4, allow_member_invites = ?5, federated = ?6, updated_at = ?7 WHERE id = ?8",
         params![
             team.name,
             team.description,
             team.icon_url,
             team.max_file_size,
             team.allow_member_invites as i32,
+            team.federated as i32,
             now_str(),
             team.id,
         ],
@@ -78,8 +80,9 @@ fn row_to_team(row: &rusqlite::Row) -> Result<Team, rusqlite::Error> {
         created_by: row.get(4)?,
         max_file_size: row.get(5)?,
         allow_member_invites: row.get::<_, i32>(6)? != 0,
-        created_at: row.get(7)?,
-        updated_at: row.get(8)?,
+        federated: row.get::<_, i32>(7)? != 0,
+        created_at: row.get(8)?,
+        updated_at: row.get(9)?,
     })
 }
 

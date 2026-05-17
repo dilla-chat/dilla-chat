@@ -24,6 +24,8 @@ pub struct Team {
     pub created_by: String,
     pub max_file_size: i64,
     pub allow_member_invites: bool,
+    #[serde(default)]
+    pub federated: bool,
     pub created_at: String,
     pub updated_at: String,
 }

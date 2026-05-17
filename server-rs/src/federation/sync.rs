@@ -564,6 +564,7 @@ mod tests {
                 created_by: user_id.clone(),
                 max_file_size: 25 * 1024 * 1024,
                 allow_member_invites: true,
+                federated: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
             })?;
@@ -671,6 +672,7 @@ mod tests {
                 created_by: user_id.clone(),
                 max_file_size: 25 * 1024 * 1024,
                 allow_member_invites: true,
+                federated: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
             })?;
@@ -792,6 +794,7 @@ mod tests {
                 created_by: user_id.clone(),
                 max_file_size: 25 * 1024 * 1024,
                 allow_member_invites: true,
+                federated: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
             })

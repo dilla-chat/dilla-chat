@@ -109,6 +109,7 @@ fn bootstrap_user_and_team(state: &AppState) -> (String, String, String) {
             created_by: user_id.clone(),
             max_file_size: 25 * 1024 * 1024,
             allow_member_invites: true,
+            federated: false,
             created_at: now.clone(),
             updated_at: now.clone(),
         })?;
@@ -3355,6 +3356,7 @@ async fn download_cross_team_attachment_returns_404() {
             id: team2_id.clone(), name: "Team2".into(), description: "".into(),
             icon_url: "".into(), created_by: user_id.clone(),
             max_file_size: 1024, allow_member_invites: true,
+federated: false,
             created_at: now.clone(), updated_at: now.clone(),
         })?;
         db::create_member(conn, &db::Member {

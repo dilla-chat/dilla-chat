@@ -120,7 +120,7 @@ mod tests {
         let team = Team {
             id: "t1".into(), name: "Team".into(), description: String::new(),
             icon_url: String::new(), created_by: "u1".into(), max_file_size: 1024,
-            allow_member_invites: true, created_at: now.clone(), updated_at: now.clone(),
+            allow_member_invites: true, federated: false, created_at: now.clone(), updated_at: now.clone(),
         };
         db.with_conn(|c| crate::db::create_team(c, &team)).unwrap();
 

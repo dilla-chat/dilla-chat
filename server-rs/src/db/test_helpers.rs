@@ -39,6 +39,7 @@ pub fn make_team(id: &str, name: &str, created_by: &str) -> Team {
         created_by: created_by.to_string(),
         max_file_size: 10485760,
         allow_member_invites: true,
+        federated: false,
         created_at: now.clone(),
         updated_at: now,
     }

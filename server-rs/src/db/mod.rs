@@ -52,6 +52,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
     ("006_federation_sync.sql", include_str!("../../migrations/006_federation_sync.sql")),
     ("007_nullable_fks.sql", include_str!("../../migrations/007_nullable_fks.sql")),
     ("008_channel_reads.sql", include_str!("../../migrations/008_channel_reads.sql")),
+    ("009_team_federated.sql", include_str!("../../migrations/009_team_federated.sql")),
 ];
 
 /// Default number of read connections in the pool.

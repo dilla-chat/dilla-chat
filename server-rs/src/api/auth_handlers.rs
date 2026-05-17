@@ -374,6 +374,7 @@ fn create_bootstrap_team(
         created_by: user_id.to_string(),
         max_file_size: 25 * 1024 * 1024,
         allow_member_invites: true,
+        federated: false,
         created_at: now.clone(),
         updated_at: now,
     };
@@ -538,6 +539,7 @@ mod tests {
                 created_by: "u1".into(),
                 max_file_size: 25 * 1024 * 1024,
                 allow_member_invites: true,
+                federated: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
             })?;
@@ -592,6 +594,7 @@ mod tests {
                 created_by: "u1".into(),
                 max_file_size: 25 * 1024 * 1024,
                 allow_member_invites: true,
+                federated: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
             })?;
@@ -642,6 +645,7 @@ mod tests {
                 created_by: "u1".into(),
                 max_file_size: 25 * 1024 * 1024,
                 allow_member_invites: true,
+                federated: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
             })?;
@@ -692,6 +696,7 @@ mod tests {
                 created_by: "u1".into(),
                 max_file_size: 25 * 1024 * 1024,
                 allow_member_invites: true,
+                federated: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
             })?;
