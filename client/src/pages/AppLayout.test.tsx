@@ -301,10 +301,43 @@ describe('AppLayout behavioral', () => {
       expect(screen.getByTestId('channel-list')).toBeInTheDocument();
       expect(screen.getByTestId('user-panel')).toBeInTheDocument();
       expect(screen.getByTestId('voice-controls')).toBeInTheDocument();
-      expect(screen.getByTestId('resize-handle')).toBeInTheDocument();
+      expect(screen.getAllByTestId('resize-handle').length).toBeGreaterThanOrEqual(1);
       expect(screen.getByTestId('member-list')).toBeInTheDocument();
       expect(screen.getByTestId('title-bar')).toBeInTheDocument();
     });
+  });
+
+  it('renders the 4-column grid shell on desktop', async () => {
+    const { container } = render(<AppLayout />);
+    await waitFor(() => {
+      const shell = container.querySelector('.app-grid-shell');
+      expect(shell).toBeInTheDocument();
+      expect(container.querySelector('.app-grid-rail')).toBeInTheDocument();
+      expect(container.querySelector('.app-grid-sidebar')).toBeInTheDocument();
+      expect(container.querySelector('.app-grid-members')).toBeInTheDocument();
+    });
+  });
+
+  it('renders MeshTopBar when topBarEnabled', async () => {
+    const { useLayoutStore } = await import('../stores/layoutStore');
+    localStorage.removeItem('dilla-layout');
+    useLayoutStore.setState({ topBarEnabled: true });
+    render(<AppLayout />);
+    await waitFor(() => {
+      expect(screen.getByRole('banner', { name: /mesh top bar/i })).toBeInTheDocument();
+    });
+    useLayoutStore.setState({ topBarEnabled: false });
+  });
+
+  it('renders MeshBottomBar when bottomBarEnabled', async () => {
+    const { useLayoutStore } = await import('../stores/layoutStore');
+    localStorage.removeItem('dilla-layout');
+    useLayoutStore.setState({ bottomBarEnabled: true });
+    render(<AppLayout />);
+    await waitFor(() => {
+      expect(screen.getByRole('contentinfo', { name: /mesh bottom bar/i })).toBeInTheDocument();
+    });
+    useLayoutStore.setState({ bottomBarEnabled: false });
   });
 
   it('renders skip-to-content accessibility link', async () => {

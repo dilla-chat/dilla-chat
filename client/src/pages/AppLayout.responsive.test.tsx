@@ -187,9 +187,11 @@ describe('AppLayout responsive', () => {
     setMobile(false);
   });
 
-  it('renders left-panels and resize-handle on desktop', async () => {
-    render(<AppLayout />);
-    expect(await screen.findByTestId('resize-handle')).toBeInTheDocument();
+  it('renders grid shell and resize-handle on desktop', async () => {
+    const { container } = render(<AppLayout />);
+    const handles = await screen.findAllByTestId('resize-handle');
+    expect(handles.length).toBeGreaterThanOrEqual(1);
+    expect(container.querySelector('.app-grid-shell')).toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Main navigation' })).not.toBeInTheDocument();
   });
 
