@@ -22,7 +22,7 @@ export default function DemoWrapper() {
   const initialized = useRef(false);
 
   const { setTeam, setChannels, setMembers, setRoles, setActiveTeam, setActiveChannel } = useTeamStore();
-  const { setPresences, setMyStatus } = usePresenceStore();
+  const { setPresences, setMyStatus, setMyCustomStatus } = usePresenceStore();
   const { setDMChannels } = useDMStore();
   const { setThreads, setThreadMessages } = useThreadStore();
   const { prependMessages, setHasMore } = useMessageStore();
@@ -62,6 +62,7 @@ export default function DemoWrapper() {
 
     setPresences(DEMO_TEAM_ID, MOCK_PRESENCES);
     setMyStatus('online');
+    setMyCustomStatus('pushing pixels');
 
     setThreads('ch-2', MOCK_THREADS);
     for (const [threadId, messages] of Object.entries(MOCK_THREAD_MESSAGES)) {
@@ -71,7 +72,7 @@ export default function DemoWrapper() {
     mockWs.connect(DEMO_TEAM_ID, '', '');
   }, [
     setTeam, setChannels, setMembers, setRoles, setActiveTeam, setActiveChannel,
-    setPresences, setMyStatus, setDMChannels, setThreads, setThreadMessages,
+    setPresences, setMyStatus, setMyCustomStatus, setDMChannels, setThreads, setThreadMessages,
     prependMessages, setHasMore,
   ]);
 

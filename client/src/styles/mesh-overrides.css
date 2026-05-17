@@ -273,6 +273,24 @@
   display: none;
 }
 
+/* User panel — match handoff .user-panel .name / .sub typography */
+[data-theme='mesh'] .user-panel-name {
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 0.8125rem;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--fg);
+}
+
+[data-theme='mesh'] .user-panel-status-text {
+  font-family: var(--font-mono);
+  font-size: 0.65625rem;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--fg-3);
+}
+
 [data-theme='mesh'] .message-input-textarea {
   font-family: var(--font-body);
   color: var(--fg);
