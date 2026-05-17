@@ -747,7 +747,8 @@ describe('MessageList', () => {
     render(
       <MessageList channelId="ch-1" currentUserId="user-2" onLoadMore={vi.fn()} />,
     );
-    expect(screen.getByText(/Yesterday at/)).toBeInTheDocument();
+    // Mesh redesign formats yesterday as "Yesterday HH:MM" (no "at")
+    expect(screen.getByText(/Yesterday \d{2}:\d{2}/)).toBeInTheDocument();
   });
 
   it('formats old date timestamp correctly', () => {
@@ -774,7 +775,8 @@ describe('MessageList', () => {
     render(
       <MessageList channelId="ch-1" currentUserId="user-2" onLoadMore={vi.fn()} />,
     );
-    expect(screen.getByText(/Today at/)).toBeInTheDocument();
+    // Mesh redesign drops the "Today at" prefix and shows bare 24h time.
+    expect(screen.getByText(/^\d{2}:\d{2}$/)).toBeInTheDocument();
   });
 
   it('getInitials returns first 2 chars uppercase', () => {

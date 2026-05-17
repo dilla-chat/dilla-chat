@@ -167,6 +167,50 @@ vi.mock('./ChannelView', () => ({
   default: () => <div data-testid="channel-view">ChannelView</div>,
 }));
 
+// Mesh redesign brought in new chrome + modal mounts; stub them all so the
+// AppLayout renders without needing their full store wiring.
+vi.mock('../components/MeshChrome/MeshTopBar', () => ({ default: () => null }));
+vi.mock('../components/MeshChrome/MeshBottomBar', () => ({ default: () => null }));
+vi.mock('../components/CommandPalette/CommandPalette', () => ({ default: () => null }));
+vi.mock('../components/SearchPalette/SearchPalette', () => ({ default: () => null }));
+vi.mock('../components/ConnectionBanner/ConnectionBanner', () => ({ default: () => null }));
+vi.mock('../components/AddPeerWizard/AddPeerWizard', () => ({ default: () => null }));
+vi.mock('../components/SafetyCompare/SafetyCompare', () => ({ default: () => null }));
+vi.mock('../components/ForwardModal/ForwardModal', () => ({ default: () => null }));
+vi.mock('../components/IncomingCall/IncomingCall', () => ({ default: () => null }));
+vi.mock('../components/QuickSwitcher/QuickSwitcher', () => ({ default: () => null }));
+vi.mock('../components/MobileTabBar/MobileTabBar', () => ({
+  default: ({ onTabChange }: { onTabChange: (tab: string) => void }) => (
+    <nav aria-label="Main navigation">
+      <button onClick={() => onTabChange('chat')}>Chat</button>
+      <button onClick={() => onTabChange('channels')}>Channels</button>
+      <button onClick={() => onTabChange('teams')}>Teams</button>
+      <button onClick={() => onTabChange('members')}>Members</button>
+    </nav>
+  ),
+}));
+vi.mock('../components/DMView/DMView', () => ({ default: () => null }));
+vi.mock('../components/ErrorBoundary/ContentErrorBoundary', () => ({
+  default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+vi.mock('@tabler/icons-react', () => ({
+  default: () => null,
+  IconHash: () => null,
+  IconMessage: () => null,
+  IconUsers: () => null,
+  IconVolume: () => null,
+  IconLock: () => null,
+  IconSettings: () => null,
+  IconShield: () => null,
+  IconSearch: () => null,
+  IconHome: () => null,
+  IconX: () => null,
+  IconPlus: () => null,
+  IconMessageCircle: () => null,
+  IconBookmark: () => null,
+  IconPin: () => null,
+}));
+
 import AppLayout from './AppLayout';
 
 function setMobile(isMobile: boolean) {

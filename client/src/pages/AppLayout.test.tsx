@@ -60,6 +60,11 @@ vi.mock('@tabler/icons-react', () => ({
   IconSettings: () => <span data-testid="Settings" />,
   IconHome: () => <span data-testid="HomeSimple" />,
   IconX: () => <span data-testid="Xmark" />,
+  IconShield: () => <span data-testid="Shield" />,
+  IconSearch: () => <span data-testid="Search" />,
+  IconMessageCircle: () => <span data-testid="MessageCircle" />,
+  IconBookmark: () => <span data-testid="Bookmark" />,
+  IconPin: () => <span data-testid="Pin" />,
 }));
 
 const mockUseIsMobile = vi.fn(() => false);
@@ -132,6 +137,26 @@ vi.mock('../components/SearchBar/SearchBar', () => ({
     <div data-testid="search-bar">
       <button data-testid="jump-to-msg" onClick={() => onJumpToMessage('ch2', 'msg-123')}>Jump</button>
       <button data-testid="jump-same-channel" onClick={() => onJumpToMessage('ch1', 'msg-456')}>Jump Same</button>
+    </div>
+  ),
+}));
+// Mesh redesign: SearchBar is collapsed into a single icon button that opens
+// SearchPalette. Mock SearchPalette so jump-to-message tests can trigger it.
+vi.mock('../components/SearchPalette/SearchPalette', () => ({
+  default: ({ onSelectHit }: { onSelectHit: (hit: { channelId: string; id: string }) => void }) => (
+    <div data-testid="search-palette">
+      <button
+        data-testid="jump-to-msg"
+        onClick={() => onSelectHit({ channelId: 'ch2', id: 'msg-123' } as { channelId: string; id: string })}
+      >
+        Jump
+      </button>
+      <button
+        data-testid="jump-same-channel"
+        onClick={() => onSelectHit({ channelId: 'ch1', id: 'msg-456' } as { channelId: string; id: string })}
+      >
+        Jump Same
+      </button>
     </div>
   ),
 }));
@@ -277,11 +302,12 @@ describe('AppLayout behavioral', () => {
     await waitFor(() => { expect(screen.getByTestId('channel-view')).toBeInTheDocument(); });
   });
 
-  it('shows channel name in header with tilde icon and team name in sidebar', async () => {
+  it('shows channel name in header with hash icon and team name in sidebar', async () => {
     render(<AppLayout />);
     await waitFor(() => {
       expect(screen.getByText('general')).toBeInTheDocument();
-      expect(screen.getByText('~')).toBeInTheDocument();
+      // Mesh redesign uses '#' for text channels (was '~')
+      expect(screen.getAllByText('#').length).toBeGreaterThan(0);
       expect(screen.getByText('Test Team')).toBeInTheDocument();
     });
   });
@@ -474,12 +500,14 @@ describe('AppLayout behavioral', () => {
     });
   });
 
-  it('renders search bar in header', async () => {
+  it('renders search button in header', async () => {
     render(<AppLayout />);
-    await waitFor(() => { expect(screen.getAllByTestId('search-bar').length).toBeGreaterThan(0); });
+    // Mesh redesign collapses the in-line search bar to a single icon button
+    // that dispatches mesh:open-search to open the SearchPalette modal.
+    await waitFor(() => { expect(screen.getAllByTitle('Search').length).toBeGreaterThan(0); });
   });
 
-  it('shows lock icon when derivedKey is set on channel header', async () => {
+  it('shows shield E2E badge when derivedKey is set on channel header', async () => {
     useAuthStore.setState({
       derivedKey: 'some-key',
       teams: new Map([
@@ -487,8 +515,9 @@ describe('AppLayout behavioral', () => {
       ]),
     });
     render(<AppLayout />);
+    // Mesh redesign uses a Shield icon + "E2E" text instead of a Lock icon.
     await waitFor(() => {
-      expect(screen.getByTestId('Lock')).toBeInTheDocument();
+      expect(screen.getAllByTestId('Shield').length).toBeGreaterThan(0);
     });
   });
 
@@ -796,7 +825,7 @@ describe('AppLayout behavioral', () => {
     }
   });
 
-  it('shows lock icon on DM header when derivedKey is set', async () => {
+  it('shows shield E2E badge on DM header when derivedKey is set', async () => {
     useAuthStore.setState({
       derivedKey: 'some-key',
       teams: new Map([
@@ -816,8 +845,9 @@ describe('AppLayout behavioral', () => {
       }] },
     });
     render(<AppLayout />);
+    // Mesh redesign uses a Shield icon + "E2E" text instead of a Lock icon.
     await waitFor(() => {
-      expect(screen.getByTestId('Lock')).toBeInTheDocument();
+      expect(screen.getAllByTestId('Shield').length).toBeGreaterThan(0);
     });
   });
 

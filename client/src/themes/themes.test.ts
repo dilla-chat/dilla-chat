@@ -77,11 +77,13 @@ describe('layout-width tokens', () => {
       path.resolve(__dirname, '../styles/base-tokens.css'),
       'utf8',
     );
-    expect(css).toMatch(/--rail-w:\s*60px/);
-    expect(css).toMatch(/--sidebar-w-default:\s*240px/);
-    expect(css).toMatch(/--members-w-default:\s*232px/);
-    expect(css).toMatch(/--topbar-h:\s*32px/);
-    expect(css).toMatch(/--bottombar-h:\s*26px/);
+    // rem-only per project rule (1rem = 16px): 60px → 3.75rem, 240px → 15rem,
+    // 232px → 14.5rem, 32px → 2rem, 26px → 1.625rem.
+    expect(css).toMatch(/--rail-w:\s*3\.75rem/);
+    expect(css).toMatch(/--sidebar-w-default:\s*15rem/);
+    expect(css).toMatch(/--members-w-default:\s*14\.5rem/);
+    expect(css).toMatch(/--topbar-h:\s*2rem/);
+    expect(css).toMatch(/--bottombar-h:\s*1\.625rem/);
     expect(css).toMatch(/--team-sidebar-width:\s*var\(--rail-w\)/);
   });
 });
