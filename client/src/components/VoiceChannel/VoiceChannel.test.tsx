@@ -21,6 +21,7 @@ vi.mock('@tabler/icons-react', () => ({
   IconHeadphonesOff: () => <span data-testid="icon-deafen" />,
   IconScreenShare: () => <span data-testid="icon-screen" />,
   IconArrowsMinimize: () => <span data-testid="icon-collapse" />,
+  IconArrowsMaximize: () => <span data-testid="icon-expand" />,
   IconVideo: () => <span data-testid="icon-camera" />,
 }));
 

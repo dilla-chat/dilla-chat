@@ -544,3 +544,74 @@
   font-weight: var(--font-weight-semibold);
 }
 
+
+/* ===== Focus mode (Mesh) ===== */
+
+.voice-tile {
+  position: relative;
+}
+
+.voice-tile-expand-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-md, 2px);
+  background: rgba(7, 8, 9, 0.7);
+  border: 1px solid transparent;
+  color: var(--fg, white);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.12s ease-out, border-color 0.12s ease-out, background 0.12s ease-out;
+  z-index: 2;
+}
+
+.voice-tile:hover .voice-tile-expand-btn {
+  opacity: 1;
+}
+
+.voice-tile-expand-btn:hover {
+  border-color: var(--accent, var(--brand-500));
+  background: rgba(7, 8, 9, 0.9);
+  color: var(--accent, var(--brand-500));
+}
+
+.voice-focus-mode {
+  background: var(--bg, var(--bg-primary));
+}
+
+.voice-focus-viewing {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--warn, var(--yellow-300));
+}
+
+.voice-focus-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warn, var(--yellow-300));
+}
+
+.voice-focus-no-stream {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Focused thumbnail gets amber outline per spec */
+.fullscreen-thumbnail.focused {
+  outline: 2px solid var(--warn, var(--yellow-300));
+  outline-offset: 1px;
+}
