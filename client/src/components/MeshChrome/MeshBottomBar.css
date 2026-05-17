@@ -2,18 +2,65 @@
   height: var(--bottombar-h);
   min-height: var(--bottombar-h);
   display: flex;
-  align-items: center;
-  padding: 0 var(--spacing-md);
+  align-items: stretch;
+  padding: 0;
   background: var(--bg-2, var(--bg-secondary));
   border-top: 1px solid var(--hairline, var(--divider));
   font-family: var(--font-mono);
-  font-size: var(--font-size-micro);
+  font-size: 10px;
   color: var(--fg-2, var(--text-secondary));
   letter-spacing: 0.04em;
   text-transform: uppercase;
   flex-shrink: 0;
+  user-select: none;
+  overflow: hidden;
 }
 
-.mesh-bottom-bar-placeholder {
-  opacity: 0.7;
+.mesh-bottom-bar-chunk {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 10px;
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--hairline, var(--divider));
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s ease-out, color 0.12s ease-out;
+}
+
+.mesh-bottom-bar-chunk:last-child {
+  border-right: none;
+}
+
+.mesh-bottom-bar-chunk:hover {
+  background: var(--surface-2, var(--bg-modifier-hover));
+  color: var(--accent, var(--text-primary));
+}
+
+.mesh-bottom-bar-chunk.static {
+  cursor: default;
+}
+
+.mesh-bottom-bar-chunk.static:hover {
+  background: transparent;
+  color: var(--fg-2, var(--text-secondary));
+}
+
+.mesh-bottom-bar-chunk.degraded {
+  color: var(--warn, var(--yellow-300));
+}
+
+.mesh-bottom-bar-chunk.degraded:hover {
+  color: var(--warn, var(--yellow-300));
+}
+
+.mesh-bottom-bar-version {
+  margin-left: auto;
+  color: var(--fg-3, var(--text-muted));
 }
