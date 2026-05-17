@@ -127,6 +127,11 @@
     "reply": "Reply",
     "thread": "Start Thread"
   },
+  "header": {
+    "threads": "Threads in this kanal",
+    "saved": "Saved messages",
+    "pinned": "Pinned messages"
+  },
   "members": {
     "toggle": "Toggle Member List",
     "search": "Search members...",

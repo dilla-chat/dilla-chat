@@ -133,6 +133,11 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
               {unreadCount > 99 ? '99+' : unreadCount}
             </span>
           )}
+          {isVoice && voicePeerList.length > 0 && !hasUnread && (
+            <span className="channel-voice-count" aria-label={`${voicePeerList.length} in voice`}>
+              {voicePeerList.length}
+            </span>
+          )}
         </button>
         {voicePeerList.length > 0 && (
           <div className="voice-channel-users">

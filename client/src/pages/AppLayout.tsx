@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { IconHash, IconMessage, IconUsers, IconVolume, IconLock, IconSettings, IconShield, IconSearch } from '@tabler/icons-react';
+import { IconHash, IconMessage, IconUsers, IconVolume, IconLock, IconSettings, IconShield, IconSearch, IconMessageCircle, IconBookmark, IconPin } from '@tabler/icons-react';
 import TeamSidebar from '../components/TeamSidebar/TeamSidebar';
 import ChannelList from '../components/ChannelList/ChannelList';
 import DMList from '../components/DMList/DMList';
@@ -364,6 +364,14 @@ export default function AppLayout() {
             </>
           )}
           <div className="content-header-actions">
+            <button
+              type="button"
+              className="header-action-btn"
+              onClick={() => window.dispatchEvent(new CustomEvent('mesh:open-saved'))}
+              title={t('header.saved', 'Saved messages')}
+            >
+              <IconBookmark size={18} stroke={1.75} />
+            </button>
             {activeDM.is_group && (
               <button
                 className={`header-action-btn ${showDMMembers ? 'active' : ''}`}
@@ -406,6 +414,30 @@ export default function AppLayout() {
             </>
           )}
           <div className="content-header-actions">
+            <button
+              type="button"
+              className="header-action-btn"
+              onClick={() => window.dispatchEvent(new CustomEvent('mesh:open-threads'))}
+              title={t('header.threads', 'Threads')}
+            >
+              <IconMessageCircle size={18} stroke={1.75} />
+            </button>
+            <button
+              type="button"
+              className="header-action-btn"
+              onClick={() => window.dispatchEvent(new CustomEvent('mesh:open-saved'))}
+              title={t('header.saved', 'Saved messages')}
+            >
+              <IconBookmark size={18} stroke={1.75} />
+            </button>
+            <button
+              type="button"
+              className="header-action-btn"
+              onClick={() => window.dispatchEvent(new CustomEvent('mesh:open-pinned'))}
+              title={t('header.pinned', 'Pinned messages')}
+            >
+              <IconPin size={18} stroke={1.75} />
+            </button>
             <button
               className={`header-action-btn ${showMembers ? 'active' : ''}`}
               onClick={() => setShowMembers(v => !v)}

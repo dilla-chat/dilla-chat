@@ -201,6 +201,14 @@
   background: var(--surface-hi, var(--bg-modifier-hover));
 }
 
+.channel-voice-count {
+  font-family: var(--font-mono);
+  font-size: 0.65625rem;
+  color: var(--fg-3);
+  letter-spacing: 0;
+  padding: 0 0.25rem;
+}
+
 /* Unread badge / mention pill */
 .channel-unread-badge {
   min-width: 1.125rem;

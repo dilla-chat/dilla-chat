@@ -49,10 +49,10 @@ export const MOCK_ROLES: Role[] = [
 export const MOCK_CHANNELS: Channel[] = [
   { id: 'ch-1', teamId: DEMO_TEAM_ID, name: 'welcome', topic: 'Welcome to Dilla!', type: 'text', position: 0, category: 'General' },
   { id: 'ch-2', teamId: DEMO_TEAM_ID, name: 'general', topic: 'General discussion', type: 'text', position: 1, category: 'General' },
-  { id: 'ch-3', teamId: DEMO_TEAM_ID, name: 'Voice Lounge', topic: '', type: 'voice', position: 2, category: 'General' },
+  { id: 'ch-3', teamId: DEMO_TEAM_ID, name: 'voice-lounge', topic: '', type: 'voice', position: 2, category: 'General' },
   { id: 'ch-4', teamId: DEMO_TEAM_ID, name: 'backend', topic: 'Go server development', type: 'text', position: 3, category: 'Development' },
   { id: 'ch-5', teamId: DEMO_TEAM_ID, name: 'frontend', topic: 'Tauri client work', type: 'text', position: 4, category: 'Development' },
-  { id: 'ch-6', teamId: DEMO_TEAM_ID, name: 'Standup', topic: '', type: 'voice', position: 5, category: 'Development' },
+  { id: 'ch-6', teamId: DEMO_TEAM_ID, name: 'standup', topic: '', type: 'voice', position: 5, category: 'Development' },
   { id: 'ch-7', teamId: DEMO_TEAM_ID, name: 'random', topic: 'Anything goes', type: 'text', position: 6, category: 'Off-Topic' },
 ];
 
