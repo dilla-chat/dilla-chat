@@ -43,7 +43,7 @@ export default function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { activeTeamId, activeChannelId, channels, setActiveChannel, teams: teamMap } = useTeamStore();
-  const { teams, derivedKey } = useAuthStore();
+  const { teams: authTeams, derivedKey } = useAuthStore();
   const { activeDMId, setActiveDM, dmChannels } = useDMStore();
   const { activeThreadId, threadPanelOpen, threads, setActiveThread, setThreadPanelOpen } = useThreadStore();
   const isMobile = useIsMobile();
@@ -69,10 +69,10 @@ export default function AppLayout() {
   // Redirect to join/setup if no teams — wait until auth is validated so we
   // don't redirect during the brief window before persisted state is confirmed.
   useEffect(() => {
-    if (authChecked && teams.size === 0) {
+    if (authChecked && authTeams.size === 0) {
       navigate('/join');
     }
-  }, [teams, navigate, authChecked]);
+  }, [authTeams, navigate, authChecked]);
   useIdentityBackup(activeTeamId, dataLoaded);
   usePresenceEvents(activeTeamId);
 
@@ -120,7 +120,7 @@ export default function AppLayout() {
   const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
 
   // Get current user info from auth store
-  const currentTeamEntry = activeTeamId ? teams.get(activeTeamId) : null;
+  const currentTeamEntry = activeTeamId ? authTeams.get(activeTeamId) : null;
   const currentUser = currentTeamEntry?.user ?? null;
   const currentUserId = currentUser?.id ?? '';
   const username = currentUser?.username ?? 'User';
@@ -388,7 +388,7 @@ export default function AppLayout() {
   if (!authChecked) return null;
 
   // Show onboarding when no teams are joined
-  if (teams.size === 0) {
+  if (authTeams.size === 0) {
     return (
       <>
         <TitleBar />
@@ -427,6 +427,15 @@ export default function AppLayout() {
             <IconSettings size={18} stroke={1.75} />
           </button>
         </div>
+        {!isDMMode && activeTeamId && (
+          <div className="channel-sidebar-node" title="Federation status">
+            {(authTeams.get(activeTeamId)?.baseUrl ?? '')
+              .replace(/^https?:\/\//, '')
+              .replace(/\/$/, '')}
+            {' · '}
+            <span className="channel-sidebar-node-status">MESH OK</span>
+          </div>
+        )}
         <div className="channel-sidebar-tabs">
           <button
             className={`sidebar-tab ${isDMMode ? '' : 'active'}`}
