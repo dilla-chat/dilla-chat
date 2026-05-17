@@ -8,6 +8,7 @@ import { useUnreadStore } from '../../stores/unreadStore';
 import { useAuthStore } from '../../stores/authStore';
 import { api } from '../../services/api';
 import EditChannel from '../EditChannel/EditChannel';
+import { usernameColor } from '../../utils/colors';
 import './ChannelList.css';
 
 interface ContextMenu {
@@ -153,7 +154,10 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
                   className={`voice-channel-user ${peer.speaking ? 'speaking' : ''}`}
                   style={{ '--voice-level': peer.voiceLevel ?? 0 } as React.CSSProperties}
                 >
-                  <span className="voice-user-avatar">
+                  <span
+                    className="voice-user-avatar"
+                    style={{ backgroundColor: usernameColor(peer.username) }}
+                  >
                     {peer.username.slice(0, 1).toUpperCase()}
                   </span>
                   <span className="voice-user-name">{peer.username}</span>

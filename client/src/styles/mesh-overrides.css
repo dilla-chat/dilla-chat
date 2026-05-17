@@ -56,7 +56,7 @@
   height: 2rem;
   border-radius: var(--r-md);
   font-family: var(--font-display);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 700;
   box-shadow: none;
   color: var(--accent-ink);
@@ -182,16 +182,17 @@
 
 [data-theme='mesh'] .reaction-add-btn {
   font-family: var(--font-mono);
-  background: transparent;
+  background: var(--surface-2);
   border: none;
   color: var(--fg-3);
   width: auto;
   padding: 0.125rem 0.375rem;
-  border-radius: var(--r-pill, 0);
+  border-radius: 0;
+  font-size: 0.71875rem;
 }
 
 [data-theme='mesh'] .reaction-add-btn:hover {
-  background: transparent;
+  background: var(--surface-hi);
   border: none;
   color: var(--accent);
 }
@@ -333,13 +334,23 @@
 }
 
 /* User panel — verified against handoff .user-panel: bg is page bg
-   (not bg-3 surface), padding 10px 12px, height 56px. */
+   (not bg-3 surface), padding 10px 12px, height 56px, avatar 32x32. */
 [data-theme='mesh'] .user-panel {
   background: var(--bg);
   padding: 0.625rem 0.75rem;
   height: 3.5rem;
   min-height: 3.5rem;
   border-top: 0.0625rem solid var(--hairline);
+}
+
+[data-theme='mesh'] .user-panel-avatar {
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--r-md);
+  color: var(--accent-ink);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 0.75rem;
 }
 
 /* User panel — match handoff .user-panel .name / .sub typography */
@@ -546,14 +557,14 @@
 
 [data-theme='mesh'] .content-header-encrypted {
   font-family: var(--font-mono);
-  font-size: 0.5625rem;
+  font-size: 0.65625rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   background: var(--accent-soft);
   border: 0.0625rem solid var(--accent);
   color: var(--accent);
   border-radius: var(--r-sm);
-  padding: 0.125rem 0.375rem;
+  padding: 0.1875rem 0.4375rem;
 }
 
 [data-theme='mesh'] .content-header-actions {
@@ -949,7 +960,8 @@
   font-size: 0.6875rem;
   border-radius: var(--r-md);
   color: var(--accent-ink);
-  background: var(--surface-2);
+  /* bg is set inline via usernameColor(member.username); no fallback here so
+     the per-user color shows through instead of a uniform surface-2 gray. */
 }
 
 [data-theme='mesh'] .member-row,

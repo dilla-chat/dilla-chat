@@ -10,6 +10,7 @@ import { webrtcService } from '../../services/webrtc';
 import { playMuteSound, playUnmuteSound } from '../../utils/sounds';
 import StatusPicker from '../StatusPicker/StatusPicker';
 import type { PresenceStatus } from '../PresenceIndicator/PresenceIndicator';
+import { usernameColor } from '../../utils/colors';
 import './UserPanel.css';
 
 interface Props {
@@ -117,6 +118,7 @@ export default function UserPanel({
       <button
         className="user-panel-avatar"
         data-status={myStatus}
+        style={{ backgroundColor: usernameColor(username) }}
         onClick={(e) => {
           e.stopPropagation();
           setShowStatusPicker(!showStatusPicker);
