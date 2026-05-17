@@ -196,22 +196,32 @@
   color: var(--accent);
 }
 
-/* Hover toolbar */
+/* Hover toolbar — handoff .msg-tools is a subtle surface chip, not accent-ringed */
 [data-theme='mesh'] .message-actions {
   background: var(--surface);
-  border: 0.0625rem solid var(--accent);
+  border: 0.0625rem solid var(--hairline-2, var(--hairline));
   border-radius: var(--r-md);
   box-shadow: var(--shadow-2);
+  padding: 0.125rem;
+  gap: 0;
 }
 
 [data-theme='mesh'] .message-action-btn {
+  width: 1.625rem;
+  height: 1.625rem;
+  padding: 0;
   color: var(--fg-2);
+  background: transparent;
+  border: none;
   border-radius: var(--r-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 [data-theme='mesh'] .message-action-btn:hover {
-  color: var(--accent);
-  background: var(--accent-soft);
+  color: var(--fg);
+  background: var(--surface-hi);
 }
 
 [data-theme='mesh'] .message-action-btn.danger:hover {
