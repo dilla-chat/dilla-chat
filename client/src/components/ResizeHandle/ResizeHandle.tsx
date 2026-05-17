@@ -4,9 +4,10 @@ import './ResizeHandle.css';
 interface ResizeHandleProps {
   onResize: (delta: number) => void;
   onResizeEnd?: () => void;
+  side?: 'left' | 'right';
 }
 
-export default function ResizeHandle({ onResize, onResizeEnd }: Readonly<ResizeHandleProps>) {
+export default function ResizeHandle({ onResize, onResizeEnd, side = 'left' }: Readonly<ResizeHandleProps>) {
   const [dragging, setDragging] = useState(false);
   const lastX = useRef(0);
 
@@ -48,6 +49,7 @@ export default function ResizeHandle({ onResize, onResizeEnd }: Readonly<ResizeH
       type="button"
       className={`resize-handle ${dragging ? 'dragging' : ''}`}
       aria-label="Resize panel"
+      data-side={side}
       onMouseDown={handleMouseDown}
       onKeyDown={(e) => {
         if (e.key === 'ArrowLeft') onResize(-10);
