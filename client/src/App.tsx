@@ -13,6 +13,7 @@ import SetupAdmin from './pages/SetupAdmin';
 import AppLayout from './pages/AppLayout';
 import TeamSettings from './pages/TeamSettings';
 import UserSettings from './pages/UserSettings';
+import Onboarding from './pages/Onboarding/Onboarding';
 import NotFound from './pages/NotFound';
 import { ToastProvider } from './components/Toast/Toast';
 // useToast hook available from './components/Toast/useToast' for consumer components
@@ -90,6 +91,7 @@ function App() {
         <Route path="/join/:token?" element={<JoinTeam />} />
         <Route path="/recover" element={<RecoverFromServer />} />
         <Route path="/setup" element={<SetupAdmin />} />
+        <Route path="/onboarding" element={<Onboarding />} />
         <Route path="/app" element={<AppLayout />} />
         <Route path="/app/channels/:channelId" element={<AppLayout />} />
         <Route path="/app/settings" element={<TeamSettings />} />
