@@ -18,10 +18,11 @@
 
 .app-layout-main {
   display: flex;
+  flex-direction: column;
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: var(--bg-tertiary);
+  background: var(--bg, var(--bg-tertiary));
 }
 
 /* When TitleBar is present (Tauri), offset content below it.
@@ -32,35 +33,75 @@
   height: calc(100% - var(--titlebar-height));
 }
 
-/* Left panels wrapper (team sidebar + channel sidebar + bottom controls) */
-.left-panels {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  flex-shrink: 0;
+/* 4-column grid shell — desktop only.
+   gridTemplateColumns is supplied inline by AppLayout for live resize. */
+.app-grid-shell {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+  background: var(--bg, var(--bg-tertiary));
 }
 
-.left-panels-top {
+.app-grid-rail {
+  grid-column: 1;
   display: flex;
+  flex-direction: column;
+  background: var(--bg-2, var(--bg-secondary));
+  border-right: 1px solid var(--hairline, var(--divider));
+  overflow: hidden;
+  min-height: 0;
+}
+
+.app-grid-sidebar {
+  grid-column: 2;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-2, var(--bg-secondary));
+  overflow: hidden;
+  min-height: 0;
+}
+
+.app-grid-sidebar-top {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
-.left-panels-bottom {
-  background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+.app-grid-sidebar-bottom {
   flex-shrink: 0;
+  background: linear-gradient(
+    180deg,
+    var(--bg-2, var(--bg-secondary)) 0%,
+    var(--bg-3, var(--bg-tertiary)) 100%
+  );
+  border-top: 1px solid var(--hairline, var(--divider));
 }
 
-/* Channel sidebar (second column) */
+.app-grid-members {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-2, var(--bg-secondary));
+  border-left: 1px solid var(--hairline, var(--divider));
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Channel sidebar (lives inside .app-grid-sidebar-top on desktop;
+   width comes from the parent grid track. Mobile keeps full-width via
+   .mobile-fullwidth class.) */
 .channel-sidebar {
-  width: var(--channel-sidebar-width);
   background: var(--bg-secondary);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
   min-height: 0;
   overflow: hidden;
+  flex: 1;
 }
 
 /* Content wrapper (header + body column) */
