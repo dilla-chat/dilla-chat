@@ -44,11 +44,11 @@
 }
 
 .public-brand-logo {
-  width: 60px;
-  height: 60px;
+  width: 3.75rem;
+  height: 3.75rem;
   margin-bottom: 1.25rem;
   border-radius: var(--radius-xl);
-  box-shadow: 0 0 50px rgba(14,165,192,0.15);
+  box-shadow: 0 0 3.125rem rgba(14,165,192,0.15);
 }
 
 .public-brand-tagline {
@@ -81,9 +81,9 @@
 
 .public-card {
   width: 100%;
-  max-width: 320px;
+  max-width: 20rem;
   background: var(--bg-primary);
-  border: 1px solid rgba(255,255,255,0.03);
+  border: 0.0625rem solid rgba(255,255,255,0.03);
   border-radius: var(--radius-xl);
   padding: 2.5rem 2rem;
   overflow: hidden;
@@ -108,25 +108,25 @@
 
 .public-card .form input,
 .public-card .form textarea {
-  border-radius: 10px;
+  border-radius: 0.625rem;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .public-card .form input:focus,
 .public-card .form textarea:focus {
   border-color: var(--brand-500);
-  box-shadow: 0 0 0 3px var(--brand-alpha-15);
+  box-shadow: 0 0 0 0.1875rem var(--brand-alpha-15);
   outline: none;
 }
 
 .public-card .btn-primary {
   background: linear-gradient(135deg, var(--brand-500) 0%, var(--brand-560) 100%);
-  box-shadow: 0 4px 16px var(--brand-alpha-25);
+  box-shadow: 0 0.25rem 1rem var(--brand-alpha-25);
 }
 
 .public-card .btn-primary:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px var(--brand-alpha-25);
+  transform: translateY(-0.0625rem);
+  box-shadow: 0 0.375rem 1.25rem var(--brand-alpha-25);
 }
 
 .public-card .btn-primary:active:not(:disabled) {
@@ -146,8 +146,8 @@
 }
 
 .public-step-dot {
-  width: 8px;
-  height: 8px;
+  width: 0.5rem;
+  height: 0.5rem;
   border-radius: 50%;
   background: var(--interactive-muted);
   transition: background 0.2s, transform 0.2s;
@@ -164,7 +164,7 @@
 
 /* ───── Mobile ───── */
 
-@media (max-width: 768px) {
+@media (max-width: 48rem) {
   .public-shell {
     flex-direction: column;
   }
@@ -196,8 +196,8 @@
   }
 
   .public-mobile-header img {
-    width: 32px;
-    height: 32px;
+    width: 2rem;
+    height: 2rem;
   }
 
   .public-mobile-header span {
@@ -207,7 +207,7 @@
   }
 }
 
-@media (min-width: 769px) {
+@media (min-width: 48.0625rem) {
   .public-mobile-header {
     display: none;
   }

@@ -47,11 +47,15 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
     return peerCount > 0;
   });
 
-  const remainingChannels = teamChannels.filter((ch) => {
-    const isUnread = ch.type !== 'voice' && (unreadCounts[ch.id] ?? 0) > 0;
-    const isActiveVoice =
-      ch.type === 'voice' && activeVoiceChannels.some((v) => v.id === ch.id);
-    return !isUnread && !isActiveVoice;
+  const textChannels = teamChannels.filter((ch) => {
+    if (ch.type === 'voice') return false;
+    const isUnread = (unreadCounts[ch.id] ?? 0) > 0;
+    return !isUnread;
+  });
+
+  const idleVoiceChannels = teamChannels.filter((ch) => {
+    if (ch.type !== 'voice') return false;
+    return !activeVoiceChannels.some((v) => v.id === ch.id);
   });
 
   const handleContextMenu = (e: React.MouseEvent, channel: Channel) => {
@@ -116,9 +120,9 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
             className={`channel-icon ${isVoice && voicePeerList.length > 0 ? 'voice-active' : ''}`}
           >
             {isVoice ? (
-              <IconVolume size={16} stroke={1.75} />
+              <IconVolume size={14} stroke={1.75} />
             ) : (
-              <span className="channel-tilde">~</span>
+              <span className="channel-tilde">#</span>
             )}
           </span>
           <span className={`channel-name truncate${hasUnread ? ' channel-name--unread' : ''}`}>
@@ -191,16 +195,16 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
 
       {activeVoiceChannels.length > 0 && (
         <>
-          <div className="channel-section-header">
-            {t('channels.activeVoice', 'ACTIVE VOICE')}
+          <div className="channel-section-header active-voice-section">
+            <span>{t('channels.activeVoice', 'ACTIVE VOICE')}</span>
+            <span className="channel-section-header-live">● live</span>
           </div>
           {activeVoiceChannels.map(renderChannelItem)}
-          <div className="channel-section-divider" />
         </>
       )}
 
       <div className="channel-section-header">
-        {t('channels.channels', 'CHANNELS')}
+        <span>{t('channels.channels', 'KANALS')}</span>
         {onCreateChannel && (
           <button
             type="button"
@@ -208,11 +212,20 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
             onClick={() => onCreateChannel()}
             title={t('channels.create')}
           >
-            <IconPlus size={16} stroke={1.75} />
+            <IconPlus size={12} stroke={1.75} />
           </button>
         )}
       </div>
-      {remainingChannels.map(renderChannelItem)}
+      {textChannels.map(renderChannelItem)}
+
+      {idleVoiceChannels.length > 0 && (
+        <>
+          <div className="channel-section-header">
+            <span>{t('channels.voice', 'VOICE')}</span>
+          </div>
+          {idleVoiceChannels.map(renderChannelItem)}
+        </>
+      )}
 
       {contextMenu && createPortal(
         <div

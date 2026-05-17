@@ -1,14 +1,14 @@
 /* Ported verbatim from design_handoff_dilla_mesh/mesh-chrome.css §Bottom bar. */
 
 .mesh-bottom {
-  flex: 0 0 26px;
+  flex: 0 0 1.625rem;
   display: flex;
   align-items: center;
   gap: 0;
   padding: 0;
   background: var(--bg-2);
-  border-top: 1px solid var(--hairline);
-  font-size: 10.5px;
+  border-top: 0.0625rem solid var(--hairline);
+  font-size: 0.65625rem;
   letter-spacing: 0.02em;
   color: var(--fg-2);
   font-family: var(--font-mono);
@@ -18,10 +18,10 @@
 .mb-chunk {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 12px;
+  gap: 0.375rem;
+  padding: 0 0.75rem;
   height: 100%;
-  border-right: 1px solid var(--hairline);
+  border-right: 0.0625rem solid var(--hairline);
   white-space: nowrap;
   background: transparent;
   color: inherit;
@@ -41,7 +41,7 @@
 .mb-chunk.mb-clickable {
   cursor: pointer;
   border: none;
-  border-right: 1px solid var(--hairline);
+  border-right: 0.0625rem solid var(--hairline);
   transition: background 0.12s, color 0.12s;
 }
 
@@ -58,7 +58,7 @@
   color: var(--fg-3);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  font-size: 9.5px;
+  font-size: 0.59375rem;
 }
 
 .mb-ok {

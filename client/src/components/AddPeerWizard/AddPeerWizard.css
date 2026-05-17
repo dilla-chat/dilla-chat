@@ -6,7 +6,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: 1.5rem;
   border: none;
   margin: 0;
   cursor: default;
@@ -16,12 +16,12 @@
 }
 
 .add-peer {
-  width: 560px;
+  width: 35rem;
   max-width: 100%;
   background: var(--surface, var(--bg-floating));
-  border: 1px solid var(--accent, var(--brand-500));
-  border-radius: var(--r-md, 2px);
-  box-shadow: var(--shadow-2, 0 12px 30px rgba(0, 0, 0, 0.6));
+  border: 0.0625rem solid var(--accent, var(--brand-500));
+  border-radius: var(--r-md, 0.125rem);
+  box-shadow: var(--shadow-2, 0 0.75rem 1.875rem rgba(0, 0, 0, 0.6));
   font-family: var(--font-ui);
   color: var(--fg, var(--text-primary));
   display: flex;
@@ -30,16 +30,16 @@
 }
 
 .add-peer-header {
-  padding: 20px 24px 16px;
-  border-bottom: 1px solid var(--hairline, var(--divider));
+  padding: 1.25rem 1.5rem 1rem;
+  border-bottom: 0.0625rem solid var(--hairline, var(--divider));
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 0.375rem;
 }
 
 .add-peer-eyebrow {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 0.625rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -49,28 +49,28 @@
 .add-peer-title {
   margin: 0;
   font-family: var(--font-display);
-  font-size: 18px;
+  font-size: 1.125rem;
   font-weight: var(--fw-display, 700);
   letter-spacing: var(--display-tracking, 0.01em);
 }
 
 .add-peer-steps {
   display: flex;
-  gap: 8px;
-  margin-top: 8px;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
 }
 
 .add-peer-step {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 8px;
+  gap: 0.375rem;
+  padding: 0.1875rem 0.5rem;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 0.625rem;
   font-weight: 700;
   letter-spacing: 0.06em;
   color: var(--fg-3, var(--text-muted));
-  border: 1px solid var(--hairline, var(--divider));
+  border: 0.0625rem solid var(--hairline, var(--divider));
   border-radius: var(--r-sm, 0);
 }
 
@@ -86,24 +86,24 @@
 }
 
 .add-peer-body {
-  padding: 20px 24px;
+  padding: 1.25rem 1.5rem;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 1rem;
 }
 
 .add-peer-subtitle {
   margin: 0;
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--fg-2, var(--text-secondary));
 }
 
 .add-peer-label {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 0.375rem;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -112,14 +112,14 @@
 
 .add-peer-textarea {
   background: var(--surface-2, var(--input-bg));
-  border: 1px solid var(--hairline, var(--border-color));
-  border-radius: var(--r-md, 2px);
-  padding: 10px 12px;
+  border: 0.0625rem solid var(--hairline, var(--border-color));
+  border-radius: var(--r-md, 0.125rem);
+  padding: 0.625rem 0.75rem;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--fg, var(--text-primary));
   resize: vertical;
-  min-height: 80px;
+  min-height: 5rem;
   transition: border-color 0.12s ease-out;
   letter-spacing: 0;
   text-transform: none;
@@ -131,19 +131,19 @@
 }
 
 .add-peer-confirm-card {
-  border: 1px solid var(--hairline, var(--divider));
-  border-radius: var(--r-md, 2px);
+  border: 0.0625rem solid var(--hairline, var(--divider));
+  border-radius: var(--r-md, 0.125rem);
   background: var(--surface-2, var(--bg-modifier-hover));
   overflow: hidden;
 }
 
 .add-peer-confirm-row {
   display: flex;
-  gap: 16px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--hairline, var(--divider));
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 0.0625rem solid var(--hairline, var(--divider));
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 
 .add-peer-confirm-row:last-child {
@@ -154,7 +154,7 @@
   color: var(--fg-3, var(--text-muted));
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  width: 100px;
+  width: 6.25rem;
   flex-shrink: 0;
 }
 
@@ -165,15 +165,15 @@
 
 .add-peer-log {
   background: var(--bg, var(--bg-primary));
-  border: 1px solid var(--hairline, var(--divider));
-  border-radius: var(--r-md, 2px);
-  padding: 12px 14px;
+  border: 0.0625rem solid var(--hairline, var(--divider));
+  border-radius: var(--r-md, 0.125rem);
+  padding: 0.75rem 0.875rem;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  min-height: 180px;
+  gap: 0.125rem;
+  min-height: 11.25rem;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 
 .add-peer-log-line {
@@ -189,7 +189,7 @@
 }
 
 @keyframes add-peer-line-in {
-  from { opacity: 0; transform: translateX(-4px); }
+  from { opacity: 0; transform: translateX(-0.25rem); }
   to { opacity: 1; transform: translateX(0); }
 }
 
@@ -202,16 +202,16 @@
 .add-peer-success {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 18px;
+  gap: 0.75rem;
+  padding: 1.125rem;
   background: var(--accent-soft, rgba(124, 255, 142, 0.14));
-  border: 1px solid var(--accent, var(--brand-500));
-  border-radius: var(--r-md, 2px);
+  border: 0.0625rem solid var(--accent, var(--brand-500));
+  border-radius: var(--r-md, 0.125rem);
 }
 
 .add-peer-success-tick {
-  width: 36px;
-  height: 36px;
+  width: 2.25rem;
+  height: 2.25rem;
   border-radius: 50%;
   background: var(--accent, var(--brand-500));
   color: var(--accent-ink, var(--bg-primary));
@@ -219,14 +219,14 @@
   align-items: center;
   justify-content: center;
   font-family: var(--font-display);
-  font-size: 22px;
+  font-size: 1.375rem;
   font-weight: 800;
   flex-shrink: 0;
 }
 
 .add-peer-success-label {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--fg, var(--text-primary));
   word-break: break-all;
 }
@@ -234,19 +234,19 @@
 .add-peer-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 0.625rem;
 }
 
 .add-peer-btn {
-  padding: 10px 18px;
-  border-radius: var(--r-md, 2px);
+  padding: 0.625rem 1.125rem;
+  border-radius: var(--r-md, 0.125rem);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   cursor: pointer;
-  border: 1px solid;
+  border: 0.0625rem solid;
   transition: background 0.12s ease-out, border-color 0.12s ease-out;
 }
 

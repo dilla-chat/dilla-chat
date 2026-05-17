@@ -16,16 +16,16 @@
 }
 
 .incoming-call-card {
-  width: 360px;
+  width: 22.5rem;
   background: var(--surface, var(--bg-floating));
-  border: 1px solid var(--accent, var(--brand-500));
-  border-radius: var(--r-md, 2px);
-  box-shadow: var(--shadow-2, 0 12px 30px rgba(0, 0, 0, 0.6));
-  padding: 24px;
+  border: 0.0625rem solid var(--accent, var(--brand-500));
+  border-radius: var(--r-md, 0.125rem);
+  box-shadow: var(--shadow-2, 0 0.75rem 1.875rem rgba(0, 0, 0, 0.6));
+  padding: 1.5rem;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
+  gap: 1rem;
   animation: incoming-call-card-in 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
@@ -36,8 +36,8 @@
 
 .incoming-call-pulse {
   position: relative;
-  width: 96px;
-  height: 96px;
+  width: 6rem;
+  height: 6rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -49,7 +49,7 @@
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  border: 2px solid var(--accent, var(--brand-500));
+  border: 0.125rem solid var(--accent, var(--brand-500));
   animation: incoming-call-pulse 1.8s ease-out infinite;
 }
 
@@ -65,8 +65,8 @@
 .incoming-call-avatar {
   position: relative;
   z-index: 1;
-  width: 72px;
-  height: 72px;
+  width: 4.5rem;
+  height: 4.5rem;
   border-radius: 50%;
   background: var(--surface-2, var(--bg-modifier-hover));
   color: var(--accent-ink, var(--text-primary));
@@ -74,7 +74,7 @@
   align-items: center;
   justify-content: center;
   font-family: var(--font-display);
-  font-size: 28px;
+  font-size: 1.75rem;
   font-weight: var(--fw-display, 700);
 }
 
@@ -82,12 +82,12 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 0.25rem;
 }
 
 .incoming-call-status {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 0.625rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -96,14 +96,14 @@
 
 .incoming-call-name {
   font-family: var(--font-display);
-  font-size: 18px;
+  font-size: 1.125rem;
   font-weight: var(--fw-display, 700);
   color: var(--fg, var(--text-primary));
 }
 
 .incoming-call-channel {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 0.625rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--fg-3, var(--text-muted));
@@ -111,15 +111,15 @@
 
 .incoming-call-actions {
   display: flex;
-  gap: 16px;
-  margin-top: 4px;
+  gap: 1rem;
+  margin-top: 0.25rem;
 }
 
 .incoming-call-btn {
-  width: 64px;
-  height: 64px;
+  width: 4rem;
+  height: 4rem;
   border-radius: 50%;
-  border: 1px solid var(--hairline, var(--border-color));
+  border: 0.0625rem solid var(--hairline, var(--border-color));
   background: var(--surface-2, var(--bg-modifier-hover));
   color: var(--fg, var(--text-primary));
   cursor: pointer;
@@ -127,9 +127,9 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 0.125rem;
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 0.5625rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   transition: background 0.12s ease-out, border-color 0.12s ease-out;
@@ -137,23 +137,23 @@
 }
 
 .incoming-call-btn > span:first-child {
-  font-size: 22px;
+  font-size: 1.375rem;
   line-height: 1;
 }
 
 .incoming-call-btn-label {
-  font-size: 9px;
+  font-size: 0.5625rem;
 }
 
 .incoming-call-btn kbd {
   position: absolute;
-  bottom: -22px;
+  bottom: -1.375rem;
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 0.5625rem;
   background: transparent;
-  border: 1px solid var(--hairline, var(--border-color));
+  border: 0.0625rem solid var(--hairline, var(--border-color));
   border-radius: var(--r-sm, 0);
-  padding: 1px 4px;
+  padding: 0.0625rem 0.25rem;
   color: var(--fg-3, var(--text-muted));
 }
 

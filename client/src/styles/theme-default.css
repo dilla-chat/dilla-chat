@@ -34,15 +34,15 @@
   --mention: #ffd16a;
 
   /* Brutalist radii */
-  --r-sm: 0px;
-  --r-md: 2px;
-  --r-lg: 3px;
-  --r-pill: 0px;
-  --avatar-shape: 2px;
+  --r-sm: 0;
+  --r-md: 0.125rem;
+  --r-lg: 0.1875rem;
+  --r-pill: 0;
+  --avatar-shape: 0.125rem;
 
   /* Shadows */
-  --shadow-1: 0 0 0 1px rgba(124, 255, 142, 0.08);
-  --shadow-2: 0 0 0 1px rgba(124, 255, 142, 0.18), 0 12px 30px rgba(0, 0, 0, 0.6);
+  --shadow-1: 0 0 0 0.0625rem rgba(124, 255, 142, 0.08);
+  --shadow-2: 0 0 0 0.0625rem rgba(124, 255, 142, 0.18), 0 0.75rem 1.875rem rgba(0, 0, 0, 0.6);
 
   /* Legacy token aliases — kept so existing components remain wired up. */
   --bg-primary: var(--bg);
@@ -101,13 +101,13 @@
   --active: rgba(232, 236, 232, 0.08);
 
   --color-encrypted: var(--ok);
-  --shadow-glow-brand: 0 0 20px rgba(124, 255, 142, 0.25);
-  --shadow-glow-accent: 0 0 20px rgba(124, 255, 142, 0.25);
+  --shadow-glow-brand: 0 0 1.25rem rgba(124, 255, 142, 0.25);
+  --shadow-glow-accent: 0 0 1.25rem rgba(124, 255, 142, 0.25);
 
   /* Mesh is matte — collapse glass blur to 0 so backdrops look flat. */
-  --glass-blur: 0px;
-  --glass-blur-heavy: 0px;
-  --glass-blur-light: 0px;
+  --glass-blur: 0;
+  --glass-blur-heavy: 0;
+  --glass-blur-light: 0;
   --glass-bg-primary: var(--bg);
   --glass-bg-secondary: var(--bg-2);
   --glass-bg-tertiary: var(--bg-3);

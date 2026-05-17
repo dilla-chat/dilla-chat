@@ -10,7 +10,7 @@
 }
 
 .dm-list::-webkit-scrollbar {
-  width: 6px;
+  width: 0.375rem;
 }
 
 .dm-list::-webkit-scrollbar-thumb {
@@ -24,8 +24,8 @@
 .dm-list-actions {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 10px 12px 6px;
+  gap: 0.375rem;
+  padding: 0.625rem 0.75rem 0.375rem;
 }
 
 .dm-search {
@@ -37,12 +37,12 @@
 .dm-search-input {
   flex: 1;
   background: var(--surface-2, var(--input-bg));
-  border: 1px solid var(--hairline, var(--border-color));
-  border-radius: var(--r-md, 2px);
-  padding: 6px 10px;
+  border: 0.0625rem solid var(--hairline, var(--border-color));
+  border-radius: var(--r-md, 0.125rem);
+  padding: 0.375rem 0.625rem;
   color: var(--fg, var(--text-primary));
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 0.6875rem;
   letter-spacing: 0.02em;
   transition: border-color 0.12s ease-out;
   width: 100%;
@@ -57,7 +57,7 @@
 .dm-search-input::placeholder {
   color: var(--fg-3, var(--text-muted));
   text-transform: uppercase;
-  font-size: 10px;
+  font-size: 0.625rem;
   letter-spacing: 0.04em;
 }
 
@@ -65,19 +65,19 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 0.375rem;
   width: 100%;
-  padding: 8px 10px;
-  border: 1px dashed var(--accent, var(--brand-500));
+  padding: 0.5rem 0.625rem;
+  border: 0.0625rem dashed var(--accent, var(--brand-500));
   background: transparent;
   color: var(--accent, var(--brand-500));
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   cursor: pointer;
-  border-radius: var(--r-md, 2px);
+  border-radius: var(--r-md, 0.125rem);
   transition: background 0.12s ease-out, color 0.12s ease-out;
 }
 
@@ -87,11 +87,11 @@
 }
 
 .dm-empty {
-  padding: 24px 14px;
+  padding: 1.5rem 0.875rem;
   text-align: center;
   color: var(--fg-3, var(--text-muted));
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 0.6875rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -99,21 +99,21 @@
 .dm-items {
   display: flex;
   flex-direction: column;
-  padding: 4px 0 8px;
+  padding: 0.25rem 0 0.5rem;
 }
 
 .dm-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: var(--row-pad-y, 6px) 14px;
+  gap: 0.5rem;
+  padding: var(--row-pad-y, 0.375rem) 0.875rem;
   cursor: pointer;
   color: var(--fg-2, var(--text-secondary));
   font-family: var(--font-ui);
-  font-size: 13px;
+  font-size: 0.8125rem;
   position: relative;
   transition: background 0.1s ease-out, color 0.1s ease-out;
-  border-left: 2px solid transparent;
+  border-left: 0.125rem solid transparent;
   user-select: none;
 }
 
@@ -146,16 +146,16 @@
 }
 
 .dm-item-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: var(--r-md, 2px);
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--r-md, 0.125rem);
   background: var(--surface-2, var(--bg-modifier-hover));
   color: var(--fg, var(--text-primary));
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: var(--font-display);
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 700;
   flex-shrink: 0;
   position: relative;
@@ -172,7 +172,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 0.125rem;
   overflow: hidden;
 }
 
@@ -180,7 +180,7 @@
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
+  gap: 0.5rem;
   min-width: 0;
 }
 
@@ -191,14 +191,14 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: var(--font-display);
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: var(--fg-2, var(--text-secondary));
 }
 
 .dm-item-time {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 0.625rem;
   letter-spacing: 0.04em;
   color: var(--fg-3, var(--text-muted));
   flex-shrink: 0;
@@ -206,7 +206,7 @@
 }
 
 .dm-item-preview {
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--fg-3, var(--text-muted));
   overflow: hidden;
   text-overflow: ellipsis;
@@ -215,7 +215,7 @@
 
 .dm-item-no-msg {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 0.625rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--fg-3, var(--text-muted));
@@ -224,7 +224,7 @@
 
 .dm-item-member-count {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 0.625rem;
   letter-spacing: 0.04em;
   color: var(--fg-3, var(--text-muted));
   text-transform: uppercase;

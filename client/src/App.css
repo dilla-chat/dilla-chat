@@ -22,7 +22,7 @@
 }
 
 .page {
-  max-width: 480px;
+  max-width: 30rem;
   margin: 0 auto;
   padding: 2rem;
   display: flex;
@@ -37,14 +37,14 @@
   flex-direction: column;
   gap: 0.75rem;
   width: 100%;
-  max-width: 360px;
+  max-width: 22.5rem;
 }
 
 .form input,
 .form textarea {
   padding: 0.6em 1em;
   border-radius: var(--radius-lg);
-  border: 1px solid var(--border-color);
+  border: 0.0625rem solid var(--border-color);
   background-color: var(--input-bg);
   color: var(--text-primary);
   font-size: 1em;
@@ -58,7 +58,7 @@
 .form textarea:focus {
   outline: none;
   border-color: var(--brand-500);
-  box-shadow: 0 0 0 3px var(--brand-alpha-12);
+  box-shadow: 0 0 0 0.1875rem var(--brand-alpha-12);
 }
 
 @keyframes spin {
@@ -69,24 +69,24 @@
 .btn-primary {
   background: var(--gradient-accent);
   color: var(--interactive-active);
-  border: 1px solid var(--white-overlay-light);
+  border: 0.0625rem solid var(--white-overlay-light);
   padding: var(--spacing-md) var(--spacing-xl);
   border-radius: var(--radius-lg);
   font-size: 1em;
   font-weight: 600;
   cursor: pointer;
   transition: filter 0.2s, opacity 0.2s, box-shadow 0.2s;
-  box-shadow: 0 2px 8px var(--accent-alpha-20);
+  box-shadow: 0 0.125rem 0.5rem var(--accent-alpha-20);
 }
 
 .btn-primary:hover:not(:disabled) {
   filter: brightness(1.1);
-  box-shadow: 0 4px 16px var(--accent-alpha-30);
+  box-shadow: 0 0.25rem 1rem var(--accent-alpha-30);
 }
 
 .btn-primary:active:not(:disabled) {
   filter: brightness(0.95);
-  box-shadow: 0 1px 4px var(--accent-alpha-15);
+  box-shadow: 0 0.0625rem 0.25rem var(--accent-alpha-15);
 }
 
 .btn-primary:disabled {
@@ -97,7 +97,7 @@
 .btn-secondary {
   background: var(--glass-bg-primary);
   color: var(--text-secondary);
-  border: 1px solid var(--glass-border);
+  border: 0.0625rem solid var(--glass-border);
   padding: var(--spacing-md) var(--spacing-xl);
   border-radius: var(--radius-lg);
   font-size: 0.95em;
@@ -184,20 +184,20 @@
 /* Login identity card */
 .login-identity-card {
   background: var(--bg-secondary);
-  border: 1px solid var(--divider);
-  border-radius: 12px;
-  padding: 16px 20px;
+  border: 0.0625rem solid var(--divider);
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
   width: 100%;
   box-sizing: border-box;
-  margin-bottom: 16px;
+  margin-bottom: 1rem;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 0.875rem;
 }
 
 .login-identity-avatar {
-  width: 44px;
-  height: 44px;
+  width: 2.75rem;
+  height: 2.75rem;
   border-radius: var(--radius-lg);
   display: flex;
   align-items: center;
@@ -227,13 +227,13 @@
   letter-spacing: 0.03em;
   word-break: break-all;
   line-height: 1.4;
-  margin-top: 2px;
+  margin-top: 0.125rem;
 }
 
 .login-identity-servers {
   font-size: 0.8rem;
   color: var(--text-secondary);
-  margin-top: 2px;
+  margin-top: 0.125rem;
 }
 
 .btn-danger {

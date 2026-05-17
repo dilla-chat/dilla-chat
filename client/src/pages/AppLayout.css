@@ -55,7 +55,7 @@
   display: flex;
   flex-direction: column;
   background: var(--bg-2, var(--bg-secondary));
-  border-right: 1px solid var(--hairline, var(--divider));
+  border-right: 0.0625rem solid var(--hairline, var(--divider));
   overflow: hidden;
   min-height: 0;
 }
@@ -100,14 +100,14 @@
     var(--bg-2, var(--bg-secondary)) 0%,
     var(--bg-3, var(--bg-tertiary)) 100%
   );
-  border-top: 1px solid var(--hairline, var(--divider));
+  border-top: 0.0625rem solid var(--hairline, var(--divider));
 }
 
 .app-grid-members {
   display: flex;
   flex-direction: column;
   background: var(--bg-2, var(--bg-secondary));
-  border-left: 1px solid var(--hairline, var(--divider));
+  border-left: 0.0625rem solid var(--hairline, var(--divider));
   overflow: hidden;
   min-height: 0;
 }
@@ -151,7 +151,7 @@
   min-height: 0;
   overflow: hidden;
   background: var(--bg-primary);
-  box-shadow: -4px 0 40px rgba(0,0,0,0.5), 4px 0 40px rgba(0,0,0,0.5);
+  box-shadow: -0.25rem 0 2.5rem rgba(0,0,0,0.5), 0.25rem 0 2.5rem rgba(0,0,0,0.5);
   animation: fadeIn var(--duration-normal) var(--ease-out);
 }
 
@@ -162,13 +162,13 @@
 
 /* Header bar */
 .content-header {
-  height: 54px;
-  min-height: 54px;
+  height: 3.375rem;
+  min-height: 3.375rem;
   display: flex;
   align-items: center;
   padding: 0 var(--spacing-xl);
   background: var(--bg-primary);
-  border-bottom: 1px solid var(--divider);
+  border-bottom: 0.0625rem solid var(--divider);
   flex-shrink: 0;
   gap: var(--spacing-sm);
   box-sizing: border-box;
@@ -189,18 +189,18 @@
   align-items: center;
   gap: var(--spacing-xs);
   margin-left: var(--spacing-sm);
-  padding: 2px var(--spacing-sm);
+  padding: 0.125rem var(--spacing-sm);
   border-radius: var(--radius-full);
   background: rgba(16, 185, 129, 0.06);
-  border: 1px solid rgba(16, 185, 129, 0.1);
+  border: 0.0625rem solid rgba(16, 185, 129, 0.1);
   color: var(--success);
   font-size: var(--font-size-micro);
   font-weight: var(--font-weight-medium);
 }
 
 .content-header-divider {
-  width: 1px;
-  height: 24px;
+  width: 0.0625rem;
+  height: 1.5rem;
   background: var(--divider);
   margin: 0 var(--spacing-sm);
 }
@@ -272,8 +272,8 @@
 }
 
 .empty-state-icon {
-  width: 80px;
-  height: 80px;
+  width: 5rem;
+  height: 5rem;
   border-radius: var(--radius-xl);
   background: rgba(14, 165, 192, 0.06);
   display: flex;
@@ -294,7 +294,7 @@
   font-size: var(--font-size-base);
   color: var(--text-muted);
   margin: 0;
-  max-width: 280px;
+  max-width: 17.5rem;
   line-height: 1.5;
 }
 
@@ -306,8 +306,8 @@
 
 .message-input-placeholder {
   background: var(--input-bg);
-  border-radius: 8px;
-  padding: 11px 16px;
+  border-radius: 0.5rem;
+  padding: 0.6875rem 1rem;
   color: var(--text-muted);
   font-size: var(--font-size-base);
   cursor: text;
@@ -315,8 +315,8 @@
 
 /* Settings nav */
 .settings-link {
-  padding: 6px 10px;
-  margin: 1px 0;
+  padding: 0.375rem 0.625rem;
+  margin: 0.0625rem 0;
   color: var(--interactive-normal);
   font-size: var(--font-size-lg);
   cursor: pointer;
@@ -336,7 +336,7 @@
 .channel-sidebar-header {
   display: flex;
   flex-direction: column;
-  border-bottom: 1px solid var(--hairline, var(--divider));
+  border-bottom: 0.0625rem solid var(--hairline, var(--divider));
   flex-shrink: 0;
   box-sizing: border-box;
   background: var(--bg-2, var(--bg-secondary));
@@ -346,13 +346,13 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 14px 4px;
+  padding: 0.875rem 0.875rem 0.25rem;
 }
 
 .channel-sidebar-header-name {
   font-family: var(--font-display);
   font-style: italic;
-  font-size: 15px;
+  font-size: 0.9375rem;
   font-weight: var(--fw-display, 700);
   letter-spacing: var(--display-tracking, 0.01em);
   color: var(--fg, var(--text-primary));
@@ -361,9 +361,9 @@
 }
 
 .channel-sidebar-node {
-  padding: 0 14px 8px;
+  padding: 0 0.875rem 0.5rem;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 0.625rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--fg-3, var(--text-muted));
@@ -377,9 +377,9 @@
 }
 
 .sidebar-settings-btn {
-  padding: 4px;
+  padding: 0.25rem;
   border: none;
-  border-radius: var(--r-md, 2px);
+  border-radius: var(--r-md, 0.125rem);
   background: none;
   color: var(--fg-2, var(--interactive-normal));
   cursor: pointer;
@@ -399,19 +399,19 @@
   display: flex;
   padding: 0;
   gap: 0;
-  border-top: 1px solid var(--hairline, var(--divider));
+  border-top: 0.0625rem solid var(--hairline, var(--divider));
 }
 
 .sidebar-tab {
   flex: 1;
-  padding: 10px 0 9px;
+  padding: 0.625rem 0 0.5625rem;
   border: none;
   border-radius: 0;
   background: transparent;
   color: var(--fg-2, var(--interactive-normal));
   cursor: pointer;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -419,7 +419,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 0.375rem;
   transition: color 0.12s ease-out, background-color 0.12s ease-out;
   position: relative;
 }
@@ -440,7 +440,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  height: 1px;
+  height: 0.0625rem;
   background: var(--accent, var(--brand-500));
 }
 
@@ -468,8 +468,8 @@
   display: none;
 }
 
-/* ===== Mobile layout (<768px) ===== */
-@media (max-width: 767px) {
+/* ===== Mobile layout (<48rem) ===== */
+@media (max-width: 47.9375rem) {
   .app-layout-main.mobile {
     flex-direction: column;
   }
@@ -518,7 +518,7 @@
     flex-direction: column;
     flex-shrink: 0;
     background: var(--bg-tertiary);
-    border-top: 1px solid var(--divider);
+    border-top: 0.0625rem solid var(--divider);
   }
 
   .content-wrapper {
@@ -527,8 +527,8 @@
   }
 
   .content-header {
-    padding: 0 8px;
-    gap: 4px;
+    padding: 0 0.5rem;
+    gap: 0.25rem;
   }
 
   .content-header-divider,
@@ -537,14 +537,14 @@
   }
 
   .content-header-actions {
-    gap: 8px;
+    gap: 0.5rem;
   }
 }
 
-/* ===== Tablet layout (768px–1023px) ===== */
-@media (min-width: 768px) and (max-width: 1023px) {
+/* ===== Tablet layout (48rem–63.9375rem) ===== */
+@media (min-width: 48rem) and (max-width: 63.9375rem) {
   .content-header-topic {
-    max-width: 200px;
+    max-width: 12.5rem;
   }
 }
 
@@ -552,7 +552,7 @@
 .pinned-messages-panel {
   width: var(--member-sidebar-width);
   background: var(--bg-secondary);
-  border-left: 1px solid var(--divider);
+  border-left: 0.0625rem solid var(--divider);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -596,14 +596,14 @@
 }
 
 .pinned-message-avatar {
-  width: 18px;
-  height: 18px;
+  width: 1.125rem;
+  height: 1.125rem;
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
-  font-size: 8px;
+  font-size: 0.5rem;
   font-weight: var(--font-weight-semibold);
 }
 
@@ -642,12 +642,12 @@
 
 .server-picker {
   background: var(--bg-floating);
-  border: 1px solid var(--border-color);
+  border: 0.0625rem solid var(--border-color);
   border-radius: var(--radius-xl);
   padding: var(--spacing-xl);
-  width: 320px;
+  width: 20rem;
   max-width: 90vw;
-  box-shadow: 0 var(--spacing-lg) 48px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 var(--spacing-lg) 3rem rgba(0, 0, 0, 0.5);
   animation: scaleIn var(--duration-normal) var(--ease-spring);
 }
 
@@ -673,7 +673,7 @@
   width: 100%;
   padding: var(--spacing-md);
   border-radius: var(--radius-lg);
-  border: 1px solid var(--divider);
+  border: 0.0625rem solid var(--divider);
   background: rgba(255, 255, 255, 0.02);
   cursor: pointer;
   margin-bottom: var(--spacing-sm);
@@ -688,8 +688,8 @@
 }
 
 .server-picker-option-icon {
-  width: 36px;
-  height: 36px;
+  width: 2.25rem;
+  height: 2.25rem;
   border-radius: var(--radius-md);
   background: rgba(14, 165, 192, 0.08);
   display: flex;
@@ -711,7 +711,7 @@
 }
 
 /* Mobile swipe gesture support */
-@media (max-width: 767px) {
+@media (max-width: 47.9375rem) {
   .content-wrapper {
     touch-action: pan-y;
     transition: transform var(--duration-normal) var(--ease-out);

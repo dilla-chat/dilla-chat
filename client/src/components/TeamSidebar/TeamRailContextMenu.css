@@ -1,11 +1,11 @@
 .team-rail-menu {
   position: fixed;
   background: var(--surface, var(--bg-floating));
-  border: 1px solid var(--accent, var(--brand-500));
-  box-shadow: var(--shadow-2, 0 12px 30px rgba(0, 0, 0, 0.6));
-  border-radius: var(--r-md, 2px);
-  padding: 4px;
-  min-width: 160px;
+  border: 0.0625rem solid var(--accent, var(--brand-500));
+  box-shadow: var(--shadow-2, 0 0.75rem 1.875rem rgba(0, 0, 0, 0.6));
+  border-radius: var(--r-md, 0.125rem);
+  padding: 0.25rem;
+  min-width: 10rem;
   display: flex;
   flex-direction: column;
   z-index: var(--z-tooltip);
@@ -16,7 +16,7 @@
 .team-rail-menu button {
   background: none;
   border: none;
-  padding: 6px 10px;
+  padding: 0.375rem 0.625rem;
   text-align: left;
   cursor: pointer;
   color: var(--fg, var(--text-primary));

@@ -11,11 +11,11 @@
 
 .quick-switcher {
   width: 100%;
-  max-width: 540px;
+  max-width: 33.75rem;
   background: var(--bg-floating);
-  border: 1px solid var(--border-color);
+  border: 0.0625rem solid var(--border-color);
   border-radius: var(--radius-xl);
-  box-shadow: 0 var(--spacing-lg) 48px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 var(--spacing-lg) 3rem rgba(0, 0, 0, 0.5);
   overflow: hidden;
 }
 
@@ -24,7 +24,7 @@
   align-items: center;
   gap: var(--spacing-sm);
   padding: var(--spacing-lg);
-  border-bottom: 1px solid var(--divider);
+  border-bottom: 0.0625rem solid var(--divider);
 }
 
 .quick-switcher-search-icon {
@@ -51,14 +51,14 @@
   font-family: inherit;
   color: var(--text-muted);
   background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  padding: 2px var(--spacing-sm);
+  border: 0.0625rem solid rgba(255, 255, 255, 0.06);
+  padding: 0.125rem var(--spacing-sm);
   border-radius: var(--radius-sm);
 }
 
 .quick-switcher-results {
   padding: var(--spacing-xs);
-  max-height: 320px;
+  max-height: 20rem;
   overflow-y: auto;
 }
 
