@@ -17,6 +17,8 @@ import { usePresenceEvents } from '../hooks/usePresenceEvents';
 import { useCustomTheme } from '../hooks/useCustomTheme';
 import { useShellSync } from '../hooks/useShellSync';
 import { useChannelEvents } from '../hooks/useChannelEvents';
+import { useDMEvents } from '../hooks/useDMEvents';
+import { useThreadEvents } from '../hooks/useThreadEvents';
 import { telemetryClient } from '../services/telemetryClient';
 
 export default function App() {
@@ -32,6 +34,8 @@ export default function App() {
   useIdentityBackup(activeTeamId, dataLoaded);
   usePresenceEvents(activeTeamId);
   useChannelEvents(activeTeamId);
+  useDMEvents(activeTeamId);
+  useThreadEvents(activeTeamId);
   const { ready: eagerReady } = useEagerLoad(activeTeamId);
 
   // Redirect to join/setup if no teams — wait until auth is validated so we
