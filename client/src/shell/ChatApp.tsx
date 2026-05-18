@@ -238,6 +238,66 @@ function NewChannelModal({ onClose, onCreate }) {
   );
 }
 
+// Modal: edit an existing channel's topic + slow mode (admin/maintainer).
+// Patches the live record via api.updateChannel; useTeamSync's broadcast
+// echoes back to the store so other clients pick up the change.
+function ChannelSettingsModal({ channel, onClose }) {
+  const [topic, setTopic] = useState(channel?.topic ?? '');
+  const [slow, setSlow] = useState('0');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  async function save() {
+    setErr('');
+    const teamId = useTeamStore.getState().activeTeamId;
+    if (!teamId || !channel?.id) { onClose(); return; }
+    if (isMockSession()) { onClose(); return; }
+    setBusy(true);
+    try {
+      const slowN = Number.parseInt(slow, 10);
+      const updates: Record<string, unknown> = { topic };
+      if (!Number.isNaN(slowN) && slowN >= 0) updates.slow_mode_seconds = slowN;
+      await api.updateChannel(teamId, channel.id, updates);
+      onClose();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card" onClick={e => e.stopPropagation()}>
+        <header className="modal-head">
+          <h2>#{channel?.name} settings</h2>
+          <button className="modal-x" onClick={onClose}>×</button>
+        </header>
+        <div className="modal-body">
+          <div className="modal-row">
+            <label>Topic</label>
+            <input value={topic} autoFocus onChange={e => setTopic(e.target.value)} placeholder="what's this kanal for?" />
+            <div className="modal-hint">Shown at the top of the channel. Anyone with permission to send can see this.</div>
+          </div>
+          <div className="modal-row">
+            <label>Slow mode (seconds)</label>
+            <input value={slow} onChange={e => setSlow(e.target.value.replace(/[^0-9]/g, ''))} placeholder="0" />
+            <div className="modal-hint">Minimum interval between messages per member. 0 disables.</div>
+          </div>
+          {err && <div className="modal-hint" style={{ color: 'var(--danger)' }}>{err}</div>}
+        </div>
+        <footer className="modal-foot">
+          <button className="sc-btn" onClick={onClose}>Cancel</button>
+          <button className="sc-btn primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
 // Modal: create-or-join team
 function NewServerModal({ onClose, onCreate }) {
   const [mode, setMode] = useState('create'); // create | join
@@ -849,7 +909,7 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
                         { label: 'Disconnect from voice', danger: true, icon: <Icon.Mic size={13} off />, onClick: onLeaveVoice },
                         { label: 'Copy link', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6 10l4-4M6 6l4 4" stroke="currentColor" strokeWidth="1.4"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/></svg>, onClick: () => { navigator.clipboard?.writeText('dilla://gbg-1/k/' + c.id); window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Voice kanal link copied.', duration: 2000 } })); } },
                         { sep: true },
-                        { label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Voice kanal settings: bitrate, region, permissions, codec.', duration: 4000 } })) },
+                        { label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-channel-settings', { detail: c.id })) },
                       ] } }));
                     }}>
                     <span className="ch-glyph"><Icon.Speaker size={14} /></span>
@@ -930,7 +990,7 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
                    { label: 'Mute kanal', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 6h2l3-3v10l-3-3H2zM10 5l3 3-3 3M13 5l-3 3 3 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>, onClick: () => { toggleMuteChannel(c.id); window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: (mutedChannels.has(c.id) ? 'Unmuted ' : 'Muted ') + '#' + c.name + '.', duration: 2500 } })); } },
                    { label: 'Copy link', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6 10l4-4M6 6l4 4" stroke="currentColor" strokeWidth="1.4"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/></svg>, onClick: () => { navigator.clipboard?.writeText('dilla://gbg-1/k/' + c.id); window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Link copied.', duration: 2000 } })); } },
                    { sep: true },
-                   { label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Kanal settings: edit topic, slow-mode, member overrides (admin only).', duration: 4000 } })) },
+                   { label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-channel-settings', { detail: c.id })) },
                    { label: 'Leave kanal', danger: true, icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M10 4V2H3v12h7v-2M6 8h9M12 5l3 3-3 3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>, onClick: () => {
                      if (!confirm('Leave #' + c.name + '?')) return;
                      // No api.leaveChannel — channels are team-wide and members
@@ -965,7 +1025,7 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
                          { label: 'Copy link', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6 10l4-4M6 6l4 4" stroke="currentColor" strokeWidth="1.4"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/></svg>, onClick: () => { navigator.clipboard?.writeText('dilla://gbg-1/k/' + c.id); window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Voice kanal link copied.', duration: 2000 } })); } },
                          { sep: true },
                          { label: c.locked ? 'Unlock kanal' : 'Lock kanal', icon: <Icon.Lock size={12} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'admin', text: (c.locked ? 'Unlocked ' : 'Locked ') + '#' + c.name + ' — admin-only.', duration: 2800 } })) },
-                         { label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Voice kanal settings: bitrate, region, permissions, codec.', duration: 4000 } })) },
+                         { label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-channel-settings', { detail: c.id })) },
                        ] } }));
                      }}>
                   <span className="ch-glyph"><Icon.Speaker size={14} /></span>
@@ -2478,6 +2538,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [replyTo, setReplyTo] = useState({}); // channelId -> msgId
   const [newChanOpen, setNewChanOpen] = useState(false);
+  const [chanSettings, setChanSettings] = useState(null); // {id, name, topic} or null
   const [newServerOpen, setNewServerOpen] = useState(false);
   // Generic context menu: { x, y, items: [{ label, icon, danger, onClick }] }
   const [menuPop, setMenuPop] = useState(null);
@@ -2513,6 +2574,11 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
         ...prev,
         [targetId]: ((prev[targetId] || '').trimEnd() + ' @' + name + ' ').trimStart(),
       }));
+    }
+    function onChannelSettings(e) {
+      const id = e.detail;
+      const ch = (window.MOCK_DATA?.CHANNELS ?? []).find((c: any) => c.id === id);
+      if (ch) setChanSettings(ch);
     }
     function onCloseDm(e) {
       const dmId = e.detail;
@@ -2567,6 +2633,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     window.addEventListener('dilla:open-dm', onOpenDm);
     window.addEventListener('dilla:close-dm', onCloseDm);
     window.addEventListener('dilla:insert-mention', onInsertMention);
+    window.addEventListener('dilla:open-channel-settings', onChannelSettings);
     function onKey(e) {
       const inField = e.target.matches && e.target.matches('input, textarea, [contenteditable="true"]');
       if (inField) return;
@@ -2591,6 +2658,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
       window.removeEventListener('dilla:open-dm', onOpenDm);
       window.removeEventListener('dilla:close-dm', onCloseDm);
       window.removeEventListener('dilla:insert-mention', onInsertMention);
+      window.removeEventListener('dilla:open-channel-settings', onChannelSettings);
       window.removeEventListener('dilla:open-menu', onMenu);
       window.removeEventListener('keydown', onKey);
     };
@@ -3000,6 +3068,9 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
             ))}
           </div>
         </div>
+      )}
+      {chanSettings && (
+        <ChannelSettingsModal channel={chanSettings} onClose={() => setChanSettings(null)} />
       )}
       {newChanOpen && (
         <NewChannelModal onClose={() => setNewChanOpen(false)} onCreate={async (c) => {
