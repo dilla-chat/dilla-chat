@@ -983,10 +983,32 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
                    onContextMenu={(e) => {
                      e.preventDefault();
                      window.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
-                       { label: 'Mark as read', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M3 4h10M3 12h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'system', text: 'Marked DM as read.', duration: 2000 } })) },
-                       { label: 'Mute notifications', icon: <Icon.Mic size={13} off />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'system', text: 'DM muted.', duration: 2000 } })) },
+                       { label: 'Mark as read', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M3 4h10M3 12h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>, onClick: () => {
+                         // DMs share the unread store with channels; the dm.id is
+                         // the same key the store uses. Server-side mark-read is
+                         // ws.markChannelRead too (server treats both the same).
+                         useUnreadStore.getState().markRead(d.id);
+                         const teamId = useTeamStore.getState().activeTeamId;
+                         if (teamId && !isMockSession()) {
+                           const msgs = (window as any).MOCK_DATA?.DM_MESSAGES?.[d.id] ?? [];
+                           const lastId = msgs.length > 0 ? msgs[msgs.length - 1].id : '';
+                           if (lastId) {
+                             try { ws.markChannelRead(teamId, d.id, lastId); } catch { /* ignore */ }
+                           }
+                         }
+                         window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'system', text: 'Marked DM as read.', duration: 2000 } }));
+                       } },
+                       { label: 'Mute notifications', icon: <Icon.Mic size={13} off />, onClick: () => {
+                         // Mute uses the same per-channel mute set as channels —
+                         // DM ids are stored alongside channel ids.
+                         toggleMuteChannel(d.id);
+                         window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'system', text: mutedChannels.has(d.id) ? 'Unmuted DM.' : 'DM muted.', duration: 2000 } }));
+                       } },
                        { sep: true },
-                       { label: 'Close DM', danger: true, icon: null, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'system', text: 'Closed DM. Re-open it from a member profile.', duration: 2500 } })) },
+                       { label: 'Close DM', danger: true, icon: null, onClick: () => {
+                         window.dispatchEvent(new CustomEvent('dilla:close-dm', { detail: d.id }));
+                         window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'system', text: 'Closed DM. Re-open it from a member profile.', duration: 2500 } }));
+                       } },
                      ] } }));
                    }}>
                 {isGroup ? (
@@ -2435,6 +2457,17 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     function onProfile(e) { setProfilePop(e.detail); }
     function onThread(e)  { setActiveThread(e.detail); }
     function onDrawer()   { setDrawerOpen(o => !o); }
+    function onCloseDm(e) {
+      const dmId = e.detail;
+      if (!dmId) return;
+      // Drop from local DM list. Server-side DM channels stick around for
+      // history retention; users can re-open from a member profile.
+      data.DMS = data.DMS.filter((x: any) => x.id !== dmId);
+      if (activeDM === dmId) {
+        setActiveDM(null);
+        setActiveView({ kind: 'channel', id: activeChannel });
+      }
+    }
     async function onOpenDm(e) {
       // Member context menu / "send message" handler. Mirrors NewDmModal
       // onPick but with the member id passed in via custom event detail so
@@ -2475,6 +2508,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     window.addEventListener('dilla:open-new-channel', onAddCh);
     window.addEventListener('dilla:open-menu', onMenu);
     window.addEventListener('dilla:open-dm', onOpenDm);
+    window.addEventListener('dilla:close-dm', onCloseDm);
     function onKey(e) {
       const inField = e.target.matches && e.target.matches('input, textarea, [contenteditable="true"]');
       if (inField) return;
@@ -2497,6 +2531,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
       window.removeEventListener('dilla:open-add-server', onAddSrv);
       window.removeEventListener('dilla:open-new-channel', onAddCh);
       window.removeEventListener('dilla:open-dm', onOpenDm);
+      window.removeEventListener('dilla:close-dm', onCloseDm);
       window.removeEventListener('dilla:open-menu', onMenu);
       window.removeEventListener('keydown', onKey);
     };
@@ -2860,7 +2895,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
       <ProfilePopover
         pop={profilePop}
         onClose={() => setProfilePop(null)}
-        onDM={(id) => { setTab('pms'); setActiveDM(`dm-${id}`); setActiveView({ kind: 'dm', id: `dm-${id}` }); }}
+        onDM={(id) => window.dispatchEvent(new CustomEvent('dilla:open-dm', { detail: id }))}
         federated={opts.federated !== false}
       />
       {menuPop && (
