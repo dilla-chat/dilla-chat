@@ -2528,6 +2528,24 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     return { kind: 'text', text };
   }
 
+  // Outbound typing indicator. Channel typing uses ws.startTyping, DMs use
+  // ws.startDMTyping. Debounced so we don't flood the WS on every keystroke
+  // — the server broadcasts `typing:indicator` on receipt regardless of
+  // frequency, but a 3s window matches the typical typing-decay UX.
+  const lastTypingRef = useRef(0);
+  function notifyTyping() {
+    if (!activeTeamId) return;
+    if (isMockSession()) return;
+    const now = Date.now();
+    if (now - lastTypingRef.current < 3000) return;
+    lastTypingRef.current = now;
+    if (channel.type === 'dm') {
+      ws.startDMTyping(activeTeamId, channel.id);
+    } else {
+      ws.startTyping(activeTeamId, activeChannel);
+    }
+  }
+
   function send() {
     if (channel.type === 'dm') {
       const draft = drafts[channel.id];
@@ -2677,7 +2695,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
           members={data}
           dmPartner={dmPartner}
           draft={drafts[channel.id] || ''}
-          setDraft={v => setDrafts(prev => ({ ...prev, [channel.id]: v }))}
+          setDraft={v => { setDrafts(prev => ({ ...prev, [channel.id]: v })); notifyTyping(); }}
           onSend={send}
           replyTo={replyTo[channel.id]}
           onSetReply={(id) => setReplyTo(prev => ({ ...prev, [channel.id]: id }))}
