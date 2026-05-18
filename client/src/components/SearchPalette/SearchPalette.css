@@ -189,3 +189,57 @@
   color: var(--accent, var(--brand-500));
   padding: 0 0.125rem;
 }
+
+/* ====================================================================
+   Mesh design — relocated from mesh-overrides.css. Single source of
+   truth; theming via tokens.
+   ==================================================================== */
+
+.search-palette {
+  background: var(--surface);
+  border: 0.0625rem solid var(--accent);
+  box-shadow: 0 0 0 0.0625rem var(--accent), 0 1.5rem 3.125rem rgba(0, 0, 0, 0.5);
+  font-family: var(--font-mono);
+}
+
+.search-palette-overlay {
+  background: color-mix(in oklab, var(--bg) 70%, transparent);
+  backdrop-filter: blur(0.125rem);
+  -webkit-backdrop-filter: blur(0.125rem);
+}
+
+.search-palette-prompt {
+  background: var(--bg);
+  border-bottom: 0.0625rem solid var(--hairline);
+}
+
+.search-palette-prompt-glyph {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.875rem;
+  color: var(--accent);
+}
+
+.search-palette-hit.selected,
+.search-palette-hit.selected:hover {
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+  color: var(--accent);
+}
+
+.search-palette-hit:hover {
+  background: var(--surface-hi);
+  border-left-color: transparent;
+}
+
+.search-palette-hit-body {
+  font-family: var(--font-ui);
+  font-size: 0.78125rem;
+  line-height: 1.45;
+}
+
+.search-palette-hit-body mark {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 0;
+}

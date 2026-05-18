@@ -155,3 +155,50 @@
   letter-spacing: 0.04em;
   white-space: nowrap;
 }
+
+/* ====================================================================
+   Mesh design — relocated from mesh-overrides.css. Single source of
+   truth; theming via tokens.
+   ==================================================================== */
+
+.command-palette {
+  background: var(--surface);
+  border: 0.0625rem solid var(--accent);
+  box-shadow: 0 0 0 0.0625rem var(--accent), 0 1.5rem 3.125rem rgba(0, 0, 0, 0.5);
+  font-family: var(--font-mono);
+}
+
+.command-palette-overlay {
+  background: color-mix(in oklab, var(--bg) 70%, transparent);
+  backdrop-filter: blur(0.125rem);
+  -webkit-backdrop-filter: blur(0.125rem);
+}
+
+.command-palette-prompt {
+  background: var(--bg);
+  border-bottom: 0.0625rem solid var(--hairline);
+}
+
+.command-palette-prompt-glyph {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.875rem;
+  color: var(--accent);
+}
+
+.command-palette-item.selected,
+.command-palette-item.selected:hover {
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+  color: var(--accent);
+}
+
+.command-palette-item:hover {
+  background: var(--surface-hi);
+  border-left-color: transparent;
+  color: var(--fg);
+}
+
+.command-palette-section-label {
+  font-family: var(--font-mono);
+}
