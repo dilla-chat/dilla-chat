@@ -1336,39 +1336,49 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
     }, 0);
   }
 
-  function fakeAttach(name = 'screenshot.png', size = 240 * 1024) {
-    const id = 'up-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
-    const upload = { id, name, size, progress: 0, phase: 'reading' };
-    setUploads(prev => [...prev, upload]);
-    const phases = [
-      { ms: 200,  p: 18, phase: 'reading' },
-      { ms: 300,  p: 42, phase: 'encrypting' },
-      { ms: 350,  p: 68, phase: 'uploading' },
-      { ms: 250,  p: 88, phase: 'uploading' },
-      { ms: 250,  p: 100, phase: 'sealed' },
-    ];
-    let acc = 0;
-    phases.forEach((ph) => {
-      acc += ph.ms;
-      setTimeout(() => {
-        setUploads(prev => prev.map(u => u.id === id ? { ...u, progress: ph.p, phase: ph.phase } : u));
-      }, acc);
-    });
-    setTimeout(() => {
-      setUploads(prev => prev.filter(u => u.id !== id));
-      if (onAttach) onAttach({ name, size });
-    }, acc + 600);
+  // Hidden file input + ref so the paperclip button can open the OS picker.
+  // Selecting one or more files calls handleFiles → real File objects flow
+  // to onAttach which uploads via api.uploadFile.
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function handleFiles(files: File[]) {
+    if (files.length === 0) return;
+    for (const file of files) {
+      // Animated upload-progress strip — visual stub; actual progress isn't
+      // exposed by api.uploadFile yet so we show the staged phases until
+      // the await resolves, then hide the row.
+      const id = 'up-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+      const upload = { id, name: file.name, size: file.size, progress: 0, phase: 'reading' };
+      setUploads(prev => [...prev, upload]);
+      const phases = [
+        { ms: 100, p: 25, phase: 'reading' },
+        { ms: 100, p: 55, phase: 'encrypting' },
+        { ms: 200, p: 85, phase: 'uploading' },
+      ];
+      let acc = 0;
+      phases.forEach((ph) => {
+        acc += ph.ms;
+        setTimeout(() => {
+          setUploads(prev => prev.map(u => u.id === id ? { ...u, progress: ph.p, phase: ph.phase } : u));
+        }, acc);
+      });
+      // Hand the real File off to the parent's onAttach (uploads via
+      // api.uploadFile). When that resolves the strip disappears.
+      Promise.resolve(onAttach?.(file)).finally(() => {
+        setUploads(prev => prev.filter(u => u.id !== id));
+      });
+    }
+  }
+
+  function openFilePicker() {
+    fileInputRef.current?.click();
   }
 
   function onDrop(e) {
     e.preventDefault();
     setDragOver(false);
     const files = Array.from(e.dataTransfer.files || []);
-    if (files.length === 0) {
-      fakeAttach('dropped.png', 320 * 1024);
-    } else {
-      files.forEach(f => fakeAttach(f.name, f.size));
-    }
+    handleFiles(files);
   }
   useEffect(() => {
     if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight;
@@ -1861,7 +1871,19 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
         )}
         <div className="composer">
           <div className="composer-input">
-            <button className="icon-btn comp-btn" title="Attach a file or image" onClick={() => fakeAttach()}><Icon.Attach size={15} /></button>
+            <button className="icon-btn comp-btn" title="Attach a file or image" onClick={openFilePicker}><Icon.Attach size={15} /></button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const files = Array.from(e.target.files || []);
+                handleFiles(files);
+                // Reset so re-selecting the same file fires onChange again.
+                if (fileInputRef.current) fileInputRef.current.value = '';
+              }}
+            />
             <div className="composer-textwrap">
               {mention && mentionMatches.length > 0 && (
                 <div className="mention-pop">
