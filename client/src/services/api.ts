@@ -779,7 +779,9 @@ class ApiService {
       `/api/v1/teams/${teamId}/presence`,
       {
         method: 'PUT',
-        body: JSON.stringify({ status_type: status, custom_status: customStatus ?? '' }),
+        // Server's UpdatePresenceRequest expects { status, custom_status }.
+        // Sending status_type made it 422 every time.
+        body: JSON.stringify({ status: status, custom_status: customStatus ?? '' }),
       },
       conn.token,
     );

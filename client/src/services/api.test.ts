@@ -913,7 +913,7 @@ describe('ApiService', () => {
       await api.updatePresence('t-upres', 'online', 'Working');
 
       const body = JSON.parse(lastFetchCall().init.body as string);
-      expect(body).toEqual({ status_type: 'online', custom_status: 'Working' });
+      expect(body).toEqual({ status: 'online', custom_status: 'Working' });
     });
   });
 
