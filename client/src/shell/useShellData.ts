@@ -243,14 +243,19 @@ export function useShellData() {
     // MESSAGES: handoff shape is { [channelId]: [msg, ...] }. Iterate the
     // active team's channels and produce mapped arrays. Channels with no
     // messages in our store get an empty array (not the handoff fixture).
+    // Soft-deleted messages are filtered out — the server's list endpoint
+    // returns them with deleted=1 and empty content, but the UI treats
+    // them as gone (renders no placeholder for now).
     const MESSAGES = {};
     for (const ch of teamChannels) {
       const list = messages.get(ch.id) ?? [];
-      MESSAGES[ch.id] = list.map((m) => {
-        const mapped = mapMessage(m, myId, activeTeamId);
-        if (threadByParent[m.id]) mapped.thread = threadByParent[m.id];
-        return mapped;
-      });
+      MESSAGES[ch.id] = list
+        .filter((m) => !m.deleted)
+        .map((m) => {
+          const mapped = mapMessage(m, myId, activeTeamId);
+          if (threadByParent[m.id]) mapped.thread = threadByParent[m.id];
+          return mapped;
+        });
     }
 
     // DMS + DM_MESSAGES from useDMStore. Empty fallback when nothing is
@@ -260,7 +265,9 @@ export function useShellData() {
     const DM_MESSAGES = {};
     for (const dm of dmList) {
       const list = dmMessages[dm.id] ?? [];
-      DM_MESSAGES[dm.id] = list.map((m) => mapMessage(m, myId, activeTeamId));
+      DM_MESSAGES[dm.id] = list
+        .filter((m) => !m.deleted)
+        .map((m) => mapMessage(m, myId, activeTeamId));
     }
 
     // THREAD_REPLIES: handoff keys by parent messageId, value is a flat
@@ -272,7 +279,9 @@ export function useShellData() {
       const chThreads = threads[ch.id] ?? [];
       for (const th of chThreads) {
         const replies = threadMessages[th.id] ?? [];
-        THREAD_REPLIES[th.parent_message_id] = replies.map((m) => mapMessage(m, myId, activeTeamId));
+        THREAD_REPLIES[th.parent_message_id] = replies
+          .filter((m) => !m.deleted)
+          .map((m) => mapMessage(m, myId, activeTeamId));
       }
     }
 
