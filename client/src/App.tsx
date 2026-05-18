@@ -20,12 +20,8 @@ import { ToastProvider } from './components/Toast/Toast';
 
 const DEMO_ENABLED = import.meta.env.VITE_DEMO === 'true';
 
-// Lazy-load demo wrapper only when VITE_DEMO=true
-const DemoWrapper = DEMO_ENABLED
-  ? lazy(() => import('./DemoWrapper'))
-  : () => <Navigate to="/" replace />;
-
-// Lazy-load Mesh sandbox (handoff JSX port) only when VITE_DEMO=true
+// Lazy-load the Mesh sandbox (ported handoff JSX driven by mock services)
+// only when VITE_DEMO=true. This is the canonical preview view.
 const MeshSandbox = DEMO_ENABLED
   ? lazy(() => import('./ports/mesh/MeshSandbox'))
   : () => <Navigate to="/" replace />;
@@ -86,13 +82,8 @@ function App() {
       <Routes>
         <Route path="/" element={<AuthRedirect />} />
         <Route path="/welcome" element={<Navigate to="/" replace />} />
-        {DEMO_ENABLED && (
-          <Route path="/demo" element={
-            <Suspense fallback={null}><DemoWrapper /></Suspense>
-          } />
-        )}
-        {/* Mesh design-first sandbox — ported handoff JSX rendering against
-            its own mock data. Behind VITE_DEMO so it shares the demo gate. */}
+        {/* Mesh design-first sandbox — ported handoff JSX driven by the
+            same mock services as the real app. Behind VITE_DEMO. */}
         {DEMO_ENABLED && (
           <Route path="/mesh" element={
             <Suspense fallback={null}><MeshSandbox /></Suspense>

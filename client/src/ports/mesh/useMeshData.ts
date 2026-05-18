@@ -168,9 +168,9 @@ export function useMeshData() {
   const voiceOccupants = useVoiceStore((s) => s.voiceOccupants);
 
   return useMemo(() => {
-    // If no team is active (e.g. /mesh visited cold without /demo seeding the
-    // store first), fall back to the handoff mocks as-is so the sandbox
-    // keeps rendering.
+    // If no team is active (e.g. /mesh visited before ensureMockSession()
+    // has finished its synchronous bootstrap), fall back to the handoff
+    // mocks as-is so the sandbox keeps rendering.
     if (!activeTeamId || teams.size === 0) {
       return MOCK_DATA;
     }

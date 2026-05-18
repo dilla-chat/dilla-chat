@@ -1,10 +1,10 @@
 // @ts-nocheck
 // /mesh — sandbox that mounts the ported handoff ChatApp inside our Vite app.
-// Data flow mirrors /demo: ensureMockSession() activates the mock api+ws and
-// seeds authStore; useTeamSync issues sync:init via the mock ws to populate
-// the team/channel/member/presence stores; useMeshEagerLoad prefetches
-// per-channel messages, DMs, and threads so ChatApp's flat MOCK_DATA snapshot
-// is fully populated by the time it renders.
+// ensureMockSession() activates the mock api+ws and seeds authStore;
+// useTeamSync issues sync:init via the mock ws to populate the team/channel/
+// member/presence stores; useMeshEagerLoad prefetches per-channel messages,
+// DMs, and threads so ChatApp's flat MOCK_DATA snapshot is fully populated
+// by the time it renders.
 
 import { useEffect, useRef, useState } from 'react';
 import ChatApp from './ChatApp';
@@ -95,10 +95,9 @@ export default function MeshSandbox() {
     };
   }, [cmdOpen, srchOpen]);
 
-  // Drive the same load flow as /demo: useTeamSync fetches the team snapshot
-  // via the (mock) ws, useMeshEagerLoad prefetches per-channel data through
-  // the (mock) api. Both end up writing to the same Zustand stores that
-  // useMeshData reads from below.
+  // useTeamSync fetches the team snapshot via the (mock) ws; useMeshEagerLoad
+  // prefetches per-channel data through the (mock) api. Both end up writing
+  // to the same Zustand stores that useMeshData reads from below.
   const activeTeamId = useTeamStore((s) => s.activeTeamId);
   useTeamSync(activeTeamId);
   // ChatApp captures data.MESSAGES into useState on first render and doesn't

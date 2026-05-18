@@ -1,5 +1,5 @@
-// Mock session bootstrap — used by /demo and /mesh wrappers to activate
-// the in-memory mock services and seed authStore with the demo identity.
+// Mock session bootstrap — used by the /mesh sandbox to activate the
+// in-memory mock services and seed authStore with the demo identity.
 // Idempotent so HMR / multiple imports don't double-mount.
 //
 // After ensureMockSession() returns, the rest of the app (AppLayout's
@@ -51,9 +51,9 @@ export function ensureMockSession(): void {
   team.setActiveChannel('ch-2');
 }
 
-/** Returns the singletons so /mesh can drive eager-channel loads in the
- *  sandbox (loading messages/DMs/threads via api so they appear before the
- *  user clicks each channel). */
+/** Returns the singletons so the sandbox can drive eager-channel loads
+ *  (loading messages/DMs/threads via api so they appear before the user
+ *  clicks each channel). */
 export function getMockHandles(): { api: MockApiService | null; ws: MockWebSocketService | null } {
   return { api: mockApi, ws: mockWs };
 }
