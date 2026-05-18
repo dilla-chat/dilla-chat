@@ -154,9 +154,10 @@ function Toggle({ value, onChange }) {
     </button>
   );
 }
-function TextField({ value, onChange, placeholder, mono }) {
-  return <input className={'set-input' + (mono ? ' mono' : '')} value={value} placeholder={placeholder}
-                onChange={e => onChange(e.target.value)} />;
+function TextField({ value, onChange, placeholder, mono, readOnly }) {
+  return <input className={'set-input' + (mono ? ' mono' : '') + (readOnly ? ' set-input-readonly' : '')} value={value} placeholder={placeholder}
+                readOnly={readOnly}
+                onChange={readOnly ? undefined : (e => onChange(e.target.value))} />;
 }
 function Select({ value, onChange, options }) {
   return (
@@ -231,7 +232,7 @@ function UserAccount() {
         <Btn onClick={() => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'preferences', text: 'Generated new avatar from identity hash.', duration: 3000 } }))}>Generate</Btn>
       </div></Row>
       <Row label="Public key" hint="ed25519 — verified by your safety number.">
-        <TextField mono value={publicKey} onChange={() => {}} />
+        <TextField mono readOnly value={publicKey} onChange={() => {}} />
       </Row>
     </Group>
   );
@@ -795,8 +796,8 @@ function TeamFederation() {
             <div style={{ color: 'var(--fg-3)', fontSize: 11, marginTop: 2 }}>{team?.federated ? 'federated' : 'solo · not federated'}</div>
           </div>
         </Row>
-        <Row label="Federation port" hint="Memberlist gossip listens here. Defaults to port + 1."><TextField mono value="8081" onChange={() => {}} /></Row>
-        <Row label="Advertise as" hint="Address other nodes see for this one. Set for NAT."><TextField mono value="auto" onChange={() => {}} /></Row>
+        <Row label="Federation port" hint="Memberlist gossip listens here. Configured server-side via DILLA_FEDERATION_PORT."><TextField mono readOnly value="8081" onChange={() => {}} /></Row>
+        <Row label="Advertise as" hint="Address other nodes see. Server-side env var; not editable from the client."><TextField mono readOnly value="auto" onChange={() => {}} /></Row>
       </Group>
       <Group title="Peers">
         <div className="set-table">

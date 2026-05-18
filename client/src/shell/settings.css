@@ -186,6 +186,12 @@
 }
 .set-input.mono { font-family: var(--font-mono); font-size: 11.5px; }
 .set-input:focus { border-color: var(--accent); }
+.set-input-readonly {
+  color: var(--fg-3);
+  cursor: default;
+  background: color-mix(in oklab, var(--bg) 60%, transparent);
+}
+.set-input-readonly:focus { border-color: var(--hairline-2); }
 select.set-input {
   appearance: none;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='%23aaa' d='M0 0h10L5 6z'/></svg>");
