@@ -38,13 +38,22 @@ function Settings({ open, mode, defaultTab, onClose }) {
 
   if (!open) return null;
 
+  // Derive the heading label from real stores when available, falling back
+  // to the handoff fixture for the standalone preview.
+  const data = (window as any).MOCK_DATA;
+  const me = data?.byId?.thim;
+  const team = data?.SERVERS?.[0];
+  const subLabel = mode === 'team'
+    ? (team?.name?.toUpperCase() || 'BERRALITOS')
+    : (me?.name || 'thim');
+
   return (
     <div className="settings-overlay" onClick={onClose}>
       <div className="settings" onClick={e => e.stopPropagation()}>
         <aside className="set-nav">
           <div className="set-nav-head">
             <div className="set-nav-title">{mode === 'team' ? 'Team' : 'User'}</div>
-            <div className="set-nav-sub">{mode === 'team' ? 'BERRALITOS' : 'thim'}</div>
+            <div className="set-nav-sub">{subLabel}</div>
           </div>
           {tabs.map(t => (
             <button key={t.id}
@@ -136,19 +145,25 @@ function Btn({ children, danger, onClick }) {
 
 // ───────── USER tabs ─────────
 function UserAccount() {
-  const [name, setName] = useStateS('thim');
-  const [status, setStatus] = useStateS('pushing pixels');
+  // Read the current user from window.MOCK_DATA (set up by useMeshData).
+  // Falls back to handoff fixture so the standalone preview keeps rendering.
+  const me = (window as any).MOCK_DATA?.byId?.thim;
+  const [name, setName] = useStateS(me?.name || 'thim');
+  const [status, setStatus] = useStateS(me?.custom || 'pushing pixels');
+  const initials = me?.initials || 'TH';
+  const avatarColor = me?.color || '#F39E2B';
+  const publicKey = (window as any).MOCK_DATA?.publicKey || 'ed25519:8e1d3c447a529bf622d14e08af31…';
   return (
     <Group title="Identity" hint="Your display name and status are visible to everyone on the team.">
       <Row label="Display name"><TextField value={name} onChange={setName} /></Row>
       <Row label="Custom status" hint="Cleared automatically after 24h."><TextField value={status} onChange={setStatus} /></Row>
       <Row label="Avatar"><div className="set-avatar-row">
-        <div className="set-avatar" style={{ background: '#F39E2B' }}>TH</div>
+        <div className="set-avatar" style={{ background: avatarColor }}>{initials}</div>
         <Btn onClick={() => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'preferences', text: 'Avatar upload: file picker (mock).', duration: 3000 } }))}>Upload…</Btn>
         <Btn onClick={() => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'preferences', text: 'Generated new avatar from identity hash.', duration: 3000 } }))}>Generate</Btn>
       </div></Row>
       <Row label="Public key" hint="ed25519 — verified by your safety number.">
-        <TextField mono value="ed25519:8e1d3c447a529bf622d14e08af31…" onChange={() => {}} />
+        <TextField mono value={publicKey} onChange={() => {}} />
       </Row>
     </Group>
   );
