@@ -73,7 +73,7 @@ function AuthRedirect() {
       try {
         const { hasIdentity } = await import('./services/keyStore');
         const exists = await hasIdentity();
-        setTarget(exists ? '/login' : '/onboarding');
+        setTarget(exists ? '/onboarding?mode=existing' : '/onboarding');
       } catch {
         setTarget('/onboarding');
       }
@@ -104,7 +104,11 @@ function App() {
             for fallback. */}
         <Route path="/create-identity" element={<Navigate to="/onboarding" replace />} />
         <Route path="/create-identity-legacy" element={<CreateIdentity />} />
-        <Route path="/login" element={<Login />} />
+        <Route
+          path="/login"
+          element={<Navigate to="/onboarding?mode=existing" replace />}
+        />
+        <Route path="/login-legacy" element={<Login />} />
         <Route path="/join/:token?" element={<InviteRedirect />} />
         <Route path="/join-legacy/:token?" element={<JoinTeam />} />
         <Route path="/recover" element={<RecoverFromServer />} />

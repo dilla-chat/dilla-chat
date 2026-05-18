@@ -559,9 +559,15 @@ export default function Onboarding() {
         <div className="onb-status">
           <span className="onb-dot" /> waiting · step {stepIdx + 1}/{STEPS.length}
         </div>
-        <button className="onb-skip" type="button" onClick={() => navigate('/login')}>
-          have an account? sign in →
-        </button>
+        {mode !== 'existing' && stepIdx === 0 && (
+          <button
+            className="onb-skip"
+            type="button"
+            onClick={() => setMode('existing')}
+          >
+            have an account? sign in →
+          </button>
+        )}
       </footer>
     </div>
   );
