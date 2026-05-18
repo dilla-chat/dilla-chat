@@ -267,6 +267,7 @@ export function useMeshData() {
       THREAD_REPLIES,
       activeServerId: activeTeamId,
       activeChannelId,
+      currentUserId: myId,
     };
   }, [teams, channels, members, presences, activeTeamId, authTeams, messages, dmChannels, dmMessages, threads, threadMessages, voiceOccupants]);
 }

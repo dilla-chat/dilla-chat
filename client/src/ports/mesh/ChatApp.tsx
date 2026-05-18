@@ -140,7 +140,7 @@ function NewDmModal({ members, onClose, onPick }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
-  const list = (members.MEMBERS || []).filter(m => m.id !== 'thim' && (!q || m.name.toLowerCase().includes(q.toLowerCase())));
+  const list = (members.MEMBERS || []).filter(m => m.id !== (window.MOCK_DATA?.currentUserId || 'thim') && (!q || m.name.toLowerCase().includes(q.toLowerCase())));
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card" onClick={e => e.stopPropagation()} style={{ width: 'min(480px, 100%)' }}>
@@ -1067,7 +1067,7 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
   const deleteTarget = deleteConfirm ? messages.find(m => m.id === deleteConfirm) : null;
 
   const mentionMatches = mention
-    ? (members.MEMBERS || []).filter(m => m.name.toLowerCase().startsWith(mention.query) && m.id !== 'thim').slice(0, 6)
+    ? (members.MEMBERS || []).filter(m => m.name.toLowerCase().startsWith(mention.query) && m.id !== (window.MOCK_DATA?.currentUserId || 'thim')).slice(0, 6)
     : [];
 
   const SLASH_COMMANDS = [
