@@ -48,3 +48,51 @@
 .mention-autocomplete-name {
   font-weight: var(--font-weight-medium);
 }
+
+/* ====================================================================
+   Mesh design — relocated from mesh-overrides.css. Single source of
+   truth; theming via tokens.
+   ==================================================================== */
+
+.mention-autocomplete {
+  background: var(--surface);
+  border: 0.0625rem solid var(--accent);
+  border-radius: var(--r-md);
+  box-shadow: 0 0.5rem 1.875rem rgba(0, 0, 0, 0.4);
+  padding: 0.25rem 0;
+}
+
+.mention-autocomplete-item {
+  padding: 0.375rem 0.75rem;
+  border-radius: 0;
+  border-left: 0.125rem solid transparent;
+  font-family: var(--font-ui);
+  font-size: 0.78125rem;
+  color: var(--fg-2);
+  gap: 0.625rem;
+}
+
+.mention-autocomplete-item:hover {
+  background: var(--surface-hi);
+  color: var(--fg);
+}
+
+.mention-autocomplete-item.selected {
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+  color: var(--accent);
+}
+
+.mention-autocomplete-avatar {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: var(--r-md);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 0.625rem;
+  color: var(--accent-ink, #111);
+}
+
+.mention-autocomplete-name {
+  font-weight: 500;
+}
