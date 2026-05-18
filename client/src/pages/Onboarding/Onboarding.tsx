@@ -29,6 +29,7 @@ import {
   unlockWithPrf,
   generatePrfSalt,
   getCredentialInfo,
+  encodeRecoveryKey,
 } from '../../services/keyStore';
 import { registerPasskey, authenticatePasskey, prfOutputToBase64 } from '../../services/webauthn';
 import { refreshServerTokens, tryReconnectToCurrentServer } from '../../services/authReconnect';
@@ -129,6 +130,7 @@ export default function Onboarding() {
 
   // Safety step state
   const [fingerprint, setFingerprint] = useState('');
+  const [recoveryKey, setRecoveryKey] = useState('');
 
   const step = STEPS[stepIdx];
 
@@ -318,6 +320,7 @@ export default function Onboarding() {
             publicKeyHex = created.publicKeyHex;
             identity = created.identity;
             derivedKey = publicKeyB64;
+            setRecoveryKey(encodeRecoveryKey(created.recoveryKey));
           } else {
             push('  ✓ prf evaluated · 32 bytes derived');
             const prfDerivedKeyB64 = prfOutputToBase64(passkey.prfOutput);
@@ -333,6 +336,7 @@ export default function Onboarding() {
             publicKeyHex = created.publicKeyHex;
             identity = created.identity;
             derivedKey = prfDerivedKeyB64;
+            setRecoveryKey(encodeRecoveryKey(created.recoveryKey));
           }
         } else {
           const created = await createIdentityWithPassphrase(url, passphrase, []);
@@ -340,6 +344,7 @@ export default function Onboarding() {
           publicKeyHex = created.publicKeyHex;
           identity = created.identity;
           derivedKey = publicKeyB64;
+          setRecoveryKey(encodeRecoveryKey(created.recoveryKey));
         }
 
         push(`  pub  ed25519:${(publicKeyHex || '').slice(0, 32)}…`);
@@ -528,7 +533,12 @@ export default function Onboarding() {
             <KeyGenStep lines={keyLines} error={keyError} onBack={back} />
           )}
           {step.id === 'safety' && (
-            <SafetyStep fingerprint={fingerprint} onBack={back} onNext={next} />
+            <SafetyStep
+              fingerprint={fingerprint}
+              recoveryKey={recoveryKey}
+              onBack={back}
+              onNext={next}
+            />
           )}
           {step.id === 'done' && (
             <DoneStep
@@ -876,7 +886,10 @@ function KeyGenStep({ lines, error, onBack }) {
 }
 
 // ───────── Step 4: Safety number ─────────
-function SafetyStep({ fingerprint, onBack, onNext }) {
+function SafetyStep({ fingerprint, recoveryKey, onBack, onNext }) {
+  const [recoveryConfirmed, setRecoveryConfirmed] = useState(false);
+  const [copiedFp, setCopiedFp] = useState(false);
+  const [copiedRk, setCopiedRk] = useState(false);
   const grid = useRef<number[][] | null>(null);
   if (!grid.current) {
     const g: number[][] = [];
@@ -929,9 +942,14 @@ function SafetyStep({ fingerprint, onBack, onNext }) {
           <div className="onb-fp-actions">
             <button
               className="onb-btn"
-              onClick={() => fingerprint && navigator.clipboard?.writeText(fingerprint)}
+              onClick={() => {
+                if (!fingerprint) return;
+                navigator.clipboard?.writeText(fingerprint);
+                setCopiedFp(true);
+                setTimeout(() => setCopiedFp(false), 1500);
+              }}
             >
-              Copy
+              {copiedFp ? 'Copied' : 'Copy'}
             </button>
             <button className="onb-btn" disabled>
               Print
@@ -948,12 +966,62 @@ function SafetyStep({ fingerprint, onBack, onNext }) {
         works; you just can't catch a server impersonating someone.
       </div>
 
+      {recoveryKey && (
+        <>
+          <h2 className="onb-title" style={{ marginTop: 24, fontSize: '1.1rem' }}>
+            Recovery key
+          </h2>
+          <p className="onb-blurb">
+            Write this down or store it in a password manager. It's the only way back into
+            your identity if you lose access to your passphrase and your passkey.
+          </p>
+          <div className="onb-fp">
+            <div className="onb-fp-label">RECOVERY KEY · SHOWN ONCE</div>
+            <div className="onb-fp-text" style={{ wordBreak: 'break-all', userSelect: 'all' }}>
+              {recoveryKey}
+            </div>
+            <div className="onb-fp-actions">
+              <button
+                className="onb-btn"
+                onClick={() => {
+                  navigator.clipboard?.writeText(recoveryKey);
+                  setCopiedRk(true);
+                  setTimeout(() => setCopiedRk(false), 1500);
+                }}
+              >
+                {copiedRk ? 'Copied' : 'Copy'}
+              </button>
+            </div>
+          </div>
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              marginTop: 12,
+              cursor: 'pointer',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={recoveryConfirmed}
+              onChange={(e) => setRecoveryConfirmed(e.target.checked)}
+            />
+            I've saved my recovery key somewhere safe.
+          </label>
+        </>
+      )}
+
       <div className="onb-actions">
         <button className="onb-btn" onClick={onBack}>
           Back
         </button>
-        <button className="onb-btn primary" onClick={onNext}>
-          I've saved it
+        <button
+          className="onb-btn primary"
+          onClick={onNext}
+          disabled={!!recoveryKey && !recoveryConfirmed}
+        >
+          {recoveryKey ? "I've saved both" : "I've saved it"}
         </button>
       </div>
     </>
