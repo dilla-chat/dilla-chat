@@ -7,6 +7,12 @@ import React from 'react';
 import { Icon } from './icons';
 import { MOCK_DATA } from './data';
 import { THEMES } from './themes';
+import { useAuthStore } from '../../stores/authStore';
+import { useTeamStore } from '../../stores/teamStore';
+import { ws } from '../../services/websocket';
+import { api } from '../../services/api';
+import { tryEncrypt } from '../../hooks/useMessageDecryption';
+import { isMockSession } from '../../services/mockSession';
 
 const { useState, useEffect, useRef, useMemo } = React;
 // chat-app.jsx originally read window.MOCK_DATA / window.THEMES / window.Icon
@@ -2274,6 +2280,11 @@ function MemberList({ members, voiceConnection, rich, federated }) {
 // ───────────── root ─────────────
 function ChatApp({ theme, opts = {}, rich = false, controller }) {
   const data = window.MOCK_DATA;
+  // Live store selectors used by the outbound write paths (send/edit/delete).
+  // activeTeamId routes WS messages to the right per-team socket; derivedKey
+  // is required by tryEncrypt for channel-message E2E encryption.
+  const activeTeamId = useTeamStore((s) => s.activeTeamId);
+  const derivedKey = useAuthStore((s) => s.derivedKey);
   // Pick sensible defaults from the bridged data instead of hardcoded
   // handoff ids ('berralitos' / 'design'). Prefer the active selection
   // surfaced by useMeshData (data.activeServerId / activeChannelId);
@@ -2292,6 +2303,14 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   const [activeView, setActiveView] = useState({ kind: 'channel', id: initialChannel });
   const [messages, setMessages] = useState(data.MESSAGES);
   const [dmMessages, setDmMessages] = useState(data.DM_MESSAGES);
+  // Keep local message state in sync with the live store-derived bridge
+  // (data.MESSAGES / DM_MESSAGES). useMeshData wraps its output in useMemo
+  // with store dependencies, so these refs only change when the store
+  // actually mutates — incoming WS events from the real server land here.
+  // Optimistic writes via setMessages remain visible until the server echo
+  // arrives, then are reconciled (same id = no glitch).
+  useEffect(() => { setMessages(data.MESSAGES); }, [data.MESSAGES]);
+  useEffect(() => { setDmMessages(data.DM_MESSAGES); }, [data.DM_MESSAGES]);
   const [drafts, setDrafts] = useState({});
   // Initial voice connection: prefer the first voice channel from the
   // bridged data instead of the handoff's hardcoded 'voice' id. Null
@@ -2379,6 +2398,11 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   function toggleReaction(channelId, msgId, emoji) {
     const isDM = channelId.startsWith('dm-');
     const setter = isDM ? setDmMessages : setMessages;
+    // Capture the pre-toggle mine flag before optimistic state changes — used
+    // to decide add vs remove on the backend.
+    const currentList = isDM ? dmMessages[channelId] : messages[channelId];
+    const currentMsg = currentList?.find((m) => m.id === msgId);
+    const wasMine = !!currentMsg?.reactions?.find((r) => r.e === emoji)?.mine;
     setter(prev => {
       const arr = prev[channelId] || [];
       return {
@@ -2402,6 +2426,12 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
         })
       };
     });
+    // Real reaction toggle (channel only — DM reactions API not exposed yet).
+    if (!activeTeamId || isDM) return;
+    const call = wasMine
+      ? api.removeReaction(activeTeamId, channelId, msgId, emoji)
+      : api.addReaction(activeTeamId, channelId, msgId, emoji);
+    call.catch((err) => console.warn('[ChatApp] reaction toggle failed', err));
   }
 
   function voteOnPoll(channelId, msgId, optIdx) {
@@ -2502,16 +2532,25 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     if (channel.type === 'dm') {
       const draft = drafts[channel.id];
       if (!draft || !draft.trim()) return;
-      const processed = processSlash(draft.trim());
+      const text = draft.trim();
+      const processed = processSlash(text);
       const m = { id: 'new-' + Date.now(), author: window.MOCK_DATA?.currentUserId || 'thim', at: new Date(), ...processed, replyTo: replyTo[channel.id] || null };
       setDmMessages(prev => ({ ...prev, [channel.id]: [...(prev[channel.id] || []), m] }));
       setDrafts(prev => ({ ...prev, [channel.id]: '' }));
       setReplyTo(prev => ({ ...prev, [channel.id]: null }));
+      // Real send: DM API is HTTP. Mock api implementation echoes back via
+      // the dmStore so the bridged data.DM_MESSAGES picks up the round-trip.
+      if (activeTeamId) {
+        api.sendDMMessage(activeTeamId, channel.id, text).catch((err) =>
+          console.warn('[ChatApp] DM send failed', err),
+        );
+      }
       return;
     }
     const draft = drafts[activeChannel];
     if (!draft || !draft.trim()) return;
-    const processed = processSlash(draft.trim());
+    const text = draft.trim();
+    const processed = processSlash(text);
     const m = {
       id: 'new-' + Date.now(),
       author: window.MOCK_DATA?.currentUserId || 'thim',
@@ -2522,6 +2561,22 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     setMessages(prev => ({ ...prev, [activeChannel]: [...(prev[activeChannel] || []), m] }));
     setDrafts(prev => ({ ...prev, [activeChannel]: '' }));
     setReplyTo(prev => ({ ...prev, [activeChannel]: null }));
+    // Real send: channel messages are WS, encrypted with the team-derived key.
+    // On /mesh the mock ws is a no-op and crypto is never initialized, so the
+    // optimistic local push above is the entire demo flow. On /app this
+    // round-trips through the server; the echo lands in messageStore and
+    // flows back through useMeshData → data.MESSAGES (synced by the
+    // useEffect above).
+    if (activeTeamId && !isMockSession()) {
+      (async () => {
+        try {
+          const encrypted = await tryEncrypt(text || ' ', activeChannel, derivedKey);
+          ws.sendMessage(activeTeamId, activeChannel, encrypted);
+        } catch (err) {
+          console.warn('[ChatApp] channel send failed', err);
+        }
+      })();
+    }
   }
 
   function editMessage(channelId, msgId, newText) {
@@ -2533,6 +2588,25 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
         m.id === msgId ? { ...m, text: newText, edited: true, editedAt: Date.now() } : m
       )
     }));
+    // Real edit: channel edits are WS + encrypted; DM edits are HTTP.
+    // On /mesh both paths route to mock services — but channel encryption
+    // would fail noisily without initCrypto, so gate the channel branch on
+    // a real session.
+    if (!activeTeamId) return;
+    if (isDM) {
+      api.editDMMessage(activeTeamId, channelId, msgId, newText).catch((err) =>
+        console.warn('[ChatApp] DM edit failed', err),
+      );
+    } else if (!isMockSession()) {
+      (async () => {
+        try {
+          const encrypted = await tryEncrypt(newText, channelId, derivedKey);
+          ws.editMessage(activeTeamId, msgId, channelId, encrypted);
+        } catch (err) {
+          console.warn('[ChatApp] channel edit failed', err);
+        }
+      })();
+    }
   }
 
   function deleteMessage(channelId, msgId) {
@@ -2542,6 +2616,14 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
       ...prev,
       [channelId]: (prev[channelId] || []).filter(m => m.id !== msgId)
     }));
+    if (!activeTeamId) return;
+    if (isDM) {
+      api.deleteDMMessage(activeTeamId, channelId, msgId).catch((err) =>
+        console.warn('[ChatApp] DM delete failed', err),
+      );
+    } else {
+      ws.deleteMessage(activeTeamId, msgId, channelId);
+    }
   }
 
   const rootStyle = window.THEMES.themeVars(theme, opts);

@@ -41,6 +41,11 @@ export default function MeshApp({ ready }: MeshAppProps) {
   const [cmdOpen, setCmdOpen] = useState(false);
   const [srchOpen, setSrchOpen] = useState(false);
   const [srchScope, setSrchScope] = useState<string | null>(null);
+
+  const openShortcuts = () =>
+    window.dispatchEvent(
+      new CustomEvent('dilla:open-settings', { detail: { mode: 'user', tab: 'keys' } }),
+    );
   // Column widths are tracked here so the ResizeHandle in ChatApp can drive
   // re-renders when the user drags the sidebar or members rail divider.
   const [sidebarW, setSidebarW] = useState(240);
@@ -156,7 +161,7 @@ export default function MeshApp({ ready }: MeshAppProps) {
       <MeshTopBar
         onCmdK={() => setCmdOpen(true)}
         onSearch={() => setSrchOpen(true)}
-        onHelp={() => {}}
+        onHelp={openShortcuts}
         federated={federated}
         degraded={false}
         teamName={teamNameUpper}

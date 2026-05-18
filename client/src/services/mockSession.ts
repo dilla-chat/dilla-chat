@@ -57,3 +57,11 @@ export function ensureMockSession(): void {
 export function getMockHandles(): { api: MockApiService | null; ws: MockWebSocketService | null } {
   return { api: mockApi, ws: mockWs };
 }
+
+/** True after ensureMockSession() has installed the mock services. Callers
+ *  that write through the real api/ws (e.g. ChatApp.send) use this to skip
+ *  the encrypt path — crypto is never initialized in the demo, so trying to
+ *  encrypt would log a noisy warning while the mock ws/api are no-ops. */
+export function isMockSession(): boolean {
+  return active;
+}
