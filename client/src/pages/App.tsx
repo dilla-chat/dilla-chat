@@ -1,13 +1,13 @@
-// /app — production entry. Sets up the same auth/crypto/sync chain
-// AppLayout uses, then renders the shared Mesh shell. Channels arrive via
-// the real useTeamSync flow; per-channel data is eager-loaded so ChatApp's
-// captured snapshot is populated on first render (until ChatApp can be
-// decomposed into reactive components, eager-load is the cheapest fix).
+// /app — production entry. Sets up the auth/crypto/sync chain and renders
+// the shared AppShell. Channels arrive via the real useTeamSync flow;
+// per-channel data is eager-loaded so ChatApp's captured snapshot is
+// populated on first render (until ChatApp can be decomposed into reactive
+// components, eager-load is the cheapest fix).
 
 import { useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import MeshApp from '../ports/mesh/MeshApp';
-import { useMeshEagerLoad } from '../ports/mesh/useMeshEagerLoad';
+import AppShell from '../shell/AppShell';
+import { useEagerLoad } from '../shell/useEagerLoad';
 import { useTeamStore } from '../stores/teamStore';
 import { useAuthStore } from '../stores/authStore';
 import { useTeamSync } from '../hooks/useTeamSync';
@@ -15,22 +15,24 @@ import { useCryptoRestore } from '../hooks/useCryptoRestore';
 import { useIdentityBackup } from '../hooks/useIdentityBackup';
 import { usePresenceEvents } from '../hooks/usePresenceEvents';
 import { useCustomTheme } from '../hooks/useCustomTheme';
-import { useMeshSync } from '../hooks/useMeshSync';
+import { useShellSync } from '../hooks/useShellSync';
+import { useChannelEvents } from '../hooks/useChannelEvents';
 import { telemetryClient } from '../services/telemetryClient';
 
-export default function AppMesh() {
+export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
   const activeTeamId = useTeamStore((s) => s.activeTeamId);
   const authTeams = useAuthStore((s) => s.teams);
 
   useCustomTheme();
-  useMeshSync();
+  useShellSync();
   const { cryptoReady } = useCryptoRestore();
   const { authChecked, dataLoaded } = useTeamSync(activeTeamId);
   useIdentityBackup(activeTeamId, dataLoaded);
   usePresenceEvents(activeTeamId);
-  const { ready: eagerReady } = useMeshEagerLoad(activeTeamId);
+  useChannelEvents(activeTeamId);
+  const { ready: eagerReady } = useEagerLoad(activeTeamId);
 
   // Redirect to join/setup if no teams — wait until auth is validated so we
   // don't redirect during the brief window before persisted state is confirmed.
@@ -52,5 +54,5 @@ export default function AppMesh() {
 
   if (!authChecked || !cryptoReady) return null;
 
-  return <MeshApp ready={eagerReady} />;
+  return <AppShell ready={eagerReady} />;
 }

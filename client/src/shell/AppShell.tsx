@@ -1,12 +1,12 @@
 // @ts-nocheck
-// MeshApp — the chrome + ChatApp shell. Pure presentation; assumes Zustand
+// AppShell — the chrome + ChatApp shell. Pure presentation; assumes Zustand
 // stores have been (or will be) populated by the caller's data hooks
-// (useTeamSync / useMeshEagerLoad). Used by both the demo at /mesh and the
+// (useTeamSync / useEagerLoad). Used by both the demo at /mesh and the
 // production /app route.
 
 import { useEffect, useRef, useState } from 'react';
 import ChatApp from './ChatApp';
-import { MeshTopBar, MeshBottomBar, CommandPalette, SearchPalette } from './MeshChrome';
+import { TopBar, BottomBar, CommandPalette, SearchPalette } from './Chrome';
 import Settings from './Settings';
 import {
   NotificationStack,
@@ -16,11 +16,11 @@ import {
   ConnectionBanner,
 } from './Extras';
 import { THEMES } from './themes';
-import { useMeshData } from './useMeshData';
-import { useTeamStore } from '../../stores/teamStore';
-import { useAuthStore } from '../../stores/authStore';
+import { useShellData } from './useShellData';
+import { useTeamStore } from '../stores/teamStore';
+import { useAuthStore } from '../stores/authStore';
 import './chat.css';
-import './mesh-chrome.css';
+import './chrome.css';
 import './extras.css';
 import './settings.css';
 
@@ -29,7 +29,7 @@ import './settings.css';
 // module load (idempotent).
 (window as unknown as { Settings: typeof Settings }).Settings = Settings;
 
-interface MeshAppProps {
+interface AppShellProps {
   /** Set when the underlying message/DM/thread stores are populated.
    *  ChatApp captures data.MESSAGES into useState on first render and
    *  doesn't re-derive on store updates, so the caller must gate the
@@ -37,7 +37,7 @@ interface MeshAppProps {
   ready: boolean;
 }
 
-export default function MeshApp({ ready }: MeshAppProps) {
+export default function AppShell({ ready }: AppShellProps) {
   const [cmdOpen, setCmdOpen] = useState(false);
   const [srchOpen, setSrchOpen] = useState(false);
   const [srchScope, setSrchScope] = useState<string | null>(null);
@@ -103,9 +103,9 @@ export default function MeshApp({ ready }: MeshAppProps) {
   }, [cmdOpen, srchOpen]);
 
   // ChatApp reads window.MOCK_DATA on every render — overwrite with the
-  // live-bridged shape produced by useMeshData (Zustand → handoff schema).
-  const meshData = useMeshData();
-  (window as unknown as { MOCK_DATA: typeof meshData }).MOCK_DATA = meshData;
+  // live-bridged shape produced by useShellData (Zustand → handoff schema).
+  const shellData = useShellData();
+  (window as unknown as { MOCK_DATA: typeof shellData }).MOCK_DATA = shellData;
 
   const activeTeamId = useTeamStore((s) => s.activeTeamId);
   const activeTeam = useTeamStore((s) => (s.activeTeamId ? s.teams.get(s.activeTeamId) : undefined));
@@ -158,7 +158,7 @@ export default function MeshApp({ ready }: MeshAppProps) {
 
   return (
     <div className="mesh-wrap" style={wrapStyle}>
-      <MeshTopBar
+      <TopBar
         onCmdK={() => setCmdOpen(true)}
         onSearch={() => setSrchOpen(true)}
         onHelp={openShortcuts}
@@ -170,7 +170,7 @@ export default function MeshApp({ ready }: MeshAppProps) {
       {ready && (
         <ChatApp theme={theme} opts={opts} rich controller={controllerRef.current} />
       )}
-      <MeshBottomBar voiceConnection={null} federated={federated} degraded={false} nodeHost={nodeHost} />
+      <BottomBar voiceConnection={null} federated={federated} degraded={false} nodeHost={nodeHost} />
       <CommandPalette
         open={cmdOpen}
         onClose={() => setCmdOpen(false)}

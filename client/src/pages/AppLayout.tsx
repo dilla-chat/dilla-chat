@@ -31,7 +31,7 @@ import { useCryptoRestore } from '../hooks/useCryptoRestore';
 import { useIdentityBackup } from '../hooks/useIdentityBackup';
 import { usePresenceEvents } from '../hooks/usePresenceEvents';
 import { useCustomTheme } from '../hooks/useCustomTheme';
-import { useMeshSync } from '../hooks/useMeshSync';
+import { useShellSync } from '../hooks/useShellSync';
 import { telemetryClient } from '../services/telemetryClient';
 import { ws } from '../services/websocket';
 import ContentErrorBoundary from '../components/ErrorBoundary/ContentErrorBoundary';
@@ -64,7 +64,7 @@ export default function AppLayout() {
   const [showDMMembers, setShowDMMembers] = useState(false);
 
   useCustomTheme();
-  useMeshSync();
+  useShellSync();
 
   const {
     sidebarWidth,

@@ -10,7 +10,7 @@ import Login from './pages/Login';
 import JoinTeam from './pages/JoinTeam';
 import RecoverFromServer from './pages/RecoverFromServer';
 import SetupAdmin from './pages/SetupAdmin';
-import AppMesh from './pages/AppMesh';
+import AppPage from './pages/App';
 import TeamSettings from './pages/TeamSettings';
 import UserSettings from './pages/UserSettings';
 import Onboarding from './pages/Onboarding/Onboarding';
@@ -20,10 +20,10 @@ import { ToastProvider } from './components/Toast/Toast';
 
 const DEMO_ENABLED = import.meta.env.VITE_DEMO === 'true';
 
-// Lazy-load the Mesh sandbox (ported handoff JSX driven by mock services)
+// Lazy-load the mock shell (ported handoff JSX driven by mock services)
 // only when VITE_DEMO=true. This is the canonical preview view.
-const MeshSandbox = DEMO_ENABLED
-  ? lazy(() => import('./ports/mesh/MeshSandbox'))
+const MockShell = DEMO_ENABLED
+  ? lazy(() => import('./shell/MockShell'))
   : () => <Navigate to="/" replace />;
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -82,14 +82,14 @@ function App() {
       <Routes>
         <Route path="/" element={<AuthRedirect />} />
         <Route path="/welcome" element={<Navigate to="/" replace />} />
-        {/* Mesh design-first sandbox — ported handoff JSX driven by the
-            same mock services as the real app. Behind VITE_DEMO. */}
+        {/* Design-first sandbox — ported handoff JSX driven by the same
+            mock services as the real app. Behind VITE_DEMO. */}
         {DEMO_ENABLED && (
           <Route path="/mesh" element={
-            <Suspense fallback={null}><MeshSandbox /></Suspense>
+            <Suspense fallback={null}><MockShell /></Suspense>
           } />
         )}
-        {/* /create-identity now routes to the Mesh onboarding wizard. The
+        {/* /create-identity now routes to the onboarding wizard. The
             legacy CreateIdentity page is preserved at /create-identity-legacy
             for fallback. */}
         <Route path="/create-identity" element={<Navigate to="/onboarding" replace />} />
@@ -99,8 +99,8 @@ function App() {
         <Route path="/recover" element={<RecoverFromServer />} />
         <Route path="/setup" element={<SetupAdmin />} />
         <Route path="/onboarding" element={<Onboarding />} />
-        <Route path="/app" element={<AppMesh />} />
-        <Route path="/app/channels/:channelId" element={<AppMesh />} />
+        <Route path="/app" element={<AppPage />} />
+        <Route path="/app/channels/:channelId" element={<AppPage />} />
         <Route path="/app/settings" element={<TeamSettings />} />
         <Route path="/app/user-settings" element={<UserSettings />} />
         <Route path="*" element={<NotFound />} />

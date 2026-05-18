@@ -7,12 +7,12 @@ import React from 'react';
 import { Icon } from './icons';
 import { MOCK_DATA } from './data';
 import { THEMES } from './themes';
-import { useAuthStore } from '../../stores/authStore';
-import { useTeamStore } from '../../stores/teamStore';
-import { ws } from '../../services/websocket';
-import { api } from '../../services/api';
-import { tryEncrypt } from '../../hooks/useMessageDecryption';
-import { isMockSession } from '../../services/mockSession';
+import { useAuthStore } from '../stores/authStore';
+import { useTeamStore } from '../stores/teamStore';
+import { ws } from '../services/websocket';
+import { api } from '../services/api';
+import { tryEncrypt } from '../hooks/useMessageDecryption';
+import { isMockSession } from '../services/mockSession';
 
 const { useState, useEffect, useRef, useMemo } = React;
 // chat-app.jsx originally read window.MOCK_DATA / window.THEMES / window.Icon
@@ -2287,7 +2287,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   const derivedKey = useAuthStore((s) => s.derivedKey);
   // Pick sensible defaults from the bridged data instead of hardcoded
   // handoff ids ('berralitos' / 'design'). Prefer the active selection
-  // surfaced by useMeshData (data.activeServerId / activeChannelId);
+  // surfaced by useShellData (data.activeServerId / activeChannelId);
   // fall back to first server / first text channel; ultimate fallback
   // is the handoff strings so the standalone preview keeps working.
   const initialServer = data.activeServerId || data.SERVERS?.[0]?.id || 'berralitos';
@@ -2304,7 +2304,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   const [messages, setMessages] = useState(data.MESSAGES);
   const [dmMessages, setDmMessages] = useState(data.DM_MESSAGES);
   // Keep local message state in sync with the live store-derived bridge
-  // (data.MESSAGES / DM_MESSAGES). useMeshData wraps its output in useMemo
+  // (data.MESSAGES / DM_MESSAGES). useShellData wraps its output in useMemo
   // with store dependencies, so these refs only change when the store
   // actually mutates — incoming WS events from the real server land here.
   // Optimistic writes via setMessages remain visible until the server echo
@@ -2565,7 +2565,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     // On /mesh the mock ws is a no-op and crypto is never initialized, so the
     // optimistic local push above is the entire demo flow. On /app this
     // round-trips through the server; the echo lands in messageStore and
-    // flows back through useMeshData → data.MESSAGES (synced by the
+    // flows back through useShellData → data.MESSAGES (synced by the
     // useEffect above).
     if (activeTeamId && !isMockSession()) {
       (async () => {

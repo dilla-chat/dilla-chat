@@ -1,19 +1,19 @@
 // @ts-nocheck
-// Live binding for the ports/mesh/ChatApp. Produces a MOCK_DATA-shaped
+// Live binding for the shell/ChatApp. Produces a MOCK_DATA-shaped
 // object whose SERVERS + CHANNELS come from our real useTeamStore, and
 // whose remaining fields (MEMBERS, MESSAGES, byId, DMS, DM_MESSAGES,
 // THREAD_REPLIES) still come from the seeded mocks until later migration
 // steps replace them.
 
 import { useMemo } from 'react';
-import { useTeamStore } from '../../stores/teamStore';
-import { useAuthStore } from '../../stores/authStore';
-import { usePresenceStore } from '../../stores/presenceStore';
-import { useMessageStore } from '../../stores/messageStore';
-import { useDMStore } from '../../stores/dmStore';
-import { useThreadStore } from '../../stores/threadStore';
-import { useVoiceStore } from '../../stores/voiceStore';
-import { usernameColor } from '../../utils/colors';
+import { useTeamStore } from '../stores/teamStore';
+import { useAuthStore } from '../stores/authStore';
+import { usePresenceStore } from '../stores/presenceStore';
+import { useMessageStore } from '../stores/messageStore';
+import { useDMStore } from '../stores/dmStore';
+import { useThreadStore } from '../stores/threadStore';
+import { useVoiceStore } from '../stores/voiceStore';
+import { usernameColor } from '../utils/colors';
 import { MOCK_DATA } from './data';
 
 // Tiny initials helper — handoff used "TH" / "AD" / "BE" 2-char caps,
@@ -153,7 +153,7 @@ function mapMember(member, presence) {
   };
 }
 
-export function useMeshData() {
+export function useShellData() {
   const teams = useTeamStore((s) => s.teams);
   const channels = useTeamStore((s) => s.channels);
   const members = useTeamStore((s) => s.members);

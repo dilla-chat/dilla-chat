@@ -5,7 +5,9 @@ import { useTeamStore } from '../stores/teamStore';
 import { useMeshStore } from '../stores/meshStore';
 
 /**
- * Syncs mesh-store state from the existing WebSocket event stream.
+ * Shell-level sync: bridges WebSocket events into the federation-mesh store
+ * (useMeshStore) so the chrome (top/bottom bar, connection banner) reflects
+ * the live cluster state.
  *
  * Current data sources:
  * - nodeName: derived from active team's baseUrl
@@ -16,7 +18,7 @@ import { useMeshStore } from '../stores/meshStore';
  *   broadcaster is added on the Rust side, this hook picks it up unchanged)
  * - connectionBanner: surfaces ws:connected / ws:disconnected transitions
  */
-export function useMeshSync() {
+export function useShellSync() {
   const activeTeamId = useTeamStore((s) => s.activeTeamId);
   const teams = useAuthStore((s) => s.teams);
 

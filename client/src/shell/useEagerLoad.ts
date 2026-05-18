@@ -1,23 +1,24 @@
-// Sandbox-only eager loader. The /mesh page renders a ported handoff
-// ChatApp that captures the full MOCK_DATA snapshot on first render — it
-// doesn't lazy-load per-channel like ChannelView does. So once useTeamSync
-// has populated channels via sync:init, walk every channel and prefetch
-// messages, threads, thread replies, and DMs. Each fetch goes through the
-// real api singleton (which the mock has swapped in), so the load flow is
-// identical to prod — just kicked off eagerly instead of on-click.
+// Eager loader for the shell. ChatApp captures the full MOCK_DATA snapshot
+// on first render — it doesn't lazy-load per-channel like the legacy
+// ChannelView does. So once useTeamSync has populated channels via
+// sync:init, walk every channel and prefetch messages, threads, thread
+// replies, and DMs. Each fetch goes through the real api singleton (which
+// the mock has swapped in on /mesh), so the load flow is identical to
+// prod — just kicked off eagerly instead of on-click.
 //
-// Returns `ready` so MeshSandbox can gate ChatApp's first render until all
-// fixtures have landed (otherwise ChatApp's useState captures empty maps).
+// Returns `ready` so MockShell / App can gate ChatApp's first render until
+// all fixtures have landed (otherwise ChatApp's useState captures empty
+// maps).
 
 import { useEffect, useRef, useState } from 'react';
-import { api } from '../../services/api';
-import { useTeamStore } from '../../stores/teamStore';
-import { useMessageStore } from '../../stores/messageStore';
-import { useDMStore, type DMChannel } from '../../stores/dmStore';
-import { useThreadStore, type Thread } from '../../stores/threadStore';
-import { serverToMessage, type ServerMessage } from '../../hooks/useMessageDecryption';
+import { api } from '../services/api';
+import { useTeamStore } from '../stores/teamStore';
+import { useMessageStore } from '../stores/messageStore';
+import { useDMStore, type DMChannel } from '../stores/dmStore';
+import { useThreadStore, type Thread } from '../stores/threadStore';
+import { serverToMessage, type ServerMessage } from '../hooks/useMessageDecryption';
 
-export function useMeshEagerLoad(activeTeamId: string | null): { ready: boolean } {
+export function useEagerLoad(activeTeamId: string | null): { ready: boolean } {
   const loaded = useRef<Set<string>>(new Set());
   const [ready, setReady] = useState(false);
   // Subscribe to channels/members so the effect re-runs once sync:init lands.

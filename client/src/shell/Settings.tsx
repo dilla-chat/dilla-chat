@@ -145,7 +145,7 @@ function Btn({ children, danger, onClick }) {
 
 // ───────── USER tabs ─────────
 function UserAccount() {
-  // Read the current user from window.MOCK_DATA (set up by useMeshData).
+  // Read the current user from window.MOCK_DATA (set up by useShellData).
   // Falls back to handoff fixture so the standalone preview keeps rendering.
   const me = (window as any).MOCK_DATA?.byId?.thim;
   const [name, setName] = useStateS(me?.name || 'thim');

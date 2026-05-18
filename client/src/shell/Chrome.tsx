@@ -1,5 +1,5 @@
 // @ts-nocheck
-// Top/bottom Mesh chrome + command palette + search palette, ported from
+// Top/bottom shell chrome + command palette + search palette, ported from
 // design_handoff_dilla_mesh/mesh-chrome.jsx. Strict TS types come later.
 
 import React from 'react';
@@ -34,7 +34,7 @@ const FINGERPRINTS = {
 };
 
 // ───────── top bar ─────────
-function MeshTopBar({ onCmdK, onSearch, onHelp, federated = true, degraded = false, teamName = 'BERRALITOS', nodeName = 'gbg-1' }) {
+function TopBar({ onCmdK, onSearch, onHelp, federated = true, degraded = false, teamName = 'BERRALITOS', nodeName = 'gbg-1' }) {
   const [tick, setTick] = useStateMC(0);
   useEffectMC(() => {
     const id = setInterval(() => setTick((t) => t + 1), 1000);
@@ -71,7 +71,7 @@ function MeshTopBar({ onCmdK, onSearch, onHelp, federated = true, degraded = fal
 }
 
 // ───────── bottom status bar ─────────
-function MeshBottomBar({ voiceConnection, peerStatus, federated = true, degraded = false, nodeHost = 'gbg-1.dilla.local' }) {
+function BottomBar({ voiceConnection, peerStatus, federated = true, degraded = false, nodeHost = 'gbg-1.dilla.local' }) {
   const [lamport, setLamport] = useStateMC(12944);
   const [latency, setLatency] = useStateMC(14);
   useEffectMC(() => {
@@ -335,4 +335,4 @@ function SearchPalette({ open, onClose, onPickChannel }) {
 
 }
 
-export { MeshTopBar, MeshBottomBar, CommandPalette, SearchPalette, MEMBER_NODES, FINGERPRINTS };
+export { TopBar, BottomBar, CommandPalette, SearchPalette, MEMBER_NODES, FINGERPRINTS };
