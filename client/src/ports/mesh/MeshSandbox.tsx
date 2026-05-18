@@ -12,6 +12,7 @@ import { useTeamStore } from '../../stores/teamStore';
 import { usePresenceStore } from '../../stores/presenceStore';
 import { useMessageStore } from '../../stores/messageStore';
 import { useDMStore } from '../../stores/dmStore';
+import { useThreadStore } from '../../stores/threadStore';
 import {
   DEMO_TEAM_ID,
   MOCK_TEAM,
@@ -23,6 +24,8 @@ import {
   MOCK_WELCOME_MESSAGES,
   MOCK_DM_CHANNELS,
   MOCK_DM_MESSAGES,
+  MOCK_THREADS,
+  MOCK_THREAD_MESSAGES,
 } from '../../services/mockData';
 import './chat.css';
 import './mesh-chrome.css';
@@ -52,6 +55,11 @@ function seedStoresIfEmpty() {
   dmStore.setDMChannels(DEMO_TEAM_ID, MOCK_DM_CHANNELS);
   for (const [dmId, messages] of Object.entries(MOCK_DM_MESSAGES)) {
     dmStore.setDMMessages(dmId, messages);
+  }
+  const threadStore = useThreadStore.getState();
+  threadStore.setThreads('ch-2', MOCK_THREADS);
+  for (const [threadId, msgs] of Object.entries(MOCK_THREAD_MESSAGES)) {
+    threadStore.setThreadMessages(threadId, msgs);
   }
 }
 

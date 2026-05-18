@@ -11,6 +11,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { usePresenceStore } from '../../stores/presenceStore';
 import { useMessageStore } from '../../stores/messageStore';
 import { useDMStore } from '../../stores/dmStore';
+import { useThreadStore } from '../../stores/threadStore';
 import { usernameColor } from '../../utils/colors';
 import { MOCK_DATA } from './data';
 
@@ -136,6 +137,8 @@ export function useMeshData() {
   const messages = useMessageStore((s) => s.messages);
   const dmChannels = useDMStore((s) => s.dmChannels);
   const dmMessages = useDMStore((s) => s.dmMessages);
+  const threads = useThreadStore((s) => s.threads);
+  const threadMessages = useThreadStore((s) => s.threadMessages);
 
   return useMemo(() => {
     // If no team is active (e.g. /mesh visited cold without /demo seeding the
@@ -181,6 +184,19 @@ export function useMeshData() {
       DM_MESSAGES[dm.id] = list.map((m) => mapMessage(m, myId));
     }
 
+    // THREAD_REPLIES: handoff keys by parent messageId, value is a flat
+    // array of replies. Walk all threads across the active team's channels
+    // and map their replies via mapMessage so author/at/text/reactions
+    // line up with the handoff's per-message rendering.
+    const THREAD_REPLIES = {};
+    for (const ch of teamChannels) {
+      const chThreads = threads[ch.id] ?? [];
+      for (const th of chThreads) {
+        const replies = threadMessages[th.id] ?? [];
+        THREAD_REPLIES[th.parent_message_id] = replies.map((m) => mapMessage(m, myId));
+      }
+    }
+
     return {
       ...MOCK_DATA,
       SERVERS,
@@ -190,8 +206,9 @@ export function useMeshData() {
       MESSAGES,
       DMS,
       DM_MESSAGES,
+      THREAD_REPLIES,
     };
-  }, [teams, channels, members, presences, activeTeamId, authTeams, messages, dmChannels, dmMessages]);
+  }, [teams, channels, members, presences, activeTeamId, authTeams, messages, dmChannels, dmMessages, threads, threadMessages]);
 }
 
 // Re-export for callers that want to hand the produced data directly to
