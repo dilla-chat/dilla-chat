@@ -109,3 +109,40 @@
   font-size: var(--font-size-micro);
   color: var(--text-muted);
 }
+
+/* ====================================================================
+   Mesh design — relocated from mesh-overrides.css. Single source of
+   truth; theming via tokens.
+   ==================================================================== */
+
+.quick-switcher {
+  background: var(--surface-2);
+  border: 0.0625rem solid var(--hairline);
+  border-radius: var(--r-md);
+  font-family: var(--font-mono);
+}
+
+.quick-switcher-input {
+  font-family: var(--font-mono);
+  color: var(--fg);
+  background: transparent;
+}
+
+.quick-switcher-modal {
+  background: var(--surface);
+  border: 0.0625rem solid var(--accent);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-2);
+}
+
+.quick-switcher-result {
+  font-family: var(--font-ui);
+  border-radius: 0;
+}
+
+.quick-switcher-result.active,
+.quick-switcher-result.selected {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-left: 0.125rem solid var(--accent);
+}

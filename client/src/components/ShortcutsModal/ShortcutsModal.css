@@ -117,3 +117,16 @@ dialog.shortcuts-overlay {
   border: 0.0625rem solid rgba(255, 255, 255, 0.06);
   color: var(--text-muted);
 }
+
+/* ====================================================================
+   Mesh design — relocated from mesh-overrides.css. Single source of
+   truth; theming via tokens.
+   ==================================================================== */
+
+.shortcuts-modal-key {
+  font-family: var(--font-mono);
+  background: var(--surface-2);
+  border: 0.0625rem solid var(--hairline);
+  border-radius: var(--r-sm);
+  color: var(--fg);
+}

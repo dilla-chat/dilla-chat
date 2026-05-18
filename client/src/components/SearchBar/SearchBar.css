@@ -172,3 +172,22 @@
     width: min(26.25rem, calc(100vw - 21.25rem));
   }
 }
+
+/* ====================================================================
+   Mesh design — relocated from mesh-overrides.css. Single source of
+   truth; theming via tokens.
+   ==================================================================== */
+
+.search-bar,
+.header-search {
+  background: var(--surface-2);
+  border: 0.0625rem solid var(--hairline);
+  border-radius: var(--r-md);
+  font-family: var(--font-mono);
+}
+
+.header-search-input {
+  font-family: var(--font-mono);
+  color: var(--fg);
+  background: transparent;
+}
