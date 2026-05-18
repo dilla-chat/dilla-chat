@@ -140,6 +140,18 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
           connected: true,
           connecting: false,
           peers: { [user.id]: selfPeer, ...s.peers },
+          // Also mirror into voiceOccupants for this channel so the
+          // sidebar's 'Active voice' group and the channel's participants
+          // list show self before any WS echo arrives. The server's
+          // voice:user-joined broadcast (when the SFU is wired) updates
+          // the same map for everyone else.
+          voiceOccupants: {
+            ...s.voiceOccupants,
+            [channelId]: [
+              selfPeer,
+              ...(s.voiceOccupants[channelId] ?? []).filter((p) => p.user_id !== user.id),
+            ],
+          },
         }));
       } else {
         console.warn('[Voice] joinChannel: NO user.id, falling back');
@@ -157,6 +169,20 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
     // Leave voice channel and clean up WebRTC resources.
 
     import('../services/sounds').then(({ playLeaveSound }) => playLeaveSound());
+
+    // Pull self out of voiceOccupants for the channel we just left so the
+    // sidebar's 'Active voice' group hides immediately, even when the
+    // server's voice:user-left broadcast doesn't (SFU may be off).
+    const myId = state.currentTeamId
+      ? useAuthStore.getState().teams.get(state.currentTeamId)?.user?.id
+      : null;
+    const leftChannelId = state.currentChannelId;
+    const nextOccupants = { ...state.voiceOccupants };
+    if (leftChannelId && myId) {
+      const filtered = (nextOccupants[leftChannelId] ?? []).filter((p) => p.user_id !== myId);
+      if (filtered.length === 0) delete nextOccupants[leftChannelId];
+      else nextOccupants[leftChannelId] = filtered;
+    }
 
     // Set state immediately so UI updates, then disconnect in background.
     set({
@@ -177,6 +203,7 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
       peers: {},
       peerConnection: null,
       localStream: null,
+      voiceOccupants: nextOccupants,
     });
 
     // Disconnect WebRTC in background
