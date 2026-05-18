@@ -47,6 +47,20 @@ export class WebSocketService {
     authParam: string,
     refreshAuth?: () => Promise<string>,
   ): void {
+    // If there's already a live socket to the same URL, reuse it. In
+    // production this rarely matters; in dev React StrictMode double-
+    // invokes useEffect so the second pass would otherwise disconnect
+    // a perfectly good socket and pay the reconnect-backoff cost. The
+    // ticket auth has already been consumed for the live socket — the
+    // new authParam (a fresh ticket) just gets cached for any future
+    // reconnect.
+    const existing = this.connections.get(teamId);
+    const sameUrl = this.connectionParams.get(teamId)?.url === url;
+    if (existing && sameUrl && existing.readyState <= 1) {
+      this.connectionParams.set(teamId, { url, token: authParam });
+      if (refreshAuth) this.authRefreshers.set(teamId, refreshAuth);
+      return;
+    }
     this.disconnect(teamId);
     this.connectionParams.set(teamId, { url, token: authParam });
     if (refreshAuth) {
