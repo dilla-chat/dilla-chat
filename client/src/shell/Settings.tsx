@@ -6,8 +6,33 @@
 
 import React from 'react';
 import { Icon } from './icons';
+import { useAuthStore } from '../stores/authStore';
+import { useTeamStore } from '../stores/teamStore';
+import { useUserSettingsStore } from '../stores/userSettingsStore';
+import { api } from '../services/api';
+import { isMockSession } from '../services/mockSession';
 
 const { useState: useStateS, useEffect: useEffectS, useRef: useRefS } = React;
+
+// Debounced save helper for autosaved text fields. The handler clears any
+// in-flight timer and schedules a new one — keeps API traffic to one POST
+// per ~700ms of idle, matching typical settings UX.
+function useDebouncedSave<T>(action: (value: T) => void, delay = 700) {
+  const ref = useRefS<ReturnType<typeof setTimeout> | null>(null);
+  return (value: T) => {
+    if (ref.current) clearTimeout(ref.current);
+    ref.current = setTimeout(() => action(value), delay);
+  };
+}
+
+// Resolve the active team's baseUrl + token (or null if no auth yet / mock
+// session). Used by sections that PATCH /api/v1/users/me etc.
+function useActiveTeamAuth(): { baseUrl: string; token: string; teamId: string } | null {
+  const activeTeamId = useTeamStore((s) => s.activeTeamId);
+  const team = useAuthStore((s) => (activeTeamId ? s.teams.get(activeTeamId) : null));
+  if (!activeTeamId || !team || isMockSession()) return null;
+  return { baseUrl: team.baseUrl ?? '', token: team.token ?? '', teamId: activeTeamId };
+}
 
 const USER_TABS = [
   { id: 'account',  name: 'Account' },
@@ -148,15 +173,57 @@ function UserAccount() {
   // Read the current user from window.MOCK_DATA (set up by useShellData).
   // Falls back to handoff fixture so the standalone preview keeps rendering.
   const me = (window as any).MOCK_DATA?.byId?.thim;
+  const auth = useActiveTeamAuth();
   const [name, setName] = useStateS(me?.name || 'thim');
-  const [status, setStatus] = useStateS(me?.custom || 'pushing pixels');
+  const [status, setStatus] = useStateS(me?.custom || '');
   const initials = me?.initials || 'TH';
   const avatarColor = me?.color || '#F39E2B';
-  const publicKey = (window as any).MOCK_DATA?.publicKey || 'ed25519:8e1d3c447a529bf622d14e08af31…';
+  const publicKey =
+    useAuthStore((s) => s.publicKey) ||
+    (window as any).MOCK_DATA?.publicKey ||
+    'ed25519:8e1d3c447a529bf622d14e08af31…';
+
+  // Debounced persistence: PATCH /api/v1/users/me for display name + status.
+  // On /mesh (auth === null) the field is local-only; the value still
+  // updates in the form, just doesn't round-trip through a real backend.
+  const persistName = useDebouncedSave((v: string) => {
+    if (!auth) return;
+    api
+      .updateMe(auth.baseUrl, auth.token, { display_name: v })
+      .catch((err) => console.warn('[Settings] display_name update failed', err));
+  });
+  const persistStatus = useDebouncedSave((v: string) => {
+    if (!auth) return;
+    // status_text rides on PATCH /users/me; presence-broadcast event uses
+    // api.updatePresence so other clients see the change live.
+    api
+      .updateMe(auth.baseUrl, auth.token, { status_text: v })
+      .catch((err) => console.warn('[Settings] status_text update failed', err));
+    api
+      .updatePresence(auth.teamId, 'online', v)
+      .catch((err) => console.warn('[Settings] presence update failed', err));
+  });
+
   return (
     <Group title="Identity" hint="Your display name and status are visible to everyone on the team.">
-      <Row label="Display name"><TextField value={name} onChange={setName} /></Row>
-      <Row label="Custom status" hint="Cleared automatically after 24h."><TextField value={status} onChange={setStatus} /></Row>
+      <Row label="Display name">
+        <TextField
+          value={name}
+          onChange={(v) => {
+            setName(v);
+            persistName(v);
+          }}
+        />
+      </Row>
+      <Row label="Custom status" hint="Visible next to your name in the member list.">
+        <TextField
+          value={status}
+          onChange={(v) => {
+            setStatus(v);
+            persistStatus(v);
+          }}
+        />
+      </Row>
       <Row label="Avatar"><div className="set-avatar-row">
         <div className="set-avatar" style={{ background: avatarColor }}>{initials}</div>
         <Btn onClick={() => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'preferences', text: 'Avatar upload: file picker (mock).', duration: 3000 } }))}>Upload…</Btn>
@@ -169,8 +236,34 @@ function UserAccount() {
   );
 }
 function UserNotif() {
-  const [mode, setMode] = useStateS('mentions');
-  const [quiet, setQuiet] = useStateS(true);
+  // Notify mode is derived from desktopNotifications + a per-channel filter
+  // we don't track yet. For now: desktop on = all, desktop off + sound on =
+  // mentions, both off = nothing. Editing the segment toggles the booleans
+  // to match. Quiet hours / sound are persisted directly to
+  // useUserSettingsStore.
+  const desktopNotifications = useUserSettingsStore((s) => s.desktopNotifications);
+  const soundNotifications = useUserSettingsStore((s) => s.soundNotifications);
+  const setDesktop = useUserSettingsStore((s) => s.setDesktopNotifications);
+  const setSound = useUserSettingsStore((s) => s.setSoundNotifications);
+  const mode = desktopNotifications ? 'all' : soundNotifications ? 'mentions' : 'nothing';
+  const setMode = (m: string) => {
+    if (m === 'all') {
+      setDesktop(true);
+      setSound(true);
+    } else if (m === 'mentions') {
+      setDesktop(false);
+      setSound(true);
+    } else {
+      setDesktop(false);
+      setSound(false);
+    }
+  };
+  // Quiet hours: lives only in client-side prefs for now (no backend), local
+  // useStateS is fine here but we'll keep it across re-mounts via the store
+  // once the schema gets a quietHours field.
+  const [quiet, setQuiet] = useStateS(false);
+  const [quietFrom, setQuietFrom] = useStateS('22:00');
+  const [quietTo, setQuietTo] = useStateS('07:30');
   return (
     <>
       <Group title="Default behaviour">
@@ -181,15 +274,17 @@ function UserNotif() {
             ))}
           </div>
         </Row>
-        <Row label="Sound on new message"><Toggle value={true} onChange={() => {}} /></Row>
+        <Row label="Sound on new message">
+          <Toggle value={soundNotifications} onChange={setSound} />
+        </Row>
       </Group>
       <Group title="Quiet hours" hint="Suppress all push notifications during this window. Mentions still show in-app.">
         <Row label="Enable quiet hours"><Toggle value={quiet} onChange={setQuiet} /></Row>
         <Row label="From → to">
           <div className="set-range">
-            <TextField value="22:00" onChange={() => {}} mono />
+            <TextField value={quietFrom} onChange={setQuietFrom} mono />
             <span>→</span>
-            <TextField value="07:30" onChange={() => {}} mono />
+            <TextField value={quietTo} onChange={setQuietTo} mono />
           </div>
         </Row>
       </Group>
@@ -197,19 +292,36 @@ function UserNotif() {
   );
 }
 function UserVoice() {
+  // Input/output devices persist via useUserSettingsStore (the voice
+  // subsystem reads from the same store when it acquires a media stream).
+  // Other fields (PTT key, processing toggles, camera) are local-only for
+  // now — they'll get their own store fields once voice rig is wired.
+  const inputDevice = useUserSettingsStore((s) => s.selectedInputDevice);
+  const outputDevice = useUserSettingsStore((s) => s.selectedOutputDevice);
+  const setInputDevice = useUserSettingsStore((s) => s.setSelectedInputDevice);
+  const setOutputDevice = useUserSettingsStore((s) => s.setSelectedOutputDevice);
+
   const [pttKey, setPttKey] = useStateS('⌥ Space');
   const [ec, setEc] = useStateS(true);
   const [ns, setNs] = useStateS(true);
+  const [camera, setCamera] = useStateS('FaceTime HD');
+  const [mirror, setMirror] = useStateS(true);
+
+  // List of input/output devices the user can actually pick on this device.
+  // For now we surface a hardcoded set + the currently-selected value so
+  // the dropdown isn't empty; a future pass calls
+  // navigator.mediaDevices.enumerateDevices() to populate dynamically.
+  const inputs = [...new Set([inputDevice, 'Default · MacBook Pro Microphone', 'AirPods Pro', 'USB Audio CODEC'])].filter(Boolean);
+  const outputs = [...new Set([outputDevice, 'Default · MacBook Pro Speakers', 'AirPods Pro', 'External Display'])].filter(Boolean);
+
   return (
     <>
       <Group title="Devices">
         <Row label="Input">
-          <Select value="Default · MacBook Pro Microphone" onChange={() => {}}
-                  options={['Default · MacBook Pro Microphone', 'AirPods Pro', 'USB Audio CODEC']} />
+          <Select value={inputDevice} onChange={setInputDevice} options={inputs} />
         </Row>
         <Row label="Output">
-          <Select value="Default · MacBook Pro Speakers" onChange={() => {}}
-                  options={['Default · MacBook Pro Speakers', 'AirPods Pro', 'External Display']} />
+          <Select value={outputDevice} onChange={setOutputDevice} options={outputs} />
         </Row>
         <Row label="Input level" hint="Speak normally to verify levels.">
           <div className="set-meter">
@@ -232,25 +344,39 @@ function UserVoice() {
       </Group>
       <Group title="Video">
         <Row label="Camera">
-          <Select value="FaceTime HD" onChange={() => {}}
-                  options={['FaceTime HD', 'External Webcam']} />
+          <Select value={camera} onChange={setCamera} options={['FaceTime HD', 'External Webcam']} />
         </Row>
-        <Row label="Mirror preview"><Toggle value={true} onChange={() => {}} /></Row>
+        <Row label="Mirror preview"><Toggle value={mirror} onChange={setMirror} /></Row>
       </Group>
     </>
   );
 }
 function UserAppear() {
-  const [theme, setTheme] = useStateS('mesh');
+  // Theme persisted to useUserSettingsStore (themeStore reads from it and
+  // updates --theme tokens). 'mesh' is the default per the v2 migration in
+  // userSettingsStore.ts. Density also lives there.
+  const theme = useUserSettingsStore((s) => s.theme);
+  const setTheme = useUserSettingsStore((s) => s.setTheme);
+  const density = useUserSettingsStore((s) => s.density);
+  const setDensity = useUserSettingsStore((s) => s.setDensity);
+
   const [motion, setMotion] = useStateS(false);
   const [size, setSize] = useStateS(14);
+
   return (
     <>
       <Group title="Theme">
-        <Row label="Direction" hint="You're previewing Mesh. Open the canvas file to compare all four.">
+        <Row label="Direction" hint="Pick a visual direction. Persists across sessions.">
           <div className="set-seg">
-            {['pulse','aurora','slate','mesh'].map(m => (
+            {(['pulse','aurora','slate','mesh'] as const).map(m => (
               <button key={m} className={theme === m ? 'on' : ''} onClick={() => setTheme(m)}>{m}</button>
+            ))}
+          </div>
+        </Row>
+        <Row label="Density" hint="How tightly content packs.">
+          <div className="set-seg">
+            {(['compact','regular','cozy'] as const).map(m => (
+              <button key={m} className={density === m ? 'on' : ''} onClick={() => setDensity(m)}>{m}</button>
             ))}
           </div>
         </Row>
@@ -367,9 +493,6 @@ function UserKeys() {
 
 // ───────── TEAM tabs ─────────
 function TeamInfo() {
-  // Read the current team from the live bridged data instead of the
-  // handoff fixture. Falls back to handoff defaults so the standalone
-  // preview keeps rendering.
   const data = (window as any).MOCK_DATA;
   const team = data?.SERVERS?.[0];
   const channels = data?.CHANNELS ?? [];
@@ -377,22 +500,82 @@ function TeamInfo() {
     .filter((c: any) => c.type === 'text')
     .map((c: any) => `#${c.name}`);
   const me = data?.byId?.thim;
-  // Best-effort created label — real authStore.teams[id].joinedAt would be
-  // better but isn't exposed via MOCK_DATA yet.
   const created = data?.teamCreatedAt
     ? `${data.teamCreatedAt} · by ${me?.name ?? 'admin'}`
     : `today · by ${me?.name ?? 'admin'}`;
+  const auth = useActiveTeamAuth();
+  const [name, setName] = useStateS(team?.name ?? '');
+  const [description, setDescription] = useStateS(team?.description ?? '');
+  const [defaultChannel, setDefaultChannel] = useStateS(channelNames[0] ?? '#general');
+  const [slowMode, setSlowMode] = useStateS('0');
+  // Re-sync local state when the bridged team value changes (e.g. another
+  // admin renames the team).
+  useEffectS(() => {
+    if (team?.name !== undefined) setName(team.name);
+    if (team?.description !== undefined) setDescription(team.description);
+  }, [team?.name, team?.description]);
+
+  // PATCH /api/v1/teams/{id} for name/description. Server enforces admin
+  // permission; non-admins will get a 403 and the form just won't save.
+  const persistTeam = useDebouncedSave((updates: Record<string, unknown>) => {
+    if (!auth) return;
+    api
+      .updateTeam(auth.teamId, updates)
+      .catch((err) => console.warn('[Settings] team update failed', err));
+  });
+
   return (
     <>
       <Group title="Team">
-        <Row label="Name"><TextField value={team?.name ?? 'Dilla'} onChange={() => {}} /></Row>
-        <Row label="Description"><TextField value={team?.description ?? ''} onChange={() => {}} /></Row>
+        <Row label="Name">
+          <TextField
+            value={name}
+            onChange={(v) => {
+              setName(v);
+              persistTeam({ name: v });
+            }}
+          />
+        </Row>
+        <Row label="Description">
+          <TextField
+            value={description}
+            onChange={(v) => {
+              setDescription(v);
+              persistTeam({ description: v });
+            }}
+          />
+        </Row>
         <Row label="Created"><span className="set-stat">{created}</span></Row>
         <Row label="Storage"><span className="set-stat">0 GB / 10 GB</span></Row>
       </Group>
       <Group title="Defaults">
-        <Row label="Default channel"><Select value={channelNames[0] ?? '#general'} options={channelNames.length ? channelNames : ['#general']} onChange={() => {}} /></Row>
-        <Row label="Slow mode (seconds)"><TextField mono value="0" onChange={() => {}} /></Row>
+        <Row label="Default channel">
+          <Select
+            value={defaultChannel}
+            options={channelNames.length ? channelNames : ['#general']}
+            onChange={(v) => {
+              setDefaultChannel(v);
+              // Server-side default channel is a team-level field; the API
+              // accepts default_channel_id but we only have the display
+              // name here. Map name → id via the bridged data.
+              const ch = (data?.CHANNELS ?? []).find(
+                (c: any) => `#${c.name}` === v,
+              );
+              if (ch) persistTeam({ default_channel_id: ch.id });
+            }}
+          />
+        </Row>
+        <Row label="Slow mode (seconds)">
+          <TextField
+            mono
+            value={slowMode}
+            onChange={(v) => {
+              setSlowMode(v);
+              const n = Number.parseInt(v, 10);
+              if (!Number.isNaN(n) && n >= 0) persistTeam({ slow_mode_seconds: n });
+            }}
+          />
+        </Row>
       </Group>
     </>
   );
