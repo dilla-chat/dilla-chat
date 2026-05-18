@@ -19,6 +19,7 @@ import { THEMES } from './themes';
 import { useShellData } from './useShellData';
 import { useTeamStore } from '../stores/teamStore';
 import { useAuthStore } from '../stores/authStore';
+import { useMeshStore } from '../stores/meshStore';
 import './chat.css';
 import './chrome.css';
 import './extras.css';
@@ -140,10 +141,15 @@ export default function AppShell({ ready }: AppShellProps) {
     { sec: 'ACCOUNT', cmd: 'sign out', hint: '⌘+⇧+Q' },
   ];
 
-  // Federation toggle. The handoff chrome (top bar 'MESH OK', bottom peer
-  // chunks, member panel 2-nodes header) all key off `federated`. Flip true
-  // once we wire a real peer status feed from the server.
-  const federated = false;
+  // Federation flag drives top bar 'MESH OK', bottom peer chunks, and the
+  // member panel 2-nodes header. Comes from useMeshStore which useShellSync
+  // populates from `federation:peer-status` WS events. `federated` flips on
+  // as soon as the team has any peers configured; `degraded` is when some
+  // of them are unreachable.
+  const peersTotal = useMeshStore((s) => s.peersTotal);
+  const meshStatus = useMeshStore((s) => s.status);
+  const federated = peersTotal > 0;
+  const degraded = meshStatus === 'degraded';
 
   const theme = THEMES.mesh;
   const opts = {
@@ -163,14 +169,14 @@ export default function AppShell({ ready }: AppShellProps) {
         onSearch={() => setSrchOpen(true)}
         onHelp={openShortcuts}
         federated={federated}
-        degraded={false}
+        degraded={degraded}
         teamName={teamNameUpper}
         nodeName={nodeShort}
       />
       {ready && (
         <ChatApp theme={theme} opts={opts} rich controller={controllerRef.current} />
       )}
-      <BottomBar voiceConnection={null} federated={federated} degraded={false} nodeHost={nodeHost} />
+      <BottomBar voiceConnection={null} federated={federated} degraded={degraded} nodeHost={nodeHost} />
       <CommandPalette
         open={cmdOpen}
         onClose={() => setCmdOpen(false)}

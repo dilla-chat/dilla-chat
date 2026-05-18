@@ -83,12 +83,51 @@ export function useChannelEvents(activeTeamId: string | null): void {
       },
     );
 
+    const unsubReactAdd = ws.on(
+      'reaction:added',
+      (payload: { message_id: string; channel_id: string; user_id: string; emoji: string }) => {
+        const list = useMessageStore.getState().messages.get(payload.channel_id) ?? [];
+        const msg = list.find((m) => m.id === payload.message_id);
+        if (!msg) return;
+        const reactions = msg.reactions ? msg.reactions.map((r) => ({ ...r })) : [];
+        const existing = reactions.find((r) => r.emoji === payload.emoji);
+        if (existing) {
+          if (!existing.users.includes(payload.user_id)) {
+            existing.users = [...existing.users, payload.user_id];
+            existing.count = existing.users.length;
+          }
+        } else {
+          reactions.push({ emoji: payload.emoji, users: [payload.user_id], count: 1 });
+        }
+        useMessageStore.getState().updateReactions(payload.channel_id, payload.message_id, reactions);
+      },
+    );
+
+    const unsubReactRem = ws.on(
+      'reaction:removed',
+      (payload: { message_id: string; channel_id: string; user_id: string; emoji: string }) => {
+        const list = useMessageStore.getState().messages.get(payload.channel_id) ?? [];
+        const msg = list.find((m) => m.id === payload.message_id);
+        if (!msg?.reactions) return;
+        const reactions = msg.reactions
+          .map((r) =>
+            r.emoji === payload.emoji
+              ? { ...r, users: r.users.filter((u) => u !== payload.user_id), count: Math.max(0, r.count - 1) }
+              : r,
+          )
+          .filter((r) => r.count > 0);
+        useMessageStore.getState().updateReactions(payload.channel_id, payload.message_id, reactions);
+      },
+    );
+
     return () => {
       unsubNew();
       unsubEdit();
       unsubDelete();
       unsubTyping();
       unsubKeyDist();
+      unsubReactAdd();
+      unsubReactRem();
     };
   }, [activeTeamId]);
 }
