@@ -1395,7 +1395,7 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                   <div key={m.id}
                        className={'msg' + (isFirst ? '' : ' compact') + (hasMention ? ' has-mention' : '') + (m.replyTo ? ' has-reply' : '')}
                        data-msg-id={m.id}
-                       onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, msgId: m.id, isMine: m.author === 'thim' }); }}>
+                       onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, msgId: m.id, isMine: m.author === (window.MOCK_DATA?.currentUserId || 'thim') }); }}>
                     {m.replyTo && (() => {
                       const orig = messages.find(om => om.id === m.replyTo);
                       if (!orig) return null;
@@ -1441,7 +1441,7 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                                   }));
                                 }}>{author.name}</span>
                           <span className="at">{timeShort(m.at)}</span>
-                          {m.author === 'thim' && (
+                          {m.author === (window.MOCK_DATA?.currentUserId || 'thim') && (
                             <span className="msg-seen" title="seen by ada, mira, ben">
                               <svg width="14" height="10" viewBox="0 0 14 10" fill="none">
                                 <path d="M1 5l3 3 6-6M5 5l3 3 5-7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
@@ -1571,7 +1571,7 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                               }))}>
                         <Icon.Thread size={13} />
                       </button>
-                      {m.author === 'thim' && (
+                      {m.author === (window.MOCK_DATA?.currentUserId || 'thim') && (
                         <button title="Edit"
                                 onClick={() => { setEditingId(m.id); setEditDraft(m.text || ''); }}>
                           <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
@@ -1579,7 +1579,7 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                           </svg>
                         </button>
                       )}
-                      {m.author === 'thim' && (
+                      {m.author === (window.MOCK_DATA?.currentUserId || 'thim') && (
                         <button title="Delete"
                                 onClick={() => setDeleteConfirm(m.id)}>
                           <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
