@@ -2297,7 +2297,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   const [deaf, setDeaf] = useState(false);
   const [cam, setCam] = useState(false);
   const [screen, setScreen] = useState(false);
-  const [typing, setTyping] = useState(['ada']);
+  const [typing, setTyping] = useState([]);
   const [dmTyping, setDmTyping] = useState({}); // channelId -> [names]
   const [settings, setSettings] = useState({ open: false, mode: 'user', tab: null });
   const [membersOpen, setMembersOpen] = useState(true);
@@ -2431,33 +2431,11 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     return () => window.removeEventListener('dilla:open-settings', onOpen);
   }, []);
 
-  useEffect(() => {
-    // Cycle typing to feel alive
-    const cycle = ['ada', '', 'mira', '', 'ada,mira', ''];
-    let i = 0;
-    const id = setInterval(() => {
-      const v = cycle[i++ % cycle.length];
-      setTyping(v ? v.split(',') : []);
-    }, 4200);
-    return () => clearInterval(id);
-  }, []);
+  // Handoff cycled fake typing here ('ada', 'mira'). Disabled — real
+  // typing arrives via websocket → useMessageStore.typing. Wire that up
+  // here in a later step.
 
-  // DM typing — cycle ada/mira typing in their respective DMs
-  useEffect(() => {
-    const dmCycle = [
-      { 'dm-ada': ['ada'] },
-      { },
-      { 'dm-mira': ['mira'] },
-      { },
-      { 'dm-grp': ['ola'] },
-      { },
-    ];
-    let i = 0;
-    const id = setInterval(() => {
-      setDmTyping(dmCycle[i++ % dmCycle.length] || {});
-    }, 5200);
-    return () => clearInterval(id);
-  }, []);
+  // DM typing also disabled — same plan as channel typing above.
 
   // Expose imperative controls to a parent via the optional `controller` object.
   useEffect(() => {
