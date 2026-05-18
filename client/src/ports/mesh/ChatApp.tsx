@@ -486,7 +486,7 @@ function ThreadPanel({ channelId, messageId, members, onClose, onReact }) {
     if (!draft.trim()) return;
     setReplies(prev => [...prev, {
       id: 'tr-' + Date.now(),
-      author: 'thim',
+      author: window.MOCK_DATA?.currentUserId || 'thim',
       at: new Date(),
       text: draft.trim(),
     }]);
@@ -2503,7 +2503,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
       const draft = drafts[channel.id];
       if (!draft || !draft.trim()) return;
       const processed = processSlash(draft.trim());
-      const m = { id: 'new-' + Date.now(), author: 'thim', at: new Date(), ...processed, replyTo: replyTo[channel.id] || null };
+      const m = { id: 'new-' + Date.now(), author: window.MOCK_DATA?.currentUserId || 'thim', at: new Date(), ...processed, replyTo: replyTo[channel.id] || null };
       setDmMessages(prev => ({ ...prev, [channel.id]: [...(prev[channel.id] || []), m] }));
       setDrafts(prev => ({ ...prev, [channel.id]: '' }));
       setReplyTo(prev => ({ ...prev, [channel.id]: null }));
@@ -2514,7 +2514,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     const processed = processSlash(draft.trim());
     const m = {
       id: 'new-' + Date.now(),
-      author: 'thim',
+      author: window.MOCK_DATA?.currentUserId || 'thim',
       at: new Date(),
       ...processed,
       replyTo: replyTo[activeChannel] || null,
@@ -2606,7 +2606,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
           onAttach={(file) => {
             const m = {
               id: 'att-' + Date.now(),
-              author: 'thim',
+              author: window.MOCK_DATA?.currentUserId || 'thim',
               at: new Date(),
               kind: 'image',
               text: '',
