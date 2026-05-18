@@ -10,6 +10,7 @@ import { THEMES } from './themes';
 import { useMeshData } from './useMeshData';
 import { useTeamStore } from '../../stores/teamStore';
 import { usePresenceStore } from '../../stores/presenceStore';
+import { useMessageStore } from '../../stores/messageStore';
 import {
   DEMO_TEAM_ID,
   MOCK_TEAM,
@@ -17,33 +18,42 @@ import {
   MOCK_MEMBERS,
   MOCK_ROLES,
   MOCK_PRESENCES,
+  MOCK_GENERAL_MESSAGES,
+  MOCK_WELCOME_MESSAGES,
 } from '../../services/mockData';
 import './chat.css';
 import './mesh-chrome.css';
 import './extras.css';
 import './settings.css';
 
+// Seed the stores synchronously at module load if empty so that ChatApp
+// (which captures data.MESSAGES into useState on its first render) sees a
+// populated map instead of an empty one. Idempotent across re-imports.
+function seedStoresIfEmpty() {
+  const { teams, setTeam, setChannels, setMembers, setRoles, setActiveTeam, setActiveChannel } =
+    useTeamStore.getState();
+  if (teams.size > 0) return;
+  setTeam(MOCK_TEAM);
+  setChannels(DEMO_TEAM_ID, MOCK_CHANNELS);
+  setMembers(DEMO_TEAM_ID, MOCK_MEMBERS);
+  setRoles(DEMO_TEAM_ID, MOCK_ROLES);
+  setActiveTeam(DEMO_TEAM_ID);
+  setActiveChannel('ch-2');
+  usePresenceStore.getState().setPresences(DEMO_TEAM_ID, MOCK_PRESENCES);
+  const msgStore = useMessageStore.getState();
+  msgStore.prependMessages('ch-1', MOCK_WELCOME_MESSAGES);
+  msgStore.prependMessages('ch-2', MOCK_GENERAL_MESSAGES);
+  msgStore.setHasMore('ch-1', false);
+  msgStore.setHasMore('ch-2', false);
+}
+
+seedStoresIfEmpty();
+
 export default function MeshSandbox() {
   const [cmdOpen, setCmdOpen] = useState(false);
   const [srchOpen, setSrchOpen] = useState(false);
   const [srchScope, setSrchScope] = useState<string | null>(null);
   const controllerRef = useRef<{ pickChannel?: (id: string) => void; getVoiceConn?: () => unknown }>({});
-
-  // Self-seed the team store with demo data if it's empty, so visiting
-  // /mesh directly (without going through /demo first) still produces a
-  // populated sandbox. Same data shape DemoWrapper uses.
-  useEffect(() => {
-    const { teams, setTeam, setChannels, setMembers, setRoles, setActiveTeam, setActiveChannel } =
-      useTeamStore.getState();
-    if (teams.size > 0) return;
-    setTeam(MOCK_TEAM);
-    setChannels(DEMO_TEAM_ID, MOCK_CHANNELS);
-    setMembers(DEMO_TEAM_ID, MOCK_MEMBERS);
-    setRoles(DEMO_TEAM_ID, MOCK_ROLES);
-    setActiveTeam(DEMO_TEAM_ID);
-    setActiveChannel('ch-2');
-    usePresenceStore.getState().setPresences(DEMO_TEAM_ID, MOCK_PRESENCES);
-  }, []);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {

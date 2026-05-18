@@ -2273,11 +2273,19 @@ function MemberList({ members, voiceConnection, rich, federated }) {
 // ───────────── root ─────────────
 function ChatApp({ theme, opts = {}, rich = false, controller }) {
   const data = window.MOCK_DATA;
-  const [activeServer, setActiveServer] = useState('berralitos');
+  // Pick sensible defaults from the bridged data instead of hardcoded
+  // handoff ids ('berralitos' / 'design'). Falls back to the handoff
+  // values when nothing's wired so the standalone preview still works.
+  const initialServer = data.SERVERS?.[0]?.id || 'berralitos';
+  const initialChannel =
+    data.CHANNELS?.find((c) => c.type === 'text')?.id ||
+    data.CHANNELS?.[0]?.id ||
+    'design';
+  const [activeServer, setActiveServer] = useState(initialServer);
   const [tab, setTab] = useState('kanals');
-  const [activeChannel, setActiveChannel] = useState('design');
+  const [activeChannel, setActiveChannel] = useState(initialChannel);
   const [activeDM, setActiveDM] = useState(null);
-  const [activeView, setActiveView] = useState({ kind: 'channel', id: 'design' });
+  const [activeView, setActiveView] = useState({ kind: 'channel', id: initialChannel });
   const [messages, setMessages] = useState(data.MESSAGES);
   const [dmMessages, setDmMessages] = useState(data.DM_MESSAGES);
   const [drafts, setDrafts] = useState({});
