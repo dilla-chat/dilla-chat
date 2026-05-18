@@ -7,6 +7,13 @@ import { useEffect, useRef, useState } from 'react';
 import ChatApp from './ChatApp';
 import { MeshTopBar, MeshBottomBar, CommandPalette, SearchPalette } from './MeshChrome';
 import Settings from './Settings';
+import {
+  NotificationStack,
+  IncomingCall,
+  SafetyCompare,
+  AddPeerWizard,
+  ConnectionBanner,
+} from './Extras';
 import { THEMES } from './themes';
 import { useMeshData } from './useMeshData';
 import { useTeamStore } from '../../stores/teamStore';
@@ -94,6 +101,26 @@ export default function MeshSandbox() {
   // re-renders when the user drags the sidebar or members rail divider.
   const [sidebarW, setSidebarW] = useState(240);
   const [membersW, setMembersW] = useState(232);
+  // Extras state: incoming call ring, safety-number compare modal, add-peer
+  // wizard. ChatApp dispatches these via window events when triggered from
+  // various menus / command palette entries.
+  const [ringCall, setRingCall] = useState<{ from: string; kind: string } | null>(null);
+  const [safetyId, setSafetyId] = useState<string | null>(null);
+  const [addPeerOpen, setAddPeerOpen] = useState(false);
+
+  useEffect(() => {
+    const onRing = (e: Event) => setRingCall((e as CustomEvent).detail ?? { from: 'ada', kind: 'voice' });
+    const onSafety = (e: Event) => setSafetyId((e as CustomEvent).detail ?? null);
+    const onAddPeer = () => setAddPeerOpen(true);
+    window.addEventListener('dilla:incoming-call', onRing);
+    window.addEventListener('dilla:verify-safety', onSafety);
+    window.addEventListener('dilla:add-peer', onAddPeer);
+    return () => {
+      window.removeEventListener('dilla:incoming-call', onRing);
+      window.removeEventListener('dilla:verify-safety', onSafety);
+      window.removeEventListener('dilla:add-peer', onAddPeer);
+    };
+  }, []);
   const controllerRef = useRef<{ pickChannel?: (id: string) => void; getVoiceConn?: () => unknown }>({});
 
   useEffect(() => {
@@ -211,6 +238,23 @@ export default function MeshSandbox() {
         onClose={() => setSrchOpen(false)}
         scope={srchScope}
       />
+      {/* Toast notifications via dilla:notify */}
+      <NotificationStack />
+      {/* Connection-state banner via dilla:connection */}
+      <ConnectionBanner />
+      {/* Incoming call ring, safety-number compare, add-peer wizard.
+          Each shows only when its corresponding state is set. */}
+      {ringCall && (
+        <IncomingCall
+          call={ringCall}
+          onAccept={() => setRingCall(null)}
+          onDecline={() => setRingCall(null)}
+        />
+      )}
+      {safetyId && (
+        <SafetyCompare contactId={safetyId} onClose={() => setSafetyId(null)} />
+      )}
+      <AddPeerWizard open={addPeerOpen} onClose={() => setAddPeerOpen(false)} />
     </div>
   );
 }
