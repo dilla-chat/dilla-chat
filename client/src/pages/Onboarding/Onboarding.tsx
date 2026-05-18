@@ -78,6 +78,7 @@ export default function Onboarding() {
   );
   const [passphrase, setPassphrase] = useState('');
   const [passphraseConfirm, setPassphraseConfirm] = useState('');
+  const [teamName, setTeamName] = useState('');
   const [identityError, setIdentityError] = useState<string | null>(null);
 
   // Keys step state — driven by real progress, not a timed animation.
@@ -106,12 +107,30 @@ export default function Onboarding() {
     const url = normalizeServerUrl(serverUrl);
     setConnectLog((prev) => [...prev, { text: `> contacting ${url}`, level: 'info' }]);
 
-    if (connectMode !== 'invite') {
+    if (connectMode === 'enrolled') {
       setConnectError(
-        connectMode === 'bootstrap'
-          ? 'Bootstrap mode is not wired into the onboarding flow yet. Use /setup for now.'
-          : 'Already-enrolled mode is not wired into the onboarding flow yet. Use /login for now.',
+        'Already-enrolled mode is not wired into the onboarding flow yet. Use /login for now.',
       );
+      return;
+    }
+
+    if (connectMode === 'bootstrap') {
+      // No pre-flight API call exists for the bootstrap token (it's
+      // validated atomically by api.bootstrap). Just confirm the server is
+      // reachable; actual token validation happens in the keys step.
+      try {
+        const res = await fetch(`${url}/api/v1/health`, { signal: AbortSignal.timeout(5000) });
+        if (!res.ok) throw new Error(`Server returned ${res.status}`);
+        setConnectLog((prev) => [
+          ...prev,
+          { text: '> ✓ server reachable', level: 'ok' },
+          { text: '> advancing… (bootstrap token will be validated next)', level: 'info' },
+        ]);
+        setTimeout(() => setStep('identity'), 600);
+      } catch (e) {
+        setConnectError(friendlyError(e, i18n));
+        setConnectLog((prev) => [...prev, { text: '> server unreachable', level: 'danger' }]);
+      }
       return;
     }
 
@@ -138,6 +157,10 @@ export default function Onboarding() {
     setIdentityError(null);
     if (!username.trim()) {
       setIdentityError('Pick a username.');
+      return;
+    }
+    if (connectMode === 'bootstrap' && !teamName.trim()) {
+      setIdentityError('Team name is required when bootstrapping a new server.');
       return;
     }
     if (protection === 'passphrase') {
@@ -217,14 +240,25 @@ export default function Onboarding() {
         const sigB64 = btoa(String.fromCodePoint(...sig));
 
         appendKeysLog({ text: '> signing challenge', level: 'info' });
-        const result = (await api.register(
-          tempId,
-          challenge_id,
-          publicKeyB64,
-          sigB64,
-          username.trim(),
-          token,
-        )) as { user: User; token: string; team?: Record<string, unknown> | null };
+        const result =
+          connectMode === 'bootstrap'
+            ? ((await api.bootstrap(
+                tempId,
+                challenge_id,
+                publicKeyB64,
+                sigB64,
+                username.trim(),
+                token,
+                teamName.trim() || undefined,
+              )) as { user: User; token: string; team?: Record<string, unknown> | null })
+            : ((await api.register(
+                tempId,
+                challenge_id,
+                publicKeyB64,
+                sigB64,
+                username.trim(),
+                token,
+              )) as { user: User; token: string; team?: Record<string, unknown> | null });
 
         const realTeamId = (result.team?.id as string) || tempId;
         if (realTeamId !== tempId) {
@@ -388,6 +422,19 @@ export default function Onboarding() {
               />
             </label>
 
+            {connectMode === 'bootstrap' && (
+              <label className="onboarding-label">
+                Team name
+                <input
+                  type="text"
+                  value={teamName}
+                  onChange={(e) => setTeamName(e.target.value)}
+                  placeholder="berralitos"
+                  className="onboarding-input"
+                />
+              </label>
+            )}
+
             <div className="onboarding-toggle">
               {(['passphrase', 'hardware', 'both'] as const).map((m) => (
                 <button
@@ -456,7 +503,11 @@ export default function Onboarding() {
                 type="button"
                 className="onboarding-btn primary"
                 onClick={handleIdentity}
-                disabled={!username.trim() || (protection === 'passphrase' && !passphraseValid)}
+                disabled={
+                  !username.trim() ||
+                  (connectMode === 'bootstrap' && !teamName.trim()) ||
+                  (protection === 'passphrase' && !passphraseValid)
+                }
               >
                 Continue →
               </button>
