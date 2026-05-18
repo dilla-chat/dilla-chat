@@ -1044,7 +1044,19 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
                          { label: 'Join voice', icon: <Icon.Speaker size={13} />, onClick: () => { onPickChannel(c.id); } },
                          { label: 'Copy link', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6 10l4-4M6 6l4 4" stroke="currentColor" strokeWidth="1.4"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/></svg>, onClick: () => { navigator.clipboard?.writeText('dilla://gbg-1/k/' + c.id); window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Voice kanal link copied.', duration: 2000 } })); } },
                          { sep: true },
-                         { label: c.locked ? 'Unlock kanal' : 'Lock kanal', icon: <Icon.Lock size={12} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'admin', text: (c.locked ? 'Unlocked ' : 'Locked ') + '#' + c.name + ' — admin-only.', duration: 2800 } })) },
+                         { label: c.locked ? 'Unlock kanal' : 'Lock kanal', icon: <Icon.Lock size={12} />, onClick: () => {
+                          const teamId = useTeamStore.getState().activeTeamId;
+                          if (teamId && !isMockSession()) {
+                            api.updateChannel(teamId, c.id, { locked: !c.locked }).then(() => {
+                              window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'admin', text: (c.locked ? 'Unlocked ' : 'Locked ') + '#' + c.name + '.', duration: 2800 } }));
+                            }).catch((err: unknown) => {
+                              console.warn('[ChatApp] lock channel failed', err);
+                              window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'admin', text: 'Lock failed — admin role required.', duration: 3500 } }));
+                            });
+                          } else {
+                            window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'admin', text: 'Demo only — server enforces lock state.', duration: 2800 } }));
+                          }
+                        } },
                          { label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-channel-settings', { detail: c.id })) },
                        ] } }));
                      }}>
