@@ -743,29 +743,30 @@
   font-family: var(--font-ui);
 }
 
-[data-theme='mesh'] .voice-participant-card,
-[data-theme='mesh'] .voice-participant {
+/* Retrofit voice-participant-card styling — scoped tight so it does NOT
+   leak into the handoff sandbox at /mesh which uses bare .voice-participant
+   for the sidebar voice rows. */
+[data-theme='mesh'] .voice-participant-card {
   background: var(--surface-2);
   border: 0.0625rem solid var(--hairline);
   border-radius: var(--r-md);
   transition: border-color 0.12s ease-out;
 }
 
-[data-theme='mesh'] .voice-participant-card.speaking,
-[data-theme='mesh'] .voice-participant.speaking {
+[data-theme='mesh'] .voice-participant-card.speaking {
   border-color: var(--accent);
   box-shadow: 0 0 0 0.0625rem var(--accent-soft);
 }
 
 [data-theme='mesh'] .voice-participant-name,
-[data-theme='mesh'] .voice-participant .name {
+[data-theme='mesh'] .voice-participant-card .name {
   font-family: var(--font-display);
   font-weight: var(--fw-display, 700);
   color: var(--fg);
 }
 
 [data-theme='mesh'] .voice-participant-state,
-[data-theme='mesh'] .voice-participant .state {
+[data-theme='mesh'] .voice-participant-card .state {
   font-family: var(--font-mono);
   font-size: 0.625rem;
   letter-spacing: 0.04em;
