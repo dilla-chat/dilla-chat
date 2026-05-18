@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState } from 'react';
 import ChatApp from './ChatApp';
 import { MeshTopBar, MeshBottomBar, CommandPalette, SearchPalette } from './MeshChrome';
+import Settings from './Settings';
 import { THEMES } from './themes';
 import { useMeshData } from './useMeshData';
 import { useTeamStore } from '../../stores/teamStore';
@@ -80,6 +81,10 @@ function seedStoresIfEmpty() {
 }
 
 seedStoresIfEmpty();
+
+// ChatApp does `const SettingsModal = window.Settings` and renders it
+// when settings.open. Wire the ported Settings component onto window.
+(window as unknown as { Settings: typeof Settings }).Settings = Settings;
 
 export default function MeshSandbox() {
   const [cmdOpen, setCmdOpen] = useState(false);
