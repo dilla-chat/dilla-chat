@@ -16,14 +16,18 @@ import { useVoiceStore } from '../../stores/voiceStore';
 import { usernameColor } from '../../utils/colors';
 import { MOCK_DATA } from './data';
 
-// Tiny initials helper — handoff used "TH" / "AD" style 2-char caps.
+// Tiny initials helper — handoff used "TH" / "AD" / "BE" 2-char caps,
+// always two letters. For multi-word names take first letter of the
+// first two words; for single-word names take the first two letters.
 function initialsOf(name: string) {
-  return name
-    .split(/\s+/)
-    .map((w) => w[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
+  const words = name.split(/\s+/).filter(Boolean);
+  let initials = '';
+  if (words.length >= 2) {
+    initials = words[0][0] + words[1][0];
+  } else if (words.length === 1) {
+    initials = words[0].slice(0, 2);
+  }
+  return initials.toUpperCase();
 }
 
 // Map a teamStore Channel to the handoff CHANNELS shape. The handoff also
