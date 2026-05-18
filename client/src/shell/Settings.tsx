@@ -11,6 +11,7 @@ import { useTeamStore } from '../stores/teamStore';
 import { useUserSettingsStore } from '../stores/userSettingsStore';
 import { api } from '../services/api';
 import { isMockSession } from '../services/mockSession';
+import { exportIdentityBlob } from '../services/keyStore';
 
 const { useState: useStateS, useEffect: useEffectS, useRef: useRefS } = React;
 
@@ -423,8 +424,12 @@ function UserPrivacy() {
             {block2.map((row, i) => <div key={i}>{row}</div>)}
           </div>
           <div className="set-fp-actions">
-            <Btn>Copy</Btn>
-            <Btn>Show QR</Btn>
+            <Btn onClick={() => {
+              const full = [...block1, ...block2].join(' ');
+              navigator.clipboard?.writeText(full);
+              window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'preferences', text: 'Safety number copied.', duration: 2000 } }));
+            }}>Copy</Btn>
+            <Btn onClick={() => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'preferences', text: 'QR display requires a renderer — copy and paste the number for now.', duration: 3000 } }))}>Show QR</Btn>
           </div>
         </div>
       </Group>
@@ -433,10 +438,36 @@ function UserPrivacy() {
           <span className="set-stat">{others.length} session{others.length === 1 ? '' : 's'}</span>
         </Row>
         <Row label="Rotate session keys" hint="Forces new key exchange with everyone you've talked to. Old messages stay readable.">
-          <Btn onClick={() => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'crypto', text: `Session keys rotated. ${others.length} new chains established.`, duration: 3500 } }))}>Rotate now</Btn>
+          <Btn onClick={async () => {
+            // No bulk-rotation API yet; the underlying cryptoService has
+            // rotateChannelKey(channelId, removedUserId) for the per-channel
+            // case. A "rotate everything" path would iterate channels and
+            // call that, but it's a heavy operation behind a confirm —
+            // leave as an explicit notify until the dedicated UI exists.
+            window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'crypto', text: 'Bulk-rotate not wired yet. Per-channel rotation runs automatically when a member leaves.', duration: 4500 } }));
+          }}>Rotate now</Btn>
         </Row>
         <Row label="Export identity backup" hint="Encrypted with your passphrase. Keep it offline.">
-          <Btn onClick={() => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'preferences', text: `Identity backup downloaded: dilla-identity-${meName}.bin (4.2 KB)`, duration: 4000 } }))}>Export…</Btn>
+          <Btn onClick={async () => {
+            try {
+              const blob = await exportIdentityBlob();
+              if (!blob) {
+                window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'preferences', text: 'No identity to export.', duration: 3000 } }));
+                return;
+              }
+              // Base64 string → trigger a file download.
+              const a = document.createElement('a');
+              a.href = 'data:application/octet-stream;base64,' + blob;
+              a.download = `dilla-identity-${meName}.bin`;
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'preferences', text: 'Identity backup downloaded.', duration: 3000 } }));
+            } catch (err) {
+              console.warn('[Settings] export identity failed', err);
+              window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'preferences', text: 'Export failed: ' + (err as Error).message, duration: 4000 } }));
+            }
+          }}>Export…</Btn>
         </Row>
       </Group>
       <Group title="Verify contacts" hint="Compare safety numbers with someone to confirm they are who they say they are — not the server impersonating them.">
