@@ -358,16 +358,31 @@ function UserKeys() {
 
 // ───────── TEAM tabs ─────────
 function TeamInfo() {
+  // Read the current team from the live bridged data instead of the
+  // handoff fixture. Falls back to handoff defaults so the standalone
+  // preview keeps rendering.
+  const data = (window as any).MOCK_DATA;
+  const team = data?.SERVERS?.[0];
+  const channels = data?.CHANNELS ?? [];
+  const channelNames = channels
+    .filter((c: any) => c.type === 'text')
+    .map((c: any) => `#${c.name}`);
+  const me = data?.byId?.thim;
+  // Best-effort created label — real authStore.teams[id].joinedAt would be
+  // better but isn't exposed via MOCK_DATA yet.
+  const created = data?.teamCreatedAt
+    ? `${data.teamCreatedAt} · by ${me?.name ?? 'admin'}`
+    : `today · by ${me?.name ?? 'admin'}`;
   return (
     <>
       <Group title="Team">
-        <Row label="Name"><TextField value="Berralitos" onChange={() => {}} /></Row>
-        <Row label="Description"><TextField value="self-hosted, gothenburg, mostly designers" onChange={() => {}} /></Row>
-        <Row label="Created"><span className="set-stat">2025-09-14 · by thim</span></Row>
-        <Row label="Storage"><span className="set-stat">1.2 GB / 10 GB</span></Row>
+        <Row label="Name"><TextField value={team?.name ?? 'Dilla'} onChange={() => {}} /></Row>
+        <Row label="Description"><TextField value={team?.description ?? ''} onChange={() => {}} /></Row>
+        <Row label="Created"><span className="set-stat">{created}</span></Row>
+        <Row label="Storage"><span className="set-stat">0 GB / 10 GB</span></Row>
       </Group>
       <Group title="Defaults">
-        <Row label="Default channel"><Select value="#general" options={['#general','#design','#dev']} onChange={() => {}} /></Row>
+        <Row label="Default channel"><Select value={channelNames[0] ?? '#general'} options={channelNames.length ? channelNames : ['#general']} onChange={() => {}} /></Row>
         <Row label="Slow mode (seconds)"><TextField mono value="0" onChange={() => {}} /></Row>
       </Group>
     </>

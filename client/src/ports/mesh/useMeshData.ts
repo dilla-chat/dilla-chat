@@ -69,6 +69,7 @@ function mapServer(team, federated, node) {
   return {
     id: team.id,
     name: team.name,
+    description: team.description ?? '',
     short,
     node: node || 'local',
     federated: !!federated,
