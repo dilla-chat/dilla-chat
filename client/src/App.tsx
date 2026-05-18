@@ -10,7 +10,7 @@ import Login from './pages/Login';
 import JoinTeam from './pages/JoinTeam';
 import RecoverFromServer from './pages/RecoverFromServer';
 import SetupAdmin from './pages/SetupAdmin';
-import AppLayout from './pages/AppLayout';
+import AppMesh from './pages/AppMesh';
 import TeamSettings from './pages/TeamSettings';
 import UserSettings from './pages/UserSettings';
 import Onboarding from './pages/Onboarding/Onboarding';
@@ -99,8 +99,8 @@ function App() {
         <Route path="/recover" element={<RecoverFromServer />} />
         <Route path="/setup" element={<SetupAdmin />} />
         <Route path="/onboarding" element={<Onboarding />} />
-        <Route path="/app" element={<AppLayout />} />
-        <Route path="/app/channels/:channelId" element={<AppLayout />} />
+        <Route path="/app" element={<AppMesh />} />
+        <Route path="/app/channels/:channelId" element={<AppMesh />} />
         <Route path="/app/settings" element={<TeamSettings />} />
         <Route path="/app/user-settings" element={<UserSettings />} />
         <Route path="*" element={<NotFound />} />
