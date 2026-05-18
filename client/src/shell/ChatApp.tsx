@@ -9,6 +9,7 @@ import { MOCK_DATA } from './data';
 import { THEMES } from './themes';
 import { useAuthStore } from '../stores/authStore';
 import { useTeamStore } from '../stores/teamStore';
+import { useUnreadStore } from '../stores/unreadStore';
 import { ws } from '../services/websocket';
 import { api } from '../services/api';
 import { tryEncrypt } from '../hooks/useMessageDecryption';
@@ -710,7 +711,25 @@ function ServerRail({ servers, activeServer, onPick }) {
                  { label: 'Team settings', icon: <Icon.Cog size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'team', tab: 'team' } })) },
                  { label: 'Invites', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 4l6 5 6-5M2 4v8h12V4" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/></svg>, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'team', tab: 'invites' } })) },
                  { label: 'Federation', icon: <Icon.Lightning size={12} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'team', tab: 'federation' } })) },
-                 { label: 'Mark all read', icon: null, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: s.name, author: 'system', text: 'All kanals in ' + s.name + ' marked as read.', duration: 2500 } })) },
+                 { label: 'Mark all read', icon: null, onClick: () => {
+                   // Local clear via useUnreadStore, then ws.markChannelRead for
+                   // every channel in this team so other devices reconcile via
+                   // the channel:read echo. On /mesh the ws call is a no-op.
+                   const teamId = useTeamStore.getState().activeTeamId;
+                   const unread = useUnreadStore.getState();
+                   const list = (window as any).MOCK_DATA?.CHANNELS ?? [];
+                   for (const ch of list) {
+                     unread.markRead(ch.id);
+                     if (teamId && !isMockSession()) {
+                       try {
+                         const msgs = (window as any).MOCK_DATA?.MESSAGES?.[ch.id] ?? [];
+                         const lastId = msgs.length > 0 ? msgs[msgs.length - 1].id : '';
+                         if (lastId) ws.markChannelRead(teamId, ch.id, lastId);
+                       } catch { /* ignore per-channel failures */ }
+                     }
+                   }
+                   window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: s.name, author: 'system', text: 'All kanals in ' + s.name + ' marked as read.', duration: 2500 } }));
+                 } },
                  { sep: true },
                  { label: 'Leave team', danger: true, icon: null, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: s.name, author: 'system', text: 'Confirm in Team Settings → Danger Zone.', duration: 3000 } })) },
                ] } }));
@@ -2773,11 +2792,41 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
         </div>
       )}
       {newChanOpen && (
-        <NewChannelModal onClose={() => setNewChanOpen(false)} onCreate={(c) => {
+        <NewChannelModal onClose={() => setNewChanOpen(false)} onCreate={async (c) => {
+          // Optimistic local push so the UI advances immediately. On /app the
+          // server echoes the real channel via api.createChannel; we replace
+          // the optimistic record with the server version (real id, etc.).
+          // On /mesh the api call is a no-op equivalent so the optimistic
+          // entry is what stays.
+          const optimisticId = c.id;
           data.CHANNELS.push({ ...c, type: c.kind, unread: 0, encrypted: true });
-          setActiveChannel(c.id); setActiveView({ kind: 'channel', id: c.id });
+          setActiveChannel(optimisticId);
+          setActiveView({ kind: 'channel', id: optimisticId });
           setNewChanOpen(false);
-          window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Kanal created. Synced to 2/2 peers.', duration: 3500 } }));
+          if (activeTeamId && !isMockSession()) {
+            try {
+              const real = (await api.createChannel(activeTeamId, {
+                name: c.name,
+                type: c.kind,
+                topic: c.topic,
+                category: c.category,
+              })) as { id: string; name: string; type: string; topic?: string; category?: string };
+              if (real?.id) {
+                useTeamStore.getState().addChannel(activeTeamId, {
+                  id: real.id,
+                  name: real.name,
+                  type: real.type,
+                  topic: real.topic ?? '',
+                  category: real.category ?? '',
+                } as any);
+                setActiveChannel(real.id);
+                setActiveView({ kind: 'channel', id: real.id });
+              }
+            } catch (err) {
+              console.warn('[ChatApp] createChannel failed', err);
+            }
+          }
+          window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Kanal created.', duration: 3500 } }));
         }} />
       )}
       {newServerOpen && (
