@@ -173,18 +173,22 @@ const COMMANDS = [
 ];
 
 
-function CommandPalette({ open, onClose, onPickChannel }) {
+function CommandPalette({ open, onClose, onPickChannel, commands }) {
   const [q, setQ] = useStateMC('');
   const [idx, setIdx] = useStateMC(0);
   const inputRef = useRefMC(null);
-  const filtered = COMMANDS.filter((c) => !q || c.cmd.toLowerCase().includes(q.toLowerCase()) || c.sec.toLowerCase().includes(q.toLowerCase()));
+  const source = (commands && commands.length) ? commands : COMMANDS;
+  const filtered = source.filter((c) => !q || c.cmd.toLowerCase().includes(q.toLowerCase()) || c.sec.toLowerCase().includes(q.toLowerCase()));
   useEffectMC(() => {if (open && inputRef.current) inputRef.current.focus();setIdx(0);setQ('');}, [open]);
   if (!open) return null;
 
   const sections = [...new Set(filtered.map((c) => c.sec))];
 
   function pick(c) {
-    if (c.shortcut && onPickChannel) onPickChannel(c.shortcut === 'mesh' ? 'mesh' : c.shortcut);
+    // Prefer explicit channelId from dynamic commands; fall back to shortcut
+    // for backwards compat with the hardcoded handoff COMMANDS list.
+    if (c.channelId && onPickChannel) onPickChannel(c.channelId);
+    else if (c.shortcut && onPickChannel) onPickChannel(c.shortcut === 'mesh' ? 'mesh' : c.shortcut);
     if (c.dispatch) {
       window.dispatchEvent(new CustomEvent(c.dispatch, { detail: c.payload }));
     }

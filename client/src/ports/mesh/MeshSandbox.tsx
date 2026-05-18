@@ -128,6 +128,7 @@ export default function MeshSandbox() {
   // name and parse the baseUrl host as the node identifier.
   const activeTeamId = useTeamStore((s) => s.activeTeamId);
   const activeTeam = useTeamStore((s) => (s.activeTeamId ? s.teams.get(s.activeTeamId) : undefined));
+  const teamChannels = useTeamStore((s) => (s.activeTeamId ? s.channels.get(s.activeTeamId) : undefined));
   const authTeam = useAuthStore((s) => (activeTeamId ? s.teams.get(activeTeamId) : undefined));
   const nodeHost = (() => {
     const base = (authTeam as { baseUrl?: string } | undefined)?.baseUrl ?? '';
@@ -140,6 +141,25 @@ export default function MeshSandbox() {
   })();
   const nodeShort = nodeHost.split('.')[0] || 'local';
   const teamNameUpper = (activeTeam?.name ?? 'DILLA').toUpperCase();
+
+  // Build the command palette entries from real channels (handoff list was
+  // 'channel #design', 'channel #general', etc — hardcoded to the prototype).
+  // Keeps the static encryption/account entries from the handoff list.
+  const dynamicCommands = [
+    ...((teamChannels ?? []).slice(0, 9).map((ch, i) => ({
+      sec: 'NAVIGATE',
+      cmd: `channel #${ch.name}`,
+      hint: `⌘+${i + 1}`,
+      channelId: ch.id,
+    }))),
+    { sec: 'VOICE', cmd: 'toggle mute', hint: 'M' },
+    { sec: 'VOICE', cmd: 'toggle deafen', hint: 'D' },
+    { sec: 'VOICE', cmd: 'disconnect', hint: '⌘+⇧+D' },
+    { sec: 'ENCRYPTION', cmd: 'rotate session keys', hint: '' },
+    { sec: 'ENCRYPTION', cmd: 'export identity backup', hint: '' },
+    { sec: 'ACCOUNT', cmd: 'set custom status', hint: '' },
+    { sec: 'ACCOUNT', cmd: 'sign out', hint: '⌘+⇧+Q' },
+  ];
 
   // For now the demo runs as a single, non-federated node. The handoff
   // chrome (top bar 'MESH OK', bottom peer chunks, member panel 2-nodes
@@ -175,6 +195,7 @@ export default function MeshSandbox() {
         open={cmdOpen}
         onClose={() => setCmdOpen(false)}
         onPickChannel={(id: string) => controllerRef.current.pickChannel?.(id)}
+        commands={dynamicCommands}
       />
       <SearchPalette
         open={srchOpen}
