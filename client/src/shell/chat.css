@@ -1627,6 +1627,10 @@
   align-self: center;
 }
 .composer-input textarea::placeholder { color: var(--fg-3); }
+/* Global index.css paints a 3px brand-500 glow on every focused textarea.
+   Composer has no border of its own, so that glow leaks out around the
+   whole composer block. Reset it here — focus is conveyed by the caret. */
+.composer-input textarea:focus { box-shadow: none; border-color: transparent; }
 .composer-textwrap { flex: 1; position: relative; }
 .composer-textwrap textarea { width: 100%; }
 .composer-tools { display: flex; gap: 2px; }
