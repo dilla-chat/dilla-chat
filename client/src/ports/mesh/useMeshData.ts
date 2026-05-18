@@ -200,13 +200,32 @@ export function useMeshData() {
       byId['thim'] = byId[myId];
     }
 
+    // Index threads by parent_message_id so mapMessage can attach a
+    // thread-preview summary to its parent. Replies are mapped further
+    // down into THREAD_REPLIES.
+    const threadByParent = {};
+    for (const ch of teamChannels) {
+      for (const th of threads[ch.id] ?? []) {
+        const replies = threadMessages[th.id] ?? [];
+        threadByParent[th.parent_message_id] = {
+          count: th.message_count ?? replies.length,
+          lastReplyAt: th.last_message_at ? new Date(th.last_message_at) : (replies.at(-1) ? new Date(replies.at(-1).createdAt) : new Date()),
+          participants: [...new Set(replies.map((r) => r.authorId))],
+        };
+      }
+    }
+
     // MESSAGES: handoff shape is { [channelId]: [msg, ...] }. Iterate the
     // active team's channels and produce mapped arrays. Channels with no
     // messages in our store get an empty array (not the handoff fixture).
     const MESSAGES = {};
     for (const ch of teamChannels) {
       const list = messages.get(ch.id) ?? [];
-      MESSAGES[ch.id] = list.map((m) => mapMessage(m, myId));
+      MESSAGES[ch.id] = list.map((m) => {
+        const mapped = mapMessage(m, myId);
+        if (threadByParent[m.id]) mapped.thread = threadByParent[m.id];
+        return mapped;
+      });
     }
 
     // DMS + DM_MESSAGES from useDMStore. Empty fallback when nothing is
