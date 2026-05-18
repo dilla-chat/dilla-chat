@@ -10,6 +10,7 @@ import { THEMES } from './themes';
 import { useAuthStore } from '../stores/authStore';
 import { useTeamStore } from '../stores/teamStore';
 import { useUnreadStore } from '../stores/unreadStore';
+import { useThreadStore } from '../stores/threadStore';
 import { ws } from '../services/websocket';
 import { api } from '../services/api';
 import { tryEncrypt } from '../hooks/useMessageDecryption';
@@ -485,20 +486,53 @@ function ThreadPanel({ channelId, messageId, members, onClose, onReact }) {
   const [replies, setReplies] = useState(initialReplies);
   const [draft, setDraft] = useState('');
   const scrollRef = useRef(null);
+  // Re-sync replies whenever useShellData re-derives THREAD_REPLIES from
+  // the store (incoming thread:message:new events from useThreadEvents).
+  useEffect(() => {
+    const live = (window.MOCK_DATA?.THREAD_REPLIES?.[messageId]) || [];
+    setReplies(live);
+  }, [window.MOCK_DATA?.THREAD_REPLIES?.[messageId]]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [replies.length]);
 
-  function send() {
-    if (!draft.trim()) return;
+  async function send() {
+    const text = draft.trim();
+    if (!text) return;
+    // Optimistic local push.
     setReplies(prev => [...prev, {
       id: 'tr-' + Date.now(),
       author: window.MOCK_DATA?.currentUserId || 'thim',
       at: new Date(),
-      text: draft.trim(),
+      text,
     }]);
     setDraft('');
+    // Real send: if the thread doesn't exist yet (first reply), create it
+    // via api.createThread; then ws.sendThreadMessage with the encrypted
+    // body. The server echoes via thread:message:new → useThreadEvents →
+    // useThreadStore → useShellData → THREAD_REPLIES, picked up by the
+    // useEffect above to reconcile.
+    const teamId = useTeamStore.getState().activeTeamId;
+    const derivedKey = useAuthStore.getState().derivedKey;
+    if (!teamId || isMockSession()) return;
+    try {
+      // Find existing thread for this parent message, or create.
+      const threads = useThreadStore.getState().threads;
+      const existing = (threads[channelId] || []).find((t: any) => t.parent_message_id === messageId);
+      let threadId: string;
+      if (existing) {
+        threadId = existing.id;
+      } else {
+        const created = (await api.createThread(teamId, channelId, messageId)) as { id: string };
+        threadId = created.id;
+        useThreadStore.getState().addThread(channelId, created as any);
+      }
+      const encrypted = await tryEncrypt(text, channelId, derivedKey);
+      ws.sendThreadMessage(teamId, threadId, encrypted);
+    } catch (err) {
+      console.warn('[ThreadPanel] send failed', err);
+    }
   }
 
   if (!original) {
