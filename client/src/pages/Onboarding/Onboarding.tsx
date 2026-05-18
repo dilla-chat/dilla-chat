@@ -491,7 +491,7 @@ export default function Onboarding() {
                 username.trim(),
                 token,
                 team.trim() || undefined,
-              )) as { user: User; token: string; team?: Record<string, unknown> | null })
+              )) as { user: User; token: string; team_id?: string; team?: { id?: string; name?: string } })
             : ((await api.register(
                 tempId,
                 challenge_id,
@@ -499,9 +499,13 @@ export default function Onboarding() {
                 sigB64,
                 username.trim(),
                 token,
-              )) as { user: User; token: string; team?: Record<string, unknown> | null });
+              )) as { user: User; token: string; team_id?: string; team?: { id?: string; name?: string } });
 
-        const realTeamId = (result.team?.id as string) || tempId;
+        // Server returns {token, user, team_id} — a flat string, not nested
+        // under team.id. Earlier code read team.id and silently fell back to
+        // tempId (= server URL), which made the rest of the app try to GET
+        // /api/v1/teams/http://localhost:8888 and 404 on every request.
+        const realTeamId = result.team_id || result.team?.id || tempId;
         if (realTeamId !== tempId) {
           api.removeTeam(tempId);
           api.addTeam(realTeamId, url);
