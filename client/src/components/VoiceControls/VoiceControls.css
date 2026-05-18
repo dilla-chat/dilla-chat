@@ -342,3 +342,52 @@
   padding: 0.125rem 0;
   word-break: break-word;
 }
+
+/* ====================================================================
+   Mesh design — relocated from mesh-overrides.css. Single source of
+   truth; theming via tokens.
+   ==================================================================== */
+
+.voice-controls-bar,
+.voice-bottom-controls {
+  background: var(--surface);
+  border-top: 0.0625rem solid var(--hairline);
+}
+
+.voice-control-btn {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 62.4375rem;
+  border: 0.0625rem solid var(--hairline);
+  background: var(--surface-2);
+  color: var(--fg-2);
+  transition: border-color 0.12s ease-out, color 0.12s ease-out, background 0.12s ease-out;
+}
+
+.voice-control-btn:hover {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+
+.voice-control-btn.active.mute,
+.voice-control-btn.active.deafen {
+  background: rgba(255, 110, 110, 0.16);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.voice-control-btn.active.cam,
+.voice-control-btn.active.screen {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.voice-control-btn.disconnect {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.voice-control-btn.disconnect:hover {
+  background: rgba(255, 110, 110, 0.12);
+}
