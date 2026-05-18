@@ -1,5 +1,5 @@
 import { Component, type ReactNode, useEffect, useState, lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
 import { recordException } from './services/telemetry';
 import './i18n';
@@ -19,6 +19,16 @@ import { ToastProvider } from './components/Toast/Toast';
 // useToast hook available from './components/Toast/useToast' for consumer components
 
 const DEMO_ENABLED = import.meta.env.VITE_DEMO === 'true';
+
+// Deep-link redirect for invite emails. Old URLs land on /join/:token; we
+// now drive enrollment through /onboarding's invite mode with the token
+// pre-filled. JoinTeam itself stays available as /join-legacy for now in
+// case any flow still depends on the original component.
+function InviteRedirect() {
+  const { token } = useParams<{ token?: string }>();
+  const qs = token ? `?mode=invite&token=${encodeURIComponent(token)}` : '?mode=invite';
+  return <Navigate to={`/onboarding${qs}`} replace />;
+}
 
 // Lazy-load the mock shell (ported handoff JSX driven by mock services)
 // only when VITE_DEMO=true. This is the canonical preview view.
@@ -95,9 +105,11 @@ function App() {
         <Route path="/create-identity" element={<Navigate to="/onboarding" replace />} />
         <Route path="/create-identity-legacy" element={<CreateIdentity />} />
         <Route path="/login" element={<Login />} />
-        <Route path="/join/:token?" element={<JoinTeam />} />
+        <Route path="/join/:token?" element={<InviteRedirect />} />
+        <Route path="/join-legacy/:token?" element={<JoinTeam />} />
         <Route path="/recover" element={<RecoverFromServer />} />
-        <Route path="/setup" element={<SetupAdmin />} />
+        <Route path="/setup" element={<Navigate to="/onboarding?mode=bootstrap" replace />} />
+        <Route path="/setup-legacy" element={<SetupAdmin />} />
         <Route path="/onboarding" element={<Onboarding />} />
         <Route path="/app" element={<AppPage />} />
         <Route path="/app/channels/:channelId" element={<AppPage />} />

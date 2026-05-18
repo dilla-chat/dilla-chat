@@ -15,7 +15,7 @@
 // here is a separate pass against services/webauthn.ts.
 
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore, type User } from '../../stores/authStore';
 import { api } from '../../services/api';
@@ -83,15 +83,28 @@ export default function Onboarding() {
   const { t: i18n } = useTranslation();
   const navigate = useNavigate();
   const { setDerivedKey, setPublicKey, addTeam } = useAuthStore();
+  const [searchParams] = useSearchParams();
 
   // Apply the mesh theme tokens so the handoff CSS has --bg, --accent etc.
   // (The shell does this in AppShell.tsx via THEMES.themeVars on its root.)
   const wrapStyle = THEMES.themeVars(THEMES.mesh, { density: 'regular' });
 
+  // Deep-link state. Invite emails land on /join/:token which redirects to
+  // /onboarding?mode=invite&token=…; bootstrap CLI hints can pre-select
+  // /onboarding?mode=bootstrap. Default to bootstrap (first-time user on
+  // a fresh server is the most common organic landing).
+  const queryMode = searchParams.get('mode') as Mode | null;
+  const queryToken = searchParams.get('token') ?? '';
+  const queryServer = searchParams.get('server') ?? '';
+
   const [stepIdx, setStepIdx] = useState(0);
-  const [mode, setMode] = useState<Mode>('bootstrap');
-  const [server, setServer] = useState('http://localhost:8080');
-  const [token, setToken] = useState('');
+  const [mode, setMode] = useState<Mode>(
+    queryMode && ['bootstrap', 'invite', 'existing'].includes(queryMode) ? queryMode : 'bootstrap',
+  );
+  const [server, setServer] = useState(
+    queryServer || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8080'),
+  );
+  const [token, setToken] = useState(queryToken);
   const [team, setTeam] = useState('');
   const [username, setUsername] = useState('');
   const [keyProtect, setKeyProtect] = useState<Protect>('passphrase');
