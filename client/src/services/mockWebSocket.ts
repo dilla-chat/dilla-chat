@@ -14,6 +14,14 @@ export class MockWebSocketService {
   private readonly handlers: Map<string, Set<EventHandler>> = new Map();
   private timers: ReturnType<typeof setTimeout>[] = [];
   private running = false;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private peerApi: any | null = null;
+
+  /** Link to the mockApi so request() can delegate per-action loads
+   *  (messages:list, dms:list, threads:list, etc.) to the same fixture
+   *  store the api serves over REST. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  setPeerApi(api: any): void { this.peerApi = api; }
 
   connect(teamId: string, _url: string, _token: string): void {
     if (this.running) return;
@@ -55,13 +63,29 @@ export class MockWebSocketService {
   flushPendingMessages(_teamId: string): void { /* noop — mock send is synchronous */ }
 
   /** Mirrors the real ws.request(): useTeamSync calls ws.request('sync:init')
-   *  to fetch the full team snapshot. Returns the same shape the server emits. */
-  async request<T = unknown>(_teamId: string, action: string, _payload: Record<string, unknown> = {}): Promise<T> {
+   *  to fetch the full team snapshot; ChannelView / DMView / ThreadPanel call
+   *  it for per-channel history. Delegates to the linked mockApi so both
+   *  WS-fast-path and REST-fallback paths return the same fixture. */
+  async request<T = unknown>(teamId: string, action: string, payload: Record<string, unknown> = {}): Promise<T> {
     if (action === 'sync:init') {
       return buildSyncInitPayload() as T;
     }
-    // Channel join / leave / mark-read etc. are fire-and-forget in mock mode.
-    return {} as T;
+    const api = this.peerApi;
+    if (!api) return {} as T;
+    switch (action) {
+      case 'messages:list':
+        return api.getMessages(teamId, payload.channel_id as string, payload.limit as number | undefined, payload.before as string | undefined) as T;
+      case 'threads:list':
+        return api.getChannelThreads(teamId, payload.channel_id as string) as T;
+      case 'threads:messages':
+        return api.getThreadMessages(teamId, payload.thread_id as string) as T;
+      case 'dms:list':
+        return { dm_channels: await api.getDMChannels() } as T;
+      case 'dms:messages':
+        return api.getDMMessages(teamId, payload.dm_id as string) as T;
+      default:
+        return {} as T;
+    }
   }
 
   on(eventType: string, handler: EventHandler): () => void {

@@ -3,6 +3,7 @@ import type { Channel } from '../stores/teamStore';
 import type { DMChannel } from '../stores/dmStore';
 import type { Thread } from '../stores/threadStore';
 import type { UserPresence, ReactionGroup, Attachment, VoiceState } from './api';
+import type { ServerMessage } from '../hooks/useMessageDecryption';
 import {
   DEMO_TEAM_ID, DEMO_CURRENT_USER_ID,
   MOCK_TEAM, MOCK_ROLES, MOCK_CHANNELS, MOCK_MEMBERS,
@@ -15,6 +16,26 @@ import {
 let counter = 1000;
 function uid(prefix: string) { return `${prefix}-${++counter}`; }
 function now() { return new Date().toISOString(); }
+
+/** Mock fixtures are stored in client-shape (camelCase) for ergonomics, but
+ *  the real api returns ServerMessage snake-case off the wire. Project the
+ *  fixture shape into ServerMessage when handing data to the load flow so
+ *  serverToMessage / tryDecrypt see exactly what they would in prod. */
+function toServer(msg: Message): ServerMessage {
+  return {
+    id: msg.id,
+    channel_id: msg.channelId,
+    author_id: msg.authorId,
+    username: msg.username,
+    content: msg.content,
+    type: msg.type,
+    thread_id: msg.threadId,
+    edited_at: msg.editedAt,
+    deleted: msg.deleted,
+    created_at: msg.createdAt,
+    reactions: msg.reactions,
+  };
+}
 
 /**
  * Mock API service that stores everything in memory.
@@ -118,8 +139,8 @@ export class MockApiService {
   async deleteRole() { /* noop */ }
 
   // Messages
-  async getMessages(_teamId: string, channelId: string, _limit?: number, _before?: string) {
-    return this.messages.get(channelId) ?? [];
+  async getMessages(_teamId: string, channelId: string, _limit?: number, _before?: string): Promise<ServerMessage[]> {
+    return (this.messages.get(channelId) ?? []).map(toServer);
   }
 
   // Federation
@@ -159,7 +180,9 @@ export class MockApiService {
     this.dmMessages.set(dmId, list);
     return msg;
   }
-  async getDMMessages(_teamId: string, dmId: string) { return this.dmMessages.get(dmId) ?? []; }
+  async getDMMessages(_teamId: string, dmId: string): Promise<ServerMessage[]> {
+    return (this.dmMessages.get(dmId) ?? []).map(toServer);
+  }
   async editDMMessage(_teamId: string, dmId: string, msgId: string, content: string) {
     const list = this.dmMessages.get(dmId) ?? [];
     const msg = list.find(m => m.id === msgId);
@@ -199,8 +222,8 @@ export class MockApiService {
     this.threads = this.threads.filter(t => t.id !== threadId);
     this.threadMessages.delete(threadId);
   }
-  async getThreadMessages(_teamId: string, threadId: string) {
-    return this.threadMessages.get(threadId) ?? [];
+  async getThreadMessages(_teamId: string, threadId: string): Promise<ServerMessage[]> {
+    return (this.threadMessages.get(threadId) ?? []).map(toServer);
   }
   async sendThreadMessage(_teamId: string, threadId: string, content: string) {
     const msg: Message = {
