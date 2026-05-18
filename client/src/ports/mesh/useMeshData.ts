@@ -10,6 +10,7 @@ import { useTeamStore } from '../../stores/teamStore';
 import { useAuthStore } from '../../stores/authStore';
 import { usePresenceStore } from '../../stores/presenceStore';
 import { useMessageStore } from '../../stores/messageStore';
+import { useDMStore } from '../../stores/dmStore';
 import { usernameColor } from '../../utils/colors';
 import { MOCK_DATA } from './data';
 
@@ -80,6 +81,31 @@ function mapMessage(msg, currentUserId) {
   };
 }
 
+// Map a DMChannel to the handoff DMS shape. `with` is the other member's
+// user_id for 1:1s, or an array of user_ids for group DMs.
+function mapDM(dm, myId) {
+  const others = dm.members.filter((m) => m.user_id !== myId);
+  if (dm.is_group) {
+    return {
+      id: dm.id,
+      with: others.map((m) => m.user_id),
+      group: true,
+      name: others.map((m) => m.username).join(', '),
+      preview: dm.last_message?.content ?? '',
+      at: dm.last_message ? new Date(dm.last_message.createdAt) : new Date(dm.created_at),
+      unread: 0,
+    };
+  }
+  const other = others[0];
+  return {
+    id: dm.id,
+    with: other?.user_id ?? '',
+    preview: dm.last_message?.content ?? '',
+    at: dm.last_message ? new Date(dm.last_message.createdAt) : new Date(dm.created_at),
+    unread: 0,
+  };
+}
+
 // Map a teamStore Member (+ presence record) to the handoff MEMBERS shape.
 // The handoff identifies members by short string ids ('ada', 'thim'); we use
 // the userId from our store as that id so message.author refs line up when
@@ -108,6 +134,8 @@ export function useMeshData() {
   const presences = usePresenceStore((s) => s.presences);
   const authTeams = useAuthStore((s) => s.teams);
   const messages = useMessageStore((s) => s.messages);
+  const dmChannels = useDMStore((s) => s.dmChannels);
+  const dmMessages = useDMStore((s) => s.dmMessages);
 
   return useMemo(() => {
     // If no team is active (e.g. /mesh visited cold without /demo seeding the
@@ -143,6 +171,16 @@ export function useMeshData() {
       MESSAGES[ch.id] = list.map((m) => mapMessage(m, myId));
     }
 
+    // DMS + DM_MESSAGES from useDMStore. Empty fallback when nothing is
+    // seeded — the handoff PMs tab will just show an empty list.
+    const dmList = dmChannels[activeTeamId] ?? [];
+    const DMS = dmList.map((dm) => mapDM(dm, myId));
+    const DM_MESSAGES = {};
+    for (const dm of dmList) {
+      const list = dmMessages[dm.id] ?? [];
+      DM_MESSAGES[dm.id] = list.map((m) => mapMessage(m, myId));
+    }
+
     return {
       ...MOCK_DATA,
       SERVERS,
@@ -150,8 +188,10 @@ export function useMeshData() {
       MEMBERS,
       byId,
       MESSAGES,
+      DMS,
+      DM_MESSAGES,
     };
-  }, [teams, channels, members, presences, activeTeamId, authTeams, messages]);
+  }, [teams, channels, members, presences, activeTeamId, authTeams, messages, dmChannels, dmMessages]);
 }
 
 // Re-export for callers that want to hand the produced data directly to
