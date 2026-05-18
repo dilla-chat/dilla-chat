@@ -2281,13 +2281,28 @@ function MemberList({ members, voiceConnection, rich, federated }) {
            onContextMenu={(e) => {
              e.preventDefault();
              window.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
-               { label: 'Send message', icon: <Icon.Chat size={13} />, onClick: () => { window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: 'Berralitos', author: 'system', text: 'Opening DM with ' + m.name + '…', duration: 2200 } })); } },
+               { label: 'Send message', icon: <Icon.Chat size={13} />, onClick: () => {
+                 window.dispatchEvent(new CustomEvent('dilla:open-dm', { detail: m.id }));
+               } },
                { label: 'Mention in current kanal', icon: <span style={{ fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: 13 }}>@</span>, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: 'Berralitos', author: 'system', text: 'Mentioned @' + m.name + '.', duration: 2000 } })) },
                { label: 'View profile', icon: <Icon.People size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-profile', { detail: { memberId: m.id, x: 200, y: 200 } })) },
                { label: 'Verify safety number', icon: <Icon.Shield size={12} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:verify-safety', { detail: m.id })) },
                { sep: true },
                { label: 'Mute', icon: <Icon.Mic size={13} off />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: 'Berralitos', author: 'system', text: m.name + ' muted in voice channels.', duration: 2200 } })) },
-               { label: 'Kick from team', danger: true, icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M10 4V2H3v12h7v-2M6 8h9M12 5l3 3-3 3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: 'Berralitos', author: 'admin', text: 'Are you sure? Kicks propagate across the mesh (requires admin).', duration: 4000 } })) },
+               { label: 'Kick from team', danger: true, icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M10 4V2H3v12h7v-2M6 8h9M12 5l3 3-3 3M9 3v0" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>, onClick: () => {
+                 if (!confirm('Kick ' + m.name + ' from this team? Requires admin role on the server.')) return;
+                 const teamId = useTeamStore.getState().activeTeamId;
+                 if (teamId && !isMockSession()) {
+                   api.kickMember(teamId, m.id).then(() => {
+                     window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: 'Berralitos', author: 'admin', text: 'Kicked ' + m.name + ' from the team.', duration: 3000 } }));
+                   }).catch((err: unknown) => {
+                     console.warn('[ChatApp] kickMember failed', err);
+                     window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: 'Berralitos', author: 'admin', text: 'Kick failed — admin role required.', duration: 3500 } }));
+                   });
+                 } else {
+                   window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: 'Berralitos', author: 'admin', text: 'Demo only — kick would propagate across the mesh on a live server.', duration: 3000 } }));
+                 }
+               } },
              ] } }));
            }}>
         <Avatar member={m} />
@@ -2420,6 +2435,31 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     function onProfile(e) { setProfilePop(e.detail); }
     function onThread(e)  { setActiveThread(e.detail); }
     function onDrawer()   { setDrawerOpen(o => !o); }
+    async function onOpenDm(e) {
+      // Member context menu / "send message" handler. Mirrors NewDmModal
+      // onPick but with the member id passed in via custom event detail so
+      // any rendered MemberList row can trigger it.
+      const memberId = e.detail;
+      if (!memberId) return;
+      const optimisticId = 'dm-' + memberId;
+      if (!data.DMS.find(d => d.id === optimisticId)) {
+        data.DMS.push({ id: optimisticId, with: memberId, preview: '', at: new Date(), unread: 0 });
+      }
+      setActiveDM(optimisticId);
+      setActiveView({ kind: 'dm', id: optimisticId });
+      setTab('pms');
+      if (activeTeamId && !isMockSession()) {
+        try {
+          const real = (await api.createDM(activeTeamId, [memberId])) as { id: string };
+          if (real?.id && real.id !== optimisticId) {
+            setActiveDM(real.id);
+            setActiveView({ kind: 'dm', id: real.id });
+          }
+        } catch (err) {
+          console.warn('[ChatApp] open-dm createDM failed', err);
+        }
+      }
+    }
     function onPickChannel(e) {
       const id = e.detail;
       if (data.CHANNELS.find(c => c.id === id)) {
@@ -2434,6 +2474,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     window.addEventListener('dilla:open-add-server', onAddSrv);
     window.addEventListener('dilla:open-new-channel', onAddCh);
     window.addEventListener('dilla:open-menu', onMenu);
+    window.addEventListener('dilla:open-dm', onOpenDm);
     function onKey(e) {
       const inField = e.target.matches && e.target.matches('input, textarea, [contenteditable="true"]');
       if (inField) return;
@@ -2455,6 +2496,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
       window.removeEventListener('dilla:pickchannel', onPickChannel);
       window.removeEventListener('dilla:open-add-server', onAddSrv);
       window.removeEventListener('dilla:open-new-channel', onAddCh);
+      window.removeEventListener('dilla:open-dm', onOpenDm);
       window.removeEventListener('dilla:open-menu', onMenu);
       window.removeEventListener('keydown', onKey);
     };
