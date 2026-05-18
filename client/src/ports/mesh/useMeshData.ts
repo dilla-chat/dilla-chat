@@ -55,15 +55,17 @@ function mapChannel(ch, occupants) {
 }
 
 // Map a teamStore Team to the handoff SERVERS shape. `short` is the 1-char
-// rail tile letter. `node` should come from authStore.baseUrl host eventually.
-function mapServer(team: { id: string; name: string }, federated = true) {
+// rail tile letter. `node` is the host portion of authStore.baseUrl when
+// available, else 'local'. `federated` should reflect actual peer status —
+// until we wire real peer info, callers pass it in.
+function mapServer(team, federated, node) {
   const short = (team.name?.[0] ?? '?').toUpperCase();
   return {
     id: team.id,
     name: team.name,
     short,
-    node: 'local',
-    federated,
+    node: node || 'local',
+    federated: !!federated,
     members: 0,
   };
 }
@@ -162,7 +164,17 @@ export function useMeshData() {
       return MOCK_DATA;
     }
 
-    const SERVERS = [...teams.values()].map((t) => mapServer(t));
+    // Per-team federation + node info from authStore.baseUrl. We don't track
+    // federated state in our team store yet — leave it false until a real
+    // peer-status feed exists. Once present, this will reflect real peers.
+    const SERVERS = [...teams.values()].map((t) => {
+      const base = (authTeams.get(t.id) as { baseUrl?: string } | undefined)?.baseUrl ?? '';
+      let node = 'local';
+      try {
+        if (base) node = new URL(base).host.split('.')[0] || 'local';
+      } catch { /* ignore */ }
+      return mapServer(t, false, node);
+    });
     const teamChannels = channels.get(activeTeamId) ?? [];
     const CHANNELS = teamChannels.map((ch) => mapChannel(ch, voiceOccupants[ch.id]));
     const teamMembers = members.get(activeTeamId) ?? [];
@@ -214,6 +226,10 @@ export function useMeshData() {
       }
     }
 
+    // Surface the active channel/team so ChatApp can default to the
+    // user's actual selection (not the first channel in the list).
+    const activeChannelId = useTeamStore.getState().activeChannelId;
+
     return {
       ...MOCK_DATA,
       SERVERS,
@@ -224,6 +240,8 @@ export function useMeshData() {
       DMS,
       DM_MESSAGES,
       THREAD_REPLIES,
+      activeServerId: activeTeamId,
+      activeChannelId,
     };
   }, [teams, channels, members, presences, activeTeamId, authTeams, messages, dmChannels, dmMessages, threads, threadMessages, voiceOccupants]);
 }

@@ -34,7 +34,7 @@ const FINGERPRINTS = {
 };
 
 // ───────── top bar ─────────
-function MeshTopBar({ onCmdK, onSearch, onHelp, federated = true, degraded = false }) {
+function MeshTopBar({ onCmdK, onSearch, onHelp, federated = true, degraded = false, teamName = 'BERRALITOS', nodeName = 'gbg-1' }) {
   const [tick, setTick] = useStateMC(0);
   useEffectMC(() => {
     const id = setInterval(() => setTick((t) => t + 1), 1000);
@@ -48,9 +48,9 @@ function MeshTopBar({ onCmdK, onSearch, onHelp, federated = true, degraded = fal
       <div className="mt-left">
         <span className="mt-brand">DILLA</span>
         <span className="mt-sep">─</span>
-        <span className="mt-dim">team</span> <span>BERRALITOS</span>
+        <span className="mt-dim">team</span> <span>{teamName}</span>
         <span className="mt-sep">─</span>
-        <span className="mt-dim">node</span> <span>gbg-1</span>
+        <span className="mt-dim">node</span> <span>{nodeName}</span>
         <span className="mt-sep">─</span>
         {federated ?
         <span className="mt-ok">● MESH OK</span> :
@@ -71,7 +71,7 @@ function MeshTopBar({ onCmdK, onSearch, onHelp, federated = true, degraded = fal
 }
 
 // ───────── bottom status bar ─────────
-function MeshBottomBar({ voiceConnection, peerStatus, federated = true, degraded = false }) {
+function MeshBottomBar({ voiceConnection, peerStatus, federated = true, degraded = false, nodeHost = 'gbg-1.dilla.local' }) {
   const [lamport, setLamport] = useStateMC(12944);
   const [latency, setLatency] = useStateMC(14);
   useEffectMC(() => {
@@ -87,7 +87,7 @@ function MeshBottomBar({ voiceConnection, peerStatus, federated = true, degraded
       <div className="mb-chunk mb-clickable"
            title="Click for federation settings"
            onClick={() => window.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'team', tab: 'federation' } }))}>
-        <span className="mb-k">node</span> gbg-1.dilla.local
+        <span className="mb-k">node</span> {nodeHost}
       </div>
       {federated ?
       <>

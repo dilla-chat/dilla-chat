@@ -123,12 +123,36 @@ export default function MeshSandbox() {
   const meshData = useMeshData();
   (window as unknown as { MOCK_DATA: typeof meshData }).MOCK_DATA = meshData;
 
+  // Chrome strings derived from our stores instead of the handoff hardcodes
+  // ('BERRALITOS', 'gbg-1', 'gbg-1.dilla.local'). We pull the active team
+  // name and parse the baseUrl host as the node identifier.
+  const activeTeamId = useTeamStore((s) => s.activeTeamId);
+  const activeTeam = useTeamStore((s) => (s.activeTeamId ? s.teams.get(s.activeTeamId) : undefined));
+  const authTeam = useAuthStore((s) => (activeTeamId ? s.teams.get(activeTeamId) : undefined));
+  const nodeHost = (() => {
+    const base = (authTeam as { baseUrl?: string } | undefined)?.baseUrl ?? '';
+    if (!base) return 'local';
+    try {
+      return new URL(base).host || 'local';
+    } catch {
+      return 'local';
+    }
+  })();
+  const nodeShort = nodeHost.split('.')[0] || 'local';
+  const teamNameUpper = (activeTeam?.name ?? 'DILLA').toUpperCase();
+
+  // For now the demo runs as a single, non-federated node. The handoff
+  // chrome (top bar 'MESH OK', bottom peer chunks, member panel 2-nodes
+  // header) all key off `federated`. Flip it true once we wire a real
+  // peer status feed from the server.
+  const federated = false;
+
   const theme = THEMES.mesh;
   const opts = {
     density: 'regular',
     sidebar: 240,
     members: 232,
-    federated: true,
+    federated,
     onSidebarChange: () => {},
     onMembersChange: () => {},
   };
@@ -140,11 +164,13 @@ export default function MeshSandbox() {
         onCmdK={() => setCmdOpen(true)}
         onSearch={() => setSrchOpen(true)}
         onHelp={() => {}}
-        federated
+        federated={federated}
         degraded={false}
+        teamName={teamNameUpper}
+        nodeName={nodeShort}
       />
       <ChatApp theme={theme} opts={opts} rich controller={controllerRef.current} />
-      <MeshBottomBar voiceConnection={null} federated degraded={false} />
+      <MeshBottomBar voiceConnection={null} federated={federated} degraded={false} nodeHost={nodeHost} />
       <CommandPalette
         open={cmdOpen}
         onClose={() => setCmdOpen(false)}

@@ -749,7 +749,7 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
       <div className="side-head">
         <div style={{ minWidth: 0, flex: 1 }}>
           <div className="team-name">{team.name}{team.federated && <Icon.Lightning size={11} />}</div>
-          <div className="team-node">{team.node} · mesh ok</div>
+          <div className="team-node">{team.node} · {team.federated ? 'mesh ok' : 'ready'}</div>
         </div>
         <button className="icon-btn" title="Team settings" onClick={() => window.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: 'team' }))}>
           <Icon.Cog size={14} />
@@ -2274,10 +2274,13 @@ function MemberList({ members, voiceConnection, rich, federated }) {
 function ChatApp({ theme, opts = {}, rich = false, controller }) {
   const data = window.MOCK_DATA;
   // Pick sensible defaults from the bridged data instead of hardcoded
-  // handoff ids ('berralitos' / 'design'). Falls back to the handoff
-  // values when nothing's wired so the standalone preview still works.
-  const initialServer = data.SERVERS?.[0]?.id || 'berralitos';
+  // handoff ids ('berralitos' / 'design'). Prefer the active selection
+  // surfaced by useMeshData (data.activeServerId / activeChannelId);
+  // fall back to first server / first text channel; ultimate fallback
+  // is the handoff strings so the standalone preview keeps working.
+  const initialServer = data.activeServerId || data.SERVERS?.[0]?.id || 'berralitos';
   const initialChannel =
+    data.activeChannelId ||
     data.CHANNELS?.find((c) => c.type === 'text')?.id ||
     data.CHANNELS?.[0]?.id ||
     'design';
