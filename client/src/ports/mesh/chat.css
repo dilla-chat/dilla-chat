@@ -142,6 +142,7 @@
 }
 .icon-btn {
   width: 26px; height: 26px;
+  padding: 0;
   border-radius: var(--r-sm);
   display: inline-flex; align-items: center; justify-content: center;
   color: var(--fg-2);
@@ -1570,6 +1571,7 @@
 .msg:hover .msg-tools { opacity: 1; pointer-events: auto; }
 .msg-tools button {
   width: 26px; height: 26px;
+  padding: 0;
   border-radius: var(--r-sm);
   border: none;
   background: transparent;
@@ -1857,9 +1859,13 @@
 }
 .composer-input .comp-btn {
   width: 32px; height: 32px;
+  padding: 0;
   border-radius: var(--r-sm);
   color: var(--fg-2);
   flex: 0 0 auto;
+  background: transparent;
+  border: none;
+  display: inline-flex; align-items: center; justify-content: center;
 }
 .composer-input .comp-btn:hover { color: var(--accent); background: var(--surface-hi); }
 .send-btn {
