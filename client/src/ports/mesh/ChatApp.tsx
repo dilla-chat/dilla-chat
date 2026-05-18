@@ -800,11 +800,12 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
                   <div className="voice-participants">
                     {(c.participants || []).map(pid => {
                       const m = members.byId[pid];
-                      const speaking = pid === 'ada'; // mock speaking
-                      const muted = pid === 'thim' && mute;
-                      const deafened = pid === 'thim' && deaf;
-                      const screenOn = pid === 'ben';
-                      const camOn = pid === 'thim' && cam;
+                      const peer = c.voicePeers && c.voicePeers[pid];
+                      const speaking = peer ? !!peer.speaking : false;
+                      const muted = peer ? !!peer.muted : (pid === 'thim' && mute);
+                      const deafened = peer ? !!peer.deafened : (pid === 'thim' && deaf);
+                      const screenOn = peer ? !!peer.screen_sharing : false;
+                      const camOn = peer ? !!peer.webcam_sharing : (pid === 'thim' && cam);
                       return (
                         <div key={pid} className={'voice-participant' + (speaking ? ' speaking' : '') + (muted ? ' muted' : '')}
                              onContextMenu={(e) => {
@@ -2292,7 +2293,13 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   const [messages, setMessages] = useState(data.MESSAGES);
   const [dmMessages, setDmMessages] = useState(data.DM_MESSAGES);
   const [drafts, setDrafts] = useState({});
-  const [voiceConnection, setVoiceConnection] = useState({ channelId: 'voice', channel: 'voice-lounge' });
+  // Initial voice connection: prefer the first voice channel from the
+  // bridged data instead of the handoff's hardcoded 'voice' id. Null
+  // when nothing exists — the voice dock then stays hidden.
+  const initialVoiceCh = data.CHANNELS?.find((c) => c.type === 'voice');
+  const [voiceConnection, setVoiceConnection] = useState(
+    initialVoiceCh ? { channelId: initialVoiceCh.id, channel: initialVoiceCh.name } : null,
+  );
   const [mute, setMute] = useState(true);
   const [deaf, setDeaf] = useState(false);
   const [cam, setCam] = useState(false);

@@ -45,9 +45,15 @@ function mapChannel(ch, occupants) {
     encrypted: true,
   };
   if (ch.type === 'voice') {
+    const peers = occupants ?? [];
+    // voicePeers: { [user_id]: { muted, deafened, speaking, screen_sharing, webcam_sharing, voiceLevel } }
+    // ChatApp can look this up to render real peer state on voice cards
+    // (was previously hardcoded to pid === 'ada' / 'ben').
+    const voicePeers = Object.fromEntries(peers.map((p) => [p.user_id, p]));
     return {
       ...base,
-      participants: (occupants ?? []).map((p) => p.user_id),
+      participants: peers.map((p) => p.user_id),
+      voicePeers,
       locked: false,
     };
   }
