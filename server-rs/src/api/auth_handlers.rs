@@ -128,7 +128,7 @@ pub async fn register(
     let invite_token = body.invite_token.clone();
     let pk = pk_bytes;
 
-    let (user, team_id) = spawn_db(state.db.clone(), move |conn| {
+    let (user, member, team_id) = spawn_db(state.db.clone(), move |conn| {
         check_username_and_key_available(conn, &username, &pk)?;
         let invite = validate_invite(conn, &invite_token)?;
 
@@ -143,7 +143,7 @@ pub async fn register(
         db::increment_invite_uses(conn, &invite.id)?;
         db::log_invite_use(conn, &invite.id, &user.id)?;
 
-        Ok((user, invite.team_id))
+        Ok((user, member, invite.team_id))
     })
     .await
     .map_err(|e| match e {
@@ -154,6 +154,23 @@ pub async fn register(
 
     let token = state.auth.generate_jwt(&user.id)?;
     let refresh_token = state.auth.generate_refresh_token(&user.id)?;
+
+    // Notify already-connected clients that a new member joined. Existing
+    // sessions don't refetch the member list on their own, so without this
+    // broadcast the joiner only appears in the rail after a reload.
+    let evt = crate::ws::events::Event::new(
+        crate::ws::events::EVENT_MEMBER_JOINED,
+        crate::ws::events::MemberJoinedPayload {
+            team_id: team_id.clone(),
+            user: serde_json::to_value(&user).unwrap_or(json!({})),
+            member: serde_json::to_value(&member).unwrap_or(json!({})),
+        },
+    );
+    if let Ok(evt) = evt {
+        if let Ok(data) = evt.to_bytes() {
+            state.hub.broadcast_to_all(data).await;
+        }
+    }
 
     Ok(Json(json!({
         "token": token,

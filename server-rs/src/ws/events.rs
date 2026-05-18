@@ -206,6 +206,13 @@ pub struct PresenceUpdatePayload {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemberJoinedPayload {
+    pub team_id: String,
+    pub user: serde_json::Value,
+    pub member: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChannelJoinPayload {
     pub channel_id: String,
 }

@@ -338,5 +338,26 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
     return () => { unsub(); };
   }, [activeTeamId]);
 
+  // member:joined — server broadcasts this when a new user registers via
+  // invite. Append to the local member list so existing sessions don't
+  // need a reload to see the joiner.
+  useEffect(() => {
+    if (!activeTeamId) return;
+    const teamId = activeTeamId;
+    const unsub = ws.on(
+      'member:joined',
+      (payload: { team_id?: string; user?: Record<string, unknown>; member?: Record<string, unknown> }) => {
+        if (!payload?.team_id || payload.team_id !== teamId) return;
+        const [normalized] = normalizeMembers([
+          { member: payload.member ?? {}, user: payload.user ?? {} } as Record<string, unknown>,
+        ]);
+        if (normalized?.userId) {
+          useTeamStore.getState().addMember(teamId, normalized);
+        }
+      },
+    );
+    return () => { unsub(); };
+  }, [activeTeamId]);
+
   return { authChecked, dataLoaded };
 }

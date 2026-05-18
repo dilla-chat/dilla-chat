@@ -55,6 +55,7 @@ interface TeamState {
   setTeam: (team: Team) => void;
   setChannels: (teamId: string, channels: Channel[]) => void;
   setMembers: (teamId: string, members: Member[]) => void;
+  addMember: (teamId: string, member: Member) => void;
   setRoles: (teamId: string, roles: Role[]) => void;
   addChannel: (teamId: string, channel: Channel) => void;
   removeChannel: (teamId: string, channelId: string) => void;
@@ -91,6 +92,15 @@ export const useTeamStore = create<TeamState>((set) => ({
     set((state) => {
       const map = new Map(state.members);
       map.set(teamId, members);
+      return { members: map };
+    }),
+
+  addMember: (teamId: string, member: Member) =>
+    set((state) => {
+      const map = new Map(state.members);
+      const existing = map.get(teamId) ?? [];
+      if (existing.some((m) => m.userId === member.userId)) return state;
+      map.set(teamId, [...existing, member]);
       return { members: map };
     }),
 
