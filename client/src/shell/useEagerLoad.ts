@@ -12,11 +12,14 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../services/api';
+import { useAuthStore } from '../stores/authStore';
 import { useTeamStore } from '../stores/teamStore';
 import { useMessageStore } from '../stores/messageStore';
 import { useDMStore, type DMChannel } from '../stores/dmStore';
 import { useThreadStore, type Thread } from '../stores/threadStore';
-import { serverToMessage, type ServerMessage } from '../hooks/useMessageDecryption';
+import { tryDecrypt, serverToMessage, type ServerMessage } from '../hooks/useMessageDecryption';
+import { cryptoService } from '../services/crypto';
+import { getCachedMessage, cacheMessage } from '../services/messageCache';
 
 export function useEagerLoad(activeTeamId: string | null): { ready: boolean } {
   const loaded = useRef<Set<string>>(new Set());
@@ -35,19 +38,53 @@ export function useEagerLoad(activeTeamId: string | null): { ready: boolean } {
       const msgStore = useMessageStore.getState();
       const dmStore = useDMStore.getState();
       const threadStore = useThreadStore.getState();
+      const derivedKey = useAuthStore.getState().derivedKey;
       const textChannels = channels.filter((c) => c.type === 'text');
 
-      // Fetch every text channel's history in parallel.
+      // DM messages use a separate Signal session per-peer, not channel
+      // sender keys — so they need their own decryption path that
+      // mirrors the legacy DMView.tsx flow.
+      const decryptDMContent = async (
+        msg: ServerMessage,
+        dmId: string,
+      ): Promise<string> => {
+        const cached = await getCachedMessage(msg.id);
+        if (cached !== null) return cached;
+        if (!derivedKey) return msg.content;
+        try {
+          const plaintext = await cryptoService.decryptDM(
+            activeTeamId,
+            msg.author_id,
+            msg.content,
+            dmId,
+            derivedKey,
+          );
+          await cacheMessage(msg.id, dmId, plaintext);
+          return plaintext;
+        } catch {
+          return msg.content;
+        }
+      };
+
+      // Fetch every text channel's history in parallel. Decrypt each message
+      // via tryDecrypt before stashing in the store so the UI doesn't render
+      // raw ciphertext after a reload.
       const messageLoads = textChannels.map(async (ch) => {
         try {
           const raw = (await api.getMessages(activeTeamId, ch.id, 50)) as ServerMessage[];
-          const msgs = raw.map((m) => serverToMessage(m, m.content, members));
+          const msgs = await Promise.all(
+            raw.map(async (m) => {
+              const content = await tryDecrypt(m.id, m.content, m.author_id, ch.id, derivedKey);
+              return serverToMessage(m, content, members);
+            }),
+          );
           msgStore.prependMessages(ch.id, msgs);
           msgStore.setHasMore(ch.id, false);
         } catch { /* mock won't reject; ignore */ }
       });
 
-      // DM channels + per-DM message history.
+      // DM channels + per-DM message history (uses decryptDM, not the
+      // channel sender-key path).
       const dmLoad = (async () => {
         try {
           const dms = (await api.getDMChannels(activeTeamId)) as DMChannel[];
@@ -55,14 +92,20 @@ export function useEagerLoad(activeTeamId: string | null): { ready: boolean } {
           await Promise.all(
             dms.map(async (dm) => {
               const raw = (await api.getDMMessages(activeTeamId, dm.id, undefined, 50)) as ServerMessage[];
-              const msgs = raw.map((m) => serverToMessage(m, m.content, members));
+              const msgs = await Promise.all(
+                raw.map(async (m) => {
+                  const content = await decryptDMContent(m, dm.id);
+                  return { ...serverToMessage(m, content, members), channelId: dm.id };
+                }),
+              );
               dmStore.setDMMessages(dm.id, msgs);
             }),
           );
         } catch { /* ignore */ }
       })();
 
-      // Threads + replies per text channel.
+      // Threads + replies per text channel. Thread messages use the same
+      // sender-key path as the parent channel (decrypt with channel id).
       const threadLoads = textChannels.map(async (ch) => {
         try {
           const threads = (await api.getChannelThreads(activeTeamId, ch.id)) as Thread[];
@@ -70,7 +113,12 @@ export function useEagerLoad(activeTeamId: string | null): { ready: boolean } {
           await Promise.all(
             threads.map(async (t) => {
               const raw = (await api.getThreadMessages(activeTeamId, t.id)) as ServerMessage[];
-              const msgs = raw.map((m) => serverToMessage(m, m.content, members));
+              const msgs = await Promise.all(
+                raw.map(async (m) => {
+                  const content = await tryDecrypt(m.id, m.content, m.author_id, ch.id, derivedKey);
+                  return serverToMessage(m, content, members);
+                }),
+              );
               threadStore.setThreadMessages(t.id, msgs);
             }),
           );
