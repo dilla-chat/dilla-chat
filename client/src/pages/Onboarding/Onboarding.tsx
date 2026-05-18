@@ -8,7 +8,9 @@ import {
   hasIdentity,
   signChallenge,
   exportIdentityBlob,
+  unlockWithPassphrase,
 } from '../../services/keyStore';
+import { refreshServerTokens, tryReconnectToCurrentServer } from '../../services/authReconnect';
 import { initCrypto, getIdentityKeys } from '../../services/crypto';
 import { fromBase64 } from '../../services/cryptoCore';
 import {
@@ -108,9 +110,45 @@ export default function Onboarding() {
     setConnectLog((prev) => [...prev, { text: `> contacting ${url}`, level: 'info' }]);
 
     if (connectMode === 'enrolled') {
-      setConnectError(
-        'Already-enrolled mode is not wired into the onboarding flow yet. Use /login for now.',
-      );
+      // Already-enrolled is fundamentally a login flow — no token, no
+      // identity creation, no safety step. Unlock with the entered
+      // passphrase, refresh server tokens against persisted teams, then
+      // jump straight to /app (or /join if no teams survived).
+      if (!passphrase) {
+        setConnectError('Enter your passphrase to unlock your identity.');
+        return;
+      }
+      try {
+        setConnectLog((prev) => [...prev, { text: '> unlocking identity', level: 'info' }]);
+        const identity = await unlockWithPassphrase(passphrase);
+        // Match Login.tsx: passphrase-derived key for session crypto. Hash
+        // is the first 32 bytes of the passphrase, base64-encoded.
+        const passphraseKeyB64 = btoa(
+          String.fromCodePoint(...new TextEncoder().encode(passphrase.slice(0, 32))),
+        );
+        await initCrypto(identity, passphraseKeyB64);
+
+        const pubKeyB64 = btoa(String.fromCodePoint(...identity.publicKeyBytes));
+        setDerivedKey(passphraseKeyB64);
+        setPublicKey(pubKeyB64);
+
+        setConnectLog((prev) => [
+          ...prev,
+          { text: '> ✓ identity unlocked', level: 'ok' },
+          { text: '> refreshing server tokens', level: 'info' },
+        ]);
+        await refreshServerTokens(useAuthStore.getState().teams, pubKeyB64);
+        const hasTeams =
+          useAuthStore.getState().teams.size > 0 ||
+          (await tryReconnectToCurrentServer(pubKeyB64));
+        setConnectLog((prev) => [
+          ...prev,
+          { text: hasTeams ? '> ✓ reconnected' : '> no teams found', level: 'ok' },
+        ]);
+        navigate(hasTeams ? '/app' : '/join');
+      } catch (e) {
+        setConnectError(friendlyError(e, i18n));
+      }
       return;
     }
 
@@ -351,28 +389,42 @@ export default function Onboarding() {
             </div>
 
             <div className="onboarding-form">
-              <label className="onboarding-label">
-                Server URL
-                <input
-                  type="url"
-                  value={serverUrl}
-                  onChange={(e) => setServerUrl(e.target.value)}
-                  placeholder="https://gbg-1.dilla.local"
-                  className="onboarding-input"
-                />
-              </label>
-
-              {connectMode !== 'enrolled' && (
+              {connectMode === 'enrolled' ? (
                 <label className="onboarding-label">
-                  {connectMode === 'invite' ? 'Invite token' : 'Bootstrap token'}
+                  Passphrase
                   <input
-                    type="text"
-                    value={token}
-                    onChange={(e) => setToken(e.target.value)}
-                    placeholder="paste token here"
+                    type="password"
+                    value={passphrase}
+                    onChange={(e) => setPassphrase(e.target.value)}
+                    placeholder="your passphrase"
                     className="onboarding-input"
+                    autoFocus
                   />
                 </label>
+              ) : (
+                <>
+                  <label className="onboarding-label">
+                    Server URL
+                    <input
+                      type="url"
+                      value={serverUrl}
+                      onChange={(e) => setServerUrl(e.target.value)}
+                      placeholder="https://gbg-1.dilla.local"
+                      className="onboarding-input"
+                    />
+                  </label>
+
+                  <label className="onboarding-label">
+                    {connectMode === 'invite' ? 'Invite token' : 'Bootstrap token'}
+                    <input
+                      type="text"
+                      value={token}
+                      onChange={(e) => setToken(e.target.value)}
+                      placeholder="paste token here"
+                      className="onboarding-input"
+                    />
+                  </label>
+                </>
               )}
             </div>
 
@@ -395,9 +447,13 @@ export default function Onboarding() {
                 type="button"
                 className="onboarding-btn primary"
                 onClick={handleConnect}
-                disabled={!serverUrl.trim() || (connectMode !== 'enrolled' && !token.trim())}
+                disabled={
+                  connectMode === 'enrolled'
+                    ? !passphrase
+                    : !serverUrl.trim() || !token.trim()
+                }
               >
-                Continue →
+                {connectMode === 'enrolled' ? 'Unlock →' : 'Continue →'}
               </button>
             </div>
           </section>
