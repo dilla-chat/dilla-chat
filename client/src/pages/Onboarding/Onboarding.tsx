@@ -26,9 +26,11 @@ import {
   signChallenge,
   exportIdentityBlob,
   unlockWithPassphrase,
+  unlockWithPrf,
   generatePrfSalt,
+  getCredentialInfo,
 } from '../../services/keyStore';
-import { registerPasskey, prfOutputToBase64 } from '../../services/webauthn';
+import { registerPasskey, authenticatePasskey, prfOutputToBase64 } from '../../services/webauthn';
 import { refreshServerTokens, tryReconnectToCurrentServer } from '../../services/authReconnect';
 import { initCrypto, getIdentityKeys } from '../../services/crypto';
 import { fromBase64 } from '../../services/cryptoCore';
@@ -148,22 +150,61 @@ export default function Onboarding() {
 
     try {
       if (mode === 'existing') {
-        // Already-enrolled is a short-circuit login. The passphrase is
-        // collected here in the connect step (we don't have a dedicated
-        // unlock step) and used to unlock the keystore.
-        if (!passphrase) {
-          setConnectError('Enter your passphrase to unlock.');
-          setConnecting(false);
-          return;
-        }
+        // Already-enrolled is a short-circuit login. Look up locally
+        // stored credentials: if a PRF-capable passkey is registered, try
+        // it first; otherwise fall back to the passphrase entered in the
+        // connect form.
         setConnectLog((p) => [...p, { line: 'unlocking identity…' }]);
-        const identity = await unlockWithPassphrase(passphrase);
-        const passphraseKeyB64 = btoa(
-          String.fromCodePoint(...new TextEncoder().encode(passphrase.slice(0, 32))),
-        );
-        await initCrypto(identity, passphraseKeyB64);
+        const info = await getCredentialInfo();
+        let identity: Awaited<ReturnType<typeof unlockWithPassphrase>> | null = null;
+        let derivedKeyB64 = '';
+        const hasPasskey = info && info.credentials.length > 0;
+
+        if (hasPasskey) {
+          try {
+            setConnectLog((p) => [...p, { line: 'trying passkey · prompting authenticator' }]);
+            const credentialIds = info!.credentials.map((c) => c.id);
+            const storedServer = info!.keySlots[0]?.server_url || normalizeServerUrl(server);
+            const auth = await authenticatePasskey(credentialIds, info!.prfSalt, storedServer);
+            if (auth.prfOutput) {
+              derivedKeyB64 = prfOutputToBase64(auth.prfOutput);
+              const prfKeyBytes = fromBase64(derivedKeyB64);
+              identity = await unlockWithPrf(prfKeyBytes);
+              setConnectLog((p) => [...p, { line: '  ✓ passkey accepted' }]);
+            } else {
+              setConnectLog((p) => [
+                ...p,
+                { line: '  passkey lacks PRF — trying passphrase next' },
+              ]);
+            }
+          } catch (e) {
+            setConnectLog((p) => [
+              ...p,
+              { line: `  passkey unlock failed: ${(e as Error).message}`, err: true },
+            ]);
+            // Don't fail outright — let passphrase fallback below handle it.
+          }
+        }
+
+        if (!identity) {
+          if (!passphrase) {
+            setConnectError(
+              hasPasskey
+                ? 'Passkey unlock did not yield a derived key — enter your passphrase as fallback.'
+                : 'Enter your passphrase to unlock.',
+            );
+            setConnecting(false);
+            return;
+          }
+          identity = await unlockWithPassphrase(passphrase);
+          derivedKeyB64 = btoa(
+            String.fromCodePoint(...new TextEncoder().encode(passphrase.slice(0, 32))),
+          );
+        }
+
+        await initCrypto(identity, derivedKeyB64);
         const pubKeyB64 = btoa(String.fromCodePoint(...identity.publicKeyBytes));
-        setDerivedKey(passphraseKeyB64);
+        setDerivedKey(derivedKeyB64);
         setPublicKey(pubKeyB64);
         setConnectLog((p) => [...p, { line: 'identity unlocked · refreshing tokens…' }]);
         await refreshServerTokens(useAuthStore.getState().teams, pubKeyB64);
@@ -582,16 +623,20 @@ function ConnectStep({
 
       {mode === 'existing' && (
         <div className="onb-field">
-          <label>Passphrase</label>
+          <label>
+            Passphrase <span style={{ opacity: 0.6, fontWeight: 400 }}>(optional)</span>
+          </label>
           <input
             type="password"
             value={passphrase}
             onChange={(e) => setPassphrase(e.target.value)}
-            placeholder="your passphrase"
+            placeholder="leave blank to use passkey"
             autoFocus
           />
           <div className="onb-hint">
-            Unlocks your identity from the local keystore and refreshes server tokens.
+            If a passkey is registered on this device, we'll prompt the authenticator
+            first. Passphrase is used as a fallback (or for accounts enrolled with
+            passphrase-only).
           </div>
         </div>
       )}
@@ -633,7 +678,7 @@ function ConnectStep({
           disabled={
             connecting ||
             (mode === 'existing'
-              ? !passphrase
+              ? false /* passphrase optional — passkey unlock is attempted first */
               : !server || ((mode === 'bootstrap' || mode === 'invite') && !token))
           }
           onClick={onConnect}
