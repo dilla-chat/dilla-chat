@@ -392,7 +392,7 @@ function TeamInvites() {
   // Start with no invites — real invites would flow through services/api.
   const me = (window as any).MOCK_DATA?.byId?.thim;
   const myLabel = me ? `${me.name} · ${me.role || 'admin'}` : 'admin';
-  const [rows, setRows] = useO([]);
+  const [rows, setRows] = useStateS([]);
   function revoke(code) {
     if (!confirm('Revoke invite ' + code + '? People who already have it can no longer use it.')) return;
     setRows(prev => prev.filter(r => r.code !== code));
