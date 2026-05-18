@@ -2120,7 +2120,7 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
         </div>
       )}
       {deleteTarget && (
-        <div className="confirm-overlay" onClick={() => setDeleteConfirm(null)}>
+        <div className="modal-overlay modal-overlay--soft" onClick={() => setDeleteConfirm(null)}>
           <div className="confirm-dialog" onClick={e => e.stopPropagation()}>
             <div className="cd-head">
               <div className="cd-icon">

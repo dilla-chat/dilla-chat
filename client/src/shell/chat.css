@@ -507,14 +507,39 @@
 .sp-clear:hover { color: var(--accent); }
 
 /* Generic modal (new channel / new server) */
+/* ────────────────────────────────────────────────────────────────────────
+ * Modal overlay — the canonical scrim used by every modal in the shell.
+ * Inner dialogs add their own size/border/animation via classes like
+ * .modal-card, .sc-dialog, .apw, .settings-card. Modifiers below tweak
+ * the scrim itself for specific contexts (top-aligned palettes,
+ * stronger blur on incoming-call ring, softer dim on confirmations).
+ * ──────────────────────────────────────────────────────────────────────── */
 .modal-overlay {
-  position: absolute; inset: 0;
+  position: fixed; inset: 0;
   background: color-mix(in oklab, var(--bg) 65%, transparent);
   -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
-  z-index: 300;
+  z-index: 420;
   display: flex; align-items: center; justify-content: center;
   padding: 24px;
   animation: dilla-feed-in 0.15s ease-out both;
+}
+/* Top-aligned variant for the command + search palettes — content sits
+   80px from the top instead of vertically centered. */
+.modal-overlay--top {
+  align-items: flex-start;
+  padding-top: 80px;
+}
+/* Incoming voice call wants a stronger backdrop blur + sits above
+   regular modals so e.g. an open settings pane doesn't compete with it. */
+.modal-overlay--strong-blur {
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  z-index: 460;
+}
+/* Confirmation dialogs (delete message etc.) use a lighter scrim so the
+   chat behind them stays readable. */
+.modal-overlay--soft {
+  background: color-mix(in oklab, var(--bg) 60%, transparent);
+  -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
 }
 .modal-card {
   background: var(--surface);
@@ -976,16 +1001,8 @@
   letter-spacing: 0.02em;
 }
 
-/* Confirm dialog (delete) */
-.confirm-overlay {
-  position: absolute; inset: 0;
-  background: color-mix(in oklab, var(--bg) 60%, transparent);
-  -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
-  z-index: 200;
-  display: flex; align-items: center; justify-content: center;
-  padding: 24px;
-  animation: dilla-feed-in 0.15s ease-out both;
-}
+/* Confirm dialog (delete) — scrim is .modal-overlay.modal-overlay--soft;
+   this rule only sizes the inner dialog. */
 .confirm-dialog {
   background: var(--surface);
   border: 1px solid var(--danger);

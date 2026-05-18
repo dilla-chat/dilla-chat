@@ -112,15 +112,8 @@
 }
 
 /* ───── Command palette ───── */
-.cmdk-overlay {
-  position: absolute;
-  inset: 0;
-  background: color-mix(in oklab, var(--bg) 70%, transparent);
-  z-index: 50;
-  display: flex; align-items: flex-start; justify-content: center;
-  padding-top: 80px;
-  -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
-}
+/* Scrim is .modal-overlay.modal-overlay--top; only the inner .cmdk dialog
+   is styled here. */
 .cmdk {
   width: min(560px, 90%);
   background: var(--surface);

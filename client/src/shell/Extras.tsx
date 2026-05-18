@@ -146,7 +146,7 @@ function IncomingCall({ call, onAccept, onDecline }) {
   const m = window.MOCK_DATA.byId[call.from];
   if (!m) return null;
   return (
-    <div className="ring-overlay">
+    <div className="modal-overlay modal-overlay--strong-blur">
       <div className="ring-card">
         <div className="ring-eyebrow">
           <span className="ring-dot" /> incoming · voice
@@ -200,7 +200,7 @@ function SafetyCompare({ contactId, onClose }) {
   const tp = theirs.split(/\s+/).filter(Boolean);
   while (tp.length < yp.length) tp.push('····');
   return (
-    <div className="sc-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={onClose}>
       <div className="sc-dialog" onClick={e => e.stopPropagation()}>
         <header className="sc-head">
           <h2>Verify safety number</h2>
@@ -288,7 +288,7 @@ function AddPeerWizard({ open, onClose }) {
   }, [step]);
   if (!open) return null;
   return (
-    <div className="apw-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={onClose}>
       <div className="apw" onClick={e => e.stopPropagation()}>
         <header className="apw-head">
           <h2>Add a peer node</h2>

@@ -1,14 +1,5 @@
-/* Settings modal — opens centered over the chat. Themes via the chat's CSS vars. */
-
-.settings-overlay {
-  position: absolute;
-  inset: 0;
-  background: color-mix(in oklab, var(--bg) 70%, transparent);
-  -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
-  z-index: 100;
-  display: flex; align-items: center; justify-content: center;
-  padding: 24px;
-}
+/* Settings modal — opens centered over the chat. Themes via the chat's CSS vars.
+   Scrim is .modal-overlay (defined in chat.css). Only .settings sizes the inner pane. */
 
 .settings {
   display: grid;

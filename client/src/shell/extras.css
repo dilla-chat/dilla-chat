@@ -186,14 +186,7 @@
 .splash-prompt { color: var(--accent); margin-right: 6px; display: inline-block; min-width: 14px; }
 
 /* ───── Incoming call ───── */
-.ring-overlay {
-  position: fixed; inset: 0;
-  background: color-mix(in oklab, var(--bg) 65%, transparent);
-  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
-  z-index: 450;
-  display: flex; align-items: center; justify-content: center;
-  animation: dilla-feed-in 0.2s ease-out both;
-}
+/* Scrim is .modal-overlay.modal-overlay--strong-blur (defined in chat.css). */
 .ring-card {
   background: var(--surface);
   border: 1px solid var(--accent);
@@ -292,14 +285,7 @@
 }
 
 /* ───── Safety compare ───── */
-.sc-overlay {
-  position: fixed; inset: 0;
-  background: color-mix(in oklab, var(--bg) 65%, transparent);
-  -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
-  z-index: 420;
-  display: flex; align-items: center; justify-content: center;
-  padding: 24px;
-}
+/* Scrim is .modal-overlay (defined in chat.css). */
 .sc-dialog {
   background: var(--surface);
   border: 1px solid var(--accent);
@@ -420,14 +406,7 @@
 }
 
 /* ───── Add peer wizard ───── */
-.apw-overlay {
-  position: fixed; inset: 0;
-  background: color-mix(in oklab, var(--bg) 65%, transparent);
-  -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
-  z-index: 410;
-  display: flex; align-items: center; justify-content: center;
-  padding: 24px;
-}
+/* Scrim is .modal-overlay (defined in chat.css). */
 .apw {
   background: var(--surface);
   border: 1px solid var(--accent);

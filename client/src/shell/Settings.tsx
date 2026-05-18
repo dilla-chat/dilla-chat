@@ -74,7 +74,7 @@ function Settings({ open, mode, defaultTab, onClose }) {
     : (me?.name || 'thim');
 
   return (
-    <div className="settings-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={onClose}>
       <div className="settings" onClick={e => e.stopPropagation()}>
         <aside className="set-nav">
           <div className="set-nav-head">
