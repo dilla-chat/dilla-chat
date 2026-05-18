@@ -1260,6 +1260,14 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
   const [forwardId, setForwardId] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const [uploads, setUploads] = useState([]);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  // Close lightbox on Escape.
+  useEffect(() => {
+    if (!lightboxSrc) return;
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setLightboxSrc(null); }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [lightboxSrc]);
   const [unreadAt, setUnreadAt] = useState(null);
   const [mention, setMention] = useState(null); // { query }
   const [mentionIdx, setMentionIdx] = useState(0);
@@ -1703,7 +1711,8 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                                     className="attach-img"
                                     src={m.attachment.src}
                                     alt={m.attachment.label || ''}
-                                    style={{ display: 'block', maxWidth: 360, maxHeight: 280, objectFit: 'cover', borderRadius: 4 }}
+                                    onClick={() => setLightboxSrc(m.attachment.src)}
+                                    style={{ display: 'block', maxWidth: 360, maxHeight: 280, objectFit: 'cover', borderRadius: 4, cursor: 'zoom-in' }}
                                   />
                                 ) : (
                                   <div className="attach-img" style={{ background: m.attachment?.tint }}></div>
@@ -2134,6 +2143,25 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                       }}>Delete · ↵</button>
             </div>
           </div>
+        </div>
+      )}
+      {lightboxSrc && (
+        <div
+          onClick={() => setLightboxSrc(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 500,
+            background: 'rgba(0,0,0,0.85)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 32, cursor: 'zoom-out',
+            backdropFilter: 'blur(2px)',
+          }}
+        >
+          <img
+            src={lightboxSrc}
+            alt=""
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '95vw', maxHeight: '95vh', objectFit: 'contain', borderRadius: 4 }}
+          />
         </div>
       )}
     </div>
