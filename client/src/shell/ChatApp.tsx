@@ -1698,8 +1698,29 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                             {m.kind === 'image' && m.text && <div style={{ marginBottom: 4 }}>{renderText(m.text, members)}</div>}
                             {m.kind === 'image' && (
                               <div className="attach">
-                                <div className="attach-img" style={{ background: m.attachment?.tint }}></div>
-                                <div className="attach-name">{m.attachment?.label} · 240 KB</div>
+                                {m.attachment?.src ? (
+                                  <img
+                                    className="attach-img"
+                                    src={m.attachment.src}
+                                    alt={m.attachment.label || ''}
+                                    style={{ display: 'block', maxWidth: 360, maxHeight: 280, objectFit: 'cover', borderRadius: 4 }}
+                                  />
+                                ) : (
+                                  <div className="attach-img" style={{ background: m.attachment?.tint }}></div>
+                                )}
+                                <div className="attach-name">
+                                  {m.attachment?.label}
+                                  {m.attachment?.size != null && ` · ${Math.max(1, Math.round(m.attachment.size / 1024))} KB`}
+                                </div>
+                              </div>
+                            )}
+                            {m.kind === 'file' && (
+                              <div className="attach">
+                                <div className="attach-img" style={{ background: 'var(--surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'var(--fg-3)' }}>FILE</div>
+                                <div className="attach-name">
+                                  {m.attachment?.label}
+                                  {m.attachment?.size != null && ` · ${Math.max(1, Math.round(m.attachment.size / 1024))} KB`}
+                                </div>
                               </div>
                             )}
                             {m.kind === 'text' && renderText(m.text, members)}
@@ -3052,15 +3073,26 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
           onDelete={(msgId) => deleteMessage(channel.id, msgId)}
           onAttach={async (file) => {
             // Optimistic local stub so the message appears immediately.
+            // For images, a blob: URL gives the user an instant preview
+            // before the server upload completes.
             const localId = 'att-' + Date.now();
             const isImage = file.type?.startsWith('image/');
+            const previewUrl = isImage ? URL.createObjectURL(file) : '';
             const m = {
               id: localId,
               author: window.MOCK_DATA?.currentUserId || 'thim',
               at: new Date(),
               kind: isImage ? 'image' : 'file',
               text: '',
-              attachment: { kind: isImage ? 'image' : 'file', label: file.name, w: 320, h: 200, tint: 'var(--accent)' },
+              attachment: {
+                kind: isImage ? 'image' : 'file',
+                label: file.name,
+                size: file.size,
+                src: previewUrl,
+                w: 320,
+                h: 200,
+                tint: 'var(--accent)',
+              },
             };
             const isDM = channel.type === 'dm';
             const setter = isDM ? setDmMessages : setMessages;
