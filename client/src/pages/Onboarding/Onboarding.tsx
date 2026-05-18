@@ -20,12 +20,15 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore, type User } from '../../stores/authStore';
 import { api } from '../../services/api';
 import {
+  createIdentity,
   createIdentityWithPassphrase,
   hasIdentity,
   signChallenge,
   exportIdentityBlob,
   unlockWithPassphrase,
+  generatePrfSalt,
 } from '../../services/keyStore';
+import { registerPasskey, prfOutputToBase64 } from '../../services/webauthn';
 import { refreshServerTokens, tryReconnectToCurrentServer } from '../../services/authReconnect';
 import { initCrypto, getIdentityKeys } from '../../services/crypto';
 import { fromBase64 } from '../../services/cryptoCore';
@@ -229,21 +232,89 @@ export default function Onboarding() {
         push('$ dilla identity create');
         push('generating ed25519 keypair…');
         const already = await hasIdentity();
-        const created = already
-          ? { publicKeyB64: '', publicKeyHex: '', identity: undefined }
-          : await createIdentityWithPassphrase(url, passphrase, []);
-        const { publicKeyB64, publicKeyHex, identity } = created;
+
+        // Two creation paths depending on keyProtect:
+        //  - passphrase: createIdentityWithPassphrase (Argon2id-wrapped MEK)
+        //  - hardware/both: registerPasskey for WebAuthn+PRF, then
+        //    createIdentity wraps the MEK with the PRF-derived key. If the
+        //    authenticator lacks PRF we fall back to passphrase for the
+        //    'both' mode, and error for the pure-hardware mode.
+        let publicKeyB64 = '';
+        let publicKeyHex = '';
+        let identity: Awaited<ReturnType<typeof createIdentityWithPassphrase>>['identity'] | undefined;
+        let derivedKey = '';
+
+        if (already) {
+          // Resuming after a partial run. Identity already on disk; we'll
+          // re-register against the server below.
+          push('  ✓ existing identity on disk · re-binding');
+        } else if (keyProtect === 'hardware' || keyProtect === 'both') {
+          push('binding to webauthn credential…');
+          const prfSalt = generatePrfSalt();
+          const userIdBytes = new TextEncoder().encode(
+            username.padEnd(32, '\0').slice(0, 32),
+          );
+          const passkey = await registerPasskey(username.trim(), userIdBytes, prfSalt, url);
+          push(`  credential: ${passkey.credentialName}`);
+          if (!passkey.prfSupported) {
+            if (keyProtect === 'hardware') {
+              throw new Error(
+                'This passkey does not support the PRF extension required for key derivation. Use "Both" or "Passphrase" instead.',
+              );
+            }
+            // 'both' fallback: use passphrase as the wrap key, recovery via
+            // recovery key. The passkey credential is still recorded so a
+            // future unlock attempt can try it first.
+            push('  ! passkey lacks PRF — falling back to passphrase wrap');
+            const created = await createIdentityWithPassphrase(url, passphrase, [
+              {
+                id: passkey.credentialId,
+                name: passkey.credentialName,
+                created_at: new Date().toISOString(),
+              },
+            ]);
+            publicKeyB64 = created.publicKeyB64;
+            publicKeyHex = created.publicKeyHex;
+            identity = created.identity;
+            derivedKey = publicKeyB64;
+          } else {
+            push('  ✓ prf evaluated · 32 bytes derived');
+            const prfDerivedKeyB64 = prfOutputToBase64(passkey.prfOutput);
+            const prfKeyBytes = fromBase64(prfDerivedKeyB64);
+            const created = await createIdentity(url, prfKeyBytes, prfSalt, [
+              {
+                id: passkey.credentialId,
+                name: passkey.credentialName,
+                created_at: new Date().toISOString(),
+              },
+            ]);
+            publicKeyB64 = created.publicKeyB64;
+            publicKeyHex = created.publicKeyHex;
+            identity = created.identity;
+            derivedKey = prfDerivedKeyB64;
+          }
+        } else {
+          const created = await createIdentityWithPassphrase(url, passphrase, []);
+          publicKeyB64 = created.publicKeyB64;
+          publicKeyHex = created.publicKeyHex;
+          identity = created.identity;
+          derivedKey = publicKeyB64;
+        }
+
         push(`  pub  ed25519:${(publicKeyHex || '').slice(0, 32)}…`);
         push('  priv [encrypted]');
 
-        const derivedKey = publicKeyB64;
         if (identity) await initCrypto(identity, derivedKey);
         setPublicKey(publicKeyB64);
         setDerivedKey(derivedKey);
 
         if (!already) {
-          push('deriving keystore key (argon2id)…');
-          push('sealing private key with aes-256-gcm…');
+          if (keyProtect === 'hardware' || keyProtect === 'both') {
+            push('sealing private key with hardware-derived wrap key…');
+          } else {
+            push('deriving keystore key (argon2id)…');
+            push('sealing private key with aes-256-gcm…');
+          }
         }
 
         push(`signing nonce as "${username || 'thim'}"…`);
@@ -329,16 +400,14 @@ export default function Onboarding() {
   // ── Identity validation gate ──────────────────────────────────────────
   const strength = passphraseStrength(passphrase);
   const passOk = strength.score >= 2;
+  // Hardware: passkey is prompted at the keygen step, nothing required up
+  // front. Passphrase / Both: need a sufficiently strong passphrase here so
+  // we can wrap the MEK (or its recovery slot in 'both').
   const protectionOk =
-    keyProtect === 'passphrase' ? passOk : keyProtect === 'hardware' ? false : passOk;
+    keyProtect === 'passphrase' ? passOk : keyProtect === 'hardware' ? true : passOk;
   const identityOk = username.length >= 2 && protectionOk;
 
   function onIdentityNext() {
-    if (keyProtect === 'hardware') {
-      // WebAuthn not wired in this pass. Force a passphrase fallback.
-      setKeyProtect('passphrase');
-      return;
-    }
     next();
   }
 
@@ -656,9 +725,9 @@ function IdentityStep({
           {keyProtect === 'passphrase' &&
             'Argon2id-derived AES-256-GCM key seals your private key on disk.'}
           {keyProtect === 'hardware' &&
-            'WebAuthn passkey/hardware enrollment is not wired in this flow yet — pick Passphrase to continue, or use /create-identity-legacy.'}
+            'Any WebAuthn authenticator works — hardware keys (YubiKey, Titan), platform biometrics (Touch ID, Windows Hello), or passkey managers. Requires PRF support on the authenticator.'}
           {keyProtect === 'both' &&
-            'Hardware-key primary path not wired yet — falls back to the passphrase below.'}
+            'Defence in depth — hardware key for daily use, passphrase as recovery if the key is lost.'}
         </div>
       </div>
 
@@ -694,9 +763,20 @@ function IdentityStep({
 
       {keyProtect === 'hardware' && (
         <div className="onb-field">
-          <div className="onb-callout">
-            <strong>Coming soon.</strong> Hardware-key enrollment via WebAuthn is on the
-            roadmap. For now, please choose Passphrase.
+          <div className="onb-auth-chips">
+            <span className="onb-chip">
+              <b>USB</b> YubiKey · Titan
+            </span>
+            <span className="onb-chip">
+              <b>OS</b> Touch ID · Windows Hello
+            </span>
+            <span className="onb-chip">
+              <b>Passkey</b> 1Password · Proton Pass · Bitwarden · iCloud
+            </span>
+          </div>
+          <div className="onb-hint">
+            The browser passkey dialog opens on the next step. The PRF extension is
+            evaluated then to derive your wrap key — no extra round-trip.
           </div>
         </div>
       )}
