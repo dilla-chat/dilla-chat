@@ -90,6 +90,10 @@ export default function MeshSandbox() {
   const [cmdOpen, setCmdOpen] = useState(false);
   const [srchOpen, setSrchOpen] = useState(false);
   const [srchScope, setSrchScope] = useState<string | null>(null);
+  // Column widths are tracked here so the ResizeHandle in ChatApp can drive
+  // re-renders when the user drags the sidebar or members rail divider.
+  const [sidebarW, setSidebarW] = useState(240);
+  const [membersW, setMembersW] = useState(232);
   const controllerRef = useRef<{ pickChannel?: (id: string) => void; getVoiceConn?: () => unknown }>({});
 
   useEffect(() => {
@@ -175,11 +179,11 @@ export default function MeshSandbox() {
   const theme = THEMES.mesh;
   const opts = {
     density: 'regular',
-    sidebar: 240,
-    members: 232,
+    sidebar: sidebarW,
+    members: membersW,
     federated,
-    onSidebarChange: () => {},
-    onMembersChange: () => {},
+    onSidebarChange: setSidebarW,
+    onMembersChange: setMembersW,
   };
   const wrapStyle = THEMES.themeVars(theme, opts);
 
