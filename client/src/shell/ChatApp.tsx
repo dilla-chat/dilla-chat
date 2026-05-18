@@ -2887,18 +2887,40 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
           onVote={(msgId, optIdx) => voteOnPoll(channel.id, msgId, optIdx)}
           onEdit={(msgId, text) => editMessage(channel.id, msgId, text)}
           onDelete={(msgId) => deleteMessage(channel.id, msgId)}
-          onAttach={(file) => {
+          onAttach={async (file) => {
+            // Optimistic local stub so the message appears immediately.
+            const localId = 'att-' + Date.now();
+            const isImage = file.type?.startsWith('image/');
             const m = {
-              id: 'att-' + Date.now(),
+              id: localId,
               author: window.MOCK_DATA?.currentUserId || 'thim',
               at: new Date(),
-              kind: 'image',
+              kind: isImage ? 'image' : 'file',
               text: '',
-              attachment: { kind: 'image', label: file.name, w: 320, h: 200, tint: 'var(--accent)' },
+              attachment: { kind: isImage ? 'image' : 'file', label: file.name, w: 320, h: 200, tint: 'var(--accent)' },
             };
             const isDM = channel.type === 'dm';
             const setter = isDM ? setDmMessages : setMessages;
             setter(prev => ({ ...prev, [channel.id]: [...(prev[channel.id] || []), m] }));
+            if (!activeTeamId || isMockSession()) return;
+            // Real flow: upload file → api.uploadFile returns Attachment.id.
+            // Channel attachments ride on ws.sendMessage as a separate
+            // attachment_ids array (content stays empty for image-only
+            // messages); DMs use api.sendDMMessage with the attachment id
+            // appended to the text body since the DM endpoint doesn't take
+            // attachment ids directly.
+            try {
+              const att = await api.uploadFile(activeTeamId, file);
+              if (isDM) {
+                await api.sendDMMessage(activeTeamId, channel.id, `[file:${att.id}] ${file.name}`);
+              } else {
+                const encrypted = await tryEncrypt(' ', channel.id, derivedKey);
+                ws.sendMessage(activeTeamId, channel.id, encrypted, 'text', undefined, [att.id]);
+              }
+            } catch (err) {
+              console.warn('[ChatApp] attachment upload failed', err);
+              window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: channel.name, author: 'system', text: 'Upload failed — ' + (err as Error).message, duration: 4000 } }));
+            }
           }}
           typing={channel.type === 'dm' ? (dmTyping[channel.id] || []) : typing}
           membersOpen={membersOpen}
