@@ -429,3 +429,38 @@
   border-color: var(--accent, var(--brand-500));
   color: var(--accent, var(--brand-500));
 }
+
+/* ====================================================================
+   Mesh design — relocated from mesh-overrides.css. Single source of
+   truth; theming via tokens.
+   ==================================================================== */
+
+.onboarding {
+  background: var(--bg);
+  font-family: var(--font-ui);
+  color: var(--fg);
+}
+
+.onboarding-step-title,
+.onboarding-title {
+  font-family: var(--font-display);
+  font-weight: var(--fw-display, 700);
+}
+
+.onboarding-step-label,
+.onboarding-progress {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.onboarding-terminal,
+.onboarding-log {
+  background: var(--bg);
+  border: 0.0625rem solid var(--hairline);
+  border-radius: var(--r-md);
+  font-family: var(--font-mono);
+  color: var(--accent);
+}

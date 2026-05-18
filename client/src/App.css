@@ -250,3 +250,27 @@
 .btn-danger:hover {
   filter: brightness(1.1);
 }
+
+/* ====================================================================
+   Mesh design — relocated from mesh-overrides.css. Single source of
+   truth; theming via tokens.
+   ==================================================================== */
+
+.page {
+  background: var(--bg);
+  font-family: var(--font-ui);
+}
+
+.page h1,
+.page h2 {
+  font-family: var(--font-display);
+  font-weight: var(--fw-display, 700);
+}
+
+.form label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
