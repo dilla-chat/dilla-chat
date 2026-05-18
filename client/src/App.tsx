@@ -111,7 +111,11 @@ function App() {
         <Route path="/login-legacy" element={<Login />} />
         <Route path="/join/:token?" element={<InviteRedirect />} />
         <Route path="/join-legacy/:token?" element={<JoinTeam />} />
-        <Route path="/recover" element={<RecoverFromServer />} />
+        <Route
+          path="/recover"
+          element={<Navigate to="/onboarding?mode=existing&recover=1" replace />}
+        />
+        <Route path="/recover-legacy" element={<RecoverFromServer />} />
         <Route path="/setup" element={<Navigate to="/onboarding?mode=bootstrap" replace />} />
         <Route path="/setup-legacy" element={<SetupAdmin />} />
         <Route path="/onboarding" element={<Onboarding />} />
