@@ -827,7 +827,27 @@ function ServerRail({ servers, activeServer, onPick }) {
                    window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: s.name, author: 'system', text: 'All kanals in ' + s.name + ' marked as read.', duration: 2500 } }));
                  } },
                  { sep: true },
-                 { label: 'Leave team', danger: true, icon: null, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: s.name, author: 'system', text: 'Confirm in Team Settings → Danger Zone.', duration: 3000 } })) },
+                 { label: 'Leave team', danger: true, icon: null, onClick: () => {
+                   if (!confirm('Leave ' + s.name + '? You will lose access to channels and DMs in this team until you join again with a new invite.')) return;
+                   const teamId = useTeamStore.getState().activeTeamId;
+                   const myId = useAuthStore.getState().teams.get(teamId || '')?.user?.id;
+                   if (teamId && myId && !isMockSession()) {
+                     // No api.leaveTeam — self-kick via the member endpoint
+                     // achieves the same result. Server forwards the
+                     // member:left event so other clients drop us from
+                     // member lists.
+                     api.kickMember(teamId, myId).then(() => {
+                       useAuthStore.getState().removeTeam?.(teamId);
+                       window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: s.name, author: 'system', text: 'Left ' + s.name + '.', duration: 3000 } }));
+                       window.location.assign('/');
+                     }).catch((err: unknown) => {
+                       console.warn('[ChatApp] leave team failed', err);
+                       window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: s.name, author: 'system', text: 'Leave failed: ' + (err as Error).message, duration: 4000 } }));
+                     });
+                   } else {
+                     window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: s.name, author: 'system', text: 'Demo only — leave would propagate across the mesh on a live server.', duration: 3000 } }));
+                   }
+                 } },
                ] } }));
              }}
              title={s.name}>
