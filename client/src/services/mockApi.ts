@@ -39,6 +39,24 @@ export class MockApiService {
   addTeam(_teamId: string, _baseUrl: string): void { /* noop */ }
   removeTeam(_teamId: string): void { /* noop */ }
   setToken(_teamId: string, _token: string): void { /* noop */ }
+  setAuthErrorHandler(_handler: () => void): void { /* noop — mock never expires */ }
+  getConnectionInfo(_teamId: string) {
+    return { baseUrl: 'mock://demo', token: 'demo-token' };
+  }
+  async getWsTicket(_teamId: string): Promise<string> {
+    return 'demo-ticket';
+  }
+
+  /** Synchronous handle on the demo identity so a wrapper can seed authStore
+   *  before any React render, mimicking the persisted post-login state. */
+  getDemoIdentity() {
+    return {
+      teamId: DEMO_TEAM_ID,
+      token: 'demo-token',
+      user: { id: DEMO_CURRENT_USER_ID, username: 'alice', display_name: 'Alice' },
+      team: MOCK_TEAM,
+    };
+  }
 
   // Auth — resolve immediately
   async requestChallenge(_teamId: string, _publicKey: string) {

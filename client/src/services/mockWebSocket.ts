@@ -1,4 +1,8 @@
-import { MOCK_USERS, RANDOM_MESSAGES, DEMO_CURRENT_USER_ID } from './mockData';
+import {
+  MOCK_USERS, RANDOM_MESSAGES, DEMO_CURRENT_USER_ID, DEMO_TEAM_ID,
+  MOCK_TEAM, MOCK_CHANNELS, MOCK_MEMBERS, MOCK_ROLES,
+  MOCK_PRESENCES, MOCK_VOICE_STATES,
+} from './mockData';
 
 type EventHandler = (payload: unknown) => void;
 
@@ -11,22 +15,53 @@ export class MockWebSocketService {
   private timers: ReturnType<typeof setTimeout>[] = [];
   private running = false;
 
-  connect(_teamId: string, _url: string, _token: string): void {
+  connect(teamId: string, _url: string, _token: string): void {
     if (this.running) return;
     this.running = true;
 
     // Emit a connected event
-    setTimeout(() => this.emit('ws:connected', { teamId: 'demo-team' }), 100);
+    setTimeout(() => this.emit('ws:connected', { teamId: teamId || DEMO_TEAM_ID }), 100);
 
     this.scheduleTyping();
     this.scheduleNewMessage();
     this.schedulePresenceChange();
   }
 
+  /** Real ws exposes connectWithParams for ticket-based auth; mock aliases it. */
+  connectWithParams(
+    teamId: string,
+    url: string,
+    authParam: string,
+    _refreshAuth?: () => Promise<string>,
+  ): void {
+    this.connect(teamId, url, authParam);
+  }
+
   disconnect(_teamId?: string): void {
     this.running = false;
     for (const t of this.timers) clearTimeout(t);
     this.timers = [];
+  }
+
+  /** Real ws lets useTeamSync tear down on auth failure / logout. */
+  disconnectAll(): void {
+    this.disconnect();
+  }
+
+  isConnected(_teamId: string): boolean {
+    return this.running;
+  }
+
+  flushPendingMessages(_teamId: string): void { /* noop — mock send is synchronous */ }
+
+  /** Mirrors the real ws.request(): useTeamSync calls ws.request('sync:init')
+   *  to fetch the full team snapshot. Returns the same shape the server emits. */
+  async request<T = unknown>(_teamId: string, action: string, _payload: Record<string, unknown> = {}): Promise<T> {
+    if (action === 'sync:init') {
+      return buildSyncInitPayload() as T;
+    }
+    // Channel join / leave / mark-read etc. are fire-and-forget in mock mode.
+    return {} as T;
   }
 
   on(eventType: string, handler: EventHandler): () => void {
@@ -162,4 +197,19 @@ export class MockWebSocketService {
     const t = setTimeout(run, this.randomDelay(15, 25));
     this.timers.push(t);
   }
+}
+
+/** Build the sync:init response that the real server emits, populated from
+ *  the demo fixtures. Channels carry teamId; members are flat-shape (already
+ *  normalized); presences are keyed by user_id; voice_states by channel_id. */
+function buildSyncInitPayload() {
+  return {
+    team: MOCK_TEAM,
+    channels: MOCK_CHANNELS.map((ch) => ({ ...ch, team_id: DEMO_TEAM_ID })),
+    members: MOCK_MEMBERS,
+    roles: MOCK_ROLES,
+    presences: MOCK_PRESENCES,
+    voice_states: MOCK_VOICE_STATES,
+    unread_counts: {},
+  };
 }
