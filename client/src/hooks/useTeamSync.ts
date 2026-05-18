@@ -356,13 +356,28 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
     const teamId = activeTeamId;
     const unsub = ws.on(
       'member:joined',
-      (payload: { team_id?: string; user?: Record<string, unknown>; member?: Record<string, unknown> }) => {
+      async (payload: { team_id?: string; user?: Record<string, unknown>; member?: Record<string, unknown> }) => {
         if (!payload?.team_id || payload.team_id !== teamId) return;
         const [normalized] = normalizeMembers([
           { member: payload.member ?? {}, user: payload.user ?? {} } as Record<string, unknown>,
         ]);
         if (normalized?.userId) {
           useTeamStore.getState().addMember(teamId, normalized);
+        }
+        // Re-distribute our sender key for every text channel so the new
+        // member can decrypt messages we send from here on. Past messages
+        // remain unreadable to them (forward-secret sender keys).
+        const derivedKey = useAuthStore.getState().derivedKey;
+        if (!derivedKey) return;
+        const channels = useTeamStore.getState().channels.get(teamId) ?? [];
+        for (const ch of channels) {
+          if (ch.type !== 'text') continue;
+          try {
+            const dist = await cryptoService.getSenderKeyDistribution(ch.id, derivedKey);
+            ws.distributeChannelKey(teamId, ch.id, dist);
+          } catch (err) {
+            console.warn('[useTeamSync] re-distribute sender key failed', ch.id, err);
+          }
         }
       },
     );

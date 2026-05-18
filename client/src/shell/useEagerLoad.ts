@@ -20,6 +20,7 @@ import { useThreadStore, type Thread } from '../stores/threadStore';
 import { tryDecrypt, serverToMessage, type ServerMessage } from '../hooks/useMessageDecryption';
 import { cryptoService } from '../services/crypto';
 import { getCachedMessage, cacheMessage } from '../services/messageCache';
+import { ws } from '../services/websocket';
 
 export function useEagerLoad(activeTeamId: string | null): { ready: boolean } {
   const loaded = useRef<Set<string>>(new Set());
@@ -40,6 +41,26 @@ export function useEagerLoad(activeTeamId: string | null): { ready: boolean } {
       const threadStore = useThreadStore.getState();
       const derivedKey = useAuthStore.getState().derivedKey;
       const textChannels = channels.filter((c) => c.type === 'text');
+
+      // Distribute our sender key for every text channel so other team
+      // members can decrypt our messages. The legacy ChannelView did this
+      // on per-channel mount; the shell shows all channels at once, so
+      // we batch it here right after sync:init. Each call is independent
+      // and best-effort — if one channel's key fetch fails the others
+      // still get distributed.
+      if (derivedKey && activeTeamId) {
+        for (const ch of textChannels) {
+          (async () => {
+            try {
+              ws.joinChannel(activeTeamId, ch.id);
+              const dist = await cryptoService.getSenderKeyDistribution(ch.id, derivedKey);
+              ws.distributeChannelKey(activeTeamId, ch.id, dist);
+            } catch (err) {
+              console.warn('[useEagerLoad] sender-key distribute failed for', ch.id, err);
+            }
+          })();
+        }
+      }
 
       // DM messages use a separate Signal session per-peer, not channel
       // sender keys — so they need their own decryption path that
