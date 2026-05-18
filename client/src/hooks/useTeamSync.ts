@@ -88,6 +88,16 @@ function applySyncData(teamId: string, data: any, setters: SyncStoreSetters) {
   }
   console.log(`[AppLayout] sync:init applied for team ${teamId}`);
 
+  // sync:init doesn't include the live PresenceManager state; members'
+  // status_type comes from the DB default ('online' at registration) and
+  // never updates. Always fetch the live presence map separately so
+  // disconnected users show as offline immediately after a reload.
+  if (!data.presences) {
+    api.getPresences(teamId)
+      .then((pres) => applyPresences(teamId, pres as Record<string, UserPresence>, setters))
+      .catch((err) => console.warn('[AppLayout] getPresences after sync:init failed', err));
+  }
+
   // Now that sync is complete and channels are known, flush any messages
   // that were queued while the WebSocket was reconnecting.
   ws.flushPendingMessages(teamId);
