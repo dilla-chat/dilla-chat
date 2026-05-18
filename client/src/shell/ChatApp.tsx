@@ -1090,6 +1090,17 @@ function UserPanel({ member }) {
     { id: 'offline', label: 'Invisible', hint: 'appears offline · still receive messages' },
   ];
 
+  // Persist presence changes via api.updatePresence so other team members
+  // see the new status/custom message live (server broadcasts presence:changed
+  // → usePresenceEvents → store → UI).
+  function persistPresence(nextStatus: string, nextCustom: string) {
+    const teamId = useTeamStore.getState().activeTeamId;
+    if (!teamId || isMockSession()) return;
+    api.updatePresence(teamId, nextStatus, nextCustom || undefined).catch((err) =>
+      console.warn('[UserPanel] updatePresence failed', err),
+    );
+  }
+
   return (
     <div className="user-panel" style={{ position: 'relative' }}>
       <PlainAvatar member={{ ...member, status }} />
@@ -1109,7 +1120,11 @@ function UserPanel({ member }) {
           {statuses.map(s => (
             <button key={s.id}
                     className={'sp-row' + (s.id === status ? ' on' : '')}
-                    onClick={() => { setStatus(s.id); setPickerOpen(false); }}>
+                    onClick={() => {
+                      setStatus(s.id);
+                      setPickerOpen(false);
+                      persistPresence(s.id, custom);
+                    }}>
               <span className={'presence ' + s.id}></span>
               <span className="sp-label">{s.label}</span>
               <span className="sp-hint">{s.hint}</span>
@@ -1120,10 +1135,18 @@ function UserPanel({ member }) {
             <div className="sp-custom-label">Custom message</div>
             <div className="sp-custom-row">
               <input value={draftCustom} onChange={(e) => setDraftCustom(e.target.value)} placeholder="pushing pixels" maxLength={42} />
-              <button className="sp-btn" onClick={() => { setCustom(draftCustom); setPickerOpen(false); }}>Set</button>
+              <button className="sp-btn" onClick={() => {
+                setCustom(draftCustom);
+                setPickerOpen(false);
+                persistPresence(status, draftCustom);
+              }}>Set</button>
             </div>
             {custom && (
-              <button className="sp-clear" onClick={() => { setCustom(''); setDraftCustom(''); }}>clear</button>
+              <button className="sp-clear" onClick={() => {
+                setCustom('');
+                setDraftCustom('');
+                persistPresence(status, '');
+              }}>clear</button>
             )}
           </div>
         </div>
