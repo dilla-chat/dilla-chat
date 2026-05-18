@@ -2451,6 +2451,20 @@ function MemberList({ members, voiceConnection, rich, federated }) {
                    window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: 'Berralitos', author: 'admin', text: 'Demo only — kick would propagate across the mesh on a live server.', duration: 3000 } }));
                  }
                } },
+               { label: 'Ban from team', danger: true, icon: <Icon.Lock size={12} />, onClick: () => {
+                 if (!confirm('Ban ' + m.name + ' from this team? Bans prevent re-join via invite — irreversible without admin action.')) return;
+                 const teamId = useTeamStore.getState().activeTeamId;
+                 if (teamId && !isMockSession()) {
+                   api.banMember(teamId, m.id).then(() => {
+                     window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: 'Berralitos', author: 'admin', text: 'Banned ' + m.name + ' from the team.', duration: 3500 } }));
+                   }).catch((err: unknown) => {
+                     console.warn('[ChatApp] banMember failed', err);
+                     window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: 'Berralitos', author: 'admin', text: 'Ban failed — admin role required.', duration: 3500 } }));
+                   });
+                 } else {
+                   window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: 'Berralitos', author: 'admin', text: 'Demo only — ban would propagate across the mesh on a live server.', duration: 3000 } }));
+                 }
+               } },
              ] } }));
            }}>
         <Avatar member={m} />
