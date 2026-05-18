@@ -187,7 +187,13 @@ function SafetyCompare({ contactId, onClose }) {
   const m = window.MOCK_DATA.byId[contactId];
   if (!m) return null;
   const fps = (window.MeshChrome && window.MeshChrome.FINGERPRINTS) || {};
-  const yours = '4f7a 9c12  8d3b e5f0  17ac 6b29  0e88 4173  cf2a 9b06  8d51 743f';
+  // Derive 'my' fingerprint from the bridged public key so 'YOU' shows
+  // the real local identity. Fall back to handoff fixture otherwise.
+  const pkHex = (window.MOCK_DATA?.publicKey || '4f7a9c128d3be5f017ac6b290e884173cf2a9b068d51743f').replace(/^[^:]*:/, '').replace(/[^0-9a-f]/gi, '');
+  const yours = [0,1,2,3,4,5]
+    .map(i => pkHex.slice(i * 8, i * 8 + 8).replace(/(.{4})(.{4})/, '$1 $2'))
+    .filter(Boolean)
+    .join('  ');
   const theirs = fps[contactId] || '0000 0000  0000 0000  0000 0000  0000 0000  0000 0000  0000 0000';
   // Pair the numbers into 12-block pairs for side-by-side comparison
   const yp = yours.split(/\s+/).filter(Boolean);
@@ -204,7 +210,12 @@ function SafetyCompare({ contactId, onClose }) {
         <div className="sc-pair">
           <div className="sc-side">
             <div className="sc-side-head">
-              <div className="sc-side-avatar" style={{ background: '#F39E2B' }}>TH</div>
+              {(() => {
+                const me = window.MOCK_DATA?.byId?.thim;
+                return (
+                  <div className="sc-side-avatar" style={{ background: me?.color || '#F39E2B' }}>{me?.initials || 'TH'}</div>
+                );
+              })()}
               <span>you</span>
             </div>
             <div className="sc-number">
