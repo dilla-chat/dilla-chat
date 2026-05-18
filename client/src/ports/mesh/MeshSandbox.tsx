@@ -7,6 +7,15 @@ import { useEffect, useRef, useState } from 'react';
 import ChatApp from './ChatApp';
 import { MeshTopBar, MeshBottomBar, CommandPalette, SearchPalette } from './MeshChrome';
 import { THEMES } from './themes';
+import { useMeshData } from './useMeshData';
+import { useTeamStore } from '../../stores/teamStore';
+import {
+  DEMO_TEAM_ID,
+  MOCK_TEAM,
+  MOCK_CHANNELS,
+  MOCK_MEMBERS,
+  MOCK_ROLES,
+} from '../../services/mockData';
 import './chat.css';
 import './mesh-chrome.css';
 import './extras.css';
@@ -17,6 +26,21 @@ export default function MeshSandbox() {
   const [srchOpen, setSrchOpen] = useState(false);
   const [srchScope, setSrchScope] = useState<string | null>(null);
   const controllerRef = useRef<{ pickChannel?: (id: string) => void; getVoiceConn?: () => unknown }>({});
+
+  // Self-seed the team store with demo data if it's empty, so visiting
+  // /mesh directly (without going through /demo first) still produces a
+  // populated sandbox. Same data shape DemoWrapper uses.
+  useEffect(() => {
+    const { teams, setTeam, setChannels, setMembers, setRoles, setActiveTeam, setActiveChannel } =
+      useTeamStore.getState();
+    if (teams.size > 0) return;
+    setTeam(MOCK_TEAM);
+    setChannels(DEMO_TEAM_ID, MOCK_CHANNELS);
+    setMembers(DEMO_TEAM_ID, MOCK_MEMBERS);
+    setRoles(DEMO_TEAM_ID, MOCK_ROLES);
+    setActiveTeam(DEMO_TEAM_ID);
+    setActiveChannel('ch-2');
+  }, []);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -47,6 +71,12 @@ export default function MeshSandbox() {
       window.removeEventListener('dilla:open-search', onSrch);
     };
   }, [cmdOpen, srchOpen]);
+
+  // Step 2: SERVERS + CHANNELS come from our useTeamStore (everything else
+  // is still mocked). The ChatApp reads window.MOCK_DATA, so we overwrite
+  // that with the live-bridged shape just before its render.
+  const meshData = useMeshData();
+  (window as unknown as { MOCK_DATA: typeof meshData }).MOCK_DATA = meshData;
 
   const theme = THEMES.mesh;
   const opts = {
