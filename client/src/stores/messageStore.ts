@@ -6,6 +6,14 @@ export interface Reaction {
   count: number;
 }
 
+export interface MessageAttachment {
+  id: string;
+  filename: string;
+  content_type: string;
+  size: number;
+  url?: string;
+}
+
 export interface Message {
   id: string;
   channelId: string;
@@ -19,6 +27,7 @@ export interface Message {
   deleted: boolean;
   createdAt: string;
   reactions: Reaction[];
+  attachments?: MessageAttachment[];
 }
 
 export interface TypingUser {

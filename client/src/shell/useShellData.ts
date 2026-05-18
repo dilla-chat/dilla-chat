@@ -13,6 +13,7 @@ import { useMessageStore } from '../stores/messageStore';
 import { useDMStore } from '../stores/dmStore';
 import { useThreadStore } from '../stores/threadStore';
 import { useVoiceStore } from '../stores/voiceStore';
+import { api } from '../services/api';
 import { usernameColor } from '../utils/colors';
 import { MOCK_DATA } from './data';
 
@@ -95,16 +96,32 @@ function mapReactions(reactions, currentUserId) {
 // Map a single Message from messageStore to handoff's per-message shape.
 // `text` is the displayed body; `kind` follows handoff vocabulary (text /
 // system / image / file) and falls back to 'text' for anything unknown.
-function mapMessage(msg, currentUserId) {
+// When the store message has attachments, surface them in the handoff
+// shape: `attachment: { kind, label, size, src }` (handoff used a single
+// attachment per message). `src` resolves via api.getAttachmentUrl when
+// the server didn't include one — which it doesn't on /app where the
+// page is served from vite at a different origin than the API server.
+function mapMessage(msg, currentUserId, teamId) {
+  const att = msg.attachments?.[0];
+  const isImage = att?.content_type?.startsWith('image/');
+  const attachment = att
+    ? {
+        kind: isImage ? 'image' : 'file',
+        label: att.filename || 'file',
+        size: att.size,
+        src: isImage && teamId ? api.getAttachmentUrl(teamId, att.id) : att.url,
+      }
+    : undefined;
   return {
     id: msg.id,
     author: msg.authorId,
     at: new Date(msg.createdAt),
-    kind: msg.type === 'system' ? 'system' : 'text',
+    kind: msg.type === 'system' ? 'system' : attachment?.kind ?? 'text',
     text: msg.content,
     edited: !!msg.editedAt,
     deleted: msg.deleted,
     reactions: mapReactions(msg.reactions, currentUserId),
+    attachment,
   };
 }
 
@@ -230,7 +247,7 @@ export function useShellData() {
     for (const ch of teamChannels) {
       const list = messages.get(ch.id) ?? [];
       MESSAGES[ch.id] = list.map((m) => {
-        const mapped = mapMessage(m, myId);
+        const mapped = mapMessage(m, myId, activeTeamId);
         if (threadByParent[m.id]) mapped.thread = threadByParent[m.id];
         return mapped;
       });
@@ -243,7 +260,7 @@ export function useShellData() {
     const DM_MESSAGES = {};
     for (const dm of dmList) {
       const list = dmMessages[dm.id] ?? [];
-      DM_MESSAGES[dm.id] = list.map((m) => mapMessage(m, myId));
+      DM_MESSAGES[dm.id] = list.map((m) => mapMessage(m, myId, activeTeamId));
     }
 
     // THREAD_REPLIES: handoff keys by parent messageId, value is a flat
@@ -255,7 +272,7 @@ export function useShellData() {
       const chThreads = threads[ch.id] ?? [];
       for (const th of chThreads) {
         const replies = threadMessages[th.id] ?? [];
-        THREAD_REPLIES[th.parent_message_id] = replies.map((m) => mapMessage(m, myId));
+        THREAD_REPLIES[th.parent_message_id] = replies.map((m) => mapMessage(m, myId, activeTeamId));
       }
     }
 
