@@ -147,3 +147,44 @@ dialog[open], .modal-enter {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ====================================================================
+   Mesh design — relocated from mesh-overrides.css. Global form-element
+   baseline applied unconditionally; theming flows through CSS tokens.
+   ==================================================================== */
+
+input[type='text'],
+input[type='email'],
+input[type='url'],
+input[type='password'],
+input[type='search'],
+select,
+textarea {
+  background: var(--surface-2);
+  border: 0.0625rem solid var(--hairline);
+  border-radius: var(--r-sm);
+  color: var(--fg);
+  font-family: var(--font-mono);
+  transition: border-color 0.12s ease-out;
+}
+
+input[type='text']:focus,
+input[type='email']:focus,
+input[type='url']:focus,
+input[type='password']:focus,
+input[type='search']:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+kbd {
+  background: var(--surface-2);
+  border: 0.0625rem solid var(--hairline);
+  border-radius: var(--r-sm);
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  padding: 0.125rem 0.3125rem;
+}
