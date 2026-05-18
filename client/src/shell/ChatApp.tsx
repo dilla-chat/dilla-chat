@@ -11,6 +11,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useTeamStore } from '../stores/teamStore';
 import { useUnreadStore } from '../stores/unreadStore';
 import { useThreadStore } from '../stores/threadStore';
+import { useVoiceConnection } from '../hooks/useVoiceConnection';
 import { ws } from '../services/websocket';
 import { api } from '../services/api';
 import { tryEncrypt } from '../hooks/useMessageDecryption';
@@ -2424,15 +2425,25 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   useEffect(() => { setMessages(data.MESSAGES); }, [data.MESSAGES]);
   useEffect(() => { setDmMessages(data.DM_MESSAGES); }, [data.DM_MESSAGES]);
   const [drafts, setDrafts] = useState({});
-  // Initial voice connection: prefer the first voice channel from the
-  // bridged data instead of the handoff's hardcoded 'voice' id. Null
-  // when nothing exists — the voice dock then stays hidden.
-  const initialVoiceCh = data.CHANNELS?.find((c) => c.type === 'voice');
-  const [voiceConnection, setVoiceConnection] = useState(
-    initialVoiceCh ? { channelId: initialVoiceCh.id, channel: initialVoiceCh.name } : null,
-  );
-  const [mute, setMute] = useState(true);
-  const [deaf, setDeaf] = useState(false);
+  // Voice state is owned by the voice store (driven by useVoiceConnection
+  // and WebRTC events). voiceConnection is a derived view (channelId +
+  // friendly channel name) that the legacy UI props expect. mute/deaf
+  // come straight from the store so the icons reflect real mic state.
+  const voice = useVoiceConnection();
+  const voiceCh = data.CHANNELS?.find((c) => c.id === voice.currentChannelId);
+  const voiceConnection = voice.connected && voiceCh
+    ? { channelId: voice.currentChannelId, channel: voiceCh.name }
+    : null;
+  const mute = voice.muted;
+  const setMute = (next) => {
+    const target = typeof next === 'function' ? next(voice.muted) : next;
+    if (target !== voice.muted) voice.toggleMute();
+  };
+  const deaf = voice.deafened;
+  const setDeaf = (next) => {
+    const target = typeof next === 'function' ? next(voice.deafened) : next;
+    if (target !== voice.deafened) voice.toggleDeafen();
+  };
   const [cam, setCam] = useState(false);
   const [screen, setScreen] = useState(false);
   const [typing, setTyping] = useState([]);
@@ -2651,7 +2662,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     };
     controller.toggleMute   = () => setMute(v => !v);
     controller.toggleDeafen = () => setDeaf(v => !v);
-    controller.disconnect   = () => setVoiceConnection(null);
+    controller.disconnect   = () => voice.leave();
     controller.getVoiceConn = () => voiceConnection;
   }, [controller, voiceConnection]);
 
@@ -2831,7 +2842,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
         activeDM={activeView.kind === 'dm' ? activeView.id : null}
         onPickDM={(id) => { setActiveDM(id); setActiveView({ kind: 'dm', id }); }}
         voiceConnection={voiceConnection}
-        onLeaveVoice={() => setVoiceConnection(null)}
+        onLeaveVoice={() => voice.leave()}
         mute={mute} setMute={setMute}
         deaf={deaf} setDeaf={setDeaf}
         cam={cam} setCam={setCam}
@@ -2845,8 +2856,14 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
           channel={channel}
           members={data}
           voiceConnection={voiceConnection}
-          onJoin={() => setVoiceConnection({ channelId: channel.id, channel: channel.name })}
-          onLeave={() => setVoiceConnection(null)}
+          onJoin={() => {
+            // useVoiceConnection.join → voiceStore.joinChannel → WebRTC
+            // connect against the SFU. On /mesh the mock ws is a no-op so
+            // the connect attempt fails fast and the dock stays hidden.
+            const teamId = useTeamStore.getState().activeTeamId;
+            if (teamId) voice.join(teamId, channel.id);
+          }}
+          onLeave={() => voice.leave()}
           mute={mute} setMute={setMute}
           deaf={deaf} setDeaf={setDeaf}
           cam={cam} setCam={setCam}

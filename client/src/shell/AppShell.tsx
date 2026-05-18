@@ -20,6 +20,7 @@ import { useShellData } from './useShellData';
 import { useTeamStore } from '../stores/teamStore';
 import { useAuthStore } from '../stores/authStore';
 import { useMeshStore } from '../stores/meshStore';
+import { useVoiceConnection } from '../hooks/useVoiceConnection';
 import './chat.css';
 import './chrome.css';
 import './extras.css';
@@ -151,6 +152,14 @@ export default function AppShell({ ready }: AppShellProps) {
   const federated = peersTotal > 0;
   const degraded = meshStatus === 'degraded';
 
+  // BottomBar shows mic/headphones state when voice is live. The bridged
+  // data is the source of truth for the channel name lookup.
+  const voice = useVoiceConnection();
+  const voiceCh = teamChannels?.find((c) => c.id === voice.currentChannelId);
+  const voiceForBar = voice.connected && voiceCh
+    ? { channelId: voice.currentChannelId, channel: voiceCh.name, muted: voice.muted, deafened: voice.deafened }
+    : null;
+
   const theme = THEMES.mesh;
   const opts = {
     density: 'regular',
@@ -176,7 +185,7 @@ export default function AppShell({ ready }: AppShellProps) {
       {ready && (
         <ChatApp theme={theme} opts={opts} rich controller={controllerRef.current} />
       )}
-      <BottomBar voiceConnection={null} federated={federated} degraded={degraded} nodeHost={nodeHost} />
+      <BottomBar voiceConnection={voiceForBar} federated={federated} degraded={degraded} nodeHost={nodeHost} />
       <CommandPalette
         open={cmdOpen}
         onClose={() => setCmdOpen(false)}
