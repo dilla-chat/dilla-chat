@@ -13,6 +13,7 @@ import { usePresenceStore } from '../../stores/presenceStore';
 import { useMessageStore } from '../../stores/messageStore';
 import { useDMStore } from '../../stores/dmStore';
 import { useThreadStore } from '../../stores/threadStore';
+import { useVoiceStore } from '../../stores/voiceStore';
 import {
   DEMO_TEAM_ID,
   MOCK_TEAM,
@@ -26,6 +27,7 @@ import {
   MOCK_DM_MESSAGES,
   MOCK_THREADS,
   MOCK_THREAD_MESSAGES,
+  MOCK_VOICE_STATES,
 } from '../../services/mockData';
 import './chat.css';
 import './mesh-chrome.css';
@@ -61,6 +63,7 @@ function seedStoresIfEmpty() {
   for (const [threadId, msgs] of Object.entries(MOCK_THREAD_MESSAGES)) {
     threadStore.setThreadMessages(threadId, msgs);
   }
+  useVoiceStore.getState().setVoiceOccupants(MOCK_VOICE_STATES);
 }
 
 seedStoresIfEmpty();

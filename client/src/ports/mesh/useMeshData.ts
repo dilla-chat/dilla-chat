@@ -12,6 +12,7 @@ import { usePresenceStore } from '../../stores/presenceStore';
 import { useMessageStore } from '../../stores/messageStore';
 import { useDMStore } from '../../stores/dmStore';
 import { useThreadStore } from '../../stores/threadStore';
+import { useVoiceStore } from '../../stores/voiceStore';
 import { usernameColor } from '../../utils/colors';
 import { MOCK_DATA } from './data';
 
@@ -30,8 +31,12 @@ function initialsOf(name: string) {
 // those on the channel record itself yet (unread lives in useUnreadStore,
 // E2E lives in useAuthStore.derivedKey), so we set encrypted=true (Mesh
 // promise) and leave the unread/mention fields off.
-function mapChannel(ch: { id: string; name: string; type: string; topic: string; category: string }) {
-  return {
+//
+// For voice channels we also attach `participants` (array of user_ids
+// currently in this voice room) from useVoiceStore.voiceOccupants so the
+// 'Active voice' section + voice cards render.
+function mapChannel(ch, occupants) {
+  const base = {
     id: ch.id,
     name: ch.name,
     type: ch.type,
@@ -39,6 +44,14 @@ function mapChannel(ch: { id: string; name: string; type: string; topic: string;
     category: ch.category ?? '',
     encrypted: true,
   };
+  if (ch.type === 'voice') {
+    return {
+      ...base,
+      participants: (occupants ?? []).map((p) => p.user_id),
+      locked: false,
+    };
+  }
+  return base;
 }
 
 // Map a teamStore Team to the handoff SERVERS shape. `short` is the 1-char
@@ -139,6 +152,7 @@ export function useMeshData() {
   const dmMessages = useDMStore((s) => s.dmMessages);
   const threads = useThreadStore((s) => s.threads);
   const threadMessages = useThreadStore((s) => s.threadMessages);
+  const voiceOccupants = useVoiceStore((s) => s.voiceOccupants);
 
   return useMemo(() => {
     // If no team is active (e.g. /mesh visited cold without /demo seeding the
@@ -150,7 +164,7 @@ export function useMeshData() {
 
     const SERVERS = [...teams.values()].map((t) => mapServer(t));
     const teamChannels = channels.get(activeTeamId) ?? [];
-    const CHANNELS = teamChannels.map(mapChannel);
+    const CHANNELS = teamChannels.map((ch) => mapChannel(ch, voiceOccupants[ch.id]));
     const teamMembers = members.get(activeTeamId) ?? [];
     const teamPresences = presences[activeTeamId] ?? {};
     const MEMBERS = teamMembers.map((m) => mapMember(m, teamPresences[m.userId]));
@@ -208,7 +222,7 @@ export function useMeshData() {
       DM_MESSAGES,
       THREAD_REPLIES,
     };
-  }, [teams, channels, members, presences, activeTeamId, authTeams, messages, dmChannels, dmMessages, threads, threadMessages]);
+  }, [teams, channels, members, presences, activeTeamId, authTeams, messages, dmChannels, dmMessages, threads, threadMessages, voiceOccupants]);
 }
 
 // Re-export for callers that want to hand the produced data directly to
