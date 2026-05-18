@@ -389,19 +389,18 @@ function TeamInfo() {
   );
 }
 function TeamInvites() {
-  const [rows, setRows] = useO([
-    { code: 'dilla.gbg/invite/4F7A',  uses: '4 / ∞', expires: '—',          who: 'thim · admin' },
-    { code: 'dilla.gbg/invite/8E1D',  uses: '0 / 5', expires: 'in 4 days',  who: 'ada · maintainer' },
-    { code: 'dilla.gbg/invite/A013',  uses: '1 / 1', expires: 'used up',    who: 'thim · admin', stale: true },
-  ]);
+  // Start with no invites — real invites would flow through services/api.
+  const me = (window as any).MOCK_DATA?.byId?.thim;
+  const myLabel = me ? `${me.name} · ${me.role || 'admin'}` : 'admin';
+  const [rows, setRows] = useO([]);
   function revoke(code) {
     if (!confirm('Revoke invite ' + code + '? People who already have it can no longer use it.')) return;
     setRows(prev => prev.filter(r => r.code !== code));
-    window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'team', text: 'Invite revoked. Propagated to 2/2 peers.', duration: 3500 } }));
+    window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'team', text: 'Invite revoked.', duration: 3500 } }));
   }
   function create() {
-    const code = 'dilla.gbg/invite/' + Math.random().toString(16).slice(2, 6).toUpperCase();
-    setRows(prev => [...prev, { code, uses: '0 / ∞', expires: '—', who: 'thim · admin' }]);
+    const code = 'dilla/invite/' + Math.random().toString(16).slice(2, 6).toUpperCase();
+    setRows(prev => [...prev, { code, uses: '0 / ∞', expires: '—', who: myLabel }]);
     window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'team', text: 'Invite link generated and copied to clipboard.', duration: 3500 } }));
     navigator.clipboard?.writeText(code);
   }
@@ -428,10 +427,20 @@ function TeamInvites() {
   );
 }
 function TeamRoles() {
+  // Count members per role from the live MEMBERS array. Falls back to the
+  // handoff 1/1/4 counts if no data is bridged yet (standalone preview).
+  const members = (window as any).MOCK_DATA?.MEMBERS ?? [];
+  const counts = { Admin: 0, Maintainer: 0, Member: 0 };
+  for (const m of members) {
+    const r = (m.role || '').toLowerCase();
+    if (r === 'admin') counts.Admin += 1;
+    else if (r === 'maintainer') counts.Maintainer += 1;
+    else counts.Member += 1;
+  }
   const roles = [
-    { name: 'Admin', count: 1, perms: 'all 12 permissions', color: 'var(--accent)' },
-    { name: 'Maintainer', count: 1, perms: 'manage channels · kick · ban · pin · manage threads', color: 'var(--warn)' },
-    { name: 'Member', count: 4, perms: 'send messages · react · upload · join voice', color: 'var(--fg-2)' },
+    { name: 'Admin', count: counts.Admin || 1, perms: 'all 12 permissions', color: 'var(--accent)' },
+    { name: 'Maintainer', count: counts.Maintainer || 1, perms: 'manage channels · kick · ban · pin · manage threads', color: 'var(--warn)' },
+    { name: 'Member', count: counts.Member || 4, perms: 'send messages · react · upload · join voice', color: 'var(--fg-2)' },
   ];
   return (
     <Group title="Roles" hint="12-bit permission system. Drag to reorder; higher rows win conflicts.">
@@ -450,13 +459,18 @@ function TeamRoles() {
   );
 }
 function TeamFederation() {
+  // Use real node identity from authStore (surfaced through MOCK_DATA's
+  // SERVERS[].node). Peers list stays empty until we wire a real peer
+  // status feed; the +/Add peer wizard is still available.
+  const team = (window as any).MOCK_DATA?.SERVERS?.[0];
+  const nodeHost = team?.node === 'local' ? 'local' : `${team?.node || 'local'}.dilla.local`;
   return (
     <>
       <Group title="Mesh" hint="Peer nodes that replicate this team. Voice stays on the origin node, but messages, channels and presence sync across all peers.">
         <Row label="This node">
           <div>
-            <code>gbg-1.dilla.local:8080</code>
-            <div style={{ color: 'var(--fg-3)', fontSize: 11, marginTop: 2 }}>lamport 13,059 · uptime 4d 12h</div>
+            <code>{nodeHost}:8080</code>
+            <div style={{ color: 'var(--fg-3)', fontSize: 11, marginTop: 2 }}>{team?.federated ? 'federated' : 'solo · not federated'}</div>
           </div>
         </Row>
         <Row label="Federation port" hint="Memberlist gossip listens here. Defaults to port + 1."><TextField mono value="8081" onChange={() => {}} /></Row>
@@ -465,13 +479,7 @@ function TeamFederation() {
       <Group title="Peers">
         <div className="set-table">
           <div className="set-th"><span>Address</span><span>State</span><span>Last sync</span><span>Lamport</span><span></span></div>
-          <div className="set-tr">
-            <code>rust.berra.io:8081</code>
-            <span><span className="set-dot ok" /> healthy</span>
-            <span>0.3s ago</span>
-            <span>13,062</span>
-            <Btn danger onClick={() => { if (confirm('Disconnect peer rust.berra.io? The mesh will fall back to local-only until they reconnect.')) window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'federation', text: 'Peer rust.berra.io disconnected. Mesh degraded to solo.', duration: 4000 } })); }}>Disconnect</Btn>
-          </div>
+          <div className="set-empty">No federated peers yet. Click + Add peer below to invite another node onto this team's mesh.</div>
         </div>
         <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
           <Btn onClick={() => window.dispatchEvent(new CustomEvent('dilla:add-peer'))}>+ Add peer</Btn>
@@ -482,25 +490,12 @@ function TeamFederation() {
   );
 }
 function TeamAudit() {
-  const rows = [
-    ['10:39:12', 'thim',     'created channel',   '#mesh-status'],
-    ['10:21:04', 'ada',      'pinned message',    'in #design'],
-    ['09:55:31', 'thim',     'invited',           'ola@rust.berra.io'],
-    ['08:02:18', 'system',   'peer joined mesh',  'rust.berra.io'],
-    ['00:14:55', 'thim',     'rotated session',   '14 sessions'],
-  ];
+  // Real audit-log events would stream from the server. Until that's wired,
+  // show an empty state instead of the handoff thim/ada/ola fixture.
   return (
     <Group title="Recent activity" hint="Local audit log. Federated events are tagged with the peer they came from.">
       <div className="set-audit">
-        {rows.map((r, i) => (
-          <div key={i} className="set-audit-row" style={{ cursor: 'pointer' }}
-               onClick={() => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: r[1], text: r[0] + ' · ' + r[2] + ' ' + r[3], duration: 3500 } }))}>
-            <code>{r[0]}</code>
-            <span style={{ color: 'var(--accent)' }}>{r[1]}</span>
-            <span style={{ color: 'var(--fg-2)' }}>{r[2]}</span>
-            <span>{r[3]}</span>
-          </div>
-        ))}
+        <div className="set-empty">No audit events yet — admin actions (invites, channel changes, role updates, key rotations) will appear here.</div>
       </div>
     </Group>
   );
