@@ -9,6 +9,7 @@ import { MeshTopBar, MeshBottomBar, CommandPalette, SearchPalette } from './Mesh
 import { THEMES } from './themes';
 import { useMeshData } from './useMeshData';
 import { useTeamStore } from '../../stores/teamStore';
+import { useAuthStore } from '../../stores/authStore';
 import { usePresenceStore } from '../../stores/presenceStore';
 import { useMessageStore } from '../../stores/messageStore';
 import { useDMStore } from '../../stores/dmStore';
@@ -16,6 +17,7 @@ import { useThreadStore } from '../../stores/threadStore';
 import { useVoiceStore } from '../../stores/voiceStore';
 import {
   DEMO_TEAM_ID,
+  DEMO_CURRENT_USER_ID,
   MOCK_TEAM,
   MOCK_CHANNELS,
   MOCK_MEMBERS,
@@ -41,6 +43,17 @@ function seedStoresIfEmpty() {
   const { teams, setTeam, setChannels, setMembers, setRoles, setActiveTeam, setActiveChannel } =
     useTeamStore.getState();
   if (teams.size > 0) return;
+  // Seed authStore first so useMeshData can resolve the current user id
+  // for the byId['thim'] alias and the "mine" reaction flag.
+  const authStore = useAuthStore.getState();
+  authStore.setDerivedKey('demo-passphrase');
+  authStore.setPublicKey('demo-public-key');
+  authStore.addTeam(
+    DEMO_TEAM_ID,
+    'demo-token',
+    { id: DEMO_CURRENT_USER_ID, username: 'alice', display_name: 'Alice' },
+    MOCK_TEAM as unknown as Record<string, unknown>,
+  );
   setTeam(MOCK_TEAM);
   setChannels(DEMO_TEAM_ID, MOCK_CHANNELS);
   setMembers(DEMO_TEAM_ID, MOCK_MEMBERS);

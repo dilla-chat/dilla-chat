@@ -174,7 +174,10 @@ export function useMeshData() {
     // user (UserPanel, voice peer state, mention filter). Alias the
     // logged-in user's record to 'thim' so those refs keep working
     // until the ChatApp is refactored to take currentUserId as a prop.
-    const myId = authTeams.get(activeTeamId)?.user?.id;
+    // Falls back to the first team member if authStore isn't seeded yet
+    // — without this fallback UserPanel crashes on `member.status`.
+    const myId =
+      authTeams.get(activeTeamId)?.user?.id ?? MEMBERS[0]?.id;
     if (myId && byId[myId]) {
       byId['thim'] = byId[myId];
     }
