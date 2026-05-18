@@ -542,6 +542,7 @@
 .chat[data-style="mesh"] .modal-head h2 { text-transform: uppercase; letter-spacing: 0.04em; }
 .modal-x {
   width: 28px; height: 28px;
+  padding: 0;
   background: transparent;
   border: 0;
   color: var(--fg-3);
@@ -549,6 +550,7 @@
   line-height: 1;
   cursor: pointer;
   border-radius: var(--r-sm);
+  display: inline-flex; align-items: center; justify-content: center;
 }
 .modal-x:hover { background: var(--surface-hi); color: var(--fg); }
 .modal-body { padding: 18px 22px; display: flex; flex-direction: column; gap: 16px; }
@@ -1741,8 +1743,10 @@
 }
 .pin-x {
   width: 22px; height: 22px;
+  padding: 0;
   border: 0; background: transparent; color: var(--fg-3);
   font-size: 14px; cursor: pointer; border-radius: var(--r-sm);
+  display: inline-flex; align-items: center; justify-content: center;
 }
 .pin-x:hover { background: var(--surface-hi); color: var(--fg); }
 .pin-list { overflow-y: auto; padding: 6px 0; }
@@ -1870,6 +1874,7 @@
 .composer-input .comp-btn:hover { color: var(--accent); background: var(--surface-hi); }
 .send-btn {
   width: 32px; height: 32px;
+  padding: 0;
   border-radius: var(--r-sm);
   background: var(--accent);
   color: var(--accent-ink);
@@ -2480,6 +2485,7 @@
 }
 .ep-x {
   width: 20px; height: 20px;
+  padding: 0;
   border: none;
   background: transparent;
   color: var(--fg-3);
@@ -2487,6 +2493,7 @@
   line-height: 1;
   cursor: pointer;
   border-radius: var(--r-sm);
+  display: inline-flex; align-items: center; justify-content: center;
 }
 .ep-x:hover { background: var(--surface-hi); color: var(--fg); }
 .ep-grid {
