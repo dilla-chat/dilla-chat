@@ -359,9 +359,24 @@ export default function Onboarding() {
         let derivedKey = '';
 
         if (already) {
-          // Resuming after a partial run. Identity already on disk; we'll
-          // re-register against the server below.
+          // Resuming after a partial run — identity is already on disk
+          // (probably from a previous attempt that bailed before
+          // registering with the server). Unlock with the entered
+          // passphrase and reuse that keypair; the bootstrap/register
+          // call below binds the SAME key to the server, so re-login
+          // later still works against this identity.
           push('  ✓ existing identity on disk · re-binding');
+          if (!passphrase) {
+            throw new Error(
+              'An identity exists on this device but no passphrase was entered. Reload and either enter the passphrase you used originally, or use "Already enrolled" mode.',
+            );
+          }
+          identity = await unlockWithPassphrase(passphrase);
+          publicKeyB64 = btoa(String.fromCodePoint(...identity.publicKeyBytes));
+          publicKeyHex = Array.from(identity.publicKeyBytes)
+            .map((b: number) => b.toString(16).padStart(2, '0'))
+            .join('');
+          derivedKey = publicKeyB64;
         } else if (keyProtect === 'hardware' || keyProtect === 'both') {
           push('binding to webauthn credential…');
           const prfSalt = generatePrfSalt();
