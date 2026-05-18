@@ -138,3 +138,49 @@
   background: transparent;
   color: var(--fg-2, var(--interactive-normal));
 }
+
+/* ====================================================================
+   Mesh design — relocated from mesh-overrides.css. Single source of
+   truth; theming via tokens.
+   ==================================================================== */
+
+.user-panel {
+  background: var(--bg);
+  padding: 0.625rem 0.75rem;
+  height: 3.5rem;
+  min-height: 3.5rem;
+  border-top: 0.0625rem solid var(--hairline);
+}
+
+.user-panel-avatar {
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--r-md);
+  color: var(--accent-ink);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 0.75rem;
+}
+
+.user-panel-name {
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 0.8125rem;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--fg);
+}
+
+.user-panel-status-text {
+  font-family: var(--font-mono);
+  font-size: 0.65625rem;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--fg-3);
+}
+
+/* In Mesh, mic + deafen belong on the voice dock (visible only when voice
+   is connected) — not on the user panel. Hide them here. Settings cog stays. */
+.user-panel-actions .user-panel-btn:not(:last-child) {
+  display: none;
+}

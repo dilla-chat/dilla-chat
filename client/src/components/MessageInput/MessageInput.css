@@ -444,3 +444,165 @@
     overflow-x: auto;
   }
 }
+
+/* ====================================================================
+   Mesh design — relocated from mesh-overrides.css. Single source of
+   truth; theming via tokens (var(--bg), var(--accent), ...).
+   ==================================================================== */
+
+.message-input-wrapper {
+  background: var(--bg);
+  border-top: none;
+  padding: 0 1rem 1rem;
+}
+
+.message-input-composer,
+.message-input-container {
+  background: var(--surface);
+  border: 0.0625rem solid var(--hairline-2);
+  border-radius: var(--r-lg, 0.1875rem);
+  transition: border-color 0.14s, box-shadow 0.14s;
+}
+
+.message-input-composer:focus-within,
+.message-input-container:focus-within {
+  border-color: color-mix(in oklab, var(--accent) 60%, var(--hairline-2));
+  box-shadow: 0 0 0 0.1875rem var(--accent-soft);
+}
+
+/* Hide the formatting toolbar in Mesh — the handoff uses a slim
+   single-row pill composer. Markdown still works via the textarea. */
+.message-input-formatting,
+.formatting-toolbar {
+  display: none;
+}
+
+.message-input-textarea {
+  font-family: var(--font-body);
+  color: var(--fg);
+  background: transparent;
+  font-size: 0.84375rem;
+  line-height: 1.5;
+}
+
+.message-input-textarea::placeholder {
+  color: var(--fg-3);
+}
+
+.message-input-action-btn,
+.message-input-btn {
+  color: var(--fg-2);
+  border-radius: var(--r-sm);
+}
+
+.message-input-action-btn:hover,
+.message-input-btn:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.message-input-send,
+.message-input-btn.send {
+  color: var(--accent);
+}
+
+.message-input-send:hover {
+  background: var(--accent-soft);
+}
+
+/* Reply chip — surface card with hairline-2 outline + 2px accent left rail. */
+.message-input-reply,
+.message-input-reply-preview,
+.reply-chip {
+  background: var(--surface);
+  border: 0.0625rem solid var(--hairline-2, var(--hairline));
+  border-left: 0.125rem solid var(--accent);
+  border-radius: var(--r-sm);
+  padding: 0.4375rem 0.625rem;
+  margin-bottom: 0.375rem;
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: var(--fg-2);
+  gap: 0.5rem;
+}
+
+.reply-preview-author {
+  font-family: var(--font-ui);
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.reply-preview-content {
+  font-family: var(--font-ui);
+  color: var(--fg-2);
+}
+
+.reply-preview-close {
+  color: var(--fg-3);
+  border-radius: var(--r-sm);
+}
+
+.reply-preview-close:hover {
+  color: var(--fg);
+  background: var(--surface-hi);
+}
+
+.typing-indicator {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.message-input-drag-overlay,
+.file-drop-overlay {
+  background: rgba(7, 8, 9, 0.85);
+  border: 0.125rem dashed var(--accent);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.formatting-toolbar {
+  background: var(--surface);
+  border: 0.0625rem solid var(--hairline);
+  border-radius: var(--r-md);
+}
+
+.formatting-toolbar-btn {
+  color: var(--fg-2);
+  border-radius: var(--r-sm);
+}
+
+.formatting-toolbar-btn:hover,
+.formatting-toolbar-btn.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.file-upload-area,
+.upload-tray {
+  background: var(--surface-2);
+  border: 0.0625rem solid var(--hairline);
+  border-radius: var(--r-md);
+}
+
+.upload-row,
+.file-upload-row {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--fg-2);
+}
+
+.upload-progress,
+.file-upload-progress {
+  background: var(--surface);
+  border: 0.0625rem solid var(--hairline);
+}
+
+.upload-progress-fill,
+.file-upload-progress-fill {
+  background: var(--accent);
+}
