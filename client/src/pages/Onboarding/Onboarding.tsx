@@ -150,6 +150,25 @@ export default function Onboarding() {
   const [fingerprint, setFingerprint] = useState('');
   const [recoveryKey, setRecoveryKey] = useState('');
 
+  // Detect a pre-existing identity in IndexedDB on mount. If the user lands
+  // in bootstrap/invite mode but already has a keypair from a prior session,
+  // we shouldn't blow up at the keygen step — we should surface the conflict
+  // up front and offer a one-click switch to existing-mode.
+  const [hasExistingIdentity, setHasExistingIdentity] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    hasIdentity()
+      .then((exists) => {
+        if (!cancelled) setHasExistingIdentity(exists);
+      })
+      .catch(() => {
+        /* ignore — assume no identity */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const step = STEPS[stepIdx];
 
   function next() {
@@ -584,6 +603,7 @@ export default function Onboarding() {
             <ConnectStep
               mode={mode}
               setMode={setMode}
+              hasExistingIdentity={hasExistingIdentity}
               server={server}
               setServer={setServer}
               token={token}
@@ -671,6 +691,7 @@ export default function Onboarding() {
 function ConnectStep({
   mode,
   setMode,
+  hasExistingIdentity,
   server,
   setServer,
   token,
@@ -709,6 +730,28 @@ function ConnectStep({
           Already enrolled
         </button>
       </div>
+
+      {hasExistingIdentity && mode !== 'existing' && (
+        <div
+          className="onb-callout"
+          style={{
+            borderLeftColor: 'var(--accent)',
+            background: 'color-mix(in oklab, var(--accent) 8%, transparent)',
+            marginBottom: 16,
+          }}
+        >
+          <strong>An identity already exists on this device.</strong> Creating a new
+          one here will collide with it.{' '}
+          <button
+            className="onb-link"
+            type="button"
+            onClick={() => setMode('existing')}
+            style={{ fontSize: 12 }}
+          >
+            Sign in with your existing identity →
+          </button>
+        </div>
+      )}
 
       {mode !== 'existing' && (
         <div className="onb-field">
