@@ -141,7 +141,10 @@ function mapMember(member, presence) {
   const name = member.displayName || member.username;
   const status = presence?.status ?? (member.statusType || 'offline');
   const custom = presence?.custom_status || undefined;
-  const role = member.roles?.[0]?.name?.toLowerCase();
+  // Prefer the explicit role row; fall back to the user-level is_admin
+  // flag so the bootstrapper appears under Admin even before a role is
+  // formally assigned.
+  const role = member.roles?.[0]?.name?.toLowerCase() || (member.isAdmin ? 'admin' : undefined);
   return {
     id: member.userId,
     name: member.username,

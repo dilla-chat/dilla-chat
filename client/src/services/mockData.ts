@@ -59,11 +59,11 @@ export const MOCK_CHANNELS: Channel[] = [
 // ─── Members ─────────────────────────────────────────────────────────────────
 
 export const MOCK_MEMBERS: Member[] = [
-  { id: 'member-1', userId: 'user-1', username: 'alice', displayName: 'Alice', nickname: '', roles: [MOCK_ROLES[0], MOCK_ROLES[2]], statusType: 'online' },
-  { id: 'member-2', userId: 'user-2', username: 'bob', displayName: 'Bob', nickname: '', roles: [MOCK_ROLES[1], MOCK_ROLES[2]], statusType: 'idle' },
-  { id: 'member-3', userId: 'user-3', username: 'charlie', displayName: 'Charlie', nickname: '', roles: [MOCK_ROLES[2]], statusType: 'online' },
-  { id: 'member-4', userId: 'user-4', username: 'diana', displayName: 'Diana', nickname: '', roles: [MOCK_ROLES[2]], statusType: 'dnd' },
-  { id: 'member-5', userId: 'user-5', username: 'eve', displayName: 'Eve', nickname: '', roles: [MOCK_ROLES[2]], statusType: 'offline' },
+  { id: 'member-1', userId: 'user-1', username: 'alice', displayName: 'Alice', nickname: '', roles: [MOCK_ROLES[0], MOCK_ROLES[2]], statusType: 'online', isAdmin: true },
+  { id: 'member-2', userId: 'user-2', username: 'bob', displayName: 'Bob', nickname: '', roles: [MOCK_ROLES[1], MOCK_ROLES[2]], statusType: 'idle', isAdmin: false },
+  { id: 'member-3', userId: 'user-3', username: 'charlie', displayName: 'Charlie', nickname: '', roles: [MOCK_ROLES[2]], statusType: 'online', isAdmin: false },
+  { id: 'member-4', userId: 'user-4', username: 'diana', displayName: 'Diana', nickname: '', roles: [MOCK_ROLES[2]], statusType: 'dnd', isAdmin: false },
+  { id: 'member-5', userId: 'user-5', username: 'eve', displayName: 'Eve', nickname: '', roles: [MOCK_ROLES[2]], statusType: 'offline', isAdmin: false },
 ];
 
 // ─── Helper: timestamps spread over the last hour ────────────────────────────

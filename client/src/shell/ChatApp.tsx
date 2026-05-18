@@ -2509,8 +2509,12 @@ function MemberList({ members, voiceConnection, rich, federated }) {
           </div>
         </div>
       )}
-      <div className="members-section">Admin — 1</div>
-      {onlineRoles.admin.map(m => <Row key={m.id} m={m} />)}
+      {onlineRoles.admin.length > 0 && (
+        <>
+          <div className="members-section">Admin — {onlineRoles.admin.length}</div>
+          {onlineRoles.admin.map(m => <Row key={m.id} m={m} />)}
+        </>
+      )}
       <div className="members-section">Online — {onlineRoles.maintainer.length + onlineRoles.member.length}</div>
       {[...onlineRoles.maintainer, ...onlineRoles.member].map(m => <Row key={m.id} m={m} />)}
       <div className="members-section">Offline — {offline.length}</div>

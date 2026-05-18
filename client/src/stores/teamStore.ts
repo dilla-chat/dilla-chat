@@ -27,6 +27,10 @@ export interface Member {
   nickname: string;
   roles: Role[];
   statusType: string;
+  /** User-level admin flag from the server (the bootstrap user gets
+   *  is_admin: true even when no role row is assigned). Falls back to
+   *  false when the field is missing in legacy responses. */
+  isAdmin: boolean;
 }
 
 export interface Role {

@@ -26,6 +26,7 @@ function normalizeMembers(data: Record<string, unknown>[]) {
       nickname: (mem.nickname ?? raw.nickname ?? '') as string,
       roles: (mem.roles ?? raw.roles ?? []) as Role[],
       statusType: (usr.status_type ?? usr.statusType ?? raw.status_type ?? raw.statusType ?? '') as string,
+      isAdmin: Boolean(usr.is_admin ?? usr.isAdmin ?? raw.is_admin ?? raw.isAdmin),
     };
   });
 }
