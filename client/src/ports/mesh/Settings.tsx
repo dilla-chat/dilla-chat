@@ -271,19 +271,30 @@ function UserAppear() {
   );
 }
 function UserPrivacy() {
+  const data = (window as any).MOCK_DATA;
+  const me = data?.byId?.thim;
+  const meName = me?.name || 'me';
+  // Pull a safety-number-like 24-hex grouping from the public key when
+  // available; fall back to the handoff placeholder grouping otherwise.
+  const pk = data?.publicKey || 'ed25519:8e1d3c447a529bf622d14e08af31000000000000';
+  const pkHex = pk.replace(/^[^:]*:/, '').replace(/[^0-9a-f]/gi, '');
+  function fp(start) {
+    return [0, 1, 2].map(i => pkHex.slice(start + i * 8, start + i * 8 + 8).replace(/(.{4})(.{4})/, '$1 $2'));
+  }
+  const block1 = fp(0).map(s => s || '— — — —');
+  const block2 = fp(24).map(s => s || '— — — —');
+  // Verify contacts: iterate over real team members (excluding current user).
+  const meId = data?.currentUserId;
+  const others = (data?.MEMBERS ?? []).filter((m: any) => m.id !== meId);
   return (
     <>
       <Group title="Your safety number" hint="Have a friend compare this number out-of-band before trusting your messages.">
         <div className="set-fingerprint">
           <div className="set-fp-block">
-            <div>4f7a 9c12</div>
-            <div>8d3b e5f0</div>
-            <div>17ac 6b29</div>
+            {block1.map((row, i) => <div key={i}>{row}</div>)}
           </div>
           <div className="set-fp-block">
-            <div>0e88 4173</div>
-            <div>cf2a 9b06</div>
-            <div>8d51 743f</div>
+            {block2.map((row, i) => <div key={i}>{row}</div>)}
           </div>
           <div className="set-fp-actions">
             <Btn>Copy</Btn>
@@ -293,30 +304,28 @@ function UserPrivacy() {
       </Group>
       <Group title="Encryption">
         <Row label="Double Ratchet sessions" hint="Currently active per-contact key chains.">
-          <span className="set-stat">14 sessions · last rotated 2h ago</span>
+          <span className="set-stat">{others.length} session{others.length === 1 ? '' : 's'}</span>
         </Row>
         <Row label="Rotate session keys" hint="Forces new key exchange with everyone you've talked to. Old messages stay readable.">
-          <Btn onClick={() => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'crypto', text: 'Session keys rotated. 14 new chains established.', duration: 3500 } }))}>Rotate now</Btn>
+          <Btn onClick={() => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'crypto', text: `Session keys rotated. ${others.length} new chains established.`, duration: 3500 } }))}>Rotate now</Btn>
         </Row>
         <Row label="Export identity backup" hint="Encrypted with your passphrase. Keep it offline.">
-          <Btn onClick={() => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'preferences', text: 'Identity backup downloaded: dilla-identity-thim.bin (4.2 KB)', duration: 4000 } }))}>Export…</Btn>
+          <Btn onClick={() => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'preferences', text: `Identity backup downloaded: dilla-identity-${meName}.bin (4.2 KB)`, duration: 4000 } }))}>Export…</Btn>
         </Row>
       </Group>
       <Group title="Verify contacts" hint="Compare safety numbers with someone to confirm they are who they say they are — not the server impersonating them.">
-        {['ada','mira','ben','ola','juno'].map(id => {
-          const m = window.MOCK_DATA?.byId?.[id];
-          if (!m) return null;
-          return (
-            <Row key={id} label={
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <span className="set-avatar" style={{ background: m.color, width: 22, height: 22, fontSize: 10 }}>{m.initials}</span>
-                {m.name}
-              </span>
-            }>
-              <Btn onClick={() => window.dispatchEvent(new CustomEvent('dilla:verify-safety', { detail: id }))}>Verify</Btn>
-            </Row>
-          );
-        })}
+        {others.length === 0 ? (
+          <div className="set-empty">No contacts to verify yet.</div>
+        ) : others.map((m: any) => (
+          <Row key={m.id} label={
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <span className="set-avatar" style={{ background: m.color, width: 22, height: 22, fontSize: 10 }}>{m.initials}</span>
+              {m.name}
+            </span>
+          }>
+            <Btn onClick={() => window.dispatchEvent(new CustomEvent('dilla:verify-safety', { detail: m.id }))}>Verify</Btn>
+          </Row>
+        ))}
       </Group>
       <Group title="Block list">
         <Row label="Search blocked users"><TextField value="" onChange={() => {}} placeholder="filter…" /></Row>
