@@ -1,7 +1,10 @@
 // @ts-nocheck
-// Minimal entry that mounts the ported handoff ChatApp inside our Vite app.
-// Step 1 of the design-first migration: get the JSX rendering with its own
-// mocked data. Later steps will replace mocks with real Zustand bindings.
+// /mesh — sandbox that mounts the ported handoff ChatApp inside our Vite app.
+// Data flow mirrors /demo: ensureMockSession() activates the mock api+ws and
+// seeds authStore; useTeamSync issues sync:init via the mock ws to populate
+// the team/channel/member/presence stores; useMeshEagerLoad prefetches
+// per-channel messages, DMs, and threads so ChatApp's flat MOCK_DATA snapshot
+// is fully populated by the time it renders.
 
 import { useEffect, useRef, useState } from 'react';
 import ChatApp from './ChatApp';
@@ -16,78 +19,17 @@ import {
 } from './Extras';
 import { THEMES } from './themes';
 import { useMeshData } from './useMeshData';
+import { useMeshEagerLoad } from './useMeshEagerLoad';
 import { useTeamStore } from '../../stores/teamStore';
 import { useAuthStore } from '../../stores/authStore';
-import { usePresenceStore } from '../../stores/presenceStore';
-import { useMessageStore } from '../../stores/messageStore';
-import { useDMStore } from '../../stores/dmStore';
-import { useThreadStore } from '../../stores/threadStore';
-import { useVoiceStore } from '../../stores/voiceStore';
-import {
-  DEMO_TEAM_ID,
-  DEMO_CURRENT_USER_ID,
-  MOCK_TEAM,
-  MOCK_CHANNELS,
-  MOCK_MEMBERS,
-  MOCK_ROLES,
-  MOCK_PRESENCES,
-  MOCK_GENERAL_MESSAGES,
-  MOCK_WELCOME_MESSAGES,
-  MOCK_DM_CHANNELS,
-  MOCK_DM_MESSAGES,
-  MOCK_THREADS,
-  MOCK_THREAD_MESSAGES,
-  MOCK_VOICE_STATES,
-} from '../../services/mockData';
+import { useTeamSync } from '../../hooks/useTeamSync';
+import { ensureMockSession } from '../../services/mockSession';
 import './chat.css';
 import './mesh-chrome.css';
 import './extras.css';
 import './settings.css';
 
-// Seed the stores synchronously at module load if empty so that ChatApp
-// (which captures data.MESSAGES into useState on its first render) sees a
-// populated map instead of an empty one. Idempotent across re-imports.
-function seedStoresIfEmpty() {
-  const { teams, setTeam, setChannels, setMembers, setRoles, setActiveTeam, setActiveChannel } =
-    useTeamStore.getState();
-  if (teams.size > 0) return;
-  // Seed authStore first so useMeshData can resolve the current user id
-  // for the byId['thim'] alias and the "mine" reaction flag.
-  const authStore = useAuthStore.getState();
-  authStore.setDerivedKey('demo-passphrase');
-  authStore.setPublicKey('demo-public-key');
-  authStore.addTeam(
-    DEMO_TEAM_ID,
-    'demo-token',
-    { id: DEMO_CURRENT_USER_ID, username: 'alice', display_name: 'Alice' },
-    MOCK_TEAM as unknown as Record<string, unknown>,
-  );
-  setTeam(MOCK_TEAM);
-  setChannels(DEMO_TEAM_ID, MOCK_CHANNELS);
-  setMembers(DEMO_TEAM_ID, MOCK_MEMBERS);
-  setRoles(DEMO_TEAM_ID, MOCK_ROLES);
-  setActiveTeam(DEMO_TEAM_ID);
-  setActiveChannel('ch-2');
-  usePresenceStore.getState().setPresences(DEMO_TEAM_ID, MOCK_PRESENCES);
-  const msgStore = useMessageStore.getState();
-  msgStore.prependMessages('ch-1', MOCK_WELCOME_MESSAGES);
-  msgStore.prependMessages('ch-2', MOCK_GENERAL_MESSAGES);
-  msgStore.setHasMore('ch-1', false);
-  msgStore.setHasMore('ch-2', false);
-  const dmStore = useDMStore.getState();
-  dmStore.setDMChannels(DEMO_TEAM_ID, MOCK_DM_CHANNELS);
-  for (const [dmId, messages] of Object.entries(MOCK_DM_MESSAGES)) {
-    dmStore.setDMMessages(dmId, messages);
-  }
-  const threadStore = useThreadStore.getState();
-  threadStore.setThreads('ch-2', MOCK_THREADS);
-  for (const [threadId, msgs] of Object.entries(MOCK_THREAD_MESSAGES)) {
-    threadStore.setThreadMessages(threadId, msgs);
-  }
-  useVoiceStore.getState().setVoiceOccupants(MOCK_VOICE_STATES);
-}
-
-seedStoresIfEmpty();
+ensureMockSession();
 
 // ChatApp does `const SettingsModal = window.Settings` and renders it
 // when settings.open. Wire the ported Settings component onto window.
@@ -153,16 +95,22 @@ export default function MeshSandbox() {
     };
   }, [cmdOpen, srchOpen]);
 
-  // Step 2: SERVERS + CHANNELS come from our useTeamStore (everything else
-  // is still mocked). The ChatApp reads window.MOCK_DATA, so we overwrite
-  // that with the live-bridged shape just before its render.
+  // Drive the same load flow as /demo: useTeamSync fetches the team snapshot
+  // via the (mock) ws, useMeshEagerLoad prefetches per-channel data through
+  // the (mock) api. Both end up writing to the same Zustand stores that
+  // useMeshData reads from below.
+  const activeTeamId = useTeamStore((s) => s.activeTeamId);
+  useTeamSync(activeTeamId);
+  // ChatApp captures data.MESSAGES into useState on first render and doesn't
+  // re-derive when the underlying stores update. Wait until the eager loader
+  // has finished fanning out so the captured snapshot is the real fixture,
+  // not a partially-filled map.
+  const { ready: messagesReady } = useMeshEagerLoad(activeTeamId);
+
+  // The ChatApp reads window.MOCK_DATA on every render — overwrite with the
+  // live-bridged shape produced by useMeshData (Zustand → handoff schema).
   const meshData = useMeshData();
   (window as unknown as { MOCK_DATA: typeof meshData }).MOCK_DATA = meshData;
-
-  // Chrome strings derived from our stores instead of the handoff hardcodes
-  // ('BERRALITOS', 'gbg-1', 'gbg-1.dilla.local'). We pull the active team
-  // name and parse the baseUrl host as the node identifier.
-  const activeTeamId = useTeamStore((s) => s.activeTeamId);
   const activeTeam = useTeamStore((s) => (s.activeTeamId ? s.teams.get(s.activeTeamId) : undefined));
   const teamChannels = useTeamStore((s) => (s.activeTeamId ? s.channels.get(s.activeTeamId) : undefined));
   const authTeam = useAuthStore((s) => (activeTeamId ? s.teams.get(activeTeamId) : undefined));
@@ -225,7 +173,9 @@ export default function MeshSandbox() {
         teamName={teamNameUpper}
         nodeName={nodeShort}
       />
-      <ChatApp theme={theme} opts={opts} rich controller={controllerRef.current} />
+      {messagesReady && (
+        <ChatApp theme={theme} opts={opts} rich controller={controllerRef.current} />
+      )}
       <MeshBottomBar voiceConnection={null} federated={federated} degraded={false} nodeHost={nodeHost} />
       <CommandPalette
         open={cmdOpen}

@@ -8,6 +8,7 @@
 // and writes the result to the team/presence stores.
 
 import { useAuthStore } from '../stores/authStore';
+import { useTeamStore } from '../stores/teamStore';
 import { enableMockApi } from './api';
 import { enableMockWs } from './websocket';
 import { MockApiService } from './mockApi';
@@ -41,6 +42,13 @@ export function ensureMockSession(): void {
     identity.user,
     identity.team as unknown as Record<string, unknown>,
   );
+
+  // Pre-select the team + a default text channel so the demo lands on a
+  // useful view instead of "Select a channel". Channels themselves arrive
+  // asynchronously via sync:init; activeChannelId is just a string handle.
+  const team = useTeamStore.getState();
+  team.setActiveTeam(identity.teamId);
+  team.setActiveChannel('ch-2');
 }
 
 /** Returns the singletons so /mesh can drive eager-channel loads in the
