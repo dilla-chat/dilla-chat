@@ -294,6 +294,7 @@ function NewServerModal({ onClose, onCreate }) {
             short: (mode === 'create' ? name : 'NT').slice(0, 1).toUpperCase() || 'N',
             node: mode === 'create' ? 'your-node.local' : 'peer.remote',
             kind: mode,
+            token: mode === 'join' ? token.trim() : undefined,
             federated: false,
             members: 1,
           })}>
@@ -2831,23 +2832,45 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
       )}
       {newServerOpen && (
         <NewServerModal onClose={() => setNewServerOpen(false)} onCreate={(s) => {
-          data.SERVERS.push(s);
-          setActiveServer(s.id);
+          // Adding a team requires server URL + identity binding — too much
+          // for a single modal. Redirect into the onboarding flow with the
+          // appropriate mode + token pre-filled. The user's existing
+          // identity is reused (no new keypair).
           setNewServerOpen(false);
-          window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: s.name, author: 'system', text: s.kind === 'join' ? 'Joined team. Subscribing to channels…' : 'New team created. You are admin.', duration: 4000 } }));
+          if (s.kind === 'join') {
+            const tokenParam = encodeURIComponent(s.token || '');
+            window.location.assign(`/onboarding?mode=invite&token=${tokenParam}`);
+          } else {
+            const nameParam = encodeURIComponent(s.name || '');
+            window.location.assign(`/onboarding?mode=bootstrap&team=${nameParam}`);
+          }
         }} />
       )}
       {newDmOpen && (
         <NewDmModal members={data} onClose={() => setNewDmOpen(false)}
-          onPick={(id) => {
-            const dmId = 'dm-' + id;
-            if (!data.DMS.find(d => d.id === dmId)) {
-              data.DMS.push({ id: dmId, with: id, preview: '', at: new Date(), unread: 0 });
+          onPick={async (id) => {
+            // Optimistic: synthesize a local DM id so the UI advances even
+            // when offline / on /mesh. On /app the server returns the real
+            // channel id; we re-route to it once the round-trip completes.
+            const optimisticId = 'dm-' + id;
+            if (!data.DMS.find(d => d.id === optimisticId)) {
+              data.DMS.push({ id: optimisticId, with: id, preview: '', at: new Date(), unread: 0 });
             }
-            setActiveDM(dmId);
-            setActiveView({ kind: 'dm', id: dmId });
+            setActiveDM(optimisticId);
+            setActiveView({ kind: 'dm', id: optimisticId });
             setTab('pms');
             setNewDmOpen(false);
+            if (activeTeamId && !isMockSession()) {
+              try {
+                const real = (await api.createDM(activeTeamId, [id])) as { id: string };
+                if (real?.id && real.id !== optimisticId) {
+                  setActiveDM(real.id);
+                  setActiveView({ kind: 'dm', id: real.id });
+                }
+              } catch (err) {
+                console.warn('[ChatApp] createDM failed', err);
+              }
+            }
           }} />
       )}
       <div className="chat-backdrop" onClick={() => setDrawerOpen(false)} />
