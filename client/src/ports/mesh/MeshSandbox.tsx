@@ -9,12 +9,14 @@ import { MeshTopBar, MeshBottomBar, CommandPalette, SearchPalette } from './Mesh
 import { THEMES } from './themes';
 import { useMeshData } from './useMeshData';
 import { useTeamStore } from '../../stores/teamStore';
+import { usePresenceStore } from '../../stores/presenceStore';
 import {
   DEMO_TEAM_ID,
   MOCK_TEAM,
   MOCK_CHANNELS,
   MOCK_MEMBERS,
   MOCK_ROLES,
+  MOCK_PRESENCES,
 } from '../../services/mockData';
 import './chat.css';
 import './mesh-chrome.css';
@@ -40,6 +42,7 @@ export default function MeshSandbox() {
     setRoles(DEMO_TEAM_ID, MOCK_ROLES);
     setActiveTeam(DEMO_TEAM_ID);
     setActiveChannel('ch-2');
+    usePresenceStore.getState().setPresences(DEMO_TEAM_ID, MOCK_PRESENCES);
   }, []);
 
   useEffect(() => {
