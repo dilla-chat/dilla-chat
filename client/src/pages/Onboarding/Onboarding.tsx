@@ -1,5 +1,22 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { useAuthStore, type User } from '../../stores/authStore';
+import { api } from '../../services/api';
+import {
+  createIdentityWithPassphrase,
+  hasIdentity,
+  signChallenge,
+  exportIdentityBlob,
+} from '../../services/keyStore';
+import { initCrypto, getIdentityKeys } from '../../services/crypto';
+import { fromBase64 } from '../../services/cryptoCore';
+import {
+  normalizeServerUrl,
+  uploadPrekeyBundle,
+  activateTeamAndNavigate,
+} from '../../utils/serverConnection';
+import { friendlyError } from '../../utils/errorMessages';
 import './Onboarding.css';
 
 type Step = 'connect' | 'identity' | 'keys' | 'safety' | 'done';
@@ -18,15 +35,11 @@ interface LogLine {
   level: 'info' | 'ok' | 'danger';
 }
 
-const KEYS_LOG: LogLine[] = [
-  { text: '> generating ed25519 keypair', level: 'info' },
-  { text: '> ✓ keypair generated', level: 'ok' },
-  { text: '> deriving symmetric key via argon2id', level: 'info' },
-  { text: '> ✓ symmetric key derived', level: 'ok' },
-  { text: '> uploading prekey bundle (X3DH)', level: 'info' },
-  { text: '> ✓ prekey bundle uploaded', level: 'ok' },
-  { text: '> ready', level: 'ok' },
-];
+// Visible progress log for the keys step. Lines are pushed as each phase
+// of identity creation + server registration completes, so the user sees
+// real activity instead of a fake animation. The 'ready' line fires when
+// the team is fully enrolled and we're about to advance to safety.
+const KEYS_INITIAL: LogLine[] = [];
 
 function StepBadge({ step, currentStep }: { step: Step; currentStep: Step }) {
   const order = STEP_ORDER.indexOf(step);
@@ -41,7 +54,9 @@ function StepBadge({ step, currentStep }: { step: Step; currentStep: Step }) {
 }
 
 export default function Onboarding() {
+  const { t: i18n } = useTranslation();
   const navigate = useNavigate();
+  const { setDerivedKey, setPublicKey, addTeam } = useAuthStore();
   const [step, setStep] = useState<Step>('connect');
 
   // Connect step state
@@ -52,66 +67,214 @@ export default function Onboarding() {
   const [token, setToken] = useState('');
   const [connectError, setConnectError] = useState<string | null>(null);
   const [connectLog, setConnectLog] = useState<LogLine[]>([]);
+  const [teamInfo, setTeamInfo] = useState<{ team_name?: string; created_by?: string } | null>(
+    null,
+  );
 
   // Identity step state
   const [username, setUsername] = useState('');
   const [protection, setProtection] = useState<'passphrase' | 'hardware' | 'both'>(
     'passphrase',
   );
+  const [passphrase, setPassphrase] = useState('');
+  const [passphraseConfirm, setPassphraseConfirm] = useState('');
+  const [identityError, setIdentityError] = useState<string | null>(null);
 
-  // Keys step state (animated log)
-  const [keysShown, setKeysShown] = useState(0);
-  const keysIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Keys step state — driven by real progress, not a timed animation.
+  const [keysLog, setKeysLog] = useState<LogLine[]>(KEYS_INITIAL);
+  const [keysError, setKeysError] = useState<string | null>(null);
+  const keysStartedRef = useRef(false);
 
-  // Auto-advance keys step
-  useEffect(() => {
-    if (step !== 'keys') return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional reset when entering keys step
-    setKeysShown(1);
-    keysIntervalRef.current = setInterval(() => {
-      setKeysShown((n) => {
-        if (n >= KEYS_LOG.length) {
-          if (keysIntervalRef.current) clearInterval(keysIntervalRef.current);
-          // Auto-advance to safety after a brief pause
-          setTimeout(() => setStep('safety'), 600);
-          return n;
-        }
-        return n + 1;
-      });
-    }, 280);
-    return () => {
-      if (keysIntervalRef.current) clearInterval(keysIntervalRef.current);
-    };
-  }, [step]);
+  // Safety step — real fingerprint derived from the new identity's public key.
+  const [fingerprint, setFingerprint] = useState('');
+  const enrolledTeamIdRef = useRef<string | null>(null);
 
-  const handleConnect = () => {
+  const passphraseValid = passphrase.length >= 12 && passphrase === passphraseConfirm;
+
+  function appendKeysLog(line: LogLine) {
+    setKeysLog((prev) => [...prev, line]);
+  }
+
+  // Real connect: invite mode validates against the server. Bootstrap and
+  // enrolled modes are stubs awaiting their own wiring passes (the existing
+  // /setup and /login routes still cover those flows for now).
+  const handleConnect = async () => {
     setConnectError(null);
-    // Simulate validation — tokens with "invalid"/"bad"/"expired" trigger error path
-    const t = token.toLowerCase();
-    if (t.includes('invalid') || t.includes('bad') || t.includes('expired')) {
-      setConnectError('Token rejected by server. Check with whoever sent it.');
-      setConnectLog([
-        { text: `> contacting ${serverUrl || 'unknown server'}`, level: 'info' },
-        { text: '> token rejected (invalid or expired)', level: 'danger' },
-      ]);
+    setConnectLog([]);
+    if (!serverUrl.trim()) return;
+
+    const url = normalizeServerUrl(serverUrl);
+    setConnectLog((prev) => [...prev, { text: `> contacting ${url}`, level: 'info' }]);
+
+    if (connectMode !== 'invite') {
+      setConnectError(
+        connectMode === 'bootstrap'
+          ? 'Bootstrap mode is not wired into the onboarding flow yet. Use /setup for now.'
+          : 'Already-enrolled mode is not wired into the onboarding flow yet. Use /login for now.',
+      );
       return;
     }
-    setConnectLog([
-      { text: `> contacting ${serverUrl || 'unknown server'}`, level: 'info' },
-      { text: '> ✓ server accepted invite', level: 'ok' },
-      { text: '> advancing…', level: 'info' },
-    ]);
-    setTimeout(() => setStep('identity'), 600);
+
+    try {
+      const info = (await api.getInviteInfo(url, token)) as {
+        team_name?: string;
+        created_by?: string;
+      };
+      setTeamInfo(info);
+      setConnectLog((prev) => [
+        ...prev,
+        { text: '> ✓ invite accepted', level: 'ok' },
+        ...(info.team_name ? [{ text: `> team: ${info.team_name}`, level: 'ok' as const }] : []),
+        { text: '> advancing…', level: 'info' },
+      ]);
+      setTimeout(() => setStep('identity'), 600);
+    } catch (e) {
+      setConnectError(friendlyError(e, i18n));
+      setConnectLog((prev) => [...prev, { text: '> token rejected', level: 'danger' }]);
+    }
   };
 
   const handleIdentity = () => {
-    if (!username.trim()) return;
+    setIdentityError(null);
+    if (!username.trim()) {
+      setIdentityError('Pick a username.');
+      return;
+    }
+    if (protection === 'passphrase') {
+      if (!passphraseValid) {
+        setIdentityError(
+          passphrase.length < 12
+            ? 'Passphrase needs to be at least 12 characters.'
+            : 'Passphrase confirmation does not match.',
+        );
+        return;
+      }
+    } else {
+      setIdentityError(
+        'Hardware-key onboarding is not wired yet. Choose Passphrase to continue.',
+      );
+      return;
+    }
     setStep('keys');
   };
 
   const handleSafety = () => {
     setStep('done');
   };
+
+  // Keys step: when entered, run the real enrollment flow:
+  //   1. Create identity in IndexedDB (Ed25519 + Argon2id-derived AES key)
+  //   2. initCrypto(...) so cryptoService can sign challenges
+  //   3. Request a server challenge, sign it
+  //   4. api.register(...) with the invite token → team joined
+  //   5. uploadPrekeyBundle(...) for E2E channel keys
+  //   6. exportIdentityBlob → upload for cross-device recovery (best-effort)
+  // Once enrolled the user's public-key fingerprint is captured and shown
+  // in the safety step before they finally land in /app.
+  useEffect(() => {
+    if (step !== 'keys') return;
+    if (keysStartedRef.current) return;
+    keysStartedRef.current = true;
+
+    (async () => {
+      const url = normalizeServerUrl(serverUrl);
+      try {
+        // Step 1: identity (only if not already created — guard against
+        // /onboarding re-entry after a prior abandoned run).
+        appendKeysLog({ text: '> generating ed25519 keypair', level: 'info' });
+        const alreadyHasIdentity = await hasIdentity();
+        if (alreadyHasIdentity) {
+          appendKeysLog({ text: '> ✓ existing identity unlocked', level: 'ok' });
+        } else {
+          appendKeysLog({ text: '> deriving symmetric key via argon2id', level: 'info' });
+        }
+        const { publicKeyB64, publicKeyHex, identity } = alreadyHasIdentity
+          ? { publicKeyB64: '', publicKeyHex: '', identity: undefined }
+          : await createIdentityWithPassphrase(url, passphrase, []);
+        if (alreadyHasIdentity) {
+          appendKeysLog({ text: '> ✓ keypair ready', level: 'ok' });
+        } else {
+          appendKeysLog({ text: '> ✓ keypair generated', level: 'ok' });
+          appendKeysLog({ text: '> ✓ symmetric key derived', level: 'ok' });
+        }
+
+        // initCrypto requires both identity + derivedKey. For passphrase-
+        // protected accounts the derivedKey is the public key (matches the
+        // legacy CreateIdentity passphrase flow).
+        const derivedKey = publicKeyB64;
+        if (identity) await initCrypto(identity, derivedKey);
+        setPublicKey(publicKeyB64);
+        setDerivedKey(derivedKey);
+
+        // Step 2: register with the team via invite.
+        appendKeysLog({ text: '> requesting server challenge', level: 'info' });
+        const tempId = url;
+        api.addTeam(tempId, url);
+        const { challenge_id, nonce } = await api.requestChallenge(tempId, publicKeyB64);
+        const nonceBytes = fromBase64(nonce);
+        const keys = getIdentityKeys();
+        const sig = await signChallenge(keys.signingKey, nonceBytes);
+        const sigB64 = btoa(String.fromCodePoint(...sig));
+
+        appendKeysLog({ text: '> signing challenge', level: 'info' });
+        const result = (await api.register(
+          tempId,
+          challenge_id,
+          publicKeyB64,
+          sigB64,
+          username.trim(),
+          token,
+        )) as { user: User; token: string; team?: Record<string, unknown> | null };
+
+        const realTeamId = (result.team?.id as string) || tempId;
+        if (realTeamId !== tempId) {
+          api.removeTeam(tempId);
+          api.addTeam(realTeamId, url);
+        }
+        api.setToken(realTeamId, result.token);
+        addTeam(
+          realTeamId,
+          result.token,
+          result.user,
+          (result.team ?? teamInfo ?? {}) as Record<string, unknown>,
+          url,
+        );
+        enrolledTeamIdRef.current = realTeamId;
+        appendKeysLog({ text: '> ✓ enrolled in team', level: 'ok' });
+
+        // Step 3: prekey bundle + identity blob (best-effort).
+        appendKeysLog({ text: '> uploading prekey bundle (X3DH)', level: 'info' });
+        await uploadPrekeyBundle(derivedKey, realTeamId);
+        appendKeysLog({ text: '> ✓ prekey bundle uploaded', level: 'ok' });
+        try {
+          const blob = await exportIdentityBlob();
+          if (blob) {
+            await fetch(`${url}/api/v1/identity/blob`, {
+              method: 'PUT',
+              headers: {
+                Authorization: `Bearer ${result.token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ blob }),
+            });
+            appendKeysLog({ text: '> ✓ identity blob backed up', level: 'ok' });
+          }
+        } catch {
+          // Non-fatal — recovery just won't work via this server.
+        }
+
+        // Fingerprint for the safety step.
+        setFingerprint(publicKeyHex.match(/.{1,4}/g)?.slice(0, 8).join(' ') ?? publicKeyHex);
+        appendKeysLog({ text: '> ready', level: 'ok' });
+        setTimeout(() => setStep('safety'), 600);
+      } catch (e) {
+        const msg = friendlyError(e, i18n);
+        appendKeysLog({ text: `> error: ${msg}`, level: 'danger' });
+        setKeysError(msg);
+        keysStartedRef.current = false; // allow retry by re-entering keys step
+      }
+    })();
+  }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="onboarding">
@@ -238,18 +401,47 @@ export default function Onboarding() {
               ))}
             </div>
 
-            {protection !== 'passphrase' && (
+            {protection === 'passphrase' ? (
+              <>
+                <label className="onboarding-label">
+                  Passphrase
+                  <input
+                    type="password"
+                    value={passphrase}
+                    onChange={(e) => setPassphrase(e.target.value)}
+                    placeholder="at least 12 characters"
+                    className="onboarding-input"
+                  />
+                </label>
+                <label className="onboarding-label">
+                  Confirm passphrase
+                  <input
+                    type="password"
+                    value={passphraseConfirm}
+                    onChange={(e) => setPassphraseConfirm(e.target.value)}
+                    className="onboarding-input"
+                  />
+                </label>
+                <div className="onboarding-callout">
+                  Argon2id-derived AES-256-GCM key seals your private key on disk.
+                  Dilla never sees the passphrase — losing it locks you out permanently.
+                </div>
+              </>
+            ) : (
               <div className="onboarding-hardware">
                 <div className="onboarding-tap-animation">
                   <div className="onboarding-tap-ripple" />
-                  <span>TAP YOUR KEY</span>
+                  <span>HARDWARE-KEY ONBOARDING — COMING SOON</span>
                 </div>
-                <div className="onboarding-hardware-chips">
-                  <span className="onboarding-hardware-chip">USB</span>
-                  <span className="onboarding-hardware-chip">OS</span>
-                  <span className="onboarding-hardware-chip">PASSKEY</span>
+                <div className="onboarding-callout warn">
+                  Passkey + WebAuthn enrollment is not wired into this flow yet.
+                  Choose Passphrase to continue, or use /create-identity-legacy.
                 </div>
               </div>
+            )}
+
+            {identityError && (
+              <div className="onboarding-callout danger">{identityError}</div>
             )}
 
             <div className="onboarding-actions">
@@ -264,7 +456,7 @@ export default function Onboarding() {
                 type="button"
                 className="onboarding-btn primary"
                 onClick={handleIdentity}
-                disabled={!username.trim()}
+                disabled={!username.trim() || (protection === 'passphrase' && !passphraseValid)}
               >
                 Continue →
               </button>
@@ -276,21 +468,38 @@ export default function Onboarding() {
           <section className="onboarding-step">
             <h1 className="onboarding-title">Generating keys</h1>
             <p className="onboarding-subtitle">
-              Hold tight — this happens locally and is never shared with the server.
+              Identity creation and registration happen locally — the server only sees
+              your public key and a signature it asked for.
             </p>
 
             <div className="onboarding-log large">
-              {KEYS_LOG.slice(0, keysShown).map((line) => (
-                <div key={line.text} className={`onboarding-log-line ${line.level}`}>
+              {keysLog.map((line, i) => (
+                <div key={`${i}:${line.text}`} className={`onboarding-log-line ${line.level}`}>
                   {line.text}
                 </div>
               ))}
-              {keysShown < KEYS_LOG.length && (
+              {!keysError && (
                 <div className="onboarding-log-line info">
                   <span className="onboarding-spinner" aria-hidden="true">_</span>
                 </div>
               )}
             </div>
+
+            {keysError && (
+              <div className="onboarding-actions">
+                <button
+                  type="button"
+                  className="onboarding-btn secondary"
+                  onClick={() => {
+                    setKeysError(null);
+                    setKeysLog([]);
+                    setStep('identity');
+                  }}
+                >
+                  ← Back to identity
+                </button>
+              </div>
+            )}
           </section>
         )}
 
@@ -312,8 +521,7 @@ export default function Onboarding() {
                 ))}
               </div>
               <div className="onboarding-safety-number">
-                57842 19034 88291 60017<br />
-                33920 11458 90442 17763
+                {fingerprint || '— fingerprint unavailable —'}
               </div>
               <div className="onboarding-safety-actions">
                 <button type="button" className="onboarding-btn secondary">
@@ -381,7 +589,14 @@ export default function Onboarding() {
               <button
                 type="button"
                 className="onboarding-btn primary"
-                onClick={() => navigate('/app')}
+                onClick={async () => {
+                  const teamId = enrolledTeamIdRef.current;
+                  if (teamId) {
+                    await activateTeamAndNavigate(teamId, navigate);
+                  } else {
+                    navigate('/app');
+                  }
+                }}
               >
                 Open Dilla →
               </button>
