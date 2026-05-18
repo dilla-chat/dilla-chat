@@ -250,7 +250,11 @@ export default function Onboarding() {
         const info = await getCredentialInfo();
         let identity: Awaited<ReturnType<typeof unlockWithPassphrase>> | null = null;
         let derivedKeyB64 = '';
-        const hasPasskey = info && info.credentials.length > 0;
+        // If the user typed a passphrase, honor that intent — skip the
+        // passkey dialog entirely. Otherwise, only attempt passkey when
+        // credentials were actually registered (passphrase-only enrollments
+        // leave credentials empty so the picker doesn't pop up either).
+        const hasPasskey = !passphrase && info && info.credentials.length > 0;
 
         if (hasPasskey) {
           try {
