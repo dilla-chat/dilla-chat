@@ -930,7 +930,15 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
                    { label: 'Copy link', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6 10l4-4M6 6l4 4" stroke="currentColor" strokeWidth="1.4"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/></svg>, onClick: () => { navigator.clipboard?.writeText('dilla://gbg-1/k/' + c.id); window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Link copied.', duration: 2000 } })); } },
                    { sep: true },
                    { label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Kanal settings: edit topic, slow-mode, member overrides (admin only).', duration: 4000 } })) },
-                   { label: 'Leave kanal', danger: true, icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M10 4V2H3v12h7v-2M6 8h9M12 5l3 3-3 3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Left #' + c.name + '.', duration: 2500 } })) },
+                   { label: 'Leave kanal', danger: true, icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M10 4V2H3v12h7v-2M6 8h9M12 5l3 3-3 3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>, onClick: () => {
+                     if (!confirm('Leave #' + c.name + '?')) return;
+                     // No api.leaveChannel — channels are team-wide and members
+                     // see them by default. Best we can do client-side is drop
+                     // the channel from the local store + emit a leave hint.
+                     const teamId = useTeamStore.getState().activeTeamId;
+                     if (teamId) useTeamStore.getState().removeChannel(teamId, c.id);
+                     window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Left #' + c.name + ' locally. Admins can permanently delete in Team Settings.', duration: 3000 } }));
+                   } },
                  ] } }));
                  }}>
               <span className="ch-glyph"><Icon.Hash size={14} /></span>
@@ -2306,7 +2314,9 @@ function MemberList({ members, voiceConnection, rich, federated }) {
                { label: 'Send message', icon: <Icon.Chat size={13} />, onClick: () => {
                  window.dispatchEvent(new CustomEvent('dilla:open-dm', { detail: m.id }));
                } },
-               { label: 'Mention in current kanal', icon: <span style={{ fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: 13 }}>@</span>, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: 'Berralitos', author: 'system', text: 'Mentioned @' + m.name + '.', duration: 2000 } })) },
+               { label: 'Mention in current kanal', icon: <span style={{ fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: 13 }}>@</span>, onClick: () => {
+                 window.dispatchEvent(new CustomEvent('dilla:insert-mention', { detail: m.name }));
+               } },
                { label: 'View profile', icon: <Icon.People size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-profile', { detail: { memberId: m.id, x: 200, y: 200 } })) },
                { label: 'Verify safety number', icon: <Icon.Shield size={12} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:verify-safety', { detail: m.id })) },
                { sep: true },
@@ -2457,6 +2467,19 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     function onProfile(e) { setProfilePop(e.detail); }
     function onThread(e)  { setActiveThread(e.detail); }
     function onDrawer()   { setDrawerOpen(o => !o); }
+    function onInsertMention(e) {
+      // Append @name to the active channel/DM draft. The mention picker
+      // (in TextChannel.tsx) already supports @-completions on type; this
+      // handler is for the member-menu "Mention in current kanal" action.
+      const name = e.detail;
+      if (!name) return;
+      const targetId = channel?.id || activeChannel;
+      if (!targetId) return;
+      setDrafts((prev) => ({
+        ...prev,
+        [targetId]: ((prev[targetId] || '').trimEnd() + ' @' + name + ' ').trimStart(),
+      }));
+    }
     function onCloseDm(e) {
       const dmId = e.detail;
       if (!dmId) return;
@@ -2509,6 +2532,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     window.addEventListener('dilla:open-menu', onMenu);
     window.addEventListener('dilla:open-dm', onOpenDm);
     window.addEventListener('dilla:close-dm', onCloseDm);
+    window.addEventListener('dilla:insert-mention', onInsertMention);
     function onKey(e) {
       const inField = e.target.matches && e.target.matches('input, textarea, [contenteditable="true"]');
       if (inField) return;
@@ -2532,6 +2556,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
       window.removeEventListener('dilla:open-new-channel', onAddCh);
       window.removeEventListener('dilla:open-dm', onOpenDm);
       window.removeEventListener('dilla:close-dm', onCloseDm);
+      window.removeEventListener('dilla:insert-mention', onInsertMention);
       window.removeEventListener('dilla:open-menu', onMenu);
       window.removeEventListener('keydown', onKey);
     };
