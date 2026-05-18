@@ -214,3 +214,106 @@
     width: 12.5rem;
   }
 }
+
+/* ====================================================================
+   Mesh design — relocated from mesh-overrides.css. Single source of
+   truth; theming via tokens.
+   ==================================================================== */
+
+.member-list {
+  background: var(--bg-2);
+  font-family: var(--font-ui);
+  padding: 1rem 0.75rem 1.5rem;
+  box-shadow: none;
+  border-left: 0.0625rem solid var(--hairline);
+}
+
+.member-role-group {
+  padding-top: 0;
+}
+
+.member-list-section-title,
+.member-section-header,
+.member-role-header {
+  font-family: var(--font-mono);
+  font-size: 0.65625rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+  padding: 0.875rem 0.375rem 0.375rem;
+}
+
+.member-role-group:first-child .member-role-header {
+  padding-top: 0;
+}
+
+.member-item {
+  height: auto;
+  padding: 0.375rem;
+  margin: 0;
+  gap: 0.625rem;
+  width: 100%;
+  border-radius: var(--r-sm);
+  transition: background 0.1s;
+}
+
+.member-item:hover {
+  background: var(--surface-hi);
+}
+
+.member-avatar {
+  width: 1.75rem;
+  height: 1.75rem;
+  font-size: 0.6875rem;
+  border-radius: var(--r-md);
+  color: var(--accent-ink);
+  font-family: var(--font-display);
+  /* bg is set inline via usernameColor(member.username); no fallback
+     here so the per-user color shows through instead of a uniform gray. */
+}
+
+.member-row,
+.member-item {
+  font-family: var(--font-ui);
+  color: var(--fg-2);
+  border-radius: var(--r-sm);
+}
+
+.member-row:hover,
+.member-item:hover {
+  background: var(--surface-hi, var(--surface-2));
+  color: var(--fg);
+}
+
+.member-name,
+.member-display-name {
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 0.8125rem;
+  color: var(--fg);
+  letter-spacing: 0;
+  text-transform: none;
+  line-height: 1.2;
+}
+
+.member-status,
+.member-custom-status {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--fg-3);
+}
+
+.member-federated-tag {
+  font-family: var(--font-mono);
+  font-size: 0.5625rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: var(--surface-2);
+  border: 0.0625rem solid var(--warn);
+  color: var(--warn);
+  border-radius: var(--r-sm);
+  padding: 0.0625rem 0.3125rem;
+}
