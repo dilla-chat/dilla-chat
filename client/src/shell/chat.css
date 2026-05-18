@@ -1590,11 +1590,6 @@
   background: var(--surface);
   border-radius: var(--r-lg);
   display: flex; flex-direction: column;
-  transition: border-color .14s, box-shadow .14s;
-}
-.composer:focus-within {
-  border-color: color-mix(in oklab, var(--accent) 60%, var(--hairline-2));
-  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 .composer-typing {
   padding: 4px 16px 0;
