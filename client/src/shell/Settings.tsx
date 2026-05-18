@@ -581,20 +581,119 @@ function TeamInfo() {
   );
 }
 function TeamInvites() {
-  // Start with no invites — real invites would flow through services/api.
   const me = (window as any).MOCK_DATA?.byId?.thim;
   const myLabel = me ? `${me.name} · ${me.role || 'admin'}` : 'admin';
-  const [rows, setRows] = useStateS([]);
-  function revoke(code) {
-    if (!confirm('Revoke invite ' + code + '? People who already have it can no longer use it.')) return;
-    setRows(prev => prev.filter(r => r.code !== code));
-    window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'team', text: 'Invite revoked.', duration: 3500 } }));
+  const auth = useActiveTeamAuth();
+  const [rows, setRows] = useStateS<any[]>([]);
+
+  // Hydrate from /api/v1/teams/:id/invites on mount. On /mesh the auth is
+  // null — render empty list, let the user create local-only entries the
+  // same as before.
+  useEffectS(() => {
+    if (!auth) return;
+    api
+      .listInvites(auth.teamId)
+      .then((list: any[]) => {
+        setRows(
+          list.map((inv: any) => ({
+            id: inv.id,
+            code: inv.code || inv.token || inv.id,
+            uses: `${inv.uses ?? 0} / ${inv.max_uses ?? '∞'}`,
+            expires: inv.expires_at
+              ? new Date(inv.expires_at).toLocaleDateString()
+              : '—',
+            who: inv.created_by || myLabel,
+          })),
+        );
+      })
+      .catch((err) => console.warn('[Settings] listInvites failed', err));
+  }, [auth?.teamId]);
+
+  async function revoke(row: any) {
+    if (
+      !confirm(
+        'Revoke invite ' +
+          row.code +
+          '? People who already have it can no longer use it.',
+      )
+    ) {
+      return;
+    }
+    setRows((prev) => prev.filter((r) => r.code !== row.code));
+    if (auth && row.id) {
+      try {
+        await api.revokeInvite(auth.teamId, row.id);
+      } catch (err) {
+        console.warn('[Settings] revokeInvite failed', err);
+      }
+    }
+    window.dispatchEvent(
+      new CustomEvent('dilla:notify', {
+        detail: { channel: 'system', author: 'team', text: 'Invite revoked.', duration: 3500 },
+      }),
+    );
   }
-  function create() {
-    const code = 'dilla/invite/' + Math.random().toString(16).slice(2, 6).toUpperCase();
-    setRows(prev => [...prev, { code, uses: '0 / ∞', expires: '—', who: myLabel }]);
-    window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'team', text: 'Invite link generated and copied to clipboard.', duration: 3500 } }));
-    navigator.clipboard?.writeText(code);
+
+  async function create() {
+    if (!auth) {
+      // Mock fallback: keep the prior demo behavior so /mesh has something
+      // to show.
+      const code = 'dilla/invite/' + Math.random().toString(16).slice(2, 6).toUpperCase();
+      setRows((prev) => [...prev, { code, uses: '0 / ∞', expires: '—', who: myLabel }]);
+      navigator.clipboard?.writeText(code);
+      window.dispatchEvent(
+        new CustomEvent('dilla:notify', {
+          detail: {
+            channel: 'system',
+            author: 'team',
+            text: 'Invite link generated and copied to clipboard.',
+            duration: 3500,
+          },
+        }),
+      );
+      return;
+    }
+    try {
+      const inv = (await api.createInvite(auth.teamId)) as any;
+      const id = inv.id;
+      const code = inv.code || inv.token || id;
+      // Server returns the token; turn it into a deep-link URL the user
+      // can paste anywhere.
+      const url = `${auth.baseUrl.replace(/\/$/, '')}/join/${code}`;
+      setRows((prev) => [
+        ...prev,
+        {
+          id,
+          code: url,
+          uses: `0 / ${inv.max_uses ?? '∞'}`,
+          expires: inv.expires_at ? new Date(inv.expires_at).toLocaleDateString() : '—',
+          who: myLabel,
+        },
+      ]);
+      navigator.clipboard?.writeText(url);
+      window.dispatchEvent(
+        new CustomEvent('dilla:notify', {
+          detail: {
+            channel: 'system',
+            author: 'team',
+            text: 'Invite link generated and copied to clipboard.',
+            duration: 3500,
+          },
+        }),
+      );
+    } catch (err) {
+      console.warn('[Settings] createInvite failed', err);
+      window.dispatchEvent(
+        new CustomEvent('dilla:notify', {
+          detail: {
+            channel: 'system',
+            author: 'team',
+            text: 'Invite creation failed — admin permission required.',
+            duration: 4000,
+          },
+        }),
+      );
+    }
   }
   return (
     <Group title="Active invites" hint="Anyone with a working link can join this team. Revoke unused links.">
@@ -608,7 +707,7 @@ function TeamInvites() {
             <span>{r.uses}</span>
             <span>{r.expires}</span>
             <span>{r.who}</span>
-            <Btn danger onClick={() => revoke(r.code)}>Revoke</Btn>
+            <Btn danger onClick={() => revoke(r)}>Revoke</Btn>
           </div>
         ))}
       </div>
