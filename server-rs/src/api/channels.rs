@@ -103,6 +103,15 @@ pub async fn create(
             locked: false, hidden_if_restricted: false, slow_mode_seconds: 0,
         };
         db::create_channel(conn, &channel)?;
+        let _ = db::insert_audit_event(
+            conn,
+            &team_id,
+            Some(&user_id),
+            "channel.create",
+            Some("channel"),
+            Some(&channel.id),
+            Some(&serde_json::json!({ "name": channel.name, "type": channel.channel_type })),
+        );
         Ok(channel)
     })
     .await?;
@@ -537,6 +546,15 @@ pub async fn delete_channel(
         match channel {
             Some(ch) if ch.team_id == team_id => {
                 db::delete_channel(conn, &channel_id)?;
+                let _ = db::insert_audit_event(
+                    conn,
+                    &team_id,
+                    Some(&user_id),
+                    "channel.delete",
+                    Some("channel"),
+                    Some(&channel_id),
+                    Some(&serde_json::json!({ "name": ch.name })),
+                );
                 Ok(())
             }
             Some(_) => Err(rusqlite::Error::InvalidParameterName(

@@ -64,6 +64,15 @@ pub async fn create(
             created_at: now,
         };
         db::create_invite(conn, &invite)?;
+        let _ = db::insert_audit_event(
+            conn,
+            &team_id,
+            Some(&user_id),
+            "invite.create",
+            Some("invite"),
+            Some(&invite.id),
+            Some(&serde_json::json!({ "max_uses": invite.max_uses, "expires_at": invite.expires_at })),
+        );
         Ok(invite)
     })
     .await?;
@@ -89,6 +98,15 @@ pub async fn revoke(
         }
 
         db::revoke_invite(conn, &invite_id)?;
+        let _ = db::insert_audit_event(
+            conn,
+            &team_id,
+            Some(&user_id),
+            "invite.revoke",
+            Some("invite"),
+            Some(&invite_id),
+            None,
+        );
         Ok(())
     })
     .await

@@ -209,6 +209,15 @@ pub async fn update(
         }
 
         db::update_team(conn, &team)?;
+        let _ = db::insert_audit_event(
+            conn,
+            &team_id,
+            Some(&user_id),
+            "team.update",
+            Some("team"),
+            Some(&team_id),
+            Some(&serde_json::json!({ "name": team.name })),
+        );
         Ok(team)
     })
     .await

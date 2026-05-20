@@ -892,7 +892,24 @@ function TeamInvites() {
         </div>
         {rows.map(r => (
           <div key={r.code} className={'set-tr' + (r.stale ? ' stale' : '')}>
-            <code>{r.code}</code>
+            <span className="set-link-cell" title={r.code}>
+              <code className="set-link-code">{r.code}</code>
+              <button
+                className="set-link-copy"
+                title="Copy link"
+                onClick={() => {
+                  navigator.clipboard?.writeText(r.code);
+                  window.dispatchEvent(new CustomEvent('dilla:notify', {
+                    detail: { channel: 'system', author: 'team', text: 'Invite link copied.', duration: 2000 },
+                  }));
+                }}
+              >
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                  <rect x="5" y="3" width="8" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.3"/>
+                  <path d="M3 5v8h8" stroke="currentColor" strokeWidth="1.3"/>
+                </svg>
+              </button>
+            </span>
             <span>{r.uses}</span>
             <span>{r.expires}</span>
             <span>{r.who}</span>
@@ -1377,12 +1394,18 @@ function TeamAudit() {
       case 'role.update':   return `updated role ${name || '—'}`;
       case 'role.delete':   return `deleted role ${name || '—'}`;
       case 'role.reorder':  return `reordered roles`;
+      case 'channel.create': return `created channel #${name || '—'}${detail?.type ? ' · ' + detail.type : ''}`;
+      case 'channel.delete': return `deleted channel #${name || '—'}`;
       case 'channel.lock':   return `locked channel #${name || '—'}`;
       case 'channel.unlock': return `unlocked channel #${name || '—'}`;
       case 'channel.update': return `updated channel #${name || '—'}`;
+      case 'channel.access.update': return `changed access for channel`;
       case 'member.roles.update': return `changed roles for @${targetUser || e.target_id}`;
       case 'member.kick':    return `kicked @${targetUser || e.target_id}`;
       case 'member.ban':     return `banned @${targetUser || e.target_id}${detail?.reason ? ` — ${detail.reason}` : ''}`;
+      case 'team.update':    return `updated team settings${name ? ' · ' + name : ''}`;
+      case 'invite.create':  return `created an invite${detail?.max_uses ? ' · max ' + detail.max_uses : ''}${detail?.expires_at ? ' · expires ' + detail.expires_at : ''}`;
+      case 'invite.revoke':  return `revoked an invite`;
       default: return e.action;
     }
   }
