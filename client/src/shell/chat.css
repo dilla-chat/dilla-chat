@@ -975,7 +975,10 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: 16px 0 6px;
+  /* Extra bottom padding lets the newest message scroll up *past*
+     the composer overlay so it's never trapped beneath. The 3.5rem
+     matches the negative margin-top on .composer-wrap. */
+  padding: 1rem 0 4rem;
   scroll-behavior: smooth;
 }
 .day-divider {
@@ -1830,8 +1833,31 @@ img.attach-img {
 }
 .msg-tools button:hover { background: var(--surface-hi); color: var(--fg); }
 
-/* Composer */
-.composer-wrap { padding: 0 16px 16px; flex: 0 0 auto; }
+/* Composer.
+ *
+ * Overlays the feed at the bottom of .main so scrolling messages
+ * slip BEHIND the composer rather than hitting a hard divider.
+ * .feed (sibling above) carries a bottom padding equal to this
+ * area's height so the newest message is still reachable; the
+ * gradient mask along the top of .composer-wrap fades the feed
+ * cleanly into the composer's surface.
+ */
+.composer-wrap {
+  padding: 0 1rem 1rem;
+  flex: 0 0 auto;
+  position: relative;
+  margin-top: -3.5rem;
+  pointer-events: none; /* children re-enable; lets feed scroll behind */
+  background: linear-gradient(
+    to bottom,
+    transparent 0,
+    var(--bg) 2.5rem,
+    var(--bg) 100%
+  );
+}
+.composer-wrap > * {
+  pointer-events: auto;
+}
 .composer {
   border: 1px solid var(--hairline-2);
   background: var(--surface);
