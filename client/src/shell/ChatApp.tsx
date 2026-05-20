@@ -2832,51 +2832,57 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                           </div>
                         ) : (
                           <>
-                            {m.kind === 'image' && m.text && <div style={{ marginBottom: 4 }}>{renderText(m.text, members)}</div>}
-                            {m.kind === 'image' && (
-                              <div className="attach">
-                                {m.attachment?.src ? (
-                                  <img
-                                    className="attach-img"
-                                    src={m.attachment.src}
-                                    alt={m.attachment.label || ''}
-                                    onClick={() => setLightboxSrc(m.attachment.src)}
-                                    style={{ display: 'block', maxWidth: 360, maxHeight: 280, objectFit: 'cover', borderRadius: 4, cursor: 'zoom-in' }}
-                                  />
-                                ) : (
-                                  <div className="attach-img" style={{ background: m.attachment?.tint }}></div>
-                                )}
-                                <div className="attach-name">
-                                  {m.attachment?.label}
-                                  {m.attachment?.size != null && ` · ${Math.max(1, Math.round(m.attachment.size / 1024))} KB`}
-                                </div>
-                              </div>
+                            {(m.kind === 'image' || m.kind === 'file') && m.text && (
+                              <div style={{ marginBottom: 4 }}>{renderText(m.text, members)}</div>
                             )}
-                            {m.kind === 'file' && (
-                              // Compact one-row card for non-image attachments.
-                              // The 360×280 placeholder we had before looked
-                              // identical to a 4K photo's tile — confusing for
-                              // small files. <a download> triggers the browser
-                              // download path against the existing attachment
-                              // URL (already authorized for team members).
-                              <a
-                                className="attach-file"
-                                href={m.attachment?.src}
-                                download={m.attachment?.label || 'file'}
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <span className="attach-file-icon"><Icon.File size={16} /></span>
-                                <span className="attach-file-meta">
-                                  <span className="attach-file-name">{m.attachment?.label || 'file'}</span>
-                                  {m.attachment?.size != null && (
-                                    <span className="attach-file-size">{Math.max(1, Math.round(m.attachment.size / 1024))} KB</span>
+                            {(m.attachments && m.attachments.length > 0
+                              ? m.attachments
+                              : (m.attachment ? [m.attachment] : [])
+                            ).map((att, ai) => (
+                              att.kind === 'image' ? (
+                                <div key={ai} className="attach">
+                                  {att.src ? (
+                                    <img
+                                      className="attach-img"
+                                      src={att.src}
+                                      alt={att.label || ''}
+                                      onClick={() => setLightboxSrc(att.src)}
+                                      style={{ display: 'block', maxWidth: 360, maxHeight: 280, objectFit: 'cover', borderRadius: 4, cursor: 'zoom-in' }}
+                                    />
+                                  ) : (
+                                    <div className="attach-img" style={{ background: att.tint }}></div>
                                   )}
-                                </span>
-                                <span className="attach-file-action" title="Download">
-                                  <Icon.Download size={14} />
-                                </span>
-                              </a>
-                            )}
+                                  <div className="attach-name">
+                                    {att.label}
+                                    {att.size != null && ` · ${Math.max(1, Math.round(att.size / 1024))} KB`}
+                                  </div>
+                                </div>
+                              ) : (
+                                // Compact one-row card for non-image
+                                // attachments. <a download> triggers the
+                                // browser download against the existing
+                                // attachment URL (already authorised for
+                                // team members).
+                                <a
+                                  key={ai}
+                                  className="attach-file"
+                                  href={att.src}
+                                  download={att.label || 'file'}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <span className="attach-file-icon"><Icon.File size={16} /></span>
+                                  <span className="attach-file-meta">
+                                    <span className="attach-file-name">{att.label || 'file'}</span>
+                                    {att.size != null && (
+                                      <span className="attach-file-size">{Math.max(1, Math.round(att.size / 1024))} KB</span>
+                                    )}
+                                  </span>
+                                  <span className="attach-file-action" title="Download">
+                                    <Icon.Download size={14} />
+                                  </span>
+                                </a>
+                              )
+                            ))}
                             {m.kind === 'text' && renderText(m.text, members)}
                             {m.kind === 'action' && (
                               <span className="msg-action">

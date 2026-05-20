@@ -141,37 +141,48 @@ const FILE_TOKEN = /^\[file:([^\]]+)\]\s*(.*)$/;
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
 
 function mapMessage(msg, currentUserId, teamId) {
-  let att = msg.attachments?.[0];
-  let isImage = att?.content_type?.startsWith('image/');
+  // Build the full attachments list. Server-attached files (channels
+  // path) come through msg.attachments — we map all of them, not just
+  // the first. The DM path encodes one or more `[file:<id>] name`
+  // tokens at the front of the message body since the DM endpoint
+  // doesn't carry a separate attachments array; pull every token out
+  // and strip them from the visible text so the UI surface mirrors
+  // what the channel path produces.
   let text = msg.content;
-
-  // Fall back to in-content token only when no real attachment row was
-  // attached. Once DMs gain server-side attachments this branch can go.
-  if (!att && typeof text === 'string') {
-    const m = text.match(FILE_TOKEN);
-    if (m && teamId) {
-      const [, id, label] = m;
+  const fileMaps = (msg.attachments ?? []).map((att) => {
+    const isImage = att.content_type?.startsWith('image/');
+    return {
+      kind: isImage ? 'image' : 'file',
+      label: att.filename || 'file',
+      size: att.size,
+      src: isImage && teamId ? api.getAttachmentUrl(teamId, att.id) : att.url,
+    };
+  });
+  if (fileMaps.length === 0 && typeof text === 'string') {
+    // Parse multiple leading `[file:<id>] name` tokens. Whatever is
+    // left after stripping them becomes the visible body.
+    const tokenRe = /^\[file:([^\]]+)\]\s*(\S+(?:\s+\S+)*?)(?=\s*\[file:|\s*$)/;
+    let rest = text;
+    while (teamId) {
+      const m = rest.match(tokenRe);
+      if (!m) break;
+      const [whole, id, label] = m;
       const imageLike = IMAGE_EXT.test(label);
-      att = {
-        id,
-        filename: label || 'file',
-        content_type: imageLike ? 'image/*' : 'application/octet-stream',
+      fileMaps.push({
+        kind: imageLike ? 'image' : 'file',
+        label: label || 'file',
         size: undefined,
-        url: api.getAttachmentUrl(teamId, id),
-      };
-      isImage = imageLike;
-      text = '';
+        src: api.getAttachmentUrl(teamId, id),
+      });
+      rest = rest.slice(whole.length).trimStart();
     }
+    if (fileMaps.length > 0) text = rest;
   }
 
-  const attachment = att
-    ? {
-        kind: isImage ? 'image' : 'file',
-        label: att.filename || 'file',
-        size: att.size,
-        src: isImage && teamId ? api.getAttachmentUrl(teamId, att.id) : att.url,
-      }
-    : undefined;
+  // Keep `attachment` (singular) populated with the first entry so
+  // legacy renderers that only know about a single attachment still
+  // display something; richer renderers iterate `attachments`.
+  const attachment = fileMaps[0];
   return {
     id: msg.id,
     author: msg.authorId,
@@ -182,6 +193,7 @@ function mapMessage(msg, currentUserId, teamId) {
     deleted: msg.deleted,
     reactions: mapReactions(msg.reactions, currentUserId),
     attachment,
+    attachments: fileMaps,
     replyTo: msg.replyToMessageId ?? null,
   };
 }
