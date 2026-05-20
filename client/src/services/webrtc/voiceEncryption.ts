@@ -76,7 +76,10 @@ export class VoiceEncryptionManager {
     }
 
     if (Object.keys(encryptedKeys).length > 0) {
+      console.log('[Voice] distributing voice key to', Object.keys(encryptedKeys));
       ws.voiceKeyDistribute(teamId, channelId, keyId, encryptedKeys);
+    } else {
+      console.warn('[Voice] no recipients for voice key (peers:', Object.keys(peers), ')');
     }
   }
 
@@ -111,6 +114,7 @@ export class VoiceEncryptionManager {
     );
 
     await this.voiceKeyManager.setRemoteKey(senderId, rawKey);
+    console.log('[Voice] received + installed voice key from', senderId, 'keyId=', keyId, 'into', this.decryptWorkers.size, 'workers');
 
     // Update all decrypt workers with the new key
     for (const worker of this.decryptWorkers.values()) {
