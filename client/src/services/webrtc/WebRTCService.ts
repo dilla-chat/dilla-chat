@@ -359,7 +359,30 @@ class WebRTCService {
         if (payload.user_id !== this.localUserId) playLeaveSound();
       }),
       ws.on('voice:speaking', (payload: { user_id: string; speaking: boolean }) => {
-        store().updatePeer(payload.user_id, { speaking: payload.speaking });
+        const s = store();
+        s.updatePeer(payload.user_id, { speaking: payload.speaking });
+        // voiceOccupants is a separate source of truth for the
+        // channel sidebar's participant rows — mirror the speaking
+        // flag there so non-self users light up too.
+        const occ = s.voiceOccupants;
+        const next: typeof occ = {};
+        let changed = false;
+        for (const [chId, list] of Object.entries(occ)) {
+          let listChanged = false;
+          const nextList = list.map((p) => {
+            if (p.user_id !== payload.user_id) return p;
+            if (p.speaking === payload.speaking) return p;
+            listChanged = true;
+            return { ...p, speaking: payload.speaking };
+          });
+          if (listChanged) {
+            next[chId] = nextList;
+            changed = true;
+          } else {
+            next[chId] = list;
+          }
+        }
+        if (changed) s.setVoiceOccupants(next);
       }),
       ws.on(
         'voice:state',
