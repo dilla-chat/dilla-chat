@@ -345,15 +345,6 @@ class ApiService {
     );
   }
 
-  async getChannelAccess(teamId: string, channelId: string): Promise<{ role_ids: string[] }> {
-    const conn = this.getConnection(teamId);
-    return (await this.request(
-      conn.baseUrl,
-      `/api/v1/teams/${teamId}/channels/${channelId}/access`,
-      { method: 'GET' },
-      conn.token,
-    )) as { role_ids: string[] };
-  }
 
   async setChannelAccess(teamId: string, channelId: string, roleIds: string[]): Promise<{ role_ids: string[] }> {
     const conn = this.getConnection(teamId);
@@ -403,15 +394,6 @@ class ApiService {
       { method: 'DELETE' },
       conn.token,
     );
-  }
-  async getGroupAccess(teamId: string, groupId: string): Promise<{ role_ids: string[] }> {
-    const conn = this.getConnection(teamId);
-    return (await this.request(
-      conn.baseUrl,
-      `/api/v1/teams/${teamId}/groups/${groupId}/access`,
-      { method: 'GET' },
-      conn.token,
-    )) as { role_ids: string[] };
   }
   async setGroupAccess(teamId: string, groupId: string, roleIds: string[], hiddenIfRestricted?: boolean): Promise<{ role_ids: string[]; hidden_if_restricted: boolean }> {
     const conn = this.getConnection(teamId);
@@ -619,17 +601,6 @@ class ApiService {
     );
   }
 
-  /** Pinned-message ids for a channel, newest pin first. */
-  async listPins(teamId: string, channelId: string): Promise<string[]> {
-    const conn = this.getConnection(teamId);
-    const data = await this.request(
-      conn.baseUrl,
-      `/api/v1/teams/${teamId}/channels/${channelId}/pins`,
-      { method: 'GET' },
-      conn.token,
-    ) as { message_ids?: string[] };
-    return Array.isArray(data?.message_ids) ? data.message_ids : [];
-  }
   async pinMessage(teamId: string, channelId: string, messageId: string): Promise<void> {
     const conn = this.getConnection(teamId);
     await this.request(
@@ -700,18 +671,6 @@ class ApiService {
       { method: 'PUT', body: JSON.stringify({ api_key: apiKey }) },
       conn.token,
     ) as Promise<{ configured: boolean }>;
-  }
-
-  /** List the current user's muted channels across all teams. */
-  async listMutedChannels(teamId: string): Promise<unknown[]> {
-    const conn = this.getConnection(teamId);
-    const data = await this.request(
-      conn.baseUrl,
-      `/api/v1/me/muted-channels`,
-      { method: 'GET' },
-      conn.token,
-    );
-    return this.unwrapArray(data, 'muted_channels');
   }
 
   /** Mute a channel for the current user. `mutedUntil` is an ISO string;

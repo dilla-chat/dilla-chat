@@ -104,6 +104,36 @@ pub async fn create(
             ));
         }
 
+        // When the client supplies a non-empty `category`, resolve it to a
+        // formal channel_group: reuse an existing group with the same name
+        // (case-insensitive) or create one on the spot. This closes the
+        // gap where the loose `category` string never produced a real
+        // group with role-based access controls.
+        let group_id: Option<String> = if body.category.trim().is_empty() {
+            None
+        } else {
+            let trimmed_cat = body.category.trim().to_string();
+            let existing = db::get_groups_by_team(conn, &team_id)?
+                .into_iter()
+                .find(|g| g.name.trim().eq_ignore_ascii_case(&trimmed_cat));
+            if let Some(g) = existing {
+                Some(g.id)
+            } else {
+                let now = db::now_str();
+                let new_group = db::ChannelGroup {
+                    id: db::new_id(),
+                    team_id: team_id.clone(),
+                    name: trimmed_cat,
+                    position: 0,
+                    created_at: now.clone(),
+                    updated_at: now,
+                    hidden_if_restricted: false,
+                };
+                db::create_group(conn, &new_group)?;
+                Some(new_group.id)
+            }
+        };
+
         let now = db::now_str();
         let channel = db::Channel {
             id: db::new_id(),
@@ -116,7 +146,7 @@ pub async fn create(
             created_by: user_id.clone(),
             created_at: now.clone(),
             updated_at: now.clone(),
-            locked: false, hidden_if_restricted: false, slow_mode_seconds: 0, group_id: None,
+            locked: false, hidden_if_restricted: false, slow_mode_seconds: 0, group_id,
         };
         db::create_channel(conn, &channel)?;
         let _ = db::insert_audit_event(

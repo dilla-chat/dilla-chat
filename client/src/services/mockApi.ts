@@ -373,11 +373,6 @@ export class MockApiService {
   // Channel mutes — keyed by channel_id, value is mutedUntil ISO (or null
   // for indefinite). Mirrors the real /me/muted-channels endpoint.
   private muted: Map<string, string | null> = new Map();
-  async listMutedChannels(_teamId: string): Promise<unknown[]> {
-    return Array.from(this.muted.entries()).map(([channel_id, muted_until]) => ({
-      channel_id, muted_until,
-    }));
-  }
   async muteChannel(_teamId: string, channelId: string, mutedUntil?: string | null): Promise<unknown> {
     this.muted.set(channelId, mutedUntil ?? null);
     return { channel_id: channelId, muted_until: mutedUntil ?? null };
@@ -442,9 +437,6 @@ export class MockApiService {
   // Pinned messages — { [channelId]: messageId[] } so /mesh can demo
   // the pin/unpin flow against the same store the real api hits.
   private pins: Map<string, string[]> = new Map();
-  async listPins(_teamId: string, channelId: string): Promise<string[]> {
-    return [...(this.pins.get(channelId) ?? [])];
-  }
   async pinMessage(_teamId: string, channelId: string, messageId: string): Promise<void> {
     const list = this.pins.get(channelId) ?? [];
     if (!list.includes(messageId)) {
@@ -488,10 +480,6 @@ export class MockApiService {
   }
   async deleteGroup(_teamId: string, groupId: string): Promise<void> {
     this.groups = this.groups.filter((g) => g.id !== groupId);
-  }
-  async getGroupAccess(_teamId: string, groupId: string): Promise<{ role_ids: string[]; hidden_if_restricted: boolean }> {
-    const g = this.groups.find((x) => x.id === groupId);
-    return { role_ids: g?.access_role_ids ?? [], hidden_if_restricted: g?.hidden_if_restricted ?? false };
   }
   async setGroupAccess(_teamId: string, groupId: string, roleIds: string[], hiddenIfRestricted?: boolean): Promise<{ role_ids: string[]; hidden_if_restricted: boolean }> {
     const g = this.groups.find((x) => x.id === groupId);
