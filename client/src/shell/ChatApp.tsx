@@ -3039,7 +3039,14 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
 
       <div className="composer-wrap">
         {showJump && (
-          <button className="btn btn--primary btn--pill btn--mono" onClick={scrollToBottom} title="Jump to latest">
+          // Floats just above the composer at the right edge. Positioning
+          // is call-site concern; the .btn modifiers handle the visual.
+          <button
+            className="btn btn--primary btn--pill btn--mono"
+            onClick={scrollToBottom}
+            title="Jump to latest"
+            style={{ position: 'absolute', bottom: '100%', right: '1rem', marginBottom: '0.375rem' }}
+          >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
               <path d="M8 2v10M3 8l5 5 5-5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
