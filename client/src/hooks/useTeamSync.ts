@@ -367,6 +367,51 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
       teamStore.setChannels(teamIdFromPayload, next);
     });
 
+    // Member role changes: patch the affected member in-place (roleIds +
+    // roles + isAdmin) so the rail / role groups / access gating react
+    // without a re-sync, and toast the affected user if they're the one
+    // being changed.
+    const unsubMemberRoles = ws.on(
+      'member:roles-updated',
+      (payload: { team_id?: string; user_id?: string; actor_user_id?: string; role_ids?: string[] }) => {
+        if (!payload?.team_id || !payload?.user_id || !payload?.role_ids) return;
+        const teamStore = useTeamStore.getState();
+        const list = teamStore.members.get(payload.team_id) ?? [];
+        const rolesById = new Map((teamStore.roles.get(payload.team_id) ?? []).map((r) => [r.id, r]));
+        const PERM_ADMIN = 1 << 0;
+        const nextRoles = payload.role_ids
+          .map((id) => rolesById.get(id))
+          .filter((r): r is NonNullable<typeof r> => !!r);
+        const isAdmin = nextRoles.some((r) => (r.permissions & PERM_ADMIN) !== 0);
+        const next = list.map((m) =>
+          m.userId === payload.user_id
+            ? { ...m, roleIds: payload.role_ids!, roles: nextRoles, isAdmin }
+            : m,
+        );
+        teamStore.setMembers(payload.team_id, next);
+
+        // Toast the affected user. Skip when they're the actor (they
+        // triggered the change themselves) or when the event isn't about
+        // the current user at all.
+        const myUserId = (window as { SHELL_DATA?: { currentUserId?: string } }).SHELL_DATA?.currentUserId;
+        if (myUserId && myUserId === payload.user_id && payload.actor_user_id !== myUserId) {
+          const roleNames = nextRoles.map((r) => r.name).join(', ');
+          const actor = list.find((m) => m.userId === payload.actor_user_id);
+          window.dispatchEvent(new CustomEvent('dilla:notify', {
+            detail: {
+              author: actor?.username || 'admin',
+              text: roleNames
+                ? `Your roles were updated: ${roleNames}`
+                : 'Your roles were cleared',
+              duration: 6000,
+              kind: 'mention',
+              mention: true,
+            },
+          }));
+        }
+      },
+    );
+
     // Partial update from PUT /channels/:cid/access — only role_ids changed.
     const unsubAccess = ws.on('channel:access-update', (payload: { channel_id?: string; role_ids?: string[] }) => {
       if (!payload?.channel_id) return;
@@ -386,6 +431,7 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
       unsubChannelRead();
       unsubChannelUpdated();
       unsubAccess();
+      unsubMemberRoles();
     };
   }, [activeTeamId]);
 

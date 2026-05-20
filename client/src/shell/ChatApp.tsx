@@ -307,9 +307,20 @@ function ChannelAccessModal({ channel, onClose }) {
     if (!teamId || !channel?.id) { onClose(); return; }
     if (isMockSession()) { onClose(); return; }
     setBusy(true);
+    const newRoleIds = Array.from(selected);
     try {
-      await api.setChannelAccess(teamId, channel.id, Array.from(selected));
+      await api.setChannelAccess(teamId, channel.id, newRoleIds);
       await api.updateChannel(teamId, channel.id, { hidden_if_restricted: hidden });
+      // Optimistic local update — patch the channel in the teamStore so
+      // the sidebar reflects the new gate even if the WS echo races the
+      // close (or the user is the only listener on a mesh of one).
+      const store = useTeamStore.getState();
+      const list = store.channels.get(teamId) ?? [];
+      const idx = list.findIndex((c) => c.id === channel.id);
+      if (idx >= 0) {
+        const next = list.map((c, i) => i === idx ? { ...c, accessRoleIds: newRoleIds, locked: hidden } : c);
+        store.setChannels(teamId, next);
+      }
       onClose();
     } catch (e) {
       setErr((e as Error).message || 'Failed — manage-channels permission required.');

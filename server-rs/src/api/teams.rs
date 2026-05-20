@@ -248,6 +248,11 @@ pub async fn update_member(
     Path((team_id, target_user_id)): Path<(String, String)>,
     Json(body): Json<UpdateMemberRequest>,
 ) -> Result<Json<Value>, AppError> {
+    let actor_user_id = user_id.clone();
+    let team_id_for_broadcast = team_id.clone();
+    let target_user_id_for_broadcast = target_user_id.clone();
+    let roles_changed = body.role_ids.is_some();
+    let role_ids_for_broadcast = body.role_ids.clone();
     let member = spawn_db(state.db.clone(), move |conn| {
         // Users can update their own nickname; admins can update anyone's.
         if user_id != target_user_id {
@@ -306,6 +311,25 @@ pub async fn update_member(
     })
     .await
     .map_err(map_not_found("member"))?;
+
+    if roles_changed {
+        // Broadcast so other clients (including the affected user) refresh
+        // member state and surface a notification — see the client's
+        // `member:roles-updated` handler in useTeamSync.
+        if let Ok(evt) = crate::ws::events::Event::new(
+            "member:roles-updated",
+            serde_json::json!({
+                "team_id": team_id_for_broadcast,
+                "user_id": target_user_id_for_broadcast,
+                "actor_user_id": actor_user_id,
+                "role_ids": role_ids_for_broadcast.unwrap_or_default(),
+            }),
+        ) {
+            if let Ok(data) = evt.to_bytes() {
+                state.hub.broadcast_to_all(data).await;
+            }
+        }
+    }
 
     json_ok(member)
 }
