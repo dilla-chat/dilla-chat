@@ -23,6 +23,9 @@ export interface Message {
   encryptedContent: string;
   type: string;
   threadId: string | null;
+  /** ID of the message this one replies to. null for top-level
+   *  messages. Survives reloads because the server persists it. */
+  replyToMessageId?: string | null;
   editedAt: string | null;
   deleted: boolean;
   createdAt: string;
@@ -74,9 +77,15 @@ export const useMessageStore = create<MessageState>((set) => ({
     set((state) => {
       const map = new Map(state.messages);
       const existing = map.get(channelId) ?? [];
+      // Upsert by id: the server copy is authoritative, so when an ID
+      // collides we replace the existing entry (this covers edits that
+      // landed while the user was offline). Truly-new ids prepend so
+      // pagination still works.
+      const incomingById = new Map(messages.map((m) => [m.id, m]));
+      const merged = existing.map((m) => incomingById.has(m.id) ? incomingById.get(m.id)! : m);
       const existingIds = new Set(existing.map((m) => m.id));
-      const newMsgs = messages.filter((m) => !existingIds.has(m.id));
-      map.set(channelId, [...newMsgs, ...existing]);
+      const fresh = messages.filter((m) => !existingIds.has(m.id));
+      map.set(channelId, [...fresh, ...merged]);
       return { messages: map };
     }),
 

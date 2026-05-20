@@ -182,6 +182,7 @@ function mapMessage(msg, currentUserId, teamId) {
     deleted: msg.deleted,
     reactions: mapReactions(msg.reactions, currentUserId),
     attachment,
+    replyTo: msg.replyToMessageId ?? null,
   };
 }
 

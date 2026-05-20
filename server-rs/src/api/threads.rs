@@ -220,7 +220,7 @@ pub async fn create_message(
             thread_id: thread_id.clone(),
             edited_at: None,
             deleted: false,
-            lamport_ts: 0,
+            lamport_ts: 0, reply_to_message_id: None,
             created_at: now,
         };
         db::create_thread_message(conn, &msg)?;

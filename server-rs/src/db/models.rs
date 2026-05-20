@@ -107,6 +107,11 @@ pub struct Message {
     pub msg_type: String,
     #[serde(default)]
     pub thread_id: String,
+    /// When set, this message is a reply to the referenced message id.
+    /// Client renders the original above the body as a reply-ref preview.
+    /// Stays None for top-level messages.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reply_to_message_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub edited_at: Option<String>,
     pub deleted: bool,

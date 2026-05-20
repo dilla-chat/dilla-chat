@@ -432,6 +432,7 @@ impl MeshNode {
             deleted: false,
             lamport_ts: repl.lamport_ts as i64,
             created_at: repl.created_at.clone(),
+            reply_to_message_id: None,
         };
 
         let msg_clone = msg.clone();
@@ -460,6 +461,7 @@ impl MeshNode {
                 content: repl.content,
                 msg_type: repl.msg_type,
                 thread_id: repl.thread_id,
+                reply_to_message_id: None,
                 created_at: repl.created_at,
                 attachments: vec![],
             },

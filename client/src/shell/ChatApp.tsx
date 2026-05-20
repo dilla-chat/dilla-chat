@@ -4807,11 +4807,20 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     // round-trips through the server; the echo lands in messageStore and
     // flows back through useShellData → data.MESSAGES (synced by the
     // useEffect above).
+    const replyTargetId = replyTo[activeChannel] || null;
     if (activeTeamId && !isMockSession()) {
       (async () => {
         try {
           const encrypted = await tryEncrypt(text || ' ', activeChannel, derivedKey);
-          ws.sendMessage(activeTeamId, activeChannel, encrypted);
+          ws.sendMessage(
+            activeTeamId,
+            activeChannel,
+            encrypted,
+            'text',
+            undefined,
+            undefined,
+            replyTargetId,
+          );
         } catch (err) {
           console.warn('[ChatApp] channel send failed', err);
         }

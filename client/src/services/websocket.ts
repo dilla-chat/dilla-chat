@@ -217,6 +217,14 @@ export class WebSocketService {
     });
   }
 
+  /** Synthesize a local event for subscribers without a network round trip.
+   *  Used by eager-load / cache restore to feed historic state through the
+   *  same `ws.on(...)` handlers that live updates use, keeping one merge
+   *  path on the consumer side. */
+  publishLocal(eventType: string, payload: unknown): void {
+    this.emit(eventType, payload);
+  }
+
   send(teamId: string, event: WSEvent): void {
     const socket = this.connections.get(teamId);
     if (socket?.readyState === WebSocket.OPEN) {
@@ -317,6 +325,7 @@ export class WebSocketService {
     type: string = 'text',
     threadId?: string,
     attachmentIds?: string[],
+    replyToMessageId?: string | null,
   ): void {
     this.send(teamId, {
       type: 'message:send',
@@ -326,6 +335,7 @@ export class WebSocketService {
         type,
         thread_id: threadId ?? null,
         attachment_ids: attachmentIds ?? [],
+        reply_to_message_id: replyToMessageId ?? null,
       },
     });
   }

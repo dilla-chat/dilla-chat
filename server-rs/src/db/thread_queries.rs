@@ -112,7 +112,7 @@ pub fn get_thread_messages(
 ) -> Result<Vec<Message>, rusqlite::Error> {
     let mut messages = if before.is_empty() {
         let mut stmt = conn.prepare(
-            "SELECT id, channel_id, dm_channel_id, author_id, content, type, thread_id, edited_at, deleted, lamport_ts, created_at
+            "SELECT id, channel_id, dm_channel_id, author_id, content, type, thread_id, edited_at, deleted, lamport_ts, created_at, reply_to_message_id
              FROM messages WHERE thread_id = ?1
              ORDER BY created_at DESC LIMIT ?2",
         )?;
@@ -120,7 +120,7 @@ pub fn get_thread_messages(
         rows.collect::<Result<Vec<_>, _>>()?
     } else {
         let mut stmt = conn.prepare(
-            "SELECT id, channel_id, dm_channel_id, author_id, content, type, thread_id, edited_at, deleted, lamport_ts, created_at
+            "SELECT id, channel_id, dm_channel_id, author_id, content, type, thread_id, edited_at, deleted, lamport_ts, created_at, reply_to_message_id
              FROM messages WHERE thread_id = ?1 AND created_at < ?2
              ORDER BY created_at DESC LIMIT ?3",
         )?;

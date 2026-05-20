@@ -2,10 +2,12 @@ use super::models::*;
 use super::{nullable, now_str, row_to_message};
 use rusqlite::{params, Connection, OptionalExtension};
 
+const MSG_COLS: &str = "id, channel_id, dm_channel_id, author_id, content, type, thread_id, edited_at, deleted, lamport_ts, created_at, reply_to_message_id";
+
 pub fn create_message(conn: &Connection, msg: &Message) -> Result<(), rusqlite::Error> {
     conn.execute(
-        "INSERT INTO messages (id, channel_id, dm_channel_id, author_id, content, type, thread_id, lamport_ts, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        "INSERT INTO messages (id, channel_id, dm_channel_id, author_id, content, type, thread_id, lamport_ts, created_at, reply_to_message_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params![
             msg.id,
             nullable(&msg.channel_id),
@@ -16,6 +18,7 @@ pub fn create_message(conn: &Connection, msg: &Message) -> Result<(), rusqlite::
             nullable(&msg.thread_id),
             msg.lamport_ts,
             msg.created_at,
+            msg.reply_to_message_id,
         ],
     )?;
     Ok(())
@@ -25,13 +28,8 @@ pub fn get_message_by_id(
     conn: &Connection,
     id: &str,
 ) -> Result<Option<Message>, rusqlite::Error> {
-    conn.query_row(
-        "SELECT id, channel_id, dm_channel_id, author_id, content, type, thread_id, edited_at, deleted, lamport_ts, created_at
-         FROM messages WHERE id = ?1",
-        [id],
-        row_to_message,
-    )
-    .optional()
+    let sql = format!("SELECT {} FROM messages WHERE id = ?1", MSG_COLS);
+    conn.query_row(&sql, [id], row_to_message).optional()
 }
 
 pub fn get_messages_by_channel(
@@ -41,22 +39,20 @@ pub fn get_messages_by_channel(
     limit: i32,
 ) -> Result<Vec<Message>, rusqlite::Error> {
     let mut messages = if before.is_empty() {
-        let mut stmt = conn.prepare(
-            "SELECT id, channel_id, dm_channel_id, author_id, content, type, thread_id, edited_at, deleted, lamport_ts, created_at
-             FROM messages WHERE channel_id = ?1 AND thread_id IS NULL
-             ORDER BY created_at DESC LIMIT ?2",
-        )?;
+        let sql = format!(
+            "SELECT {} FROM messages WHERE channel_id = ?1 AND thread_id IS NULL ORDER BY created_at DESC LIMIT ?2",
+            MSG_COLS,
+        );
+        let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map(params![channel_id, limit], row_to_message)?;
         rows.collect::<Result<Vec<_>, _>>()?
     } else {
-        let mut stmt = conn.prepare(
-            "SELECT id, channel_id, dm_channel_id, author_id, content, type, thread_id, edited_at, deleted, lamport_ts, created_at
-             FROM messages WHERE channel_id = ?1 AND thread_id IS NULL AND created_at < ?2
-             ORDER BY created_at DESC LIMIT ?3",
-        )?;
-        let rows = stmt.query_map(params![channel_id, before, limit], |row| {
-            row_to_message(row)
-        })?;
+        let sql = format!(
+            "SELECT {} FROM messages WHERE channel_id = ?1 AND thread_id IS NULL AND created_at < ?2 ORDER BY created_at DESC LIMIT ?3",
+            MSG_COLS,
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(params![channel_id, before, limit], row_to_message)?;
         rows.collect::<Result<Vec<_>, _>>()?
     };
     messages.reverse();

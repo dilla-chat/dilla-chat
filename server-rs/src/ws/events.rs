@@ -14,6 +14,7 @@ pub const EVENT_THREAD_MESSAGE_SEND: &str = "thread:message:send";
 pub const EVENT_THREAD_MESSAGE_EDIT: &str = "thread:message:edit";
 pub const EVENT_THREAD_MESSAGE_REMOVE: &str = "thread:message:remove";
 pub const EVENT_VOICE_JOIN: &str = "voice:join";
+pub const EVENT_VOICE_JOIN_DENIED: &str = "voice:join-denied";
 pub const EVENT_VOICE_LEAVE: &str = "voice:leave";
 pub const EVENT_VOICE_ANSWER: &str = "voice:answer";
 pub const EVENT_VOICE_ICE_CANDIDATE: &str = "voice:ice-candidate";
@@ -80,6 +81,10 @@ pub const EVENT_VOICE_OFFER: &str = "voice:offer";
 pub const EVENT_VOICE_USER_JOINED: &str = "voice:user-joined";
 pub const EVENT_VOICE_USER_LEFT: &str = "voice:user-left";
 pub const EVENT_VOICE_STATE: &str = "voice:state";
+/// Server pushes a snapshot of every active voice room on the user's
+/// team(s) when their WS connects. Lets a fresh client see who is
+/// already in voice without having to enter the channel first.
+pub const EVENT_VOICE_ROOMS_SNAPSHOT: &str = "voice:rooms-snapshot";
 pub const EVENT_VOICE_MUTE_UPDATE: &str = "voice:mute-update";
 pub const EVENT_VOICE_SCREEN_UPDATE: &str = "voice:screen-update";
 pub const EVENT_VOICE_WEBCAM_UPDATE: &str = "voice:webcam-update";
@@ -151,6 +156,11 @@ pub struct MessageSendPayload {
     pub thread_id: Option<String>,
     #[serde(default)]
     pub attachment_ids: Vec<String>,
+    /// When set, this message is a reply to the referenced message id.
+    /// Server stores it on messages.reply_to_message_id; the broadcast
+    /// echo carries it back so other clients render the reply-ref.
+    #[serde(default)]
+    pub reply_to_message_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -186,6 +196,8 @@ pub struct MessageNewPayload {
     pub msg_type: String,
     #[serde(default)]
     pub thread_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reply_to_message_id: Option<String>,
     pub created_at: String,
     #[serde(default)]
     pub attachments: Vec<AttachmentPayload>,

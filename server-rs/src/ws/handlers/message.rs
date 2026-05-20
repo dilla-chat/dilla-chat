@@ -137,6 +137,7 @@ pub(in crate::ws) async fn handle_message_send(
         edited_at: None,
         deleted: false,
         lamport_ts: 0,
+        reply_to_message_id: p.reply_to_message_id.clone(),
         created_at: now.clone(),
     };
 
@@ -196,6 +197,7 @@ pub(in crate::ws) async fn handle_message_send(
             content: p.content,
             msg_type,
             thread_id: p.thread_id.unwrap_or_default(),
+            reply_to_message_id: p.reply_to_message_id.clone(),
             created_at: now,
             attachments: attachment_payloads,
         },

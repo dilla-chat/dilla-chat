@@ -138,7 +138,7 @@ pub fn get_dm_messages(
 ) -> Result<Vec<Message>, rusqlite::Error> {
     let mut messages = if before.is_empty() {
         let mut stmt = conn.prepare(
-            "SELECT id, channel_id, dm_channel_id, author_id, content, type, thread_id, edited_at, deleted, lamport_ts, created_at
+            "SELECT id, channel_id, dm_channel_id, author_id, content, type, thread_id, edited_at, deleted, lamport_ts, created_at, reply_to_message_id
              FROM messages WHERE dm_channel_id = ?1
              ORDER BY created_at DESC LIMIT ?2",
         )?;
@@ -146,7 +146,7 @@ pub fn get_dm_messages(
         rows.collect::<Result<Vec<_>, _>>()?
     } else {
         let mut stmt = conn.prepare(
-            "SELECT id, channel_id, dm_channel_id, author_id, content, type, thread_id, edited_at, deleted, lamport_ts, created_at
+            "SELECT id, channel_id, dm_channel_id, author_id, content, type, thread_id, edited_at, deleted, lamport_ts, created_at, reply_to_message_id
              FROM messages WHERE dm_channel_id = ?1 AND created_at < ?2
              ORDER BY created_at DESC LIMIT ?3",
         )?;
@@ -164,7 +164,7 @@ pub fn get_last_dm_message(
     dm_channel_id: &str,
 ) -> Result<Option<Message>, rusqlite::Error> {
     conn.query_row(
-        "SELECT id, channel_id, dm_channel_id, author_id, content, type, thread_id, edited_at, deleted, lamport_ts, created_at
+        "SELECT id, channel_id, dm_channel_id, author_id, content, type, thread_id, edited_at, deleted, lamport_ts, created_at, reply_to_message_id
          FROM messages WHERE dm_channel_id = ?1 ORDER BY created_at DESC LIMIT 1",
         [dm_channel_id],
         row_to_message,

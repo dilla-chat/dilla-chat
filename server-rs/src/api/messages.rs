@@ -113,7 +113,7 @@ pub async fn create(
             thread_id: String::new(),
             edited_at: None,
             deleted: false,
-            lamport_ts: 0,
+            lamport_ts: 0, reply_to_message_id: None,
             created_at: now,
         };
         db::create_message(conn, &msg)?;

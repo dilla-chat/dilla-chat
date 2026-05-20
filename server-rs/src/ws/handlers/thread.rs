@@ -30,7 +30,7 @@ pub(in crate::ws) async fn handle_thread_message_send(hub: &Hub, user_id: &str, 
                 thread_id: tid.clone(),
                 edited_at: None,
                 deleted: false,
-                lamport_ts: 0,
+                lamport_ts: 0, reply_to_message_id: None,
                 created_at: db::now_str(),
             };
             db::create_thread_message(conn, &msg)?;

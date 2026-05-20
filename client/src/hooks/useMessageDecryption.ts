@@ -21,11 +21,36 @@ export interface ServerMessage {
   content: string;
   type: string;
   thread_id: string | null;
+  reply_to_message_id?: string | null;
   edited_at: string | null;
   deleted: boolean;
   created_at: string;
   reactions: Array<{ emoji: string; users: string[]; count: number }>;
   attachments?: Array<{ id: string; filename: string; content_type: string; size: number; url: string }>;
+}
+
+// In-memory set of message IDs that already failed to decrypt this session.
+// Subsequent calls return the placeholder without re-attempting the AES-GCM
+// open (which would just fail the same way and re-warn). The set is per-tab
+// and cleared by `forgetDecryptFailure(channelId)` whenever a fresh sender
+// key for that channel arrives, so a successful redistribute does still
+// trigger a retry. NOT persisted \u2014 a reload starts a fresh attempt.
+// messageId -> { channelId, ciphertext }. The ciphertext lets us detect when
+// the server-side wire content has changed (an edit landed) so we re-attempt
+// instead of returning the placeholder forever.
+const failedDecrypts = new Map<string, { channelId: string; ciphertext: string }>();
+
+export function forgetDecryptFailure(channelId: string): void {
+  for (const [msgId, entry] of failedDecrypts) {
+    if (entry.channelId === channelId) failedDecrypts.delete(msgId);
+  }
+}
+
+function placeholderFor(clean: string): string {
+  if (clean.length > 80 && /^[A-Za-z0-9+/=\s]+$/.test(clean.trim())) {
+    return '\u{1F512} *Unable to decrypt \u2014 encrypted with a previous session key*';
+  }
+  return clean;
 }
 
 export async function tryDecrypt(
@@ -35,8 +60,10 @@ export async function tryDecrypt(
   channelId: string,
   derivedKey: string | null,
 ): Promise<string> {
-  // Check persistent message cache first
-  const cached = await getCachedMessage(messageId);
+  // Check persistent message cache first — pass the wire ciphertext so a
+  // server-side edit (different ciphertext for the same id) invalidates the
+  // cache and forces a re-decrypt, instead of returning stale plaintext.
+  const cached = await getCachedMessage(messageId, content);
   if (cached !== null) return cached;
 
   // Check sent-message plaintext cache (for our own messages echoed back)
@@ -44,12 +71,20 @@ export async function tryDecrypt(
   if (sentPlaintext !== undefined) {
     sentPlaintextCache.delete(content);
     // Persist to durable cache now that we have the message ID
-    await cacheMessage(messageId, channelId, sentPlaintext);
+    await cacheMessage(messageId, channelId, sentPlaintext, content);
     return sentPlaintext;
   }
 
   const clean = content.startsWith(DEV_PREFIX) ? content.slice(DEV_PREFIX.length) : content;
   if (!derivedKey) return '\u{1F512} *Encrypted message \u2014 unlock your identity to read*';
+
+  // Short-circuit messages that already failed this session \u2014 but only
+  // when the wire ciphertext hasn't changed since the failure. An edit
+  // produces a new ciphertext and deserves a fresh attempt.
+  const prev = failedDecrypts.get(messageId);
+  if (prev && prev.ciphertext === content) {
+    return placeholderFor(clean);
+  }
   try {
     const userId = getIdentityKeys().publicKeyBytes;
     const plaintext = await cryptoService.decryptChannel(
@@ -59,14 +94,13 @@ export async function tryDecrypt(
       content,
       derivedKey,
     );
-    await cacheMessage(messageId, channelId, plaintext);
+    await cacheMessage(messageId, channelId, plaintext, content);
+    failedDecrypts.delete(messageId);
     return plaintext;
   } catch (err) {
+    failedDecrypts.set(messageId, { channelId, ciphertext: content });
     console.warn(`[Decrypt] Failed for msg=${messageId} channel=${channelId} sender=${senderId}:`, err);
-    if (clean.length > 80 && /^[A-Za-z0-9+/=\s]+$/.test(clean.trim())) {
-      return '\u{1F512} *Unable to decrypt \u2014 encrypted with a previous session key*';
-    }
-    return clean;
+    return placeholderFor(clean);
   }
 }
 
@@ -119,6 +153,7 @@ export function serverToMessage(
     encryptedContent: msg.content,
     type: msg.type,
     threadId: msg.thread_id,
+    replyToMessageId: msg.reply_to_message_id ?? null,
     editedAt: msg.edited_at,
     deleted: msg.deleted,
     createdAt: msg.created_at,

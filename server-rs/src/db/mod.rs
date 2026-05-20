@@ -82,6 +82,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
     ("022_pinned_messages.sql", include_str!("../../migrations/022_pinned_messages.sql")),
     ("023_user_quiet_hours.sql", include_str!("../../migrations/023_user_quiet_hours.sql")),
     ("024_user_blocks.sql", include_str!("../../migrations/024_user_blocks.sql")),
+    ("025_message_reply_to.sql", include_str!("../../migrations/025_message_reply_to.sql")),
 ];
 
 /// Default number of read connections in the pool.
@@ -224,7 +225,8 @@ impl Database {
 /// Map a database row to a Message struct.
 /// Shared by message_queries, dm_queries, and thread_queries.
 /// Expects columns: id, channel_id, dm_channel_id, author_id, content, type,
-///                   thread_id, edited_at, deleted, lamport_ts, created_at
+///                   thread_id, edited_at, deleted, lamport_ts, created_at,
+///                   reply_to_message_id
 pub(crate) fn row_to_message(row: &rusqlite::Row) -> Result<Message, rusqlite::Error> {
     Ok(Message {
         id: row.get(0)?,
@@ -238,6 +240,10 @@ pub(crate) fn row_to_message(row: &rusqlite::Row) -> Result<Message, rusqlite::E
         deleted: row.get::<_, i32>(8)? != 0,
         lamport_ts: row.get(9)?,
         created_at: row.get(10)?,
+        // Column may not exist on older rows still in the cache; the
+        // try_get fallback lets older test rows compile without the
+        // column present. SELECTs in queries.rs explicitly include it.
+        reply_to_message_id: row.get::<_, Option<String>>(11).ok().flatten(),
     })
 }
 
