@@ -1,0 +1,133 @@
+// Mirror of the shell modal's TeamAudit but rendered with the route's
+// .settings-section styling. The describe() switch and members lookup
+// match the modal version so the same audit row reads the same way in
+// both places — anything else would invite drift.
+
+import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { api } from '../../services/api';
+import { useTeamStore } from '../../stores/teamStore';
+
+interface AuditEvent {
+  id: string;
+  created_at: string;
+  actor_user_id?: string | null;
+  action: string;
+  target_type?: string | null;
+  target_id?: string | null;
+  details?: string | null;
+}
+
+export default function AuditLogTab({ teamId }: Readonly<{ teamId: string }>) {
+  const { t } = useTranslation();
+  const members = useTeamStore((s) => s.members.get(teamId) ?? []);
+  const [events, setEvents] = useState<AuditEvent[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const membersById = useMemo(
+    () => new Map(members.map((m) => [m.userId, m])),
+    [members],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = (await api.getAuditEvents(teamId, 200)) as AuditEvent[];
+        if (!cancelled) setEvents(list);
+      } catch (err) {
+        if (!cancelled) setError((err as Error)?.message || t('audit.loadFailed', 'failed to load audit log'));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [teamId, t]);
+
+  function describe(e: AuditEvent): string {
+    let detail: Record<string, unknown> | null = null;
+    if (e.details) {
+      try { detail = JSON.parse(e.details); } catch { /* leave null */ }
+    }
+    const targetUser = e.target_type === 'user' && e.target_id
+      ? membersById.get(e.target_id)?.username
+      : null;
+    const name = (detail && (detail.name as string ?? detail.reason as string)) || '';
+    const detailType = detail?.type as string | undefined;
+    const detailMaxUses = detail?.max_uses as number | undefined;
+    const detailExpiresAt = detail?.expires_at as string | undefined;
+    const detailReason = detail?.reason as string | undefined;
+    switch (e.action) {
+      case 'role.create':            return `created role ${name || '—'}`;
+      case 'role.update':            return `updated role ${name || '—'}`;
+      case 'role.delete':            return `deleted role ${name || '—'}`;
+      case 'role.reorder':           return `reordered roles`;
+      case 'channel.create':         return `created channel #${name || '—'}${detailType ? ' · ' + detailType : ''}`;
+      case 'channel.delete':         return `deleted channel #${name || '—'}`;
+      case 'channel.lock':           return `locked channel #${name || '—'}`;
+      case 'channel.unlock':         return `unlocked channel #${name || '—'}`;
+      case 'channel.update':         return `updated channel #${name || '—'}`;
+      case 'channel.access.update':  return `changed access for channel`;
+      case 'group.create':           return `created group ${name || '—'}`;
+      case 'group.update':           return `updated group ${name || '—'}`;
+      case 'group.delete':           return `deleted group ${name || '—'}`;
+      case 'group.access':           return `changed access for group ${name || '—'}`;
+      case 'member.roles.update':    return `changed roles for @${targetUser ?? e.target_id ?? '?'}`;
+      case 'member.kick':            return `kicked @${targetUser ?? e.target_id ?? '?'}`;
+      case 'member.leave':           return `left the team`;
+      case 'member.ban':             return `banned @${targetUser ?? e.target_id ?? '?'}${detailReason ? ` — ${detailReason}` : ''}`;
+      case 'message.pin':            return `pinned a message`;
+      case 'message.unpin':          return `unpinned a message`;
+      case 'team.update':            return `updated team settings${name ? ' · ' + name : ''}`;
+      case 'invite.create':          return `created an invite${detailMaxUses ? ' · max ' + detailMaxUses : ''}${detailExpiresAt ? ' · expires ' + detailExpiresAt : ''}`;
+      case 'invite.revoke':          return `revoked an invite`;
+      case 'integration.giphy.set':  return `set Giphy API key`;
+      case 'integration.giphy.clear':return `cleared Giphy API key`;
+      default:                       return e.action;
+    }
+  }
+
+  return (
+    <div className="settings-section">
+      <h2 className="heading-3">{t('settings.auditLog', 'Audit Log')}</h2>
+      <p style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: '1rem' }}>
+        {t('audit.hint', 'Server-stored log of admin actions for this team.')}
+      </p>
+
+      {error && (
+        <p style={{ color: 'var(--danger)', fontSize: 14 }}>{error}</p>
+      )}
+      {!error && events === null && (
+        <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>{t('common.loading', 'Loading…')}</p>
+      )}
+      {!error && events && events.length === 0 && (
+        <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>
+          {t('audit.empty', 'No audit events yet — admin actions (role changes, channel locks, kicks/bans, …) will appear here.')}
+        </p>
+      )}
+      {!error && events && events.length > 0 && (
+        <div className="audit-log">
+          {events.map((e) => {
+            const actor = e.actor_user_id ? membersById.get(e.actor_user_id) : null;
+            const actorName = actor?.username || (e.actor_user_id ? e.actor_user_id.slice(0, 8) : 'system');
+            return (
+              <div
+                key={e.id}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '8rem 8rem 1fr',
+                  gap: '0.75rem',
+                  padding: '0.5rem 0',
+                  borderBottom: '1px solid var(--hairline)',
+                  fontSize: '0.8125rem',
+                }}
+              >
+                <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{e.created_at}</span>
+                <span style={{ fontWeight: 600 }}>@{actorName}</span>
+                <span>{describe(e)}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
