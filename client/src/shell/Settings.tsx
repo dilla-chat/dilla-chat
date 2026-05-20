@@ -21,7 +21,7 @@ import { useShellDataContext } from './ShellDataContext';
 import { startMicTest, stopMicTest, type MicTestSession } from '../services/micTest';
 import { useAudioSettingsStore } from '../stores/audioSettingsStore';
 
-const { useState: useStateS, useEffect: useEffectS, useRef: useRefS } = React;
+const { useState: useStateS, useEffect: useEffectS, useRef: useRefS, useMemo } = React;
 
 // Debounced save helper for autosaved text fields. The handler clears any
 // in-flight timer and schedules a new one — keeps API traffic to one POST
