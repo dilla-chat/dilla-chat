@@ -204,6 +204,18 @@
 }
 .cat-actions { display: flex; gap: 2px; opacity: 0; transition: opacity .12s; }
 .cat:hover .cat-actions { opacity: 1; }
+.cat-collapsible { cursor: pointer; user-select: none; gap: 4px; }
+.cat-collapsible:hover { color: var(--fg-2); }
+.cat-collapsible > span:nth-of-type(2) { flex: 1; }
+.cat-chev {
+  display: inline-block;
+  font-size: 0.625rem;
+  line-height: 1;
+  transition: transform 0.12s ease;
+  color: var(--fg-3);
+  width: 0.625rem;
+  text-align: center;
+}
 
 .channel-row {
   display: flex; align-items: center;

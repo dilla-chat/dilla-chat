@@ -226,6 +226,17 @@ function NewChannelModal({ onClose, onCreate }) {
   const [kind, setKind] = useState('text');
   const [priv, setPriv] = useState(false);
   const [topic, setTopic] = useState('');
+  const [group, setGroup] = useState('');
+  // Distinct categories already in use for this team, surfaced as
+  // autocomplete suggestions so users don't fragment their own naming.
+  const existingGroups = useMemo(() => {
+    const seen = new Set<string>();
+    for (const c of (data?.CHANNELS ?? []) as Array<{ category?: string }>) {
+      const g = (c.category ?? '').trim();
+      if (g) seen.add(g);
+    }
+    return [...seen];
+  }, [data]);
   const slug = (name || '').toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
   const ok = slug.length >= 2;
   useEffect(() => {
@@ -262,6 +273,14 @@ function NewChannelModal({ onClose, onCreate }) {
             <label>Topic <span className="modal-opt">optional</span></label>
             <input value={topic} onChange={e => setTopic(e.target.value)} placeholder="what's this kanal for?" />
           </div>
+          <div className="modal-row">
+            <label>Group <span className="modal-opt">optional</span></label>
+            <input value={group} onChange={e => setGroup(e.target.value)} list="new-kanal-groups" placeholder="e.g. backend, marketing" />
+            <datalist id="new-kanal-groups">
+              {existingGroups.map(g => <option key={g} value={g} />)}
+            </datalist>
+            <div className="modal-hint">Groups collapse together in the sidebar. Leave blank for the default list.</div>
+          </div>
           <div className="modal-row modal-row-h">
             <div>
               <label>Private kanal</label>
@@ -272,7 +291,7 @@ function NewChannelModal({ onClose, onCreate }) {
         </div>
         <footer className="modal-foot">
           <button className="sc-btn" onClick={onClose}>Cancel</button>
-          <button className="sc-btn primary" disabled={!ok} onClick={() => onCreate({ id: slug, name: slug, kind, topic, private: priv })}>Create kanal</button>
+          <button className="sc-btn primary" disabled={!ok} onClick={() => onCreate({ id: slug, name: slug, kind, topic, category: group.trim(), private: priv })}>Create kanal</button>
         </footer>
       </div>
     </div>
@@ -377,10 +396,20 @@ function ChannelAccessModal({ channel, onClose }) {
 }
 
 function ChannelSettingsModal({ channel, onClose }) {
+  const data = (useShellDataContext() as any) || MOCK_DATA;
   const [topic, setTopic] = useState(channel?.topic ?? '');
   const [slow, setSlow] = useState(String(channel?.slowModeSeconds ?? channel?.slow_mode_seconds ?? 0));
+  const [group, setGroup] = useState(channel?.category ?? '');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const existingGroups = useMemo(() => {
+    const seen = new Set<string>();
+    for (const c of (data?.CHANNELS ?? []) as Array<{ category?: string }>) {
+      const g = (c.category ?? '').trim();
+      if (g) seen.add(g);
+    }
+    return [...seen];
+  }, [data]);
   useEffect(() => {
     function onKey(e) { if (e.key === 'Escape') onClose(); }
     window.addEventListener('keydown', onKey);
@@ -394,7 +423,7 @@ function ChannelSettingsModal({ channel, onClose }) {
     setBusy(true);
     try {
       const slowN = Number.parseInt(slow, 10);
-      const updates: Record<string, unknown> = { topic };
+      const updates: Record<string, unknown> = { topic, category: group.trim() };
       if (!Number.isNaN(slowN) && slowN >= 0) updates.slow_mode_seconds = slowN;
       await api.updateChannel(teamId, channel.id, updates);
       onClose();
@@ -416,6 +445,14 @@ function ChannelSettingsModal({ channel, onClose }) {
             <label>Topic</label>
             <input value={topic} autoFocus onChange={e => setTopic(e.target.value)} placeholder="what's this kanal for?" />
             <div className="modal-hint">Shown at the top of the channel. Anyone with permission to send can see this.</div>
+          </div>
+          <div className="modal-row">
+            <label>Group <span className="modal-opt">optional</span></label>
+            <input value={group} onChange={e => setGroup(e.target.value)} list="chan-settings-groups" placeholder="e.g. backend, marketing" />
+            <datalist id="chan-settings-groups">
+              {existingGroups.map(g => <option key={g} value={g} />)}
+            </datalist>
+            <div className="modal-hint">Channels in the same group collapse together in the sidebar. Leave blank for the default list.</div>
           </div>
           <div className="modal-row">
             <label>Slow mode (seconds)</label>
@@ -1151,6 +1188,61 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
     const access = c.accessRoleIds ?? [];
     return access.length > 0 && everyoneRoleId !== undefined && !access.includes(everyoneRoleId);
   };
+  // Sidebar groups are stored as a Set of collapsed-category names in
+  // localStorage, keyed per team. Empty string is the implicit "no
+  // category" bucket and gets rendered as "Kanals" / "Voice". The hook
+  // returns a Set + toggler; we read the persisted state once per teamId
+  // change so switching teams shows that team's collapsed set.
+  const collapsedKey = sidebarTeamId ? `dilla:groups:${sidebarTeamId}:collapsed` : '';
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
+    if (typeof window === 'undefined' || !collapsedKey) return new Set();
+    try {
+      const raw = window.localStorage.getItem(collapsedKey);
+      return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+    } catch { return new Set(); }
+  });
+  useEffect(() => {
+    if (!collapsedKey) return;
+    try {
+      const raw = window.localStorage.getItem(collapsedKey);
+      setCollapsedGroups(new Set(raw ? (JSON.parse(raw) as string[]) : []));
+    } catch { setCollapsedGroups(new Set()); }
+  }, [collapsedKey]);
+  const toggleGroupCollapsed = (cat: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat); else next.add(cat);
+      if (collapsedKey) {
+        try { window.localStorage.setItem(collapsedKey, JSON.stringify([...next])); }
+        catch { /* quota or private-mode — collapse state is best-effort */ }
+      }
+      return next;
+    });
+  };
+  // Group a flat channel list into [{label, key, channels}] preserving
+  // input order within each group. The empty-string category collapses
+  // to a "default" bucket whose label is supplied by the caller (Kanals
+  // for text, Voice for voice).
+  const groupByCategory = (
+    chs: Array<{ id: string; category?: string }>,
+    defaultLabel: string,
+  ): Array<{ key: string; label: string; channels: typeof chs }> => {
+    const map = new Map<string, { key: string; label: string; channels: typeof chs }>();
+    for (const c of chs) {
+      const raw = (c.category ?? '').trim();
+      const key = raw;
+      if (!map.has(key)) {
+        map.set(key, { key, label: raw || defaultLabel, channels: [] });
+      }
+      map.get(key)!.channels.push(c);
+    }
+    // Default bucket first, then user-defined categories in insertion order
+    // (which mirrors the channel position order from the server).
+    const out: Array<{ key: string; label: string; channels: typeof chs }> = [];
+    if (map.has('')) out.push(map.get('')!);
+    for (const [k, v] of map) if (k !== '') out.push(v);
+    return out;
+  };
   // Mirror the server-side filter: channels marked hidden_if_restricted
   // are hidden from members who can't access them. The server applies the
   // same rule at sync time, but channels can become restricted live (via
@@ -1301,11 +1393,16 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
             </>
           )}
 
-          <div className="cat">
-            <span>Kanals</span>
-            <div className="cat-actions"><button className="icon-btn" title="New kanal" onClick={() => window.dispatchEvent(new CustomEvent('dilla:open-new-channel'))}><Icon.Plus size={12} /></button></div>
-          </div>
-          {textChs.map(c => (
+          {groupByCategory(textChs, 'Kanals').map((grp, gi) => (
+            <React.Fragment key={'tg-' + grp.key}>
+              <div className="cat cat-collapsible" onClick={() => toggleGroupCollapsed(grp.key)} title={collapsedGroups.has(grp.key) ? 'Expand' : 'Collapse'}>
+                <span className="cat-chev" style={{ transform: collapsedGroups.has(grp.key) ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▾</span>
+                <span>{grp.label}</span>
+                {gi === 0 && (
+                  <div className="cat-actions"><button className="icon-btn" title="New kanal" onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('dilla:open-new-channel')); }}><Icon.Plus size={12} /></button></div>
+                )}
+              </div>
+              {!collapsedGroups.has(grp.key) && grp.channels.map(c => (
             <div key={c.id}
                  draggable
                  onDragStart={(e) => { setDragId(c.id); e.dataTransfer.effectAllowed = 'move'; }}
@@ -1346,11 +1443,16 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
               )}
             </div>
           ))}
+            </React.Fragment>
+          ))}
 
-          {otherVoice.length > 0 && (
-            <>
-              <div className="cat"><span>Voice</span></div>
-              {otherVoice.map(c => (
+          {otherVoice.length > 0 && groupByCategory(otherVoice, 'Voice').map((grp) => (
+            <React.Fragment key={'vg-' + grp.key}>
+              <div className="cat cat-collapsible" onClick={() => toggleGroupCollapsed('voice:' + grp.key)} title={collapsedGroups.has('voice:' + grp.key) ? 'Expand' : 'Collapse'}>
+                <span className="cat-chev" style={{ transform: collapsedGroups.has('voice:' + grp.key) ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▾</span>
+                <span>{grp.label}</span>
+              </div>
+              {!collapsedGroups.has('voice:' + grp.key) && grp.channels.map(c => (
                 <div key={c.id}
                      className={'channel-row' + (c.id === activeChannel ? ' active' : '') + (c.locked && !canJoinChannel(c) ? ' locked' : '')}
                      onClick={() => onPickChannel(c.id)}
@@ -1373,8 +1475,8 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
                   {isRestricted(c) && <span style={{ color: 'var(--fg-3)' }} title="restricted access"><Icon.Lock size={11} /></span>}
                 </div>
               ))}
-            </>
-          )}
+            </React.Fragment>
+          ))}
         </div>
       ) : (
         <div className="side-scroll">
