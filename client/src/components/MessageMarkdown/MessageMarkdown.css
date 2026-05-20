@@ -78,11 +78,23 @@
    here. Just make sure `<pre>` inside doesn't add an extra background. */
 .mm-root pre.code-block {
   margin: 0;
+  position: relative;
 }
 .mm-root pre.code-block > code {
   background: transparent;
   padding: 0;
   border-radius: 0;
+  display: block;
+  overflow-x: auto;
+}
+
+/* rehype-highlight emits <code class="hljs language-X">. Atom-One-Dark's
+   bundled `pre code.hljs` rule sets a hard background which would
+   override our bubble surface — neutralise it so the bubble's own
+   `.code-block` background shows through. Token colours stay. */
+.mm-root pre.code-block > code.hljs {
+  background: transparent;
+  padding: 0;
 }
 
 /* Tables — fit chat bubble, allow horizontal scroll for wide ones. */

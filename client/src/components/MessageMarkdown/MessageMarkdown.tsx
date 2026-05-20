@@ -2,6 +2,12 @@ import React from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
+import rehypeHighlight from 'rehype-highlight';
+// Atom One Dark + Light themes ship with highlight.js. The selector
+// override in MessageMarkdown.css picks the right palette based on
+// `<html data-theme>`; this import only adds tokens, not a colour
+// scheme per se.
+import 'highlight.js/styles/atom-one-dark.css';
 import './MessageMarkdown.css';
 
 interface MemberLite {
@@ -108,9 +114,14 @@ export default function MessageMarkdown({
       );
     },
     code({ className, children, ...rest }) {
-      const inline = !className;
+      // rehype-highlight adds 'hljs' + 'language-X' (and sometimes
+      // detected variants) to fenced code blocks; inline code stays
+      // class-less. Treat any `language-` class as the language label.
+      const classes = (className || '').split(/\s+/);
+      const langClass = classes.find((c) => c.startsWith('language-'));
+      const inline = !langClass && !classes.includes('hljs');
       if (inline) return <code {...rest}>{children}</code>;
-      const lang = (className || '').replace(/^language-/, '');
+      const lang = langClass ? langClass.slice('language-'.length) : '';
       return (
         <>
           {lang && <span className="cb-lang">{lang}</span>}
@@ -135,6 +146,7 @@ export default function MessageMarkdown({
     <div className="mm-root">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkBreaks]}
+        rehypePlugins={[[rehypeHighlight, { detect: true, ignoreMissing: true }]]}
         components={components}
         skipHtml
         // Headings feel wrong in a chat bubble — strip them but keep
