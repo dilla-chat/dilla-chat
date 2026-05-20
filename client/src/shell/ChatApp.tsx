@@ -2172,7 +2172,18 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
   // (mock sessions) since there's no server to page against.
   useChannelLazyLoad(channel.id, feedRef);
   const emojiBtnRef = useRef(null);
-  const textareaRef = useRef(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  // Auto-grow the composer as Shift+Enter adds rows: reset to single-
+  // line, then snap to scrollHeight so the box expands to fit content
+  // (capped by max-height in CSS, beyond which the textarea scrolls
+  // internally). Runs synchronously before paint so the user never
+  // sees a one-line snap of multi-line content.
+  useLayoutEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = el.scrollHeight + 'px';
+  }, [draft]);
   const [picker, setPicker] = useState({ open: false, anchor: null, target: 'draft' });
   const [editingId, setEditingId] = useState(null);
   const [editDraft, setEditDraft] = useState('');

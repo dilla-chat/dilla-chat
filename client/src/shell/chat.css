@@ -1898,12 +1898,15 @@ img.attach-img {
   outline: none;
   color: var(--fg);
   font-family: var(--font-body);
-  font-size: 13.5px;
+  font-size: 0.84375rem;
   line-height: 1.5;
-  max-height: 140px;
-  min-height: 24px;
-  padding: 4px 4px;
-  align-self: center;
+  /* JS in TextChannel auto-grows height to scrollHeight on each
+     keystroke; max-height caps the growth and overflows the rest
+     into an internal scroll so the composer doesn't eat the feed. */
+  max-height: 8.75rem;
+  min-height: 1.5rem;
+  padding: 0.25rem;
+  align-self: stretch;
 }
 .composer-input textarea::placeholder { color: var(--fg-3); }
 /* Global index.css paints a 3px brand-500 glow on every focused textarea.
