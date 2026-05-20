@@ -64,6 +64,15 @@ export function useEagerLoad(activeTeamId: string | null, cryptoReady: boolean =
       const threadStore = useThreadStore.getState();
       const derivedKey = useAuthStore.getState().derivedKey;
       const textChannels = channels.filter((c) => c.type === 'text');
+      // Mock sessions ship plaintext fixtures and never call initCrypto.
+      // Routing each message through tryDecrypt would then throw "Crypto
+      // not initialized" 15× per channel load — noise that masked real
+      // warnings. Short-circuit to a passthrough in that mode.
+      const mock = isMockSession();
+      const decryptChannel = mock
+        ? async (_id: string, content: string) => content
+        : (id: string, content: string, authorId: string, channelId: string) =>
+            tryDecrypt(id, content, authorId, channelId, derivedKey);
 
       // Distribute our sender key for every text channel so other team
       // members can decrypt our messages. The legacy ChannelView did this
@@ -96,6 +105,7 @@ export function useEagerLoad(activeTeamId: string | null, cryptoReady: boolean =
         msg: ServerMessage,
         dmId: string,
       ): Promise<string> => {
+        if (mock) return msg.content;
         const cached = await getCachedMessage(msg.id);
         if (cached !== null) return cached;
         if (!derivedKey) return msg.content;
@@ -122,7 +132,7 @@ export function useEagerLoad(activeTeamId: string | null, cryptoReady: boolean =
           const raw = (await api.getMessages(activeTeamId, ch.id, 50)) as ServerMessage[];
           const msgs = await Promise.all(
             raw.map(async (m) => {
-              const content = await tryDecrypt(m.id, m.content, m.author_id, ch.id, derivedKey);
+              const content = await decryptChannel(m.id, m.content, m.author_id, ch.id);
               return serverToMessage(m, content, members);
             }),
           );
@@ -174,7 +184,7 @@ export function useEagerLoad(activeTeamId: string | null, cryptoReady: boolean =
               const raw = (await api.getThreadMessages(activeTeamId, t.id)) as ServerMessage[];
               const msgs = await Promise.all(
                 raw.map(async (m) => {
-                  const content = await tryDecrypt(m.id, m.content, m.author_id, ch.id, derivedKey);
+                  const content = await decryptChannel(m.id, m.content, m.author_id, ch.id);
                   return serverToMessage(m, content, members);
                 }),
               );
