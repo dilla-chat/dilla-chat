@@ -3533,9 +3533,40 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
     remoteWebcamStreams,
     remoteScreenStream,
   ]);
+  // Drag-and-drop attach. dragOver flips on first dragenter that
+  // carries files, off on a coordinated dragleave/drop. We track a
+  // counter because dragenter/leave fire for every child element the
+  // pointer crosses; counting balances the events so a quick swipe
+  // across the message bubbles doesn't flicker the overlay.
+  const dragCounterRef = useRef(0);
+  const hasFiles = (e: React.DragEvent) =>
+    Array.from(e.dataTransfer?.types || []).includes('Files');
+  function onDragEnter(e: React.DragEvent) {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    dragCounterRef.current += 1;
+    setDragOver(true);
+  }
+  function onDragOver(e: React.DragEvent) {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+  }
+  function onDragLeave(e: React.DragEvent) {
+    if (!hasFiles(e)) return;
+    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
+    if (dragCounterRef.current === 0) setDragOver(false);
+  }
+
   return (
-    <div className="main">
-      {false && (
+    <div
+      className="main"
+      onDragEnter={onDragEnter}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={(e) => { dragCounterRef.current = 0; onDrop(e); }}
+    >
+      {dragOver && (
         <div className="drop-overlay">
           <div className="drop-card">
             <div className="drop-glyph"><Icon.Attach size={36} /></div>
