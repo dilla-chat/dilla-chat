@@ -25,6 +25,7 @@ import { dillaConfirm } from '../stores/confirmStore';
 import { resolvePermissions, PERM_MANAGE_CHANNELS, PERM_MANAGE_MEMBERS, PERM_MANAGE_MESSAGES, PERM_CREATE_INVITES, PERM_MANAGE_TEAM } from '../hooks/usePermissions';
 import { api } from '../services/api';
 import { tryEncrypt } from '../hooks/useMessageDecryption';
+import { useChannelLazyLoad } from '../hooks/useChannelLazyLoad';
 import { isMockSession } from '../services/mockSession';
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -2152,6 +2153,9 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
   const data = (useShellDataContext() as any) || MOCK_DATA;
   const groups = useMemo(() => groupMessages(messages), [messages]);
   const feedRef = useRef(null);
+  // Scroll-up to fetch older messages. The hook is a no-op on /mesh
+  // (mock sessions) since there's no server to page against.
+  useChannelLazyLoad(channel.id, feedRef);
   const emojiBtnRef = useRef(null);
   const textareaRef = useRef(null);
   const [picker, setPicker] = useState({ open: false, anchor: null, target: 'draft' });
@@ -2297,9 +2301,22 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
     const files = Array.from(e.dataTransfer.files || []);
     handleFiles(files);
   }
+  // Track the newest message id so we only auto-scroll when a *new*
+  // message arrives at the bottom (or the channel itself changed) —
+  // not when lazy-load prepends older messages above the viewport.
+  const lastBottomIdRef = useRef<string | null>(null);
+  const lastChannelRef = useRef<string | null>(null);
   useEffect(() => {
-    if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight;
-  }, [messages.length, channel.id]);
+    if (!feedRef.current) return;
+    const newestId = messages.length ? messages[messages.length - 1].id : null;
+    const channelChanged = lastChannelRef.current !== channel.id;
+    const newestChanged = lastBottomIdRef.current !== newestId;
+    if (channelChanged || newestChanged) {
+      feedRef.current.scrollTop = feedRef.current.scrollHeight;
+    }
+    lastBottomIdRef.current = newestId;
+    lastChannelRef.current = channel.id;
+  }, [messages, channel.id]);
 
   useEffect(() => {
     const el = feedRef.current;
