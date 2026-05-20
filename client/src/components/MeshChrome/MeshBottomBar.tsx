@@ -1,9 +1,13 @@
 import { useMeshStore } from '../../stores/meshStore';
 import { useVoiceStore } from '../../stores/voiceStore';
+import { useServerConfig } from '../../hooks/useServerConfig';
 import './MeshBottomBar.css';
 
-const APP_VERSION = '0.4.2-nightly';
-const BUILD_HASH = 'c0ffee';
+// Injected at build time by Vite from package.json + git short SHA
+// (see vite.config.ts) — keeps the displayed version honest without
+// having to remember to hand-edit a constant on every release.
+const APP_VERSION = __APP_VERSION__;
+const BUILD_HASH = __GIT_SHA__;
 
 export default function MeshBottomBar() {
   const { nodeName, peersConnected, peersTotal, lamport, latencyMs, status } =
@@ -11,6 +15,14 @@ export default function MeshBottomBar() {
   const voiceConnected = useVoiceStore((s) => s.connected);
   const federated = status !== 'ready';
   const degraded = status === 'degraded';
+  const serverConfig = useServerConfig();
+  const dbEncrypted = serverConfig?.db_encrypted ?? null;
+  const dbLabel =
+    dbEncrypted === null
+      ? 'CHECKING…'
+      : dbEncrypted
+        ? 'SQLCIPHER · AES-256'
+        : 'PLAIN SQLITE · UNENCRYPTED';
 
   return (
     <div className="mesh-bottom" role="contentinfo" aria-label="Mesh bottom bar">
@@ -79,8 +91,17 @@ export default function MeshBottomBar() {
           <span className="mb-k">voice</span> SRTP · OPUS 48kHz @ 96kbps
         </button>
       ) : (
-        <div className="mb-chunk">
-          <span className="mb-k">db</span> SQLCIPHER · AES-256
+        <div
+          className={'mb-chunk' + (dbEncrypted === false ? ' mb-warn' : '')}
+          title={
+            dbEncrypted === false
+              ? 'Server is running without DILLA_DB_PASSPHRASE (--insecure). The DB file on disk is plain SQLite.'
+              : dbEncrypted
+                ? 'SQLCipher at-rest encryption is active on the server.'
+                : 'Waiting for server config…'
+          }
+        >
+          <span className="mb-k">db</span> {dbLabel}
         </div>
       )}
 

@@ -7,6 +7,7 @@ import { Icon } from './icons';
 import { useShellDataContext } from './ShellDataContext';
 import { useVoiceStore } from '../stores/voiceStore';
 import { useAuthStore } from '../stores/authStore';
+import { useServerConfig } from '../hooks/useServerConfig';
 
 const { useState: useStateMC, useEffect: useEffectMC, useRef: useRefMC, useMemo: useMemoMC } = React;
 
@@ -59,6 +60,11 @@ function TopBar({ onCmdK, onSearch, onHelp, federated = true, degraded = false, 
 function BottomBar({ voiceConnection, peerStatus, federated = true, degraded = false, nodeHost = 'local' }) {
   const [lamport, setLamport] = useStateMC(12944);
   const [latency, setLatency] = useStateMC(14);
+  const serverConfig = useServerConfig();
+  const dbEncrypted = serverConfig?.db_encrypted ?? null;
+  const dbLabel =
+    dbEncrypted === null ? 'CHECKING…' :
+    dbEncrypted ? 'SQLCIPHER · AES-256' : 'PLAIN SQLITE · UNENCRYPTED';
   useEffectMC(() => {
     const id = setInterval(() => {
       setLamport((l) => l + Math.floor(Math.random() * 4));
@@ -100,7 +106,13 @@ function BottomBar({ voiceConnection, peerStatus, federated = true, degraded = f
           <AudioMeter />
         </div> :
 
-      <div className="mb-chunk"><span className="mb-k">db</span> SQLCIPHER · AES-256</div>
+      <div className={'mb-chunk' + (dbEncrypted === false ? ' mb-warn' : '')}
+           title={dbEncrypted === false
+             ? 'Server is running without DILLA_DB_PASSPHRASE (--insecure). The DB file on disk is plain SQLite.'
+             : dbEncrypted ? 'SQLCipher at-rest encryption is active on the server.'
+             : 'Waiting for server config…'}>
+        <span className="mb-k">db</span> {dbLabel}
+      </div>
       }
       <div className="mb-chunk mb-grow"></div>
       <div className="mb-chunk"><span className="mb-k">v</span> {__APP_VERSION__} · build {__GIT_SHA__}</div>

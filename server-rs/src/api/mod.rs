@@ -432,6 +432,12 @@ async fn get_config(
         "domain": state.config.domain,
         "rp_id": state.config.domain,
         "has_custom_theme": !state.config.theme_file.is_empty(),
+        // At-rest DB encryption: SQLCipher is keyed off DILLA_DB_PASSPHRASE.
+        // Empty passphrase (--insecure dev mode) means the file is plain
+        // SQLite. The chip in the client mirrors this — we never claim
+        // SQLCipher when it isn't actually in effect.
+        "db_encrypted": !state.config.db_passphrase.is_empty(),
+        "tls_enabled": !state.config.tls_cert.is_empty(),
     }))
 }
 

@@ -8,6 +8,16 @@ vi.mock('../../stores/voiceStore', () => ({
     selector({ connected: false }),
 }));
 
+vi.mock('../../hooks/useServerConfig', () => ({
+  useServerConfig: () => ({
+    domain: 'test.local',
+    rp_id: 'test.local',
+    has_custom_theme: false,
+    db_encrypted: true,
+    tls_enabled: false,
+  }),
+}));
+
 beforeEach(() => {
   useMeshStore.setState({
     nodeName: '',
@@ -86,7 +96,10 @@ describe('MeshBottomBar', () => {
 
   it('shows version + build in the rightmost chunk', () => {
     const { container } = render(<MeshBottomBar />);
-    expect(container.textContent).toMatch(/v 0\.4\.2-nightly/i);
-    expect(container.textContent).toMatch(/build c0ffee/i);
+    // Pulled from Vite-injected build constants — the exact values
+    // vary per build, so just assert the labels and that something
+    // semver-ish appears, not specific literals.
+    expect(container.textContent).toMatch(/v \d+\.\d+\.\d+/i);
+    expect(container.textContent).toMatch(/build [\w-]+/i);
   });
 });
