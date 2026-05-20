@@ -1675,12 +1675,45 @@ function RoleEditor({ teamId, role, onClose, onSaved }: { teamId: string; role: 
           </Row>
           <div style={{ height: 8 }} />
           <div style={{ color: 'var(--fg-3)', fontSize: 11, marginBottom: 6 }}>PERMISSIONS</div>
-          {PERM_FLAGS.map((f) => (
-            <label key={f.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', cursor: 'pointer' }}>
-              <input type="checkbox" checked={(perms & f.bit) !== 0} onChange={() => togglePerm(f.bit)} />
-              <span>{f.label}</span>
-            </label>
-          ))}
+          {(() => {
+            // When PERM_ADMIN is on, every other bit is implicitly true —
+            // user_has_permission() in the server early-returns. Show the
+            // others as visually-checked + disabled with a "covered by
+            // Admin" hint so the role looks honest about what each toggle
+            // actually does.
+            const adminOn = (perms & 0x1) !== 0;
+            return PERM_FLAGS.map((f) => {
+              const isAdminBit = f.bit === 0x1;
+              const covered = adminOn && !isAdminBit;
+              return (
+                <label
+                  key={f.key}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '6px 0',
+                    cursor: covered ? 'default' : 'pointer',
+                    opacity: covered ? 0.5 : 1,
+                  }}
+                  title={covered ? 'Covered by Admin (all permissions)' : undefined}
+                >
+                  <input
+                    type="checkbox"
+                    checked={covered || (perms & f.bit) !== 0}
+                    disabled={covered}
+                    onChange={() => togglePerm(f.bit)}
+                  />
+                  <span>{f.label}</span>
+                  {covered && (
+                    <span style={{ marginLeft: 'auto', fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--fg-3)' }}>
+                      via Admin
+                    </span>
+                  )}
+                </label>
+              );
+            });
+          })()}
           <div style={{ color: 'var(--fg-3)', fontSize: 11, marginTop: 14 }}>Assign this role to members from the <strong>Members</strong> tab.</div>
         </div>
         <footer className="set-modal-foot">
