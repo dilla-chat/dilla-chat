@@ -2179,14 +2179,27 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
   const [forwardId, setForwardId] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const [uploads, setUploads] = useState([]);
-  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
-  // Close lightbox on Escape.
+  // Lightbox model: when a message has multiple image attachments,
+  // clicking one opens the modal with the full gallery + the index of
+  // the clicked image. Left/Right keys (and the on-screen chevrons)
+  // cycle within that single message's images; Escape closes.
+  const [lightbox, setLightbox] = useState<{ sources: string[]; index: number } | null>(null);
+  const openLightbox = (sources: string[], index: number) =>
+    setLightbox({ sources, index });
   useEffect(() => {
-    if (!lightboxSrc) return;
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setLightboxSrc(null); }
+    if (!lightbox) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setLightbox(null);
+      if (e.key === 'ArrowLeft') {
+        setLightbox((cur) => cur ? { ...cur, index: (cur.index - 1 + cur.sources.length) % cur.sources.length } : cur);
+      }
+      if (e.key === 'ArrowRight') {
+        setLightbox((cur) => cur ? { ...cur, index: (cur.index + 1) % cur.sources.length } : cur);
+      }
+    }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [lightboxSrc]);
+  }, [lightbox]);
   const [unreadAt, setUnreadAt] = useState(null);
   const [mention, setMention] = useState(null); // { query }
   const [mentionIdx, setMentionIdx] = useState(0);
@@ -2840,6 +2853,12 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                                 ? m.attachments
                                 : (m.attachment ? [m.attachment] : []);
                               if (list.length === 0) return null;
+                              // Lightbox-eligible images for THIS message
+                              // only — Left/Right inside the modal cycles
+                              // within the same bubble, not across the feed.
+                              const galleryImgs = list
+                                .filter((a) => a.kind === 'image' && a.src)
+                                .map((a) => a.src as string);
                               return (
                                 <div className={'msg-attachments' + (list.length === 1 ? ' is-single' : '')}>
                                   {list.map((att, ai) => (
@@ -2850,7 +2869,10 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                                             className="attach-img"
                                             src={att.src}
                                             alt={att.label || ''}
-                                            onClick={() => setLightboxSrc(att.src)}
+                                            onClick={() => {
+                                              const idx = galleryImgs.indexOf(att.src as string);
+                                              openLightbox(galleryImgs, Math.max(0, idx));
+                                            }}
                                             style={{ display: 'block', objectFit: 'cover', borderRadius: 4, cursor: 'zoom-in' }}
                                           />
                                         ) : (
@@ -3425,48 +3447,90 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
           </div>
         </div>
       )}
-      {lightboxSrc && (
-        <div
-          onClick={() => setLightboxSrc(null)}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 500,
-            background: 'rgba(0,0,0,0.85)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 32, cursor: 'zoom-out',
-            backdropFilter: 'blur(2px)',
-          }}
-        >
-          <img
-            src={lightboxSrc}
-            alt=""
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: '95vw', maxHeight: '95vh', objectFit: 'contain', borderRadius: 4 }}
-          />
-          {/* Download button — fixed top-right of the overlay. <a download>
-              picks the filename from the URL when our attachment URL
-              already encodes the name; if it doesn't, the browser falls
-              back to the response Content-Disposition. */}
-          <a
-            href={lightboxSrc}
-            download
-            onClick={(e) => e.stopPropagation()}
-            title="Download image"
+      {lightbox && (() => {
+        const total = lightbox.sources.length;
+        const current = lightbox.sources[lightbox.index];
+        const go = (delta: number) =>
+          setLightbox((cur) => cur ? { ...cur, index: (cur.index + delta + cur.sources.length) % cur.sources.length } : cur);
+        const orbBtn = {
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          width: '2.5rem', height: '2.5rem',
+          borderRadius: '50%',
+          background: 'rgba(255,255,255,0.12)',
+          color: '#fff',
+          border: '1px solid rgba(255,255,255,0.2)',
+          cursor: 'pointer',
+          backdropFilter: 'blur(4px)',
+        } as const;
+        return (
+          <div
+            onClick={() => setLightbox(null)}
             style={{
-              position: 'absolute', top: '1rem', right: '1rem',
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              width: '2.5rem', height: '2.5rem',
-              borderRadius: '50%',
-              background: 'rgba(255,255,255,0.12)',
-              color: '#fff',
-              border: '1px solid rgba(255,255,255,0.2)',
-              cursor: 'pointer',
-              backdropFilter: 'blur(4px)',
+              position: 'fixed', inset: 0, zIndex: 500,
+              background: 'rgba(0,0,0,0.85)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: 32, cursor: 'zoom-out',
+              backdropFilter: 'blur(2px)',
             }}
           >
-            <Icon.Download size={18} />
-          </a>
-        </div>
-      )}
+            <img
+              src={current}
+              alt=""
+              onClick={(e) => e.stopPropagation()}
+              style={{ maxWidth: '95vw', maxHeight: '95vh', objectFit: 'contain', borderRadius: 4 }}
+            />
+            {total > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); go(-1); }}
+                  title="Previous (←)"
+                  style={{ ...orbBtn, position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)' }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
+                    <path d="M10 3l-5 5 5 5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); go(1); }}
+                  title="Next (→)"
+                  style={{ ...orbBtn, position: 'absolute', right: '5rem', top: '50%', transform: 'translateY(-50%)' }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
+                    <path d="M6 3l5 5-5 5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    position: 'absolute', bottom: '1rem', left: '50%',
+                    transform: 'translateX(-50%)',
+                    padding: '0.25rem 0.75rem',
+                    borderRadius: '999px',
+                    background: 'rgba(255,255,255,0.12)',
+                    border: '1px solid rgba(255,255,255,0.2)',
+                    color: '#fff', font: 'inherit', fontSize: '0.75rem',
+                    fontFamily: 'var(--font-mono)',
+                    backdropFilter: 'blur(4px)',
+                  }}
+                >
+                  {lightbox.index + 1} / {total}
+                </div>
+              </>
+            )}
+            <a
+              href={current}
+              download
+              onClick={(e) => e.stopPropagation()}
+              title="Download image"
+              style={{ ...orbBtn, position: 'absolute', top: '1rem', right: '1rem' }}
+            >
+              <Icon.Download size={18} />
+            </a>
+          </div>
+        );
+      })()}
     </div>
   );
 }
