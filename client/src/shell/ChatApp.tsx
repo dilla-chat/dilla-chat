@@ -1569,6 +1569,9 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
                           mutedChannels = new Set(), toggleMuteChannel, onNewDm }) {
   const data = (useShellDataContext() as any) || MOCK_DATA;
   const nodeHost = data?.SERVERS?.[0]?.node || 'local';
+  // Local user's VAD-driven speaking flag, scoped subscription so the
+  // re-render is contained to this sidebar component only.
+  const selfSpeaking = useVoiceStore((s) => s.speaking);
   const [dragId, setDragId] = useState(null);
   const [overId, setOverId] = useState(null);
   const [orderOverride, setOrderOverride] = useState(null); // [ids…]
@@ -1805,7 +1808,12 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
                       const deafened = isSelf ? deaf : !!peer?.deafened;
                       const screenOn = isSelf ? screen : !!peer?.screen_sharing;
                       const camOn = isSelf ? cam : !!peer?.webcam_sharing;
-                      const speaking = !isSelf && !muted && !!peer?.speaking;
+                      // Show speaking for everyone, including self.
+                      // For self we read voice.speaking (VAD-driven);
+                      // for remote peers we read peer.speaking from the
+                      // throttled server voice:state broadcast. Muted
+                      // peers don't get the indicator.
+                      const speaking = !muted && (isSelf ? selfSpeaking : !!peer?.speaking);
                       return (
                         <div key={pid} className={'voice-participant' + (speaking ? ' speaking' : '') + (muted ? ' muted' : '')}
                              onContextMenu={(e) => {
