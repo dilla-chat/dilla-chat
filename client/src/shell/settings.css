@@ -279,13 +279,20 @@ select.set-input {
 
 .set-meter {
   display: flex; align-items: center; gap: 2px;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
 }
 .set-meter span {
   flex: 1;
   height: 10px;
   border-radius: 1px;
+  transition: opacity 60ms linear;
 }
+.set-meter-row {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%;
+}
+.set-meter-row .set-btn { flex-shrink: 0; }
 
 .set-avatar-row { display: flex; align-items: center; gap: 10px; }
 .set-avatar {
@@ -377,7 +384,8 @@ select.set-input {
 }
 .set-tr.stale { opacity: 0.5; }
 .set-tr.role { grid-template-columns: 16px 1fr 80px 2fr auto; }
-.set-tr code { font-family: var(--font-mono); color: var(--fg); }
+.set-tr code { font-family: var(--font-mono); color: var(--fg); overflow-wrap: anywhere; word-break: break-all; min-width: 0; }
+.set-tr > * { min-width: 0; overflow-wrap: anywhere; }
 
 .set-dot {
   display: inline-block;
@@ -416,4 +424,56 @@ select.set-input {
   font-style: italic;
   border: 1px dashed var(--hairline-2);
   border-radius: var(--r-md);
+}
+
+/* Role editor modal */
+.set-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+.set-modal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  width: 480px;
+  max-width: 92vw;
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-ui);
+}
+.set-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--hairline);
+}
+.set-modal-head h3 { margin: 0; font-size: 14px; }
+.set-x {
+  background: transparent;
+  border: 0;
+  color: var(--fg-2);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.set-x:hover { color: var(--fg); }
+.set-modal-body {
+  padding: 14px 18px;
+  overflow-y: auto;
+  flex: 1;
+}
+.set-modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--hairline);
 }

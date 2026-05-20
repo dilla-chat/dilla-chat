@@ -757,6 +757,18 @@ function TeamInvites() {
   const myLabel = me ? `${me.name} · ${me.role || 'admin'}` : 'admin';
   const auth = useActiveTeamAuth();
   const [rows, setRows] = useStateS<any[]>([]);
+  const [maxUsesOpt, setMaxUsesOpt] = useStateS<string>('inf');
+  const [expiresOpt, setExpiresOpt] = useStateS<string>('never');
+
+  // Resolve a user_id to a human-friendly label using whatever the shell
+  // bridge already loaded — falls back to a short id when the lookup
+  // misses (e.g. revoked invites whose creator left the team).
+  function userLabel(userId?: string): string {
+    if (!userId) return myLabel;
+    const m = data?.byId?.[userId];
+    if (m?.name) return m.name;
+    return userId.slice(0, 8) + '…';
+  }
 
   // Hydrate from /api/v1/teams/:id/invites on mount. On /mesh the auth is
   // null — render empty list, let the user create local-only entries the
@@ -774,12 +786,15 @@ function TeamInvites() {
             expires: inv.expires_at
               ? new Date(inv.expires_at).toLocaleDateString()
               : '—',
-            who: inv.created_by || myLabel,
+            who: userLabel(inv.created_by),
           })),
         );
       })
       .catch((err) => console.warn('[Settings] listInvites failed', err));
-  }, [auth?.teamId]);
+    // userLabel depends on data.byId; rebuilding the table when membership
+    // loads matters for resolving newly-mapped creators on first paint.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth?.teamId, data?.byId]);
 
   async function revoke(row: any) {
     if (
@@ -826,7 +841,9 @@ function TeamInvites() {
       return;
     }
     try {
-      const inv = (await api.createInvite(auth.teamId)) as any;
+      const maxUses = maxUsesOpt === 'inf' ? undefined : Number(maxUsesOpt);
+      const expiresInHours = expiresOpt === 'never' ? undefined : Number(expiresOpt);
+      const inv = (await api.createInvite(auth.teamId, maxUses, expiresInHours)) as any;
       const id = inv.id;
       const code = inv.code || inv.token || id;
       // Server returns the token; turn it into a deep-link URL the user
@@ -839,7 +856,7 @@ function TeamInvites() {
           code: url,
           uses: `0 / ${inv.max_uses ?? '∞'}`,
           expires: inv.expires_at ? new Date(inv.expires_at).toLocaleDateString() : '—',
-          who: myLabel,
+          who: userLabel(inv.created_by ?? meId),
         },
       ]);
       navigator.clipboard?.writeText(url);
@@ -883,8 +900,28 @@ function TeamInvites() {
           </div>
         ))}
       </div>
-      <div style={{ marginTop: 12 }}>
+      <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <Btn onClick={create}>+ New invite link</Btn>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--fg-3)' }}>
+          uses
+          <select className="set-input" value={maxUsesOpt} onChange={(e) => setMaxUsesOpt(e.target.value)} style={{ width: 80 }}>
+            <option value="inf">∞</option>
+            <option value="1">1</option>
+            <option value="5">5</option>
+            <option value="25">25</option>
+            <option value="100">100</option>
+          </select>
+        </label>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--fg-3)' }}>
+          expires
+          <select className="set-input" value={expiresOpt} onChange={(e) => setExpiresOpt(e.target.value)} style={{ width: 90 }}>
+            <option value="never">Never</option>
+            <option value="1">1 hour</option>
+            <option value="24">1 day</option>
+            <option value="168">7 days</option>
+            <option value="720">30 days</option>
+          </select>
+        </label>
       </div>
     </Group>
   );
