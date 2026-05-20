@@ -3452,20 +3452,10 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
         const current = lightbox.sources[lightbox.index];
         const go = (delta: number) =>
           setLightbox((cur) => cur ? { ...cur, index: (cur.index + delta + cur.sources.length) % cur.sources.length } : cur);
-        // Square chrome to match the rest of the GUI — matches the
-        // settings modal's icon buttons and the bottom-bar chunk look.
-        // Icon glyphs adopt --accent so they read as theme-coloured
-        // affordances instead of plain white chrome.
-        const orbBtn = {
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          width: '2.5rem', height: '2.5rem',
-          borderRadius: 'var(--r-sm)',
-          background: 'rgba(255,255,255,0.12)',
-          color: 'var(--accent)',
-          border: '1px solid rgba(255,255,255,0.2)',
-          cursor: 'pointer',
-          backdropFilter: 'blur(4px)',
-        } as const;
+        // Use the existing .pp-btn shape (same outlined button the
+        // profile popover and other panels use) so the lightbox
+        // chrome reads as the same component family. The icon-only
+        // modifier shrinks it to a square for centred glyphs.
         return (
           <div
             onClick={() => setLightbox(null)}
@@ -3487,36 +3477,36 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
               <>
                 <button
                   type="button"
+                  className="pp-btn icon-only"
                   onClick={(e) => { e.stopPropagation(); go(-1); }}
                   title="Previous (←)"
-                  style={{ ...orbBtn, position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)' }}
+                  style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)' }}
                 >
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
-                    <path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M14.7 4.3a1 1 0 010 1.4L8.4 12l6.3 6.3a1 1 0 11-1.4 1.4l-7-7a1 1 0 010-1.4l7-7a1 1 0 011.4 0z" fill="currentColor" />
                   </svg>
                 </button>
                 <button
                   type="button"
+                  className="pp-btn icon-only"
                   onClick={(e) => { e.stopPropagation(); go(1); }}
                   title="Next (→)"
-                  style={{ ...orbBtn, position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)' }}
+                  style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)' }}
                 >
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
-                    <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M9.3 4.3a1 1 0 011.4 0l7 7a1 1 0 010 1.4l-7 7a1 1 0 11-1.4-1.4L15.6 12 9.3 5.7a1 1 0 010-1.4z" fill="currentColor" />
                   </svg>
                 </button>
                 <div
                   onClick={(e) => e.stopPropagation()}
+                  className="pp-btn"
                   style={{
                     position: 'absolute', bottom: '1rem', left: '50%',
                     transform: 'translateX(-50%)',
-                    padding: '0.25rem 0.75rem',
-                    borderRadius: '999px',
-                    background: 'rgba(255,255,255,0.12)',
-                    border: '1px solid rgba(255,255,255,0.2)',
-                    color: '#fff', font: 'inherit', fontSize: '0.75rem',
                     fontFamily: 'var(--font-mono)',
-                    backdropFilter: 'blur(4px)',
+                    pointerEvents: 'none',
+                    flex: '0 0 auto',
+                    padding: '0 0.75rem',
                   }}
                 >
                   {lightbox.index + 1} / {total}
@@ -3528,9 +3518,10 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
               download
               onClick={(e) => e.stopPropagation()}
               title="Download image"
-              style={{ ...orbBtn, position: 'absolute', top: '1rem', right: '1rem' }}
+              className="pp-btn icon-only"
+              style={{ position: 'absolute', top: '1rem', right: '1rem', textDecoration: 'none' }}
             >
-              <Icon.Download size={18} />
+              <Icon.Download size={16} />
             </a>
           </div>
         );
