@@ -245,6 +245,7 @@ function mapMember(member, presence) {
     roles: nonDefaultRoles.map((r: any) => ({ id: r.id, name: r.name, color: r.color, position: r.position })),
     custom,
     publicKeyHex: member.publicKeyHex ?? '',
+    avatarUrl: member.avatarUrl ?? '',
     isAdmin: !!member.isAdmin,
   };
 }

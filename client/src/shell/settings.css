@@ -304,6 +304,11 @@ select.set-input {
   font-size: 16px;
   color: #111;
 }
+.set-avatar.has-image {
+  background-size: cover;
+  background-position: center;
+  color: transparent;
+}
 
 .set-stat {
   color: var(--fg-2);

@@ -411,6 +411,14 @@
   flex: 0 0 auto;
   position: relative;
 }
+/* When member.avatarUrl is set the component drops the initials and lets
+   the inline backgroundImage fill the tile. cover + center keeps the
+   composition regardless of source aspect ratio. */
+.avatar.has-image {
+  background-size: cover;
+  background-position: center;
+  color: transparent;
+}
 .user-panel .avatar { width: 32px; height: 32px; }
 .avatar .presence {
   position: absolute; right: -2px; bottom: -2px;

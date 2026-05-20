@@ -102,20 +102,28 @@ function groupMessages(msgs) {
 
 // ───────────── small bits ─────────────
 function Avatar({ member, size }) {
-  const sty = { background: member.color };
+  // Render the uploaded image when present; otherwise the username-coloured
+  // initials tile. Either way the presence dot lives on top.
+  const sty: Record<string, unknown> = { background: member.color };
   if (size) Object.assign(sty, { width: size, height: size, fontSize: size * 0.4 });
+  if (member.avatarUrl) sty.backgroundImage = `url(${member.avatarUrl})`;
   return (
-    <div className="avatar" style={sty}>
-      {member.initials}
+    <div className={'avatar' + (member.avatarUrl ? ' has-image' : '')} style={sty}>
+      {!member.avatarUrl && member.initials}
       {member.status && <span className={`presence ${member.status}`}></span>}
     </div>
   );
 }
 
 function PlainAvatar({ member, size }) {
-  const sty = { background: member.color };
+  const sty: Record<string, unknown> = { background: member.color };
   if (size) Object.assign(sty, { width: size, height: size, fontSize: size * 0.4 });
-  return <div className="avatar" style={sty}>{member.initials}</div>;
+  if (member.avatarUrl) sty.backgroundImage = `url(${member.avatarUrl})`;
+  return (
+    <div className={'avatar' + (member.avatarUrl ? ' has-image' : '')} style={sty}>
+      {!member.avatarUrl && member.initials}
+    </div>
+  );
 }
 
 function MiniMeter() {

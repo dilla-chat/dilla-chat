@@ -50,6 +50,9 @@ export interface Member {
   /** Hex-encoded ed25519 public key, used by the safety-number compare
    *  flow. Empty string when the server didn't include it. */
   publicKeyHex: string;
+  /** Server-stored avatar URL (attachment proxy or absolute). Empty
+   *  string when the user hasn't uploaded one yet. */
+  avatarUrl: string;
 }
 
 export interface Role {

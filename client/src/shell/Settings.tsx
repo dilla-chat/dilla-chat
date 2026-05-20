@@ -61,6 +61,11 @@ function Settings({ open, mode, defaultTab, onClose }) {
   const tabs = mode === 'team' ? TEAM_TABS : USER_TABS;
   const [active, setActive] = useStateS(defaultTab || tabs[0].id);
   const navigate = useNavigate();
+  // ALL hooks must run on every render — keeping useShellDataContext below
+  // the `if (!open) return null` early return was a hook-order violation
+  // that React only flagged once an in-modal re-render (e.g. avatar upload
+  // updating the team store) gave it a second chance to compare counts.
+  const data = useShellDataContext() as any;
   useEffectS(() => { if (open) setActive(defaultTab || tabs[0].id); }, [open, mode, defaultTab]);
   useEffectS(() => {
     if (!open) return;
@@ -71,8 +76,6 @@ function Settings({ open, mode, defaultTab, onClose }) {
 
   if (!open) return null;
 
-  // Derive the heading label from real stores when available, falling back
-  const data = useShellDataContext() as any;
   const meId = data?.currentUserId;
   const me = meId ? data?.byId?.[meId] : null;
   const team = data?.SERVERS?.[0];
@@ -198,6 +201,105 @@ function Btn({ children, danger, onClick }) {
 }
 
 // ───────── USER tabs ─────────
+// Avatar upload widget. Real upload pipeline: file picker → api.uploadFile
+// → api.getAttachmentUrl → api.updateMe({ avatar_url }). Updates the local
+// member record so the rest of the UI (sidebar tile, message author, member
+// list) flips immediately without waiting for a re-sync. Mock sessions
+// keep the file as an object URL so /mesh demos the same flow.
+function AvatarUploader() {
+  const data = useShellDataContext() as any;
+  const meId = data?.currentUserId;
+  const me = meId ? data?.byId?.[meId] : null;
+  const auth = useActiveTeamAuth();
+  const inputRef = useRefS<HTMLInputElement | null>(null);
+  const [busy, setBusy] = useStateS(false);
+  const [err, setErr] = useStateS<string | null>(null);
+
+  async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // reset so picking the same file twice re-fires
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setErr('Pick an image file.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setErr('Avatar must be under 5 MB.');
+      return;
+    }
+    setErr(null);
+    setBusy(true);
+    try {
+      if (!auth || isMockSession()) {
+        // /mesh — no server, so just preview locally via object URL. The
+        // member's row updates because we write straight to the team
+        // store; reload clears it (intended for the demo path).
+        const url = URL.createObjectURL(file);
+        applyAvatarUrl(url, meId);
+        return;
+      }
+      const att = await api.uploadFile(auth.teamId, file);
+      const url = api.getAttachmentUrl(auth.teamId, att.id);
+      await api.updateMe(auth.baseUrl, auth.token, { avatar_url: url });
+      applyAvatarUrl(url, meId);
+    } catch (e2) {
+      setErr((e2 as Error).message || 'Upload failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function clear() {
+    setErr(null);
+    setBusy(true);
+    try {
+      if (auth && !isMockSession()) {
+        await api.updateMe(auth.baseUrl, auth.token, { avatar_url: '' });
+      }
+      applyAvatarUrl('', meId);
+    } catch (e2) {
+      setErr((e2 as Error).message || 'Clear failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function applyAvatarUrl(url: string, userId?: string) {
+    if (!userId) return;
+    const ts = useTeamStore.getState();
+    for (const [teamId, list] of ts.members) {
+      const idx = list.findIndex((m) => m.userId === userId);
+      if (idx < 0) continue;
+      const next = list.map((m, i) => (i === idx ? { ...m, avatarUrl: url } : m));
+      ts.setMembers(teamId, next);
+    }
+  }
+
+  const avatarColor = me?.color || 'var(--muted)';
+  const initials = me?.initials || '?';
+  const hasImage = !!me?.avatarUrl;
+  return (
+    <div className="set-avatar-row">
+      <div
+        className={'set-avatar' + (hasImage ? ' has-image' : '')}
+        style={hasImage ? { backgroundImage: `url(${me!.avatarUrl})` } : { background: avatarColor }}
+      >
+        {!hasImage && initials}
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: 'none' }}
+        onChange={onPick}
+      />
+      <Btn onClick={() => inputRef.current?.click()}>{busy ? 'Uploading…' : 'Upload…'}</Btn>
+      {hasImage && <Btn danger onClick={clear}>Remove</Btn>}
+      {err && <span style={{ color: 'var(--danger)', fontSize: 11, marginLeft: 8 }}>{err}</span>}
+    </div>
+  );
+}
+
 function UserAccount() {
   // Read the current user from window.SHELL_DATA (set up by useShellData).
   // No hardcoded mock fallback — empty when the data hasn't loaded yet.
@@ -255,11 +357,9 @@ function UserAccount() {
           }}
         />
       </Row>
-      <Row label="Avatar"><div className="set-avatar-row">
-        <div className="set-avatar" style={{ background: avatarColor }}>{initials}</div>
-        <Btn onClick={() => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'preferences', text: 'Avatar upload: file picker (mock).', duration: 3000 } }))}>Upload…</Btn>
-        <Btn onClick={() => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'preferences', text: 'Generated new avatar from identity hash.', duration: 3000 } }))}>Generate</Btn>
-      </div></Row>
+      <Row label="Avatar">
+        <AvatarUploader />
+      </Row>
       <Row label="Public key" hint="ed25519 — verified by your safety number.">
         <TextField mono readOnly value={publicKey} onChange={() => {}} />
       </Row>

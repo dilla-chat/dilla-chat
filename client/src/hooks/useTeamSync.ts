@@ -39,6 +39,7 @@ function normalizeMembers(data: Record<string, unknown>[]) {
       // compare uses it). Fall back to empty string until the server
       // surfaces it on the sync/REST payload.
       publicKeyHex: (mem.public_key_hex ?? usr.public_key_hex ?? raw.public_key_hex ?? '') as string,
+      avatarUrl: (usr.avatar_url ?? usr.avatarUrl ?? raw.avatar_url ?? raw.avatarUrl ?? '') as string,
     };
   });
 }
