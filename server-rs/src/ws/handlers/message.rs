@@ -50,6 +50,67 @@ pub(in crate::ws) async fn handle_message_send(
         return;
     }
 
+    // Slow-mode gate: when channel.slow_mode_seconds > 0, look up the
+    // user's most recent message in this channel and reject if the delta
+    // is shorter than the configured minimum. Server-only — clients can't
+    // bypass by editing their own slow_mode_seconds value.
+    let db_sm = hub.db.clone();
+    let cid_sm = p.channel_id.clone();
+    let uid_sm = user_id.to_string();
+    let slow_mode_block: Option<i64> = tokio::task::spawn_blocking(move || -> Option<i64> {
+        db_sm.with_read(|conn| {
+            let secs: i32 = conn
+                .query_row(
+                    "SELECT slow_mode_seconds FROM channels WHERE id = ?1",
+                    rusqlite::params![cid_sm],
+                    |row| row.get(0),
+                )
+                .unwrap_or(0);
+            if secs <= 0 { return Ok::<_, rusqlite::Error>(None); }
+            // strftime('%s', ...) gives unix seconds for the stored UTC text.
+            let last_ts: Option<i64> = conn
+                .query_row(
+                    "SELECT strftime('%s', created_at) FROM messages
+                     WHERE channel_id = ?1 AND author_id = ?2 AND deleted = 0
+                     ORDER BY created_at DESC LIMIT 1",
+                    rusqlite::params![cid_sm, uid_sm],
+                    |row| row.get::<_, Option<String>>(0).map(|s| s.and_then(|x| x.parse::<i64>().ok())),
+                )
+                .unwrap_or(None);
+            let now_ts: i64 = conn
+                .query_row("SELECT strftime('%s','now')", [], |row| {
+                    row.get::<_, String>(0).map(|s| s.parse::<i64>().unwrap_or(0))
+                })
+                .unwrap_or(0);
+            if let Some(last) = last_ts {
+                let delta = now_ts - last;
+                let remaining = secs as i64 - delta;
+                if remaining > 0 { return Ok::<_, rusqlite::Error>(Some(remaining)); }
+            }
+            Ok::<_, rusqlite::Error>(None)
+        })
+        .unwrap_or(None)
+    })
+    .await
+    .unwrap_or(None);
+
+    if let Some(remaining) = slow_mode_block {
+        tracing::info!(user_id, channel_id = %p.channel_id, "message:send denied — slow mode active");
+        if let Ok(evt) = Event::new(
+            "message:rejected",
+            serde_json::json!({
+                "channel_id": p.channel_id,
+                "reason": "slow_mode",
+                "retry_in": remaining,
+            }),
+        ) {
+            if let Ok(bytes) = evt.to_bytes() {
+                hub.send_to_user(user_id, bytes).await;
+            }
+        }
+        return;
+    }
+
     let msg_id = db::new_id();
     let now = db::now_str();
     let msg_type = if p.msg_type.is_empty() {

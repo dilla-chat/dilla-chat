@@ -36,6 +36,7 @@ pub struct UpdateChannelRequest {
     pub category: Option<String>,
     pub locked: Option<bool>,
     pub hidden_if_restricted: Option<bool>,
+    pub slow_mode_seconds: Option<i32>,
 }
 
 pub async fn list(
@@ -99,7 +100,7 @@ pub async fn create(
             created_by: user_id.clone(),
             created_at: now.clone(),
             updated_at: now.clone(),
-            locked: false, hidden_if_restricted: false,
+            locked: false, hidden_if_restricted: false, slow_mode_seconds: 0,
         };
         db::create_channel(conn, &channel)?;
         Ok(channel)
@@ -306,6 +307,9 @@ fn apply_channel_updates(channel: &mut db::Channel, body: &UpdateChannelRequest)
     }
     if let Some(hidden) = body.hidden_if_restricted {
         channel.hidden_if_restricted = hidden;
+    }
+    if let Some(secs) = body.slow_mode_seconds {
+        channel.slow_mode_seconds = secs.max(0);
     }
 }
 

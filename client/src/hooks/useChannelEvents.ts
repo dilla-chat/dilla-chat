@@ -88,6 +88,26 @@ export function useChannelEvents(activeTeamId: string | null, cryptoReady: boole
       }
     });
 
+    const unsubRejected = ws.on(
+      'message:rejected',
+      (payload: { channel_id?: string; reason?: string; retry_in?: number }) => {
+        const reason = payload?.reason ?? 'rejected';
+        let text = 'Your message was rejected.';
+        if (reason === 'slow_mode') {
+          const wait = payload.retry_in ?? 0;
+          text = wait > 0
+            ? `Slow mode is on — wait ${wait}s before posting again.`
+            : 'Slow mode is on.';
+        }
+        const channelName = payload.channel_id
+          ? (useTeamStore.getState().channels.get(activeTeamId) ?? []).find((c) => c.id === payload.channel_id)?.name
+          : '';
+        window.dispatchEvent(new CustomEvent('dilla:notify', {
+          detail: { channel: channelName || '', channelId: payload.channel_id, author: 'system', text, duration: 4000 },
+        }));
+      },
+    );
+
     const unsubEdit = ws.on(
       'message:updated',
       async (payload: { message_id: string; channel_id: string; content: string; author_id: string }) => {
@@ -215,6 +235,7 @@ export function useChannelEvents(activeTeamId: string | null, cryptoReady: boole
     return () => {
       unsubNew();
       unsubEdit();
+      unsubRejected();
       unsubDelete();
       unsubTyping();
       unsubKeyDist();

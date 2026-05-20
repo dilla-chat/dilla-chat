@@ -377,7 +377,7 @@ function ChannelAccessModal({ channel, onClose }) {
 
 function ChannelSettingsModal({ channel, onClose }) {
   const [topic, setTopic] = useState(channel?.topic ?? '');
-  const [slow, setSlow] = useState('0');
+  const [slow, setSlow] = useState(String(channel?.slowModeSeconds ?? channel?.slow_mode_seconds ?? 0));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   useEffect(() => {

@@ -24,6 +24,10 @@ export interface Channel {
    *  default ("everyone") role means it's open to all members. Missing
    *  / empty list means open (back-compat with pre-access channels). */
   accessRoleIds?: string[];
+  /** Minimum seconds between consecutive messages from the same user.
+   *  0 disables. Enforced server-side; client uses it for hint UI. */
+  slowModeSeconds?: number;
+  hiddenIfRestricted?: boolean;
 }
 
 export interface Member {

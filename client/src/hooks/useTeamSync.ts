@@ -82,6 +82,8 @@ function applySyncData(teamId: string, data: any, setters: SyncStoreSetters) {
       ...ch,
       teamId: ch.teamId ?? ch.team_id ?? teamId,
       accessRoleIds: (ch.access_role_ids ?? ch.accessRoleIds ?? []) as string[],
+      slowModeSeconds: (ch.slow_mode_seconds ?? ch.slowModeSeconds ?? 0) as number,
+      hiddenIfRestricted: Boolean(ch.hidden_if_restricted ?? ch.hiddenIfRestricted),
     })) as Channel[];
     setters.setChannels(teamId, channels);
   }

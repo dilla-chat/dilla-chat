@@ -75,6 +75,10 @@ pub struct Channel {
     /// from their channel list instead of showing a locked indicator.
     #[serde(default)]
     pub hidden_if_restricted: bool,
+    /// Minimum seconds between consecutive messages from the same user.
+    /// 0 disables slow mode. Enforced by message:send.
+    #[serde(default)]
+    pub slow_mode_seconds: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
