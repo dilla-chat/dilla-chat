@@ -48,12 +48,13 @@ const USER_TABS = [
   { id: 'keys',     name: 'Keyboard shortcuts' },
 ];
 const TEAM_TABS = [
-  { id: 'team',       name: 'Team info' },
-  { id: 'invites',    name: 'Invites' },
-  { id: 'members',    name: 'Members' },
-  { id: 'roles',      name: 'Roles & permissions' },
-  { id: 'federation', name: 'Federation' },
-  { id: 'audit',      name: 'Audit log' },
+  { id: 'team',         name: 'Team info' },
+  { id: 'invites',      name: 'Invites' },
+  { id: 'members',      name: 'Members' },
+  { id: 'roles',        name: 'Roles & permissions' },
+  { id: 'integrations', name: 'Integrations' },
+  { id: 'federation',   name: 'Federation' },
+  { id: 'audit',        name: 'Audit log' },
 ];
 
 function Settings({ open, mode, defaultTab, onClose }) {
@@ -132,6 +133,7 @@ function Settings({ open, mode, defaultTab, onClose }) {
             {mode === 'team'  && active === 'invites'   && <TeamInvites />}
             {mode === 'team'  && active === 'members'   && <TeamMembers />}
             {mode === 'team'  && active === 'roles'     && <TeamRoles />}
+            {mode === 'team'  && active === 'integrations' && <TeamIntegrations />}
             {mode === 'team'  && active === 'federation'&& <TeamFederation />}
             {mode === 'team'  && active === 'audit'     && <TeamAudit />}
           </div>
@@ -1322,6 +1324,83 @@ function TeamMembers() {
     </Group>
   );
 }
+// Team Settings → Integrations. Mirror of pages/TeamSettings/IntegrationsTab
+// using this file's atoms (Row/Group/TextField/Btn) so it slots into the
+// shell modal consistently with the other team tabs.
+function TeamIntegrations() {
+  const auth = useActiveTeamAuth();
+  const [configured, setConfigured] = useStateS<boolean | null>(null);
+  const [apiKey, setApiKey] = useStateS('');
+  const [busy, setBusy] = useStateS(false);
+  const [msg, setMsg] = useStateS<{ kind: 'ok' | 'err'; text: string } | null>(null);
+
+  useEffectS(() => {
+    if (!auth) { setConfigured(false); return; }
+    let cancelled = false;
+    api.getGiphyIntegration(auth.teamId)
+      .then((res) => { if (!cancelled) setConfigured(res.configured); })
+      .catch(() => { if (!cancelled) setConfigured(false); });
+    return () => { cancelled = true; };
+  }, [auth?.teamId]);
+
+  async function save(clear: boolean) {
+    if (!auth) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await api.setGiphyApiKey(auth.teamId, clear ? '' : apiKey);
+      setConfigured(res.configured);
+      setApiKey('');
+      setMsg({ kind: 'ok', text: res.configured ? 'Saved.' : 'Cleared.' });
+    } catch (e) {
+      setMsg({ kind: 'err', text: (e as Error).message || 'Save failed — admin permission required.' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Group
+      title="Giphy"
+      hint="Powers the /giphy slash command. The key stays on the server and is never sent to clients."
+    >
+      <Row
+        label="API key"
+        hint={
+          configured == null
+            ? 'Loading…'
+            : configured
+            ? 'A key is on file. Paste a new one to replace it, or clear it below.'
+            : 'No key yet — admins can paste one from developers.giphy.com.'
+        }
+      >
+        <input
+          className="set-input mono"
+          type="password"
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
+          placeholder={configured ? 'paste a new key to replace' : 'paste your Giphy API key'}
+          autoComplete="off"
+        />
+      </Row>
+      {msg && (
+        <div className="set-row" style={{ paddingTop: 0 }}>
+          <div className="set-row-l" />
+          <div className="set-row-r" style={{ color: msg.kind === 'ok' ? 'var(--ok)' : 'var(--danger)', fontSize: 12 }}>
+            {msg.text}
+          </div>
+        </div>
+      )}
+      <Row label="" hint="">
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Btn onClick={() => save(false)}>{busy ? 'Saving…' : 'Save'}</Btn>
+          {configured && <Btn danger onClick={() => save(true)}>Clear key</Btn>}
+        </div>
+      </Row>
+    </Group>
+  );
+}
+
 function TeamFederation() {
   // Use real node identity surfaced through SHELL_DATA.SERVERS[].node.
   // Peers list stays empty until we wire a real peer status feed; the
