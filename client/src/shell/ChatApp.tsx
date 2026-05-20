@@ -2322,22 +2322,32 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
     return () => el.removeEventListener('scroll', onScroll);
   }, [channel.id]);
 
+  // Instant scroll-to-bottom helper. `.feed` has scroll-behavior:
+  // smooth set for the user-facing "jump to latest" button; that
+  // would otherwise animate every programmatic snap and let
+  // late-loading media interrupt the animation mid-flight, leaving
+  // the viewport stranded. scrollTo({ behavior: 'instant' }) bypasses
+  // the smoothing for the snap path.
+  const snapInstant = (el: HTMLElement) => {
+    el.scrollTo({ top: el.scrollHeight, behavior: 'instant' as ScrollBehavior });
+  };
+
   // Reset follow state whenever we switch channels. We also schedule
   // a few retries over the next second to catch late-loading images
   // and other content that grows the feed after our initial snap —
   // ResizeObserver covers most of those, but giphy/CDN media that
-  // mounts <img> elements asynchronously (e.g., decoded off the main
-  // thread) sometimes lands between observer cycles.
+  // mounts <img> elements asynchronously sometimes lands between
+  // observer cycles.
   useLayoutEffect(() => {
     userPagedUpRef.current = false;
     const el = feedRef.current;
     if (!el) return;
-    el.scrollTop = el.scrollHeight;
+    snapInstant(el);
     const retries: number[] = [];
     [50, 150, 400, 900].forEach((ms) => {
       retries.push(window.setTimeout(() => {
         if (userPagedUpRef.current) return;
-        if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight;
+        if (feedRef.current) snapInstant(feedRef.current);
       }, ms));
     });
     return () => {
@@ -2351,7 +2361,7 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
   useLayoutEffect(() => {
     const el = feedRef.current;
     if (!el) return;
-    if (!userPagedUpRef.current) el.scrollTop = el.scrollHeight;
+    if (!userPagedUpRef.current) snapInstant(el);
   }, [messages]);
 
   // Late-loading media: when an image (or any child's intrinsic size)
@@ -2364,7 +2374,7 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
     const snap = () => {
       raf = 0;
       if (!el) return;
-      if (!userPagedUpRef.current) el.scrollTop = el.scrollHeight;
+      if (!userPagedUpRef.current) snapInstant(el);
     };
     const schedule = () => {
       if (raf) return;
