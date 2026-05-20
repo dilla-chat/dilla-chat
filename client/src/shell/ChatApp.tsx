@@ -2525,9 +2525,7 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                               title="Pinned to this channel — open the pin pop to see all pins"
                               onClick={() => setPinnedOpen(true)}
                             >
-                              <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
-                                <path d="M3 2v12l5-3 5 3V2z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
-                              </svg>
+                              <Icon.Pin size={10} />
                               pinned
                             </span>
                           )}
@@ -2539,9 +2537,7 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                           title="Pinned to this channel"
                           onClick={() => setPinnedOpen(true)}
                         >
-                          <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
-                            <path d="M3 2v12l5-3 5 3V2z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
-                          </svg>
+                          <Icon.Pin size={10} />
                         </span>
                       )}
                       <div className="body">
@@ -3000,7 +2996,7 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
               }
               setContextMenu(null);
             }}>
-              <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 2v12l5-3 5 3V2z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/></svg>
+              <Icon.Pin size={13} />
               {usePinStore.getState().isPinned(channel.id, contextMenu.msgId) ? 'Unpin from channel' : 'Pin to channel'}
             </button>
             <button onClick={() => {
