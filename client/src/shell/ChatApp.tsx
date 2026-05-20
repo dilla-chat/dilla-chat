@@ -1120,8 +1120,10 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
   const isAdminHere = !!(members && members.byId && members.byId[currentUserId()]?.isAdmin);
   // Pull the team's role catalog so we can identify the implicit
   // "everyone" role and resolve which channels the current user can enter.
-  const teamRoles = useTeamStore((s) => (activeTeamId ? s.roles.get(activeTeamId) ?? [] : [])) as any[];
-  const teamMembers = useTeamStore((s) => (activeTeamId ? s.members.get(activeTeamId) ?? [] : [])) as any[];
+  // activeTeamId isn't a prop here — read it from the store directly.
+  const sidebarTeamId = useTeamStore((s) => s.activeTeamId);
+  const teamRoles = useTeamStore((s) => (sidebarTeamId ? s.roles.get(sidebarTeamId) ?? [] : [])) as any[];
+  const teamMembers = useTeamStore((s) => (sidebarTeamId ? s.members.get(sidebarTeamId) ?? [] : [])) as any[];
   const everyoneRoleId = teamRoles.find((r) => r.isDefault)?.id;
   const myRoleIds = (teamMembers.find((m) => m.userId === currentUserId())?.roleIds ?? []) as string[];
   const canJoinChannel = (c: { accessRoleIds?: string[] }) => {
