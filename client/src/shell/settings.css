@@ -191,21 +191,7 @@ select.set-input {
   padding-right: 26px;
 }
 
-.set-btn {
-  height: 28px;
-  padding: 0 12px;
-  background: var(--surface-2);
-  border: 1px solid var(--hairline-2);
-  border-radius: var(--r-sm);
-  color: var(--fg);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-  transition: background .12s, border-color .12s;
-}
-.set-btn:hover { background: var(--surface-hi); border-color: var(--accent); color: var(--accent); }
-.set-btn.danger { color: var(--danger); }
-.set-btn.danger:hover { border-color: var(--danger); background: color-mix(in oklab, var(--danger) 14%, transparent); }
+/* .set-btn rules live in styles/button.css now (unified .btn system). */
 
 .set-toggle {
   width: 36px; height: 20px;

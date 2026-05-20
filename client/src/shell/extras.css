@@ -394,28 +394,7 @@
   display: flex; align-items: center; justify-content: space-between;
   gap: 8px;
 }
-.sc-btn {
-  padding: 8px 14px;
-  background: var(--surface-2);
-  border: 1px solid var(--hairline-2);
-  border-radius: var(--r-sm);
-  color: var(--fg);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-  transition: border-color .12s, background .12s, color .12s;
-}
-.sc-btn:hover { border-color: var(--accent); color: var(--accent); }
-.sc-btn.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-ink);
-  font-weight: 600;
-}
-.sc-btn.danger {
-  color: var(--danger);
-}
-.sc-btn.danger:hover { border-color: var(--danger); }
+/* .sc-btn rules live in styles/button.css now (unified .btn system). */
 .sc-verified {
   display: flex; align-items: center; gap: 10px;
   padding: 12px 14px;

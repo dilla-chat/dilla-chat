@@ -1,5 +1,6 @@
 @import './styles/theme.css';
 @import './styles/utilities.css';
+@import './styles/button.css';
 
 :root {
   font-family: var(--font-ui);
