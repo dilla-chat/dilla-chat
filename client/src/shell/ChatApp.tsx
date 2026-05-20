@@ -2115,14 +2115,6 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                                 <div className="poll-foot">click to vote · {m.options.reduce((s, o) => s + (o.votes || 0), 0)} votes</div>
                               </div>
                             )}
-                            {m.kind === 'giphy' && (
-                              <div className="msg-giphy">
-                                <div className="giphy-img" style={{ background: `linear-gradient(135deg, hsl(${m.query.length * 37 % 360} 60% 30%), hsl(${(m.query.length * 37 + 60) % 360} 60% 50%))` }}>
-                                  <div className="giphy-watermark">GIPHY</div>
-                                </div>
-                                <div className="giphy-meta">/giphy · "{m.query}"</div>
-                              </div>
-                            )}
                             {m.kind === 'text' && detectUnfurls(m.text).map((u, ui) => (
                               <Unfurl key={ui} url={u.url} host={u.host} />
                             ))}
@@ -2709,6 +2701,10 @@ function detectUnfurls(text) {
   const out = [];
   let m;
   while ((m = re.exec(stripped)) !== null) {
+    // Direct image URLs are already inline via renderText — skip the
+    // unfurl card so /giphy doesn't render an image AND a generic card.
+    const path = m[0].split('?')[0].toLowerCase();
+    if (/\.(gif|png|jpe?g|webp|avif)$/.test(path)) continue;
     out.push({ url: m[0], host: m[1] });
     if (out.length >= 2) break;
   }
@@ -3836,25 +3832,29 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     if (text.startsWith('/giphy ')) {
       const q = text.slice(7).trim();
       if (!q) { notify('Usage: /giphy <search>'); return null; }
-      // Async pattern: kick off the fetch + send in the background. The
-      // composer clears immediately so the user doesn't think it stalled,
-      // and the message lands when the network call resolves.
+      if (!activeTeamId) { notify('Sign in first.'); return null; }
+      // Server-proxied: the Giphy API key lives in DILLA_GIPHY_API_KEY on
+      // the server, never in the browser bundle. The server's gif endpoint
+      // returns a direct .gif URL we post as a regular message (renderText
+      // picks it up and embeds inline). Failure modes that we want to
+      // surface separately:
+      //   503 → operator hasn't configured a key
+      //   404 → no match for that query
+      //   anything else → generic error, fall back to a search link
       (async () => {
         try {
-          // Giphy's public beta API key is documented as widely available
-          // for unsigned demos. Translate endpoint returns one best match
-          // and exposes the direct .gif URL we want to embed.
-          const r = await fetch('https://api.giphy.com/v1/gifs/translate?api_key=dc6zaTOxFJmzC&s=' + encodeURIComponent(q));
-          if (!r.ok) throw new Error('giphy ' + r.status);
-          const j = await r.json();
-          const url = j?.data?.images?.original?.url || j?.data?.images?.downsized?.url || j?.data?.url;
-          if (!url) throw new Error('no gif in giphy response');
+          const { url } = await api.searchGif(activeTeamId, q);
           await sendRawText(url);
         } catch (err) {
-          console.warn('[slash] giphy failed', err);
-          // Fall back to a search-link so the user still gets something
-          // useful when the public API is rate-limited or blocked.
-          await sendRawText('https://giphy.com/search/' + encodeURIComponent(q));
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg.includes('503') || msg.toLowerCase().includes('not configured')) {
+            notify('Gif search is disabled — operator needs to set DILLA_GIPHY_API_KEY.');
+          } else if (msg.includes('404') || msg.toLowerCase().includes('no gif')) {
+            notify(`No gif matches "${q}".`);
+          } else {
+            console.warn('[slash] giphy failed', err);
+            await sendRawText('https://giphy.com/search/' + encodeURIComponent(q));
+          }
         }
       })();
       return null;

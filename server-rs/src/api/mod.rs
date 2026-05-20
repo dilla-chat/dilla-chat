@@ -19,6 +19,7 @@ pub mod debug;
 pub mod audit;
 pub mod polls;
 pub mod channel_mutes;
+pub mod gif;
 
 use crate::auth::{self, AuthService};
 use crate::config::Config;
@@ -222,6 +223,9 @@ pub fn create_router(state: AppState) -> Router {
             "/api/v1/teams/{team_id}/polls/{poll_id}/votes",
             post(polls::vote).delete(polls::unvote),
         )
+        // Gif search proxy for the /giphy slash command. Server-side so
+        // the Giphy API key (DILLA_GIPHY_API_KEY) stays out of the bundle.
+        .route("/api/v1/gif", get(gif::search))
         // Invites
         .route(
             "/api/v1/teams/{team_id}/invites",

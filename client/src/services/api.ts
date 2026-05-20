@@ -509,6 +509,20 @@ class ApiService {
     );
   }
 
+  /** Resolve a gif URL via the server-side `/giphy` proxy. The server holds
+   *  the Giphy API key (DILLA_GIPHY_API_KEY) so it never reaches the bundle.
+   *  Returns `{ url, query }` on success. Throws when the key is unset
+   *  (503) or no gif matches (404). */
+  async searchGif(teamId: string, query: string): Promise<{ url: string; query: string }> {
+    const conn = this.getConnection(teamId);
+    return this.request(
+      conn.baseUrl,
+      `/api/v1/gif?q=${encodeURIComponent(query)}`,
+      { method: 'GET' },
+      conn.token,
+    ) as Promise<{ url: string; query: string }>;
+  }
+
   /** List the current user's muted channels across all teams. */
   async listMutedChannels(teamId: string): Promise<unknown[]> {
     const conn = this.getConnection(teamId);

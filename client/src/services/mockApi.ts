@@ -313,6 +313,89 @@ export class MockApiService {
   }
   async leaveVoice() { /* noop */ }
 
+  // Polls — keyed by channel_id so the mock matches the server's
+  // list-by-channel endpoint. Each entry holds tallies and voter ids per
+  // option so vote/unvote round-trips behave like the real server.
+  private polls: Map<string, Array<{
+    id: string; team_id: string; channel_id: string; question: string;
+    options: string[]; voters: string[][]; created_by: string; created_at: string;
+  }>> = new Map();
+
+  async getPolls(_teamId: string, channelId: string): Promise<unknown[]> {
+    return (this.polls.get(channelId) ?? []).map((p) => ({
+      ...p,
+      tallies: p.voters.map((v) => v.length),
+    }));
+  }
+  async createPoll(
+    teamId: string,
+    channelId: string,
+    body: { question: string; options: string[] },
+  ): Promise<unknown> {
+    const poll = {
+      id: uid('poll'),
+      team_id: teamId,
+      channel_id: channelId,
+      question: body.question.trim(),
+      options: [...body.options],
+      voters: body.options.map(() => [] as string[]),
+      created_by: DEMO_CURRENT_USER_ID,
+      created_at: now(),
+    };
+    const list = this.polls.get(channelId) ?? [];
+    list.push(poll);
+    this.polls.set(channelId, list);
+    return { ...poll, tallies: poll.voters.map((v) => v.length) };
+  }
+  async votePoll(_teamId: string, pollId: string, optionIndex: number): Promise<unknown> {
+    for (const list of this.polls.values()) {
+      const poll = list.find((p) => p.id === pollId);
+      if (!poll) continue;
+      // Single-choice: clear the voter from every option, then add to chosen.
+      poll.voters = poll.voters.map((arr) => arr.filter((u) => u !== DEMO_CURRENT_USER_ID));
+      if (optionIndex >= 0 && optionIndex < poll.voters.length) {
+        poll.voters[optionIndex].push(DEMO_CURRENT_USER_ID);
+      }
+      return { ...poll, tallies: poll.voters.map((v) => v.length) };
+    }
+    throw new Error('poll not found');
+  }
+  async unvotePoll(_teamId: string, pollId: string): Promise<unknown> {
+    for (const list of this.polls.values()) {
+      const poll = list.find((p) => p.id === pollId);
+      if (!poll) continue;
+      poll.voters = poll.voters.map((arr) => arr.filter((u) => u !== DEMO_CURRENT_USER_ID));
+      return { ...poll, tallies: poll.voters.map((v) => v.length) };
+    }
+    throw new Error('poll not found');
+  }
+
+  // Channel mutes — keyed by channel_id, value is mutedUntil ISO (or null
+  // for indefinite). Mirrors the real /me/muted-channels endpoint.
+  private muted: Map<string, string | null> = new Map();
+  async listMutedChannels(_teamId: string): Promise<unknown[]> {
+    return Array.from(this.muted.entries()).map(([channel_id, muted_until]) => ({
+      channel_id, muted_until,
+    }));
+  }
+  async muteChannel(_teamId: string, channelId: string, mutedUntil?: string | null): Promise<unknown> {
+    this.muted.set(channelId, mutedUntil ?? null);
+    return { channel_id: channelId, muted_until: mutedUntil ?? null };
+  }
+  async unmuteChannel(_teamId: string, channelId: string): Promise<unknown> {
+    this.muted.delete(channelId);
+    return { ok: true };
+  }
+
+  // Gif search — mock returns a recognizable placeholder so the design
+  // preview can demonstrate the message rendering without a network call.
+  async searchGif(_teamId: string, query: string): Promise<{ url: string; query: string }> {
+    return {
+      url: 'https://media.giphy.com/media/3o7TKsQ8gqVrxZZprS/giphy.gif',
+      query,
+    };
+  }
+
   // Health
   async checkHealth(): Promise<boolean> { return true; }
 

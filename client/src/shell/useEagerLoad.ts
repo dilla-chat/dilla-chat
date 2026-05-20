@@ -18,20 +18,43 @@ import { useMessageStore } from '../stores/messageStore';
 import { useDMStore, type DMChannel } from '../stores/dmStore';
 import { useThreadStore, type Thread } from '../stores/threadStore';
 import { tryDecrypt, serverToMessage, type ServerMessage } from '../hooks/useMessageDecryption';
-import { cryptoService } from '../services/crypto';
+import { cryptoService, isCryptoInitialized } from '../services/crypto';
+import { isMockSession } from '../services/mockSession';
 import { getCachedMessage, cacheMessage } from '../services/messageCache';
 import { ws } from '../services/websocket';
+import { usePollStore, normalizePoll } from '../stores/pollStore';
 
-export function useEagerLoad(activeTeamId: string | null): { ready: boolean } {
+export function useEagerLoad(activeTeamId: string | null, cryptoReady: boolean = true): { ready: boolean } {
   const loaded = useRef<Set<string>>(new Set());
   const [ready, setReady] = useState(false);
+  // Bump on ws:connected so the effect re-runs and re-fetches messages,
+  // which is how we pick up edits that landed while we were offline.
+  const [reloadTick, setReloadTick] = useState(0);
   // Subscribe to channels/members so the effect re-runs once sync:init lands.
   const channels = useTeamStore((s) => (activeTeamId ? s.channels.get(activeTeamId) : undefined));
   const members = useTeamStore((s) => (activeTeamId ? s.members.get(activeTeamId) : undefined));
 
   useEffect(() => {
     if (!activeTeamId) return;
+    const unsub = ws.on('ws:connected', (payload: { teamId?: string }) => {
+      if (payload?.teamId === activeTeamId) {
+        loaded.current.delete(activeTeamId);
+        setReloadTick((n) => n + 1);
+      }
+    });
+    return () => { unsub(); };
+  }, [activeTeamId]);
+
+  useEffect(() => {
+    if (!activeTeamId) return;
     if (!channels || channels.length === 0 || !members) return;
+    // Crypto must be initialized before we distribute or decrypt — without
+    // this gate, an early sync:init would call cryptoService methods against
+    // a null manager and spam "Crypto not initialized" warnings. Re-running
+    // once cryptoReady flips true picks up the work cleanly. Mock sessions
+    // (/mesh) skip the gate entirely — there's no real crypto manager but
+    // the load flow is otherwise identical to prod.
+    if (!isMockSession() && (!cryptoReady || !isCryptoInitialized())) return;
     if (loaded.current.has(activeTeamId)) return;
     loaded.current.add(activeTeamId);
 
@@ -48,7 +71,7 @@ export function useEagerLoad(activeTeamId: string | null): { ready: boolean } {
       // we batch it here right after sync:init. Each call is independent
       // and best-effort — if one channel's key fetch fails the others
       // still get distributed.
-      if (derivedKey && activeTeamId) {
+      if (derivedKey && activeTeamId && !isMockSession()) {
         for (const ch of textChannels) {
           (async () => {
             try {
@@ -60,6 +83,10 @@ export function useEagerLoad(activeTeamId: string | null): { ready: boolean } {
             }
           })();
         }
+      } else if (isMockSession() && activeTeamId) {
+        // Still subscribe to channel rooms in the mock so WS broadcasts
+        // (poll:new, message:new) land — just skip the crypto distribute.
+        for (const ch of textChannels) ws.joinChannel(activeTeamId, ch.id);
       }
 
       // DM messages use a separate Signal session per-peer, not channel
@@ -101,6 +128,17 @@ export function useEagerLoad(activeTeamId: string | null): { ready: boolean } {
           );
           msgStore.prependMessages(ch.id, msgs);
           msgStore.setHasMore(ch.id, false);
+        } catch { /* mock won't reject; ignore */ }
+      });
+
+      // Fetch polls per text channel. Stash them in pollStore so the
+      // shell-side merge picks them up regardless of mount timing. Polls
+      // are clear-text so no decryption pass needed.
+      const pollLoads = textChannels.map(async (ch) => {
+        try {
+          const polls = (await api.getPolls(activeTeamId, ch.id)) as any[];
+          const upsert = usePollStore.getState().upsert;
+          for (const p of polls) upsert(normalizePoll(p));
         } catch { /* mock won't reject; ignore */ }
       });
 
@@ -146,10 +184,10 @@ export function useEagerLoad(activeTeamId: string | null): { ready: boolean } {
         } catch { /* ignore */ }
       });
 
-      await Promise.all([...messageLoads, dmLoad, ...threadLoads]);
+      await Promise.all([...messageLoads, ...pollLoads, dmLoad, ...threadLoads]);
       setReady(true);
     })();
-  }, [activeTeamId, channels, members]);
+  }, [activeTeamId, channels, members, cryptoReady, reloadTick]);
 
   return { ready };
 }

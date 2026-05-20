@@ -34,11 +34,28 @@ pub struct Config {
     pub trusted_proxies: Vec<String>,
     pub insecure: bool,
     pub theme_file: String,
+    /// When true, the first bootstrap creates a demo team pre-populated
+    /// with channels (#general, #design, #dev, #random, voice-lounge).
+    /// Replaces the legacy client-side /mesh mock data — start the server
+    /// with `DILLA_SEED_DEMO=true` and the first user lands in a populated
+    /// team via the normal auth flow.
+    pub seed_demo: bool,
+
+    /// When true, accepts batched `console.*` POSTs from the client at
+    /// `/api/v1/debug/browser-log` and prints them via tracing (target
+    /// "browser"). Defaults to `insecure` — i.e. dev mode unless
+    /// `DILLA_BROWSER_LOG_FORWARD` is explicitly set.
+    pub browser_log_forward: bool,
 
     // Client telemetry relay
     pub telemetry_adapter: String,
     pub sentry_dsn: String,
     pub environment: String,
+
+    /// Giphy API key for the `/giphy` slash command. When unset the server
+    /// returns 503 from `GET /api/v1/gif` and the client falls back to
+    /// posting a search-link. Operators get a key at developers.giphy.com.
+    pub giphy_api_key: String,
 
     // OpenTelemetry
     pub otel_enabled: bool,
@@ -134,9 +151,15 @@ impl Config {
             trusted_proxies,
             insecure: env_bool("DILLA_INSECURE", false),
             theme_file: env_str("DILLA_THEME_FILE", ""),
+            seed_demo: env_bool("DILLA_SEED_DEMO", false),
+            browser_log_forward: env_bool(
+                "DILLA_BROWSER_LOG_FORWARD",
+                env_bool("DILLA_INSECURE", false),
+            ),
             telemetry_adapter: env_str("DILLA_TELEMETRY_ADAPTER", "none"),
             sentry_dsn: env_str("DILLA_SENTRY_DSN", ""),
             environment: env_str("DILLA_ENVIRONMENT", "production"),
+            giphy_api_key: env_str("DILLA_GIPHY_API_KEY", ""),
             otel_enabled: env_bool("DILLA_OTEL_ENABLED", false),
             otel_protocol: env_str("DILLA_OTEL_PROTOCOL", "http"),
             otel_endpoint: env_str("DILLA_OTEL_ENDPOINT", "localhost:4317"),
