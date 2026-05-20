@@ -1051,6 +1051,17 @@
 }
 .rc-x:hover { background: var(--surface-hi); color: var(--fg); }
 
+/* Staged attachment chips re-use .reply-chip; only the thumbnail
+   needs its own sizing/cropping so an image preview slots in next
+   to the icon. */
+.attach-chip .ac-thumb {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 0.1875rem;
+  object-fit: cover;
+  flex: 0 0 auto;
+}
+
 /* Reply reference banner inside a message */
 .msg.has-reply { padding-top: 2px; }
 

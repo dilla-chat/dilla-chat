@@ -28,7 +28,21 @@ import { tryEncrypt } from '../hooks/useMessageDecryption';
 import { useChannelLazyLoad } from '../hooks/useChannelLazyLoad';
 import { isMockSession } from '../services/mockSession';
 
-const { useState, useEffect, useLayoutEffect, useRef, useMemo } = React;
+const { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } = React;
+
+interface StagedAttachment {
+  /** Server-assigned attachment id, already uploaded. */
+  id: string;
+  /** Filename for the chip caption. */
+  name: string;
+  /** Size in bytes — drives the kB / MB suffix. */
+  size: number;
+  /** Mime type — used to decide image preview vs file icon. */
+  type: string;
+  /** blob: URL for an immediate image thumbnail before the
+   *  server-attachment GET would resolve. */
+  previewUrl?: string;
+}
 // chat-app.jsx originally read window.SHELL_DATA / window.THEMES / window.Icon
 // — keep that contract until the bindings get rewired through Zustand.
 const w = window as unknown as Record<string, unknown>;
@@ -2140,7 +2154,7 @@ function UserPanel({ member }) {
 }
 
 // ───────────── main pane: text channel ─────────────
-function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, onSend, onReact, onVote, onEdit, onDelete, onAttach, replyTo, onSetReply, typing, onJoinVoice, membersOpen, onToggleMembers, slowModeLock }) {
+function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, onSend, onReact, onVote, onEdit, onDelete, onAttach, pendingAttachments, onRemoveAttachment, replyTo, onSetReply, typing, onJoinVoice, membersOpen, onToggleMembers, slowModeLock }) {
   // Viewer permissions for this team, used to gate the message context
   // menu (pin / unpin / delete-others). Mirrors the server's
   // require_permission gates so we don't dangle an action that 403s.
@@ -3012,6 +3026,31 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
             </div>
           );
         })()}
+        {(pendingAttachments ?? []).map((a) => {
+          const isImage = (a.type || '').startsWith('image/');
+          const kb = a.size >= 1024 * 1024
+            ? (a.size / (1024 * 1024)).toFixed(1) + ' MB'
+            : (a.size / 1024).toFixed(1) + ' kB';
+          return (
+            <div key={a.id} className="reply-chip attach-chip">
+              {isImage && a.previewUrl ? (
+                <img src={a.previewUrl} alt="" className="ac-thumb" />
+              ) : (
+                <Icon.Attach size={12} />
+              )}
+              <span className="rc-label">Attaching</span>
+              <span className="rc-author">{a.name}</span>
+              <span className="rc-text">{kb}</span>
+              <button
+                className="rc-x"
+                onClick={() => onRemoveAttachment && onRemoveAttachment(a.id)}
+                title="Remove attachment"
+              >
+                ×
+              </button>
+            </div>
+          );
+        })}
         {uploads.length > 0 && (
           <div className="upload-tray">
             {uploads.map(u => (
@@ -4267,6 +4306,29 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   const [activeThread, setActiveThread] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [replyTo, setReplyTo] = useState({}); // channelId -> msgId
+  // Files attached to the composer but not yet sent. Each entry is the
+  // already-uploaded attachment row, keyed by channel id, so switching
+  // channels keeps each channel's staged set independent. The composer
+  // renders a chip per entry with an × to drop it; the actual message
+  // send pulls all attachment ids in one go and then clears the bucket.
+  const [pendingAttachments, setPendingAttachments] =
+    useState<Record<string, StagedAttachment[]>>({});
+  // Stable reference so TextChannel's effects don't re-fire each render.
+  // The setter reads channel.id off the closure of the parent send-path
+  // (chip × buttons pass attId in directly), so we only need the channel
+  // currently rendered in the active TextChannel; resolve it through
+  // the channel state at call time.
+  const removeStagedAttachment = useCallback((attId: string) => {
+    setPendingAttachments((prev) => {
+      const next: Record<string, StagedAttachment[]> = {};
+      for (const [cid, list] of Object.entries(prev)) {
+        const removed = list.find((a) => a.id === attId);
+        if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl);
+        next[cid] = list.filter((a) => a.id !== attId);
+      }
+      return next;
+    });
+  }, []);
   const [newChanOpen, setNewChanOpen] = useState(false);
   const [chanSettings, setChanSettings] = useState(null); // {id, name, topic} or null
   // /giphy picker state: open when the user runs /giphy <query>. Holds
@@ -4828,31 +4890,51 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   function send() {
     if (channel.type === 'dm') {
       const draft = drafts[channel.id];
-      if (!draft || !draft.trim()) return;
-      const text = draft.trim();
-      const processed = processSlash(text);
+      const staged = pendingAttachments[channel.id] || [];
+      if ((!draft || !draft.trim()) && staged.length === 0) return;
+      const userText = (draft || '').trim();
+      const processed = userText ? processSlash(userText) : { kind: 'text', text: '' };
       if (processed === null) {
         // Side-effect slash command handled it — clear the draft, don't send.
         setDrafts(prev => ({ ...prev, [channel.id]: '' }));
         return;
       }
+      // DM API doesn't take attachment_ids as a separate field; encode
+      // each staged file as a `[file:<id>] name` token at the front of
+      // the body. useShellData's mapMessage resolves the first token
+      // into an attachment ref; multi-attachment rendering for DMs
+      // still needs broader work — single-token works today.
+      const tokens = staged.map((a) => `[file:${a.id}] ${a.name}`).join(' ');
+      const wireText = tokens ? (userText ? `${tokens} ${userText}` : tokens) : userText;
       const m = { id: 'new-' + Date.now(), author: currentUserId(), at: new Date(), ...processed, replyTo: replyTo[channel.id] || null };
       setDmMessages(prev => ({ ...prev, [channel.id]: [...(prev[channel.id] || []), m] }));
       setDrafts(prev => ({ ...prev, [channel.id]: '' }));
       setReplyTo(prev => ({ ...prev, [channel.id]: null }));
+      setPendingAttachments((prev) => {
+        for (const a of staged) {
+          if (a.previewUrl) URL.revokeObjectURL(a.previewUrl);
+        }
+        const next = { ...prev };
+        delete next[channel.id];
+        return next;
+      });
       // Real send: DM API is HTTP. Mock api implementation echoes back via
       // the dmStore so the bridged data.DM_MESSAGES picks up the round-trip.
       if (activeTeamId) {
-        api.sendDMMessage(activeTeamId, channel.id, text).catch((err) =>
+        api.sendDMMessage(activeTeamId, channel.id, wireText).catch((err) =>
           console.warn('[ChatApp] DM send failed', err),
         );
       }
       return;
     }
     const draft = drafts[activeChannel];
-    if (!draft || !draft.trim()) return;
-    const text = draft.trim();
-    const processed = processSlash(text);
+    const staged = pendingAttachments[activeChannel] || [];
+    // Allow sending when EITHER text is non-empty OR there are staged
+    // attachments. A bare attachment send is fine; an empty composer
+    // with no attachments isn't.
+    if ((!draft || !draft.trim()) && staged.length === 0) return;
+    const text = (draft || '').trim();
+    const processed = text ? processSlash(text) : { kind: 'text', text: '' };
     if (processed === null) {
       setDrafts(prev => ({ ...prev, [activeChannel]: '' }));
       return;
@@ -4863,16 +4945,32 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
       at: new Date(),
       ...processed,
       replyTo: replyTo[activeChannel] || null,
+      // Optimistic preview chip. Only show the FIRST attachment in the
+      // bubble — the server echo will replace this with the real list.
+      ...(staged.length > 0 && {
+        kind: staged[0].type.startsWith('image/') ? 'image' : 'file',
+        attachment: {
+          kind: staged[0].type.startsWith('image/') ? 'image' : 'file',
+          label: staged[0].name,
+          size: staged[0].size,
+          src: staged[0].previewUrl ?? '',
+        },
+      }),
     };
     setMessages(prev => ({ ...prev, [activeChannel]: [...(prev[activeChannel] || []), m] }));
     setDrafts(prev => ({ ...prev, [activeChannel]: '' }));
     setReplyTo(prev => ({ ...prev, [activeChannel]: null }));
-    // Real send: channel messages are WS, encrypted with the team-derived key.
-    // On /mesh the mock ws is a no-op and crypto is never initialized, so the
-    // optimistic local push above is the entire demo flow. On /app this
-    // round-trips through the server; the echo lands in messageStore and
-    // flows back through useShellData → data.MESSAGES (synced by the
-    // useEffect above).
+    // Clear staged attachments for this channel. The blob previewUrls
+    // we minted can be revoked now — once the server echoes the
+    // message back, the real attachment URLs are used for display.
+    setPendingAttachments(prev => {
+      for (const a of staged) {
+        if (a.previewUrl) URL.revokeObjectURL(a.previewUrl);
+      }
+      const next = { ...prev };
+      delete next[activeChannel];
+      return next;
+    });
     const replyTargetId = replyTo[activeChannel] || null;
     if (activeTeamId && !isMockSession()) {
       (async () => {
@@ -4884,7 +4982,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
             encrypted,
             'text',
             undefined,
-            undefined,
+            staged.length > 0 ? staged.map((a) => a.id) : undefined,
             replyTargetId,
           );
         } catch (err) {
@@ -5072,51 +5170,36 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
           onEdit={(msgId, text) => editMessage(channel.id, msgId, text)}
           onDelete={(msgId) => deleteMessage(channel.id, msgId)}
           onAttach={async (file) => {
-            // Optimistic local stub so the message appears immediately.
-            // For images, a blob: URL gives the user an instant preview
-            // before the server upload completes.
-            const localId = 'att-' + Date.now();
-            const isImage = file.type?.startsWith('image/');
-            const previewUrl = isImage ? URL.createObjectURL(file) : '';
-            const m = {
-              id: localId,
-              author: currentUserId(),
-              at: new Date(),
-              kind: isImage ? 'image' : 'file',
-              text: '',
-              attachment: {
-                kind: isImage ? 'image' : 'file',
-                label: file.name,
-                size: file.size,
-                src: previewUrl,
-                w: 320,
-                h: 200,
-                tint: 'var(--accent)',
-              },
-            };
-            const isDM = channel.type === 'dm';
-            const setter = isDM ? setDmMessages : setMessages;
-            setter(prev => ({ ...prev, [channel.id]: [...(prev[channel.id] || []), m] }));
+            // Upload immediately so we have the server attachment id by
+            // the time the user hits Send, but stage it on the composer
+            // instead of firing a message. Each pending file gets a
+            // chip above the input field with an × to drop it.
             if (!activeTeamId || isMockSession()) return;
-            // Real flow: upload file → api.uploadFile returns Attachment.id.
-            // Channel attachments ride on ws.sendMessage as a separate
-            // attachment_ids array (content stays empty for image-only
-            // messages); DMs use api.sendDMMessage with the attachment id
-            // appended to the text body since the DM endpoint doesn't take
-            // attachment ids directly.
+            const isImage = file.type?.startsWith('image/');
+            const previewUrl = isImage ? URL.createObjectURL(file) : undefined;
             try {
               const att = await api.uploadFile(activeTeamId, file);
-              if (isDM) {
-                await api.sendDMMessage(activeTeamId, channel.id, `[file:${att.id}] ${file.name}`);
-              } else {
-                const encrypted = await tryEncrypt(' ', channel.id, derivedKey);
-                ws.sendMessage(activeTeamId, channel.id, encrypted, 'text', undefined, [att.id]);
-              }
+              setPendingAttachments((prev) => ({
+                ...prev,
+                [channel.id]: [
+                  ...(prev[channel.id] || []),
+                  {
+                    id: att.id,
+                    name: file.name,
+                    size: file.size,
+                    type: file.type || 'application/octet-stream',
+                    previewUrl,
+                  },
+                ],
+              }));
             } catch (err) {
+              if (previewUrl) URL.revokeObjectURL(previewUrl);
               console.warn('[ChatApp] attachment upload failed', err);
               window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: channel.name, author: 'system', text: 'Upload failed — ' + (err as Error).message, duration: 4000 } }));
             }
           }}
+          pendingAttachments={pendingAttachments[channel.id] ?? EMPTY_LIST}
+          onRemoveAttachment={removeStagedAttachment}
           typing={channel.type === 'dm' ? (dmTyping[channel.id] || []) : typing}
           membersOpen={membersOpen}
           onToggleMembers={() => setMembersOpen(o => !o)}
