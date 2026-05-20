@@ -1870,11 +1870,11 @@ img.attach-img {
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 .composer-typing {
-  padding: 4px 16px 0;
-  font-size: 11px;
+  padding: 0.25rem 1rem 0.25rem;
+  font-size: 0.6875rem;
   color: var(--fg-3);
   font-family: var(--font-mono);
-  min-height: 18px;
+  min-height: 1.125rem;
 }
 .composer-typing .dot { animation: blink 1.4s infinite; }
 .composer-typing .dot:nth-child(2) { animation-delay: .2s; }
