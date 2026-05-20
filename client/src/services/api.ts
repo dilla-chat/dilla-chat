@@ -653,14 +653,15 @@ class ApiService {
    *  the Giphy API key (DILLA_GIPHY_API_KEY) so it never reaches the bundle.
    *  Returns `{ url, query }` on success. Throws when the key is unset
    *  (503) or no gif matches (404). */
-  async searchGif(teamId: string, query: string): Promise<{ url: string; query: string }> {
+  async searchGif(teamId: string, query: string, limit?: number): Promise<{ url: string; query: string; results?: Array<{ url: string; preview: string }> }> {
     const conn = this.getConnection(teamId);
+    const q = `q=${encodeURIComponent(query)}` + (limit ? `&limit=${limit}` : '');
     return this.request(
       conn.baseUrl,
-      `/api/v1/teams/${teamId}/gif?q=${encodeURIComponent(query)}`,
+      `/api/v1/teams/${teamId}/gif?${q}`,
       { method: 'GET' },
       conn.token,
-    ) as Promise<{ url: string; query: string }>;
+    ) as Promise<{ url: string; query: string; results?: Array<{ url: string; preview: string }> }>;
   }
 
   /** Returns whether the team has a Giphy API key on file. The key

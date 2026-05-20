@@ -35,6 +35,11 @@ fn percent_encode(s: &str) -> String {
 #[derive(Deserialize)]
 pub struct GifQuery {
     pub q: String,
+    /// Number of candidate gifs to return. Defaults to 1 (translate
+    /// endpoint, one best match) for back-compat. >=2 switches to the
+    /// search endpoint and trims the response.
+    #[serde(default)]
+    pub limit: Option<u8>,
 }
 
 pub async fn search(
@@ -64,18 +69,32 @@ pub async fn search(
     }
     let q = q.as_str();
     let key = key.as_str();
+    let limit = params.limit.unwrap_or(1).clamp(1, 12);
 
-    let url = format!(
-        "https://api.giphy.com/v1/gifs/translate?api_key={}&s={}",
-        percent_encode(key),
-        percent_encode(q),
-    );
+    // limit==1 keeps the original behavior (translate, one best match).
+    // limit>=2 switches to /search and returns a list — the client uses
+    // this to render a small picker so the user can choose before
+    // sending. Same response envelope: { results: [{ url, preview }] }.
+    let endpoint = if limit == 1 {
+        format!(
+            "https://api.giphy.com/v1/gifs/translate?api_key={}&s={}",
+            percent_encode(key),
+            percent_encode(q),
+        )
+    } else {
+        format!(
+            "https://api.giphy.com/v1/gifs/search?api_key={}&q={}&limit={}&rating=pg-13",
+            percent_encode(key),
+            percent_encode(q),
+            limit,
+        )
+    };
     let client: reqwest::Client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(6))
         .build()
         .map_err(|e| AppError::Internal(format!("http client: {}", e)))?;
     let res: reqwest::Response = client
-        .get(&url)
+        .get(&endpoint)
         .send()
         .await
         .map_err(|e| AppError::BadGateway(format!("giphy request failed: {}", e)))?;
@@ -90,22 +109,47 @@ pub async fn search(
         .await
         .map_err(|e| AppError::BadGateway(format!("giphy decode: {}", e)))?;
 
-    // translate returns either a single object (`data: {...}`) or an empty
-    // array (`data: []`) when there's no match — guard both shapes.
+    // /translate returns data as a single object; /search returns it as
+    // an array. Normalize both into a Vec<&Value> so the picker logic
+    // is one shape downstream.
     let data: &Value = &body["data"];
-    if data.is_null() || data.as_array().map(|a| a.is_empty()).unwrap_or(false) {
+    let items: Vec<&Value> = match data {
+        Value::Null => Vec::new(),
+        Value::Array(arr) => arr.iter().collect(),
+        v => vec![v],
+    };
+    if items.is_empty() {
         return Err(AppError::NotFound("no gif matches that query".into()));
     }
-    let images = &data["images"];
-    let pick = images["downsized"]["url"]
-        .as_str()
-        .or_else(|| images["original"]["url"].as_str())
-        .or_else(|| images["fixed_height"]["url"].as_str())
-        .or_else(|| data["url"].as_str())
-        .ok_or_else(|| AppError::BadGateway("no usable gif url in giphy response".into()))?;
+    let extract = |item: &Value| -> Option<(String, String)> {
+        let images = &item["images"];
+        let url = images["downsized"]["url"]
+            .as_str()
+            .or_else(|| images["original"]["url"].as_str())
+            .or_else(|| images["fixed_height"]["url"].as_str())
+            .or_else(|| item["url"].as_str())?;
+        // Preview is a smaller animated thumbnail used for the picker
+        // tiles; fall back to the same url when not available.
+        let preview = images["fixed_height_small"]["url"]
+            .as_str()
+            .or_else(|| images["preview_gif"]["url"].as_str())
+            .unwrap_or(url);
+        Some((url.to_string(), preview.to_string()))
+    };
+    let results: Vec<Value> = items
+        .into_iter()
+        .filter_map(extract)
+        .map(|(url, preview)| serde_json::json!({ "url": url, "preview": preview }))
+        .collect();
+    if results.is_empty() {
+        return Err(AppError::BadGateway("no usable gif urls in giphy response".into()));
+    }
 
     json_ok(serde_json::json!({
-        "url": pick,
+        // Back-compat: first match's url surfaces at the top level so
+        // existing single-result callers still work without changes.
+        "url": results[0]["url"],
         "query": q,
+        "results": results,
     }))
 }

@@ -335,6 +335,50 @@ function GroupCombobox({ value, onChange, existing }: {
 }
 
 // Modal: create a new kanal (channel)
+// Picker for /giphy results. Opens after the user runs /giphy <query>
+// and the server returns N candidates; clicking a tile dispatches
+// dilla:giphy-pick which TextChannel routes through its sendRawText
+// (same code path as a normal text message). Esc / overlay click /
+// Cancel button all close without posting.
+function GiphyPicker({
+  query,
+  results,
+  onPick,
+  onClose,
+}: Readonly<{ query: string; results: Array<{ url: string; preview: string }>; onPick: (url: string) => void; onClose: () => void }>) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card giphy-picker" onClick={(e) => e.stopPropagation()}>
+        <header className="modal-head">
+          <h2>/giphy · {query}</h2>
+          <button className="modal-x" onClick={onClose} aria-label="Cancel">×</button>
+        </header>
+        <div className="modal-body">
+          <div className="giphy-grid">
+            {results.map((r, i) => (
+              <button
+                key={r.url}
+                type="button"
+                className="giphy-tile"
+                onClick={() => onPick(r.url)}
+                title={'Send this gif (' + (i + 1) + ' of ' + results.length + ')'}
+              >
+                <img src={r.preview} alt="" loading="lazy" />
+              </button>
+            ))}
+          </div>
+          <p className="modal-hint">Pick a gif to send to #{'<active channel>'}. Esc cancels.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function NewChannelModal({ onClose, onCreate }) {
   const data = (useShellDataContext() as any) || MOCK_DATA;
   const nodeHost = data?.SERVERS?.[0]?.node || 'local';
@@ -4143,6 +4187,10 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   const [replyTo, setReplyTo] = useState({}); // channelId -> msgId
   const [newChanOpen, setNewChanOpen] = useState(false);
   const [chanSettings, setChanSettings] = useState(null); // {id, name, topic} or null
+  // /giphy picker state: open when the user runs /giphy <query>. Holds
+  // the query string for the header and 3 candidate gif URLs. Clicking
+  // a tile sends it as a text message; Cancel/Escape drops the picker.
+  const [giphyPicker, setGiphyPicker] = useState<{ query: string; results: Array<{ url: string; preview: string }> } | null>(null);
   const [chanAccess, setChanAccess] = useState(null); // {id, name, accessRoleIds, hidden_if_restricted} or null
   const [groupAccess, setGroupAccess] = useState<{ id: string; name: string; accessRoleIds: string[]; hiddenIfRestricted: boolean } | null>(null);
   const [groupSettings, setGroupSettings] = useState<{ id: string; name: string } | null>(null);
@@ -4449,6 +4497,40 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   }
   const channel = viewChannel;
 
+  // /giphy picker handoff: GiphyPicker dispatches dilla:giphy-pick with
+  // the chosen URL; we route it through the same optimistic-send + ws
+  // send path that the slash command would have used before. Mirrors
+  // sendRawText inside processSlash to avoid touching its closure. Must
+  // sit AFTER `const channel` because the dep array reads it.
+  useEffect(() => {
+    function onPick(e: Event) {
+      const url = (e as CustomEvent).detail?.url;
+      if (!url) return;
+      const ts = new Date();
+      const optimistic = { id: 'new-' + Date.now(), author: currentUserId(), at: ts, kind: 'text', text: url, replyTo: null };
+      if (channel?.type === 'dm') {
+        setDmMessages(prev => ({ ...prev, [channel.id]: [...(prev[channel.id] || []), optimistic] }));
+        if (activeTeamId) {
+          api.sendDMMessage(activeTeamId, channel.id, url).catch((err) => console.warn('[giphy] DM send failed', err));
+        }
+      } else if (activeChannel) {
+        setMessages(prev => ({ ...prev, [activeChannel]: [...(prev[activeChannel] || []), optimistic] }));
+        if (activeTeamId && !isMockSession()) {
+          (async () => {
+            try {
+              const encrypted = await tryEncrypt(url, activeChannel, derivedKey);
+              ws.sendMessage(activeTeamId, activeChannel, encrypted);
+            } catch (err) {
+              console.warn('[giphy] channel send failed', err);
+            }
+          })();
+        }
+      }
+    }
+    window.addEventListener('dilla:giphy-pick', onPick);
+    return () => window.removeEventListener('dilla:giphy-pick', onPick);
+  }, [channel, activeChannel, activeTeamId, derivedKey]);
+
   function processSlash(text) {
     // Side-effect commands. Return null to signal "handled — don't send a
     // message". Use dilla:notify for status feedback so the caller doesn't
@@ -4538,18 +4620,20 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
       const q = text.slice(7).trim();
       if (!q) { notify('Usage: /giphy <search>'); return null; }
       if (!activeTeamId) { notify('Sign in first.'); return null; }
-      // Server-proxied: the Giphy API key lives in DILLA_GIPHY_API_KEY on
-      // the server, never in the browser bundle. The server's gif endpoint
-      // returns a direct .gif URL we post as a regular message (renderText
-      // picks it up and embeds inline). Failure modes that we want to
-      // surface separately:
+      // Three candidates rather than one — open a picker so the user
+      // chooses before posting. The server's gif endpoint returns a
+      // `results` array when limit > 1; the picker calls sendRawText
+      // on the chosen tile. Failure modes match the previous handler:
       //   503 → operator hasn't configured a key
       //   404 → no match for that query
-      //   anything else → generic error, fall back to a search link
+      //   anything else → search link fallback
       (async () => {
         try {
-          const { url } = await api.searchGif(activeTeamId, q);
-          await sendRawText(url);
+          const res = await api.searchGif(activeTeamId, q, 3);
+          const results = res.results && res.results.length > 0
+            ? res.results
+            : [{ url: res.url, preview: res.url }];
+          setGiphyPicker({ query: q, results });
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           if (msg.includes('503') || msg.toLowerCase().includes('not configured')) {
@@ -4991,6 +5075,21 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
       )}
       {chanSettings && (
         <ChannelSettingsModal channel={chanSettings} onClose={() => setChanSettings(null)} />
+      )}
+      {giphyPicker && (
+        <GiphyPicker
+          query={giphyPicker.query}
+          results={giphyPicker.results}
+          onPick={(url) => {
+            // TextChannel listens for this and routes it through its
+            // existing sendRawText (same path /giphy used to take
+            // automatically). Drops the picker first so the modal is
+            // gone before the optimistic message renders.
+            setGiphyPicker(null);
+            window.dispatchEvent(new CustomEvent('dilla:giphy-pick', { detail: { url } }));
+          }}
+          onClose={() => setGiphyPicker(null)}
+        />
       )}
       {newChanOpen && (
         <NewChannelModal onClose={() => setNewChanOpen(false)} onCreate={async (c) => {

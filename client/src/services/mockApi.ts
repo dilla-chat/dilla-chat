@@ -389,10 +389,22 @@ export class MockApiService {
 
   // Gif search — mock returns a recognizable placeholder so the design
   // preview can demonstrate the message rendering without a network call.
-  async searchGif(_teamId: string, query: string): Promise<{ url: string; query: string }> {
+  async searchGif(_teamId: string, query: string, limit?: number): Promise<{ url: string; query: string; results?: Array<{ url: string; preview: string }> }> {
+    // Three demo URLs the mock cycles through so the picker has
+    // distinguishable tiles. Real Giphy paths.
+    const demo = [
+      'https://media.giphy.com/media/3o7TKsQ8gqVrxZZprS/giphy.gif',
+      'https://media.giphy.com/media/26ufnwz3wDUli7GU0/giphy.gif',
+      'https://media.giphy.com/media/l0HlMVtNTGOuxAQqQ/giphy.gif',
+    ];
+    if (!limit || limit === 1) {
+      return { url: demo[0], query };
+    }
+    const slice = demo.slice(0, Math.min(limit, demo.length));
     return {
-      url: 'https://media.giphy.com/media/3o7TKsQ8gqVrxZZprS/giphy.gif',
+      url: slice[0],
       query,
+      results: slice.map((url) => ({ url, preview: url })),
     };
   }
 
