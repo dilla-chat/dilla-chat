@@ -218,6 +218,78 @@ function NewDmModal({ members, onClose, onPick }) {
   );
 }
 
+// Combobox/chip input for selecting (or creating) a channel group.
+// When `value` is set it renders as a removable pill at the start of the
+// field; when empty an input takes over and a popover lists existing
+// groups filtered by the typed query. Enter on a unique match commits;
+// Enter on a fresh query creates a new group; backspace on an empty
+// input clears the pill so keyboard-only users don't get stuck.
+function GroupCombobox({ value, onChange, existing }: {
+  value: string;
+  onChange: (next: string) => void;
+  existing: string[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (!value) setDraft(''); }, [value]);
+
+  const q = draft.trim().toLowerCase();
+  const matches = q ? existing.filter((g) => g.toLowerCase().includes(q)) : existing;
+  const exact = existing.find((g) => g.toLowerCase() === q);
+  const canCreate = q.length > 0 && !exact;
+
+  function commit(next: string) {
+    const trimmed = next.trim();
+    onChange(trimmed);
+    setDraft('');
+    setOpen(false);
+  }
+
+  return (
+    <div className="grp-combo">
+      {value ? (
+        <span className="grp-pill">
+          {value}
+          <button type="button" className="grp-pill-x" onClick={() => { commit(''); setTimeout(() => inputRef.current?.focus(), 0); }} aria-label="Clear group">×</button>
+        </span>
+      ) : (
+        <input
+          ref={inputRef}
+          value={draft}
+          onChange={(e) => { setDraft(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 120)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              if (matches.length === 1) commit(matches[0]);
+              else if (canCreate) commit(draft);
+            } else if (e.key === 'Escape') {
+              setOpen(false);
+            }
+          }}
+          placeholder="pick or create a group…"
+        />
+      )}
+      {open && !value && (matches.length > 0 || canCreate) && (
+        <div className="grp-pop">
+          {matches.map((g) => (
+            <div key={g} className="grp-opt" onMouseDown={(e) => { e.preventDefault(); commit(g); }}>
+              <span className="grp-pill grp-pill-static">{g}</span>
+            </div>
+          ))}
+          {canCreate && (
+            <div className="grp-opt grp-opt-new" onMouseDown={(e) => { e.preventDefault(); commit(draft); }}>
+              + Create <strong>{draft.trim()}</strong>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Modal: create a new kanal (channel)
 function NewChannelModal({ onClose, onCreate }) {
   const data = (useShellDataContext() as any) || MOCK_DATA;
@@ -275,10 +347,7 @@ function NewChannelModal({ onClose, onCreate }) {
           </div>
           <div className="modal-row">
             <label>Group <span className="modal-opt">optional</span></label>
-            <input value={group} onChange={e => setGroup(e.target.value)} list="new-kanal-groups" placeholder="e.g. backend, marketing" />
-            <datalist id="new-kanal-groups">
-              {existingGroups.map(g => <option key={g} value={g} />)}
-            </datalist>
+            <GroupCombobox value={group} onChange={setGroup} existing={existingGroups} />
             <div className="modal-hint">Groups collapse together in the sidebar. Leave blank for the default list.</div>
           </div>
           <div className="modal-row modal-row-h">
@@ -448,10 +517,7 @@ function ChannelSettingsModal({ channel, onClose }) {
           </div>
           <div className="modal-row">
             <label>Group <span className="modal-opt">optional</span></label>
-            <input value={group} onChange={e => setGroup(e.target.value)} list="chan-settings-groups" placeholder="e.g. backend, marketing" />
-            <datalist id="chan-settings-groups">
-              {existingGroups.map(g => <option key={g} value={g} />)}
-            </datalist>
+            <GroupCombobox value={group} onChange={setGroup} existing={existingGroups} />
             <div className="modal-hint">Channels in the same group collapse together in the sidebar. Leave blank for the default list.</div>
           </div>
           <div className="modal-row">
