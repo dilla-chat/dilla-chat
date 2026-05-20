@@ -104,6 +104,11 @@ pub(in crate::ws) async fn handle_request(hub: &Hub, user_id: &str, team_id: &st
                     "members": members_json,
                     "roles": roles,
                     "unread_counts": unread_counts,
+                    "muted_channels": db::get_muted_channels(conn, &uid2)
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|(cid, until)| serde_json::json!({ "channel_id": cid, "muted_until": until }))
+                        .collect::<Vec<_>>(),
                 }))
             })
             .await;

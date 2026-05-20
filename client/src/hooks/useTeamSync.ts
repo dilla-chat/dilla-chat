@@ -5,6 +5,7 @@ import { useAuthStore } from '../stores/authStore';
 import { usePresenceStore, type UserPresence } from '../stores/presenceStore';
 import { useVoiceStore } from '../stores/voiceStore';
 import { useUnreadStore } from '../stores/unreadStore';
+import { useChannelMuteStore } from '../stores/channelMuteStore';
 import { api, type VoicePeer } from '../services/api';
 import { ws } from '../services/websocket';
 import { telemetryClient } from '../services/telemetryClient';
@@ -122,6 +123,9 @@ function applySyncData(teamId: string, data: any, setters: SyncStoreSetters) {
   }
   if (data.unread_counts && typeof data.unread_counts === 'object') {
     useUnreadStore.getState().setCounts(data.unread_counts as Record<string, number>);
+  }
+  if (Array.isArray(data.muted_channels)) {
+    useChannelMuteStore.getState().setAll(data.muted_channels as Array<{ channel_id: string; muted_until: string | null }>);
   }
   console.log(`[AppLayout] sync:init applied for team ${teamId}`);
 
@@ -419,6 +423,17 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
       },
     );
 
+    // Per-user channel mute updates (multi-device sync) — server sends
+    // this to every device on the same user_id.
+    const unsubMute = ws.on('channel:mute-update', (payload: { channel_id?: string; muted?: boolean; muted_until?: string | null }) => {
+      if (!payload?.channel_id) return;
+      if (payload.muted === false) {
+        useChannelMuteStore.getState().clear(payload.channel_id);
+      } else {
+        useChannelMuteStore.getState().setMuted(payload.channel_id, payload.muted_until ?? null);
+      }
+    });
+
     // Partial update from PUT /channels/:cid/access — only role_ids changed.
     const unsubAccess = ws.on('channel:access-update', (payload: { channel_id?: string; role_ids?: string[] }) => {
       if (!payload?.channel_id) return;
@@ -438,6 +453,7 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
       unsubChannelRead();
       unsubChannelUpdated();
       unsubAccess();
+      unsubMute();
       unsubMemberRoles();
     };
   }, [activeTeamId]);

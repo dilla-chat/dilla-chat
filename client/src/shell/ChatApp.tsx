@@ -17,6 +17,7 @@ import { useVoiceStore } from '../stores/voiceStore';
 import { useVoiceConnection } from '../hooks/useVoiceConnection';
 import { ws } from '../services/websocket';
 import { usePollStore, normalizePoll } from '../stores/pollStore';
+import { useChannelMuteStore } from '../stores/channelMuteStore';
 import { api } from '../services/api';
 import { tryEncrypt } from '../hooks/useMessageDecryption';
 import { isMockSession } from '../services/mockSession';
@@ -3467,18 +3468,45 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   const [newServerOpen, setNewServerOpen] = useState(false);
   // Generic context menu: { x, y, items: [{ label, icon, danger, onClick }] }
   const [menuPop, setMenuPop] = useState(null);
-  const [mutedChannels, setMutedChannels] = useState(new Set());
+  // Channel mutes live in a dedicated zustand store now so they persist
+  // across reloads and sync to other devices via channel:mute-update.
+  const mutedMap = useChannelMuteStore((s) => s.muted);
+  const mutedChannels = useMemo(() => {
+    const out = new Set<string>();
+    const now = Date.now();
+    for (const [cid, until] of mutedMap.entries()) {
+      if (until === null || new Date(until).getTime() > now) out.add(cid);
+    }
+    return out;
+  }, [mutedMap]);
   const [newDmOpen, setNewDmOpen] = useState(false);
   function openMenu(e, items) {
     e.preventDefault();
     setMenuPop({ x: e.clientX, y: e.clientY, items });
   }
   function toggleMuteChannel(id) {
-    setMutedChannels(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
+    const teamId = useTeamStore.getState().activeTeamId;
+    if (!teamId || isMockSession()) {
+      // Mock session — flip the local store only.
+      const s = useChannelMuteStore.getState();
+      if (s.isMuted(id)) s.clear(id); else s.setMuted(id, null);
+      return;
+    }
+    const currentlyMuted = useChannelMuteStore.getState().isMuted(id);
+    // Optimistic so the icon flips instantly; WS echo arrives shortly.
+    if (currentlyMuted) {
+      useChannelMuteStore.getState().clear(id);
+      api.unmuteChannel(teamId, id).catch((err) => {
+        console.warn('[mute] unmute failed', err);
+        useChannelMuteStore.getState().setMuted(id, null);
+      });
+    } else {
+      useChannelMuteStore.getState().setMuted(id, null);
+      api.muteChannel(teamId, id, null).catch((err) => {
+        console.warn('[mute] mute failed', err);
+        useChannelMuteStore.getState().clear(id);
+      });
+    }
   }
 
   useEffect(() => {

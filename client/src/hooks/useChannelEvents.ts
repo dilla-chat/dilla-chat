@@ -17,6 +17,7 @@ import { useTeamStore } from '../stores/teamStore';
 import { useMessageStore } from '../stores/messageStore';
 import { tryDecrypt, forgetDecryptFailure, serverToMessage, type ServerMessage } from './useMessageDecryption';
 import { deleteCachedMessage } from '../services/messageCache';
+import { useChannelMuteStore } from '../stores/channelMuteStore';
 import { cryptoService, getIdentityKeys } from '../services/crypto';
 import { toBase64 } from '../services/crypto/helpers';
 
@@ -65,25 +66,32 @@ export function useChannelEvents(activeTeamId: string | null, cryptoReady: boole
       const isBroadcast = /@(everyone|here)\b/i.test(content);
       const isDirect = handlePattern ? handlePattern.test(content) : false;
       if ((isDirect || isBroadcast) && payload.author_id !== myId) {
-        const author = members.find((m) => m.userId === payload.author_id);
-        const channelName = (useTeamStore.getState().channels.get(activeTeamId) ?? [])
-          .find((c) => c.id === payload.channel_id)?.name || '';
-        window.dispatchEvent(new CustomEvent('dilla:notify', {
-          detail: {
-            channel: channelName,
-            channelId: payload.channel_id,
-            author: author?.username || 'someone',
-            text: content.slice(0, 240),
-            duration: 5000,
-            kind: 'mention',
-            mention: true,
-          },
-        }));
-        if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.visibilityState !== 'visible') {
-          try {
-            const n = new Notification('Mentioned by ' + (author?.username || 'someone') + (channelName ? ' in #' + channelName : ''), { body: content.slice(0, 240) });
-            n.onclick = () => { window.focus(); n.close(); };
-          } catch { /* ignore */ }
+        // Honour channel mutes — but only suppress broadcast pings.
+        // Direct @me always notifies even on a muted channel (Discord
+        // pattern); broadcast @everyone/@here is suppressed.
+        const muted = useChannelMuteStore.getState().isMuted(payload.channel_id);
+        const shouldNotify = isDirect || !muted;
+        if (shouldNotify) {
+          const author = members.find((m) => m.userId === payload.author_id);
+          const channelName = (useTeamStore.getState().channels.get(activeTeamId) ?? [])
+            .find((c) => c.id === payload.channel_id)?.name || '';
+          window.dispatchEvent(new CustomEvent('dilla:notify', {
+            detail: {
+              channel: channelName,
+              channelId: payload.channel_id,
+              author: author?.username || 'someone',
+              text: content.slice(0, 240),
+              duration: 5000,
+              kind: 'mention',
+              mention: true,
+            },
+          }));
+          if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.visibilityState !== 'visible') {
+            try {
+              const n = new Notification('Mentioned by ' + (author?.username || 'someone') + (channelName ? ' in #' + channelName : ''), { body: content.slice(0, 240) });
+              n.onclick = () => { window.focus(); n.close(); };
+            } catch { /* ignore */ }
+          }
         }
       }
     });

@@ -18,6 +18,7 @@ pub mod theme;
 pub mod debug;
 pub mod audit;
 pub mod polls;
+pub mod channel_mutes;
 
 use crate::auth::{self, AuthService};
 use crate::config::Config;
@@ -200,6 +201,14 @@ pub fn create_router(state: AppState) -> Router {
         .route(
             "/api/v1/teams/{team_id}/audit",
             get(audit::list),
+        )
+        .route(
+            "/api/v1/me/muted-channels",
+            get(channel_mutes::list),
+        )
+        .route(
+            "/api/v1/me/muted-channels/{channel_id}",
+            put(channel_mutes::mute).delete(channel_mutes::unmute),
         )
         .route(
             "/api/v1/teams/{team_id}/channels/{channel_id}/polls",

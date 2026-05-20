@@ -509,6 +509,40 @@ class ApiService {
     );
   }
 
+  /** List the current user's muted channels across all teams. */
+  async listMutedChannels(teamId: string): Promise<unknown[]> {
+    const conn = this.getConnection(teamId);
+    const data = await this.request(
+      conn.baseUrl,
+      `/api/v1/me/muted-channels`,
+      { method: 'GET' },
+      conn.token,
+    );
+    return this.unwrapArray(data, 'muted_channels');
+  }
+
+  /** Mute a channel for the current user. `mutedUntil` is an ISO string;
+   *  omit to mute indefinitely. */
+  async muteChannel(teamId: string, channelId: string, mutedUntil?: string | null): Promise<unknown> {
+    const conn = this.getConnection(teamId);
+    return this.request(
+      conn.baseUrl,
+      `/api/v1/me/muted-channels/${channelId}`,
+      { method: 'PUT', body: JSON.stringify({ muted_until: mutedUntil ?? null }) },
+      conn.token,
+    );
+  }
+
+  async unmuteChannel(teamId: string, channelId: string): Promise<void> {
+    const conn = this.getConnection(teamId);
+    await this.request(
+      conn.baseUrl,
+      `/api/v1/me/muted-channels/${channelId}`,
+      { method: 'DELETE' },
+      conn.token,
+    );
+  }
+
   async getAuditEvents(teamId: string, limit?: number): Promise<unknown[]> {
     const conn = this.getConnection(teamId);
     const qs = limit ? `?limit=${limit}` : '';
