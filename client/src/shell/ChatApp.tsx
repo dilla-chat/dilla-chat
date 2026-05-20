@@ -554,9 +554,9 @@ function GroupAccessModal({ group, onClose }: { group: { id: string; name: strin
           <div className="modal-row">
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
               <input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} />
-              <span>Hide channels from members who can't access</span>
+              <span>Hide group from members who can't access</span>
             </label>
-            <div className="modal-hint">When on, restricted members won't see any channel in <strong>{group.name}</strong> instead of a padlock.</div>
+            <div className="modal-hint">When on, restricted members won't see <strong>{group.name}</strong> at all — every channel inside disappears with it, instead of showing a padlock.</div>
           </div>
           {err && <div className="modal-hint" style={{ color: 'var(--danger)' }}>{err}</div>}
         </div>
