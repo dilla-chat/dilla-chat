@@ -312,21 +312,28 @@ function CropModal({
         </header>
         <div className="modal-body">
           <div className="crop-stage">
-            {imgUrl && (
-              <img ref={imgRef} src={imgUrl} onLoad={onImgLoad} className="crop-img" alt="" draggable={false} />
-            )}
-            {crop && (
-              <div
-                className="crop-box"
-                onMouseDown={(e) => startDrag(e, 'move')}
-                style={{ left: crop.x, top: crop.y, width: crop.size, height: crop.size }}
-              >
-                <span className="crop-handle nw" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'nw'); }} />
-                <span className="crop-handle ne" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'ne'); }} />
-                <span className="crop-handle sw" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'sw'); }} />
-                <span className="crop-handle se" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'se'); }} />
-              </div>
-            )}
+            {/* Frame wraps the image so crop coordinates share its space.
+                The old layout put the box inside .crop-stage but
+                centered the image with flex padding, so the box could
+                only travel within the image-sized area — anywhere past
+                the image edge clamped early on the right and bottom. */}
+            <div className="crop-frame" style={imgSize ? { width: imgSize.w, height: imgSize.h } : undefined}>
+              {imgUrl && (
+                <img ref={imgRef} src={imgUrl} onLoad={onImgLoad} className="crop-img" alt="" draggable={false} />
+              )}
+              {crop && (
+                <div
+                  className="crop-box"
+                  onMouseDown={(e) => startDrag(e, 'move')}
+                  style={{ left: crop.x, top: crop.y, width: crop.size, height: crop.size }}
+                >
+                  <span className="crop-handle nw" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'nw'); }} />
+                  <span className="crop-handle ne" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'ne'); }} />
+                  <span className="crop-handle sw" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'sw'); }} />
+                  <span className="crop-handle se" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'se'); }} />
+                </div>
+              )}
+            </div>
           </div>
           <p className="modal-hint">Drag to reposition, corners to resize. Output is a 256×256 square.</p>
         </div>
@@ -428,7 +435,9 @@ function AvatarUploader() {
     <div className="set-avatar-row">
       <div
         className={'set-avatar' + (hasImage ? ' has-image' : '')}
-        style={hasImage ? { backgroundImage: `url(${me!.avatarUrl})` } : { background: avatarColor }}
+        style={hasImage
+          ? { backgroundImage: `url(${me!.avatarUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', color: 'transparent' }
+          : { backgroundColor: avatarColor }}
       >
         {!hasImage && initials}
       </div>
@@ -872,7 +881,9 @@ function UserPrivacy() {
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
               <span
                 className={'set-avatar' + (m.avatarUrl ? ' has-image' : '')}
-                style={{ ...(m.avatarUrl ? { backgroundImage: `url(${m.avatarUrl})` } : { background: m.color }), width: 22, height: 22, fontSize: 10 }}
+                style={m.avatarUrl
+                  ? { backgroundImage: `url(${m.avatarUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', width: 22, height: 22, fontSize: 10, color: 'transparent' }
+                  : { backgroundColor: m.color, width: 22, height: 22, fontSize: 10 }}
               >{!m.avatarUrl && m.initials}</span>
               {m.name}
             </span>

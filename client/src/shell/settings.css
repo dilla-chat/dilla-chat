@@ -315,18 +315,23 @@ select.set-input {
    in save() handles the actual resampling to 256×256. */
 .crop-card { max-width: 26rem; }
 .crop-stage {
-  position: relative;
   display: flex; align-items: center; justify-content: center;
   background: var(--surface-2);
   border: 1px solid var(--hairline);
   border-radius: var(--r-sm);
-  overflow: hidden;
-  min-height: 12rem;
+  padding: 0.5rem;
   margin-bottom: 0.5rem;
+}
+/* Frame is sized to the rendered image so .crop-box (position: absolute
+   inside) lives in image coordinates. Box drag clamping in the
+   component reads imgSize and now they agree. */
+.crop-frame {
+  position: relative;
+  line-height: 0;
 }
 .crop-img {
   display: block;
-  max-width: 100%;
+  max-width: 22rem;
   max-height: 22rem;
   user-select: none;
   -webkit-user-drag: none;

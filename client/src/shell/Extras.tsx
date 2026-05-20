@@ -163,7 +163,9 @@ function IncomingCall({ call, onAccept, onDecline }) {
         </div>
         <div
           className={'ring-avatar' + (m.avatarUrl ? ' has-image' : '')}
-          style={m.avatarUrl ? { backgroundImage: `url(${m.avatarUrl})` } : { background: m.color }}
+          style={m.avatarUrl
+            ? { backgroundImage: `url(${m.avatarUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', color: 'transparent' }
+            : { backgroundColor: m.color }}
         >
           <span className="ring-pulse" />
           <span className="ring-pulse ring-pulse-2" />
@@ -244,7 +246,9 @@ function SafetyCompare({ contactId, onClose }) {
             <div className="sc-side-head">
               <div
                 className={'sc-side-avatar' + (m.avatarUrl ? ' has-image' : '')}
-                style={m.avatarUrl ? { backgroundImage: `url(${m.avatarUrl})` } : { background: m.color }}
+                style={m.avatarUrl
+            ? { backgroundImage: `url(${m.avatarUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', color: 'transparent' }
+            : { backgroundColor: m.color }}
               >{!m.avatarUrl && m.initials}</div>
               <span>{m.name}</span>
             </div>

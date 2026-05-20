@@ -105,14 +105,27 @@ function groupMessages(msgs) {
 // Used by Avatar/PlainAvatar below AND by the half-dozen custom avatar
 // sites (mention picker, voice peer, new-DM picker, etc.) so a profile
 // picture set in User Settings shows up everywhere immediately.
+//
+// Uses backgroundColor (longhand) NOT background (shorthand) — the
+// shorthand resets background-size to `auto` inline, which beats the
+// .has-image { background-size: cover } CSS rule on specificity and
+// the image ended up cropped to its top-left corner.
 export function memberAvatarStyle(member: { color?: string; avatarUrl?: string }, size?: number): React.CSSProperties {
-  const style: React.CSSProperties = { background: member.color || 'var(--muted)' };
+  const style: React.CSSProperties = {};
   if (size) {
     style.width = size;
     style.height = size;
     style.fontSize = size * 0.4;
   }
-  if (member.avatarUrl) style.backgroundImage = `url(${member.avatarUrl})`;
+  if (member.avatarUrl) {
+    style.backgroundImage = `url(${member.avatarUrl})`;
+    style.backgroundSize = 'cover';
+    style.backgroundPosition = 'center';
+    style.backgroundRepeat = 'no-repeat';
+    style.color = 'transparent';
+  } else {
+    style.backgroundColor = member.color || 'var(--muted)';
+  }
   return style;
 }
 export function memberAvatarClass(member: { avatarUrl?: string }, base: string): string {
