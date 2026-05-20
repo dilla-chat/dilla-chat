@@ -369,7 +369,7 @@ select.set-input {
      `auto` here makes the header column size to the small label text
      while the row column sizes to the wider button, shifting all the
      fractional columns out of alignment between header and body. */
-  grid-template-columns: 1.6fr 0.7fr 0.9fr 0.9fr 90px;
+  grid-template-columns: 1.6fr 0.7fr 0.9fr 0.9fr 5.625rem;
   gap: 10px;
   align-items: center;
   padding: 8px 12px;
@@ -388,7 +388,7 @@ select.set-input {
   background: var(--bg);
 }
 .set-tr.stale { opacity: 0.5; }
-.set-tr.role { grid-template-columns: 16px 1fr 80px 2fr 140px; }
+.set-tr.role { grid-template-columns: 1rem 1fr 5rem 2fr 8.75rem; }
 .set-tr code { font-family: var(--font-mono); color: var(--fg); overflow-wrap: anywhere; word-break: break-all; min-width: 0; }
 .set-tr > * { min-width: 0; overflow-wrap: anywhere; }
 .set-link-cell {
