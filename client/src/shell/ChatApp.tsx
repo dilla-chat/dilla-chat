@@ -2563,7 +2563,19 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                        onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, msgId: m.id, isMine: m.author === currentUserId() }); }}>
                     {m.replyTo && (() => {
                       const orig = messages.find(om => om.id === m.replyTo);
-                      if (!orig) return null;
+                      // When the original isn't in the loaded window
+                      // (older message paged out), render a stub so the
+                      // reply doesn't appear context-less. Clicking it
+                      // doesn't try to scroll (we don't have the target);
+                      // a future enhancement can fetch-and-jump.
+                      if (!orig) {
+                        return (
+                          <div className="reply-ref reply-ref-missing" title="Original message not loaded">
+                            <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M5 9L1 5l4-4M1 5h8a4 4 0 014 4v2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                            <span className="rr-text rr-text-missing">original message not loaded</span>
+                          </div>
+                        );
+                      }
                       const oa = members.byId[orig.author] || { name: orig.author, color: '#666', initials: '??' };
                       return (
                         <div className="reply-ref"

@@ -1097,6 +1097,9 @@
   transition: background .12s, border-color .12s, color .12s;
 }
 .reply-ref:hover { background: var(--surface-hi); border-left-color: var(--accent); color: var(--fg-2); }
+.reply-ref.reply-ref-missing { cursor: default; opacity: 0.7; }
+.reply-ref.reply-ref-missing:hover { background: transparent; border-left-color: var(--hairline-2); }
+.rr-text-missing { font-style: italic; }
 .reply-ref svg { color: var(--fg-3); flex: 0 0 auto; }
 .rr-av {
   width: 14px; height: 14px;
