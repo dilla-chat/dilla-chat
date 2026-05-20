@@ -28,7 +28,7 @@ import { tryEncrypt } from '../hooks/useMessageDecryption';
 import { useChannelLazyLoad } from '../hooks/useChannelLazyLoad';
 import { isMockSession } from '../services/mockSession';
 
-const { useState, useEffect, useRef, useMemo } = React;
+const { useState, useEffect, useLayoutEffect, useRef, useMemo } = React;
 // chat-app.jsx originally read window.SHELL_DATA / window.THEMES / window.Icon
 // — keep that contract until the bindings get rewired through Zustand.
 const w = window as unknown as Record<string, unknown>;
@@ -2301,63 +2301,62 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
     const files = Array.from(e.dataTransfer.files || []);
     handleFiles(files);
   }
-  // Sticky-bottom: keep the viewport pinned to the newest message
-  // whenever the user is at (or near) the bottom, even when content
-  // grows asynchronously (image loads, reactions populate, GIFs
-  // resize). A ResizeObserver on the feed watches the .msg-group
-  // children and re-snaps to scrollHeight whenever the content
-  // height changes — provided the user hasn't deliberately scrolled
-  // up to read history. Channel switch and own-message sends always
-  // force the snap regardless of where the user was.
-  const myUserIdRef = useRef<string | null>(null);
-  useEffect(() => { myUserIdRef.current = currentUserId(); });
+  // Sticky-bottom strategy:
+  //   1. `userPagedUp` flips to true only on a user-driven scroll
+  //      *upward* (wheel/keyboard/touch). Programmatic scrolls
+  //      don't toggle it.
+  //   2. As long as it's false, we snap to scrollHeight after any
+  //      render that adds messages (useLayoutEffect — runs before
+  //      paint, so the user never sees a wrong position) and after
+  //      any ResizeObserver firing (catches image loads etc.).
+  //   3. When the user scrolls back to within 30px of the bottom,
+  //      `userPagedUp` flips to false again — follow resumes.
+  const userPagedUpRef = useRef(false);
 
-  const wasNearBottomRef = useRef(true);
-  const lastMessageIdRef = useRef<string | null>(null);
-
-  // Track whether we're near the bottom so the resize observer can
-  // decide whether to follow the growing content.
   useEffect(() => {
     const el = feedRef.current;
     if (!el) return;
+    function onUserScrollUp() {
+      // Any wheel/keydown that doesn't put us at the live edge
+      // counts as the user wanting to read history.
+      const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+      if (dist > 30) userPagedUpRef.current = true;
+    }
     function onScroll() {
       const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-      wasNearBottomRef.current = dist < 80;
+      if (dist < 30) userPagedUpRef.current = false;
     }
+    el.addEventListener('wheel', onUserScrollUp, { passive: true });
+    el.addEventListener('touchmove', onUserScrollUp, { passive: true });
+    el.addEventListener('keydown', onUserScrollUp);
     el.addEventListener('scroll', onScroll, { passive: true });
-    onScroll();
-    return () => el.removeEventListener('scroll', onScroll);
+    return () => {
+      el.removeEventListener('wheel', onUserScrollUp);
+      el.removeEventListener('touchmove', onUserScrollUp);
+      el.removeEventListener('keydown', onUserScrollUp);
+      el.removeEventListener('scroll', onScroll);
+    };
   }, [channel.id]);
 
-  // Channel switch: always land on the newest.
-  useEffect(() => {
+  // Reset follow state whenever we switch channels.
+  useLayoutEffect(() => {
+    userPagedUpRef.current = false;
+    const el = feedRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [channel.id]);
+
+  // Stick to bottom after any commit that changed the messages array.
+  // useLayoutEffect runs synchronously after DOM mutations and before
+  // paint, so the user never sees a half-scrolled feed.
+  useLayoutEffect(() => {
     const el = feedRef.current;
     if (!el) return;
-    el.scrollTop = el.scrollHeight;
-    wasNearBottomRef.current = true;
-    lastMessageIdRef.current = messages.length
-      ? messages[messages.length - 1].id
-      : null;
-  }, [channel.id]);
-
-  // New-message snap: when *our* message arrives at the bottom, force
-  // the snap so the sender always sees their own send land.
-  useEffect(() => {
-    const el = feedRef.current;
-    if (!el || messages.length === 0) return;
-    const newest = messages[messages.length - 1];
-    const prev = lastMessageIdRef.current;
-    lastMessageIdRef.current = newest.id;
-    if (prev && newest.id !== prev && newest.author === myUserIdRef.current) {
-      el.scrollTop = el.scrollHeight;
-      wasNearBottomRef.current = true;
-    }
+    if (!userPagedUpRef.current) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
-  // ResizeObserver: when the feed's content grows (initial mount, an
-  // image loading, a reaction row populating, etc.), re-snap to the
-  // bottom *only* if the user was already near the bottom — so
-  // scrolling up into history isn't fought by the observer.
+  // Late-loading media: when an image (or any child's intrinsic size)
+  // arrives after the layout that triggered our useLayoutEffect, re-
+  // snap to bottom unless the user has paged up in the meantime.
   useEffect(() => {
     const el = feedRef.current;
     if (!el) return;
@@ -2365,16 +2364,13 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
     const snap = () => {
       raf = 0;
       if (!el) return;
-      if (wasNearBottomRef.current) el.scrollTop = el.scrollHeight;
+      if (!userPagedUpRef.current) el.scrollTop = el.scrollHeight;
     };
-    const ro = new ResizeObserver(() => {
+    const schedule = () => {
       if (raf) return;
       raf = requestAnimationFrame(snap);
-    });
-    // Observe each direct child so we catch content growth (images
-    // loading, reactions/edits resizing a bubble) — the .feed
-    // container itself doesn't resize when its scrollable content
-    // does, so observing the container alone wouldn't fire.
+    };
+    const ro = new ResizeObserver(schedule);
     const observed = new Set<Element>();
     const observeChildren = () => {
       for (const c of Array.from(el.children)) {
