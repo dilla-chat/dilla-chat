@@ -6,25 +6,40 @@
 
 import React from 'react';
 import { Icon } from './icons';
+import { useShellDataContext } from './ShellDataContext';
 
 const { useState: useT2, useEffect: useT2E, useRef: useT2R } = React;
 
 // ───────── Notification toasts ─────────
 function NotificationStack({ teaserOnly = false }) {
+  const shell = useShellDataContext() as any;
+  const teamName = shell?.SERVERS?.[0]?.name || '';
   const [toasts, setToasts] = useT2([]);
+  // Per-toast dismiss timer so we can cancel + reschedule on hover. Plain
+  // object ref so changes don't trigger renders.
+  const timers = useT2R<Record<string, ReturnType<typeof setTimeout>>>({});
   useT2E(() => {
     function add(e) {
       const id = 't-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
       const t = { id, ...e.detail };
       setToasts(prev => [...prev.slice(-3), t]);
       const dur = e.detail.duration || 5500;
-      setTimeout(() => setToasts(prev => prev.filter(x => x.id !== id)), dur);
+      timers.current[id] = setTimeout(() => {
+        setToasts(prev => prev.filter(x => x.id !== id));
+        delete timers.current[id];
+      }, dur);
     }
     window.addEventListener('dilla:notify', add);
     return () => window.removeEventListener('dilla:notify', add);
   }, []);
 
-  function dismiss(id) { setToasts(prev => prev.filter(x => x.id !== id)); }
+  function dismiss(id) {
+    if (timers.current[id]) { clearTimeout(timers.current[id]); delete timers.current[id]; }
+    setToasts(prev => prev.filter(x => x.id !== id));
+  }
+  function pauseDismiss(id) {
+    if (timers.current[id]) { clearTimeout(timers.current[id]); delete timers.current[id]; }
+  }
   return (
     <div className="notify-stack">
       {toasts.length >= 4 && (
@@ -34,12 +49,15 @@ function NotificationStack({ teaserOnly = false }) {
         </div>
       )}
       {toasts.map(t => (
-        <div key={t.id} className={'notify-toast' + (t.mention ? ' mention' : '') + (t.channel ? ' clickable' : '')}
+        <div key={t.id} className={'notify-toast' + (t.mention ? ' mention' : '') + ((t.channelId || t.channel) ? ' clickable' : '')}
+             onMouseEnter={() => pauseDismiss(t.id)}
              onClick={() => {
-               if (t.channel) {
-                 const chMap = { design: 'design', general: 'general', dev: 'dev', mesh: 'mesh', random: 'random', 'voice-lounge': 'voice', 'mesh-status': 'mesh' };
-                 const id = chMap[t.channel] || t.channel;
-                 window.dispatchEvent(new CustomEvent('dilla:pickchannel', { detail: id }));
+               // Prefer the real channel id (set by mention notifications);
+               // fall back to channel name for legacy /demo-mode events.
+               const target = t.channelId || t.channel;
+               if (target) {
+                 window.dispatchEvent(new CustomEvent('dilla:pickchannel', { detail: target }));
+                 window.focus();
                }
                dismiss(t.id);
              }}>
@@ -48,7 +66,7 @@ function NotificationStack({ teaserOnly = false }) {
           </div>
           <div className="nt-body">
             <div className="nt-head">
-              <span className="nt-team">{t.team || window.MOCK_DATA?.SERVERS?.[0]?.name || 'Dilla'}</span>
+              <span className="nt-team">{t.team || teamName}</span>
               {t.channel && <><span className="nt-sep">·</span><span className="nt-channel">#{t.channel}</span></>}
             </div>
             {teaserOnly ? (
@@ -69,32 +87,23 @@ function NotificationStack({ teaserOnly = false }) {
   );
 }
 
-// One-shot demo: trigger a notification ~3s after mount.
+// Demo notification trigger removed — used to fire pre-baked mock toasts
+// from "ada"/"mira"/"ben" that leaked into the live app. Real notifications
+// now come from dispatched `dilla:notify` events with real data.
 function notifyDemo() {
-  const demos = [
-    { kind: 'mention', mention: true, channel: 'dev',  author: 'ada',  text: '@thim can you take another pass on the X3DH key bundle endpoint?' },
-    { kind: 'message',                channel: 'design', author: 'mira', text: 'pushed the new channel-list mock — last 4 frames in figma' },
-    { kind: 'voice',                  channel: 'voice-lounge', author: 'ada', text: 'started a voice call · join?' },
-    { kind: 'message',                channel: 'general', author: 'ben',  text: 'lunch ☕' },
-  ];
-  let i = 0;
-  function fire() {
-    const d = demos[i++ % demos.length];
-    window.dispatchEvent(new CustomEvent('dilla:notify', { detail: d }));
-  }
-  // first toast after a beat
-  setTimeout(fire, 2200);
+  /* no-op: live data drives notifications */
 }
 
 // ───────── First-run splash ─────────
 function FirstRunSplash({ onDone }) {
   const [phase, setPhase] = useT2(0);
+  const host = (useShellDataContext() as any)?.SERVERS?.[0]?.node || 'local';
   const phases = [
-    'connecting to gbg-1.dilla.local…',
+    `connecting to ${host}…`,
     'unsealing keystore · argon2id',
     'verifying jwt · ed25519',
-    'subscribing to channels · 5',
-    'syncing mesh state · 2 peers',
+    'subscribing to channels',
+    'syncing mesh state',
     'ready.',
   ];
   useT2E(() => {
@@ -133,6 +142,7 @@ function FirstRunSplash({ onDone }) {
 
 // ───────── Incoming voice call ─────────
 function IncomingCall({ call, onAccept, onDecline }) {
+  const shell = useShellDataContext() as any;
   useT2E(() => {
     if (!call) return;
     function onKey(e) {
@@ -143,7 +153,7 @@ function IncomingCall({ call, onAccept, onDecline }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [call, onAccept, onDecline]);
   if (!call) return null;
-  const m = window.MOCK_DATA.byId[call.from];
+  const m = shell?.byId?.[call.from];
   if (!m) return null;
   return (
     <div className="modal-overlay modal-overlay--strong-blur">
@@ -181,20 +191,25 @@ function IncomingCall({ call, onAccept, onDecline }) {
 
 // ───────── Safety number compare ─────────
 function SafetyCompare({ contactId, onClose }) {
+  const shell = useShellDataContext() as any;
   const [verified, setVerified] = useT2(false);
   const [comparing, setComparing] = useT2(false);
   if (!contactId) return null;
-  const m = window.MOCK_DATA.byId[contactId];
+  const m = shell?.byId?.[contactId];
   if (!m) return null;
-  const fps = (window.MeshChrome && window.MeshChrome.FINGERPRINTS) || {};
-  // Derive 'my' fingerprint from the bridged public key so 'YOU' shows
-  // the real local identity. Fall back to handoff fixture otherwise.
-  const pkHex = (window.MOCK_DATA?.publicKey || '4f7a9c128d3be5f017ac6b290e884173cf2a9b068d51743f').replace(/^[^:]*:/, '').replace(/[^0-9a-f]/gi, '');
-  const yours = [0,1,2,3,4,5]
-    .map(i => pkHex.slice(i * 8, i * 8 + 8).replace(/(.{4})(.{4})/, '$1 $2'))
+  // Real fingerprints come straight from the bridged member record
+  // (publicKeyHex), populated by useShellData.mapMember from the team
+  // store. No more hardcoded hex fallbacks — if either side's key isn't
+  // in the bridge yet, show the missing-data placeholder so the user
+  // can tell something didn't load instead of comparing fake digits.
+  const ownHex = (shell?.publicKey || '').replace(/^[^:]*:/, '').replace(/[^0-9a-f]/gi, '');
+  const peerHex = (m?.publicKeyHex || '').replace(/^[^:]*:/, '').replace(/[^0-9a-f]/gi, '');
+  const formatHex = (hex) => [0,1,2,3,4,5]
+    .map(i => hex.slice(i * 8, i * 8 + 8).replace(/(.{4})(.{4})/, '$1 $2'))
     .filter(Boolean)
     .join('  ');
-  const theirs = fps[contactId] || '0000 0000  0000 0000  0000 0000  0000 0000  0000 0000  0000 0000';
+  const yours = ownHex ? formatHex(ownHex) : '— — — — no key available — — — —';
+  const theirs = peerHex ? formatHex(peerHex) : '— — — — no key available — — — —';
   // Pair the numbers into 12-block pairs for side-by-side comparison
   const yp = yours.split(/\s+/).filter(Boolean);
   const tp = theirs.split(/\s+/).filter(Boolean);
@@ -211,9 +226,9 @@ function SafetyCompare({ contactId, onClose }) {
           <div className="sc-side">
             <div className="sc-side-head">
               {(() => {
-                const me = window.MOCK_DATA?.byId?.thim;
+                const me = shell?.currentUserId ? shell?.byId?.[shell.currentUserId] : null;
                 return (
-                  <div className="sc-side-avatar" style={{ background: me?.color || '#F39E2B' }}>{me?.initials || 'TH'}</div>
+                  <div className="sc-side-avatar" style={{ background: me?.color || 'var(--muted)' }}>{me?.initials || '?'}</div>
                 );
               })()}
               <span>you</span>
@@ -256,6 +271,9 @@ function SafetyCompare({ contactId, onClose }) {
 
 // ───────── Federation: add peer wizard ─────────
 function AddPeerWizard({ open, onClose }) {
+  const shell = useShellDataContext() as any;
+  const teamName = shell?.SERVERS?.[0]?.name || '';
+  const nodeName = shell?.SERVERS?.[0]?.node || 'local';
   const [step, setStep] = useT2(0);
   const [mode, setMode] = useT2('have'); // 'have' | 'create'
   const [token, setToken] = useT2('');
@@ -322,12 +340,10 @@ function AddPeerWizard({ open, onClose }) {
               <>
                 <p className="sc-blurb">Run this on the new node's machine. The token expires in 15 minutes and is single-use.</p>
                 {(() => {
-                  const team = window.MOCK_DATA?.SERVERS?.[0]?.name || 'Dilla';
-                  const node = window.MOCK_DATA?.SERVERS?.[0]?.node || 'local';
-                  const host = node === 'local' ? 'localhost' : `${node}.dilla.local`;
+                  const host = nodeName === 'local' ? 'localhost' : nodeName;
                   return (
                     <pre className="apw-snippet">{`dilla-server \\
-  --team "${team}" \\
+  --team "${teamName}" \\
   --peers ${host}:8081 \\
   --join-token eyJraWQiOiJoczI1NiIsInR5cCI6IkpXVCJ9
     .eyJpc3MiOiJnYmctMSIsImV4cCI6MTc3OTAxMjkw…

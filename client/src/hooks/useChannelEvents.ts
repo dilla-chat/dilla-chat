@@ -10,18 +10,33 @@
 // teamId changes — cleanup tears down the previous subscription before the
 // next one is registered.
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { ws } from '../services/websocket';
 import { useAuthStore } from '../stores/authStore';
 import { useTeamStore } from '../stores/teamStore';
 import { useMessageStore } from '../stores/messageStore';
-import { tryDecrypt, serverToMessage, type ServerMessage } from './useMessageDecryption';
+import { tryDecrypt, forgetDecryptFailure, serverToMessage, type ServerMessage } from './useMessageDecryption';
 import { deleteCachedMessage } from '../services/messageCache';
-import { cryptoService } from '../services/crypto';
+import { cryptoService, getIdentityKeys } from '../services/crypto';
+import { toBase64 } from '../services/crypto/helpers';
 
-export function useChannelEvents(activeTeamId: string | null): void {
+export function useChannelEvents(activeTeamId: string | null, cryptoReady: boolean = true): void {
+  // Loop prevention: remember the exact payload of each incoming distribute
+  // we've already processed and echoed back. Keyed as
+  // `${channelId}:${peerId}:${distributionJson}` — if the SAME payload
+  // arrives again (which happens when our re-distribute makes the peer
+  // re-distribute too), skip both processing and the echo. A peer with a
+  // genuinely new chain state will have a different payload, so they're
+  // re-processed and re-echoed.
+  const seenDistributes = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!activeTeamId) return;
+    // Don't subscribe until crypto is initialized — channel:key-distribute
+    // events arriving during the restore window would otherwise be dropped
+    // silently (we'd ignore them because cryptoService isn't ready). Once
+    // ready flips true, the effect re-runs and we attach listeners; any
+    // distributes that follow will be processed correctly.
+    if (!cryptoReady) return;
 
     const unsubNew = ws.on('message:new', async (payload: ServerMessage) => {
       const derivedKey = useAuthStore.getState().derivedKey;
@@ -37,6 +52,40 @@ export function useChannelEvents(activeTeamId: string | null): void {
         payload.channel_id,
         serverToMessage(payload, content, members),
       );
+
+      // Mention notifier: if the decrypted content contains @<myUsername>
+      // or @everyone / @here, fire a toast (skip when *I'm* the author).
+      const me = (window as { SHELL_DATA?: { currentUserId?: string; byId?: Record<string, { name?: string; username?: string }> } }).SHELL_DATA;
+      const myId = me?.currentUserId;
+      const myRecord = myId ? me?.byId?.[myId] : null;
+      const myHandles: string[] = [];
+      if (myRecord?.name) myHandles.push(myRecord.name);
+      if (myRecord?.username) myHandles.push(myRecord.username);
+      const handlePattern = myHandles.length ? new RegExp('@(' + myHandles.map((h) => h.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')\\b', 'i') : null;
+      const isBroadcast = /@(everyone|here)\b/i.test(content);
+      const isDirect = handlePattern ? handlePattern.test(content) : false;
+      if ((isDirect || isBroadcast) && payload.author_id !== myId) {
+        const author = members.find((m) => m.userId === payload.author_id);
+        const channelName = (useTeamStore.getState().channels.get(activeTeamId) ?? [])
+          .find((c) => c.id === payload.channel_id)?.name || '';
+        window.dispatchEvent(new CustomEvent('dilla:notify', {
+          detail: {
+            channel: channelName,
+            channelId: payload.channel_id,
+            author: author?.username || 'someone',
+            text: content.slice(0, 240),
+            duration: 5000,
+            kind: 'mention',
+            mention: true,
+          },
+        }));
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.visibilityState !== 'visible') {
+          try {
+            const n = new Notification('Mentioned by ' + (author?.username || 'someone') + (channelName ? ' in #' + channelName : ''), { body: content.slice(0, 240) });
+            n.onclick = () => { window.focus(); n.close(); };
+          } catch { /* ignore */ }
+        }
+      }
     });
 
     const unsubEdit = ws.on(
@@ -75,10 +124,53 @@ export function useChannelEvents(activeTeamId: string | null): void {
       async (payload: { channel_id: string; sender_id: string; distribution: string }) => {
         const derivedKey = useAuthStore.getState().derivedKey;
         if (!derivedKey) return;
+        // Probe identity availability before processing. If crypto isn't
+        // initialized yet (e.g., the local CryptoRestore is still in flight
+        // or the user's identity unlock failed), drop the distribute on the
+        // floor instead of crashing the handler. The peer will re-emit when
+        // they next interact, and once crypto is ready we'll pick it up
+        // from the next echo.
+        let ownId = '';
+        try {
+          ownId = toBase64(getIdentityKeys().publicKeyBytes);
+        } catch {
+          console.warn('[useChannelEvents] skipping distribute — crypto not ready');
+          return;
+        }
+
+        // Skip exact-duplicate distributes: same channel + sender + payload
+        // means we've already absorbed this state once. Without this, our
+        // own echo would bounce back from every peer and we'd echo again
+        // ad infinitum. A genuinely new chain position from the peer has
+        // a different `distribution` JSON, so it's processed fresh.
+        const fp = `${payload.channel_id}:${payload.sender_id}:${payload.distribution}`;
+        if (seenDistributes.current.has(fp)) return;
+        seenDistributes.current.add(fp);
+
         try {
           await cryptoService.processSenderKey(payload.channel_id, payload.distribution, derivedKey);
         } catch (err) {
           console.warn('[useChannelEvents] sender-key processing failed', err);
+          return;
+        }
+
+        // A fresh sender key for this channel may unlock messages that
+        // failed decryption earlier in this session. Clear the per-msg
+        // failure set so the next render attempt can take another shot.
+        forgetDecryptFailure(payload.channel_id);
+
+        // Echo back our own sender key to the channel when we see another
+        // peer's distribute. This closes the join-order race: if we
+        // distributed before this peer subscribed to the channel, our
+        // earlier broadcast never reached them. We skip echoes of our own
+        // distribute (sender_id === ownId) to avoid the immediate
+        // self-bounce.
+        if (!payload.sender_id || payload.sender_id === ownId) return;
+        try {
+          const dist = await cryptoService.getSenderKeyDistribution(payload.channel_id, derivedKey);
+          ws.distributeChannelKey(activeTeamId, payload.channel_id, dist);
+        } catch (err) {
+          console.warn('[useChannelEvents] sender-key redistribute failed', err);
         }
       },
     );
@@ -129,5 +221,5 @@ export function useChannelEvents(activeTeamId: string | null): void {
       unsubReactAdd();
       unsubReactRem();
     };
-  }, [activeTeamId]);
+  }, [activeTeamId, cryptoReady]);
 }

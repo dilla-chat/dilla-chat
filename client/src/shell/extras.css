@@ -22,12 +22,18 @@
   border-radius: var(--r-md);
   box-shadow: 0 10px 30px rgba(0,0,0,0.45);
   pointer-events: auto;
-  animation: dilla-pop-in 0.22s cubic-bezier(.3,.7,.4,1) both,
-             nt-shrink-out 0.35s ease-in 5.3s both;
+  /* Only animate the entrance. The dismiss timer (in Extras.tsx) removes
+     the node entirely when time's up — we don't fade-collapse here
+     because the mid-fade height shrink would slip out from under the
+     mouse and let hover events land on the userlist behind. */
+  animation: dilla-pop-in 0.22s cubic-bezier(.3,.7,.4,1) both;
   font-family: var(--font-mono);
   color: var(--fg);
+  opacity: 1;
 }
 .notify-toast.mention { border-left-color: var(--mention); }
+.notify-toast.clickable { cursor: pointer; }
+.notify-toast.clickable:hover { border-color: var(--accent); }
 @keyframes nt-shrink-out {
   0%   { opacity: 1; transform: translateY(0); max-height: 200px; }
   100% { opacity: 0; transform: translateY(-8px); max-height: 0; padding: 0 12px; margin-top: -8px; }
