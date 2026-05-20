@@ -324,10 +324,14 @@ select.set-input {
 }
 /* Frame is sized to the rendered image so .crop-box (position: absolute
    inside) lives in image coordinates. Box drag clamping in the
-   component reads imgSize and now they agree. */
+   component reads imgSize and now they agree. overflow: hidden clips
+   the crop-box's 9999px dim box-shadow so the surrounding modal foot
+   (Cancel / Save) isn't tinted along with the image. */
 .crop-frame {
   position: relative;
   line-height: 0;
+  overflow: hidden;
+  border-radius: var(--r-sm);
 }
 .crop-img {
   display: block;
