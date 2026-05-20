@@ -2301,62 +2301,20 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
     const files = Array.from(e.dataTransfer.files || []);
     handleFiles(files);
   }
-  // Track the newest message id so we only auto-scroll when a *new*
-  // message arrives at the bottom (or the channel itself changed) —
-  // not when lazy-load prepends older messages above the viewport.
-  // We defer the scroll across a frame and also listen for late image
-  // loads, since embedded media (giphy, attachments) frequently push
-  // the bottom further down after our initial measurement.
-  const lastBottomIdRef = useRef<string | null>(null);
-  const lastChannelRef = useRef<string | null>(null);
-  useEffect(() => {
-    const el = feedRef.current;
-    if (!el) return;
-    const newestId = messages.length ? messages[messages.length - 1].id : null;
-    const channelChanged = lastChannelRef.current !== channel.id;
-    const newestChanged = lastBottomIdRef.current !== newestId;
-
-    if (channelChanged || newestChanged) {
-      const stick = () => {
-        if (!el) return;
-        el.scrollTop = el.scrollHeight;
-      };
-      // Run now, on the next frame, and once more after layout settles.
-      // Belt-and-braces against media that loads asynchronously and
-      // grows the feed after our first measurement.
-      stick();
-      const raf = requestAnimationFrame(stick);
-      const t = window.setTimeout(stick, 120);
-
-      // Late image loads: if any <img> inside the feed finishes after
-      // the initial pass, re-stick to the bottom. The listener is
-      // scoped to this effect cycle so it doesn't fight the user
-      // when they scroll up.
-      const onMediaLoad = (e: Event) => {
-        const t = e.target as HTMLElement | null;
-        if (t && el.contains(t)) stick();
-      };
-      el.addEventListener('load', onMediaLoad, true);
-
-      lastBottomIdRef.current = newestId;
-      lastChannelRef.current = channel.id;
-      return () => {
-        cancelAnimationFrame(raf);
-        window.clearTimeout(t);
-        el.removeEventListener('load', onMediaLoad, true);
-      };
-    }
-
-    lastBottomIdRef.current = newestId;
-    lastChannelRef.current = channel.id;
-  }, [messages, channel.id]);
+  // With .feed in column-reverse, the bottom (newest) sits at
+  // scrollTop = 0 by default — no manual scroll-to-bottom needed on
+  // mount, new arrivals, or late-loading media. The browser anchors
+  // the viewport for us.
 
   useEffect(() => {
     const el = feedRef.current;
     if (!el) return;
     function onScroll() {
-      const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-      setShowJump(dist > 120);
+      // In column-reverse, scrollTop is distance from the visual
+      // bottom (newest). 0 = pinned to newest, larger = scrolled up
+      // into history. The jump-to-newest button shows once the user
+      // is more than ~120px above the live edge.
+      setShowJump(el.scrollTop > 120);
     }
     el.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
@@ -2364,7 +2322,8 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
   }, [channel.id]);
 
   function scrollToBottom() {
-    if (feedRef.current) feedRef.current.scrollTo({ top: feedRef.current.scrollHeight, behavior: 'smooth' });
+    // scrollTop = 0 is the visual bottom in a column-reverse flex.
+    if (feedRef.current) feedRef.current.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   // Compute day dividers
@@ -2577,7 +2536,11 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
       <div className="feed" ref={feedRef}>
         {groups.length === 0 ? (
           <EmptyFeed channel={channel} dmPartner={dmPartner} />
-        ) : groups.map((g, i) => {
+        ) : /* JSX is reversed below so .feed (column-reverse) can flip
+             it back to oldest-on-top visually. seenDays still tracks
+             natural iteration order so day dividers land before the
+             first group of each day in the resulting visual layout. */
+        groups.map((g, i) => {
           const dayKey = g.at.toDateString();
           const showDay = !seenDays.has(dayKey);
           seenDays.add(dayKey);
@@ -2895,7 +2858,7 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
               })}
             </React.Fragment>
           );
-        })}
+        }).reverse()}
       </div>
 
       <div className="composer-wrap">

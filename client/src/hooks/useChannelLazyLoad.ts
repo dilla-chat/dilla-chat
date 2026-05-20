@@ -34,7 +34,11 @@ export function useChannelLazyLoad(
     async function maybeLoad() {
       if (inflight.current) return;
       if (!el) return;
-      if (el.scrollTop > TOP_THRESHOLD_PX) return;
+      // The feed renders column-reverse: scrollTop = 0 is the visual
+      // bottom (newest), and the visual TOP (oldest, where we want to
+      // page in older history) is at scrollTop ≈ scrollHeight − clientHeight.
+      const distanceFromVisualTop = el.scrollHeight - el.scrollTop - el.clientHeight;
+      if (distanceFromVisualTop > TOP_THRESHOLD_PX) return;
 
       const teamId = useTeamStore.getState().activeTeamId;
       if (!teamId) return;
@@ -50,12 +54,10 @@ export function useChannelLazyLoad(
       inflight.current = true;
       state.setLoadingHistory(channelId!, true);
 
-      // Capture viewport anchor: offset of the current scroll position
-      // from the bottom of the scroll content. After prepend we restore
-      // scrollTop = newScrollHeight - clientHeight - anchorOffset so the
-      // user keeps reading from where they were.
-      const anchorOffsetFromBottom = el.scrollHeight - el.scrollTop;
-
+      // With .feed in column-reverse, prepending older messages adds
+      // them to the visual TOP without shifting the viewport — the
+      // browser anchors to scrollTop = 0 (visual bottom). No manual
+      // scroll restoration needed; just fetch and append.
       try {
         const raw = (await api.getMessages(
           teamId,
@@ -81,12 +83,6 @@ export function useChannelLazyLoad(
 
         useMessageStore.getState().prependMessages(channelId!, decrypted);
         useMessageStore.getState().setHasMore(channelId!, decrypted.length >= PAGE_SIZE);
-
-        // Wait a frame for the new DOM to mount before restoring scroll.
-        requestAnimationFrame(() => {
-          if (!el) return;
-          el.scrollTop = el.scrollHeight - anchorOffsetFromBottom;
-        });
       } catch (err) {
         console.warn('[useChannelLazyLoad] fetch failed', err);
       } finally {
