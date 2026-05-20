@@ -391,6 +391,18 @@ export async function unlockWithPrf(prfDerivedKey: Uint8Array): Promise<Identity
   return decryptIdentity(keyFile, mek);
 }
 
+/** Whether the stored identity has any passkey (PRF) slots. */
+export async function hasPasskeyKeySlot(): Promise<boolean> {
+  const keyFile = await idbGet<EncryptedKeyFileV3>('identity.key');
+  return !!keyFile && Array.isArray(keyFile.key_slots) && keyFile.key_slots.length > 0;
+}
+
+/** Whether the stored identity has any passphrase slots. */
+export async function hasPasswordSlot(): Promise<boolean> {
+  const keyFile = await idbGet<EncryptedKeyFileV3>('identity.key');
+  return !!keyFile && Array.isArray(keyFile.password_slots) && keyFile.password_slots.length > 0;
+}
+
 /**
  * Unlock identity using recovery key.
  */

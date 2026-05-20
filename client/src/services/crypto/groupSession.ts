@@ -9,6 +9,13 @@ export interface SenderKeyDistribution {
   sender_id: string;
   chain_key: number[];
   signing_public_key: number[];
+  /** The sender's chain position when this distribution was generated.
+   *  Defaults to 0 for older clients that omit the field. Without this,
+   *  a re-distribute after the sender has already encrypted N messages
+   *  leaves the recipient out of sync — they'd advance their chain from
+   *  0 to N+1 on the next message, overshooting by N steps and deriving
+   *  a key that does not match the sender's. */
+  message_number?: number;
 }
 
 export interface GroupMessageData {
@@ -67,16 +74,25 @@ export class GroupSession {
       sender_id: this.mySenderKey.senderId,
       chain_key: Array.from(this.mySenderKey.chainKey),
       signing_public_key: Array.from(this.mySenderKey.signingPublicKey),
+      message_number: this.mySenderKey.messageNumber,
     };
   }
 
   processDistribution(distribution: SenderKeyDistribution): void {
+    // Treat the sender's distribute as authoritative — always overwrite.
+    // Previously this had a "skip if our messageNumber is already at or
+    // past the incoming one" dedup, but that was a foot-gun: if our local
+    // chain advanced past the sender's actual state (e.g. from a bug in
+    // an earlier version of decrypt, or from corrupted persistence), we'd
+    // refuse the *correct* fresh state and stay stuck. Loop prevention is
+    // now done at the useChannelEvents echo layer via a distribute-payload
+    // fingerprint, not here.
     this.memberSenderKeys.set(distribution.sender_id, {
       senderId: distribution.sender_id,
       chainKey: new Uint8Array(distribution.chain_key),
       signingPrivatePkcs8: null,
       signingPublicKey: new Uint8Array(distribution.signing_public_key),
-      messageNumber: 0,
+      messageNumber: distribution.message_number ?? 0,
     });
   }
 
@@ -143,22 +159,40 @@ export class GroupSession {
     );
     if (!valid) throw new Error('Group message signature verification failed');
 
+    // Reject messages whose chain position we've already moved past. A
+    // simple sender-key chain has no out-of-order delivery support — old
+    // message keys aren't retained. Returning here is critical: if we
+    // tried to derive a key from the CURRENT chainKey and decrypt failed,
+    // we'd still have mutated state forward by one kdf step, breaking
+    // every legitimate future decrypt. (This was the bug behind the
+    // "OperationError" cascade on eager-loaded history.)
+    if (message.message_number < state.messageNumber) {
+      throw new Error(
+        `Message from chain position ${message.message_number} predates current state ${state.messageNumber}`,
+      );
+    }
+
     // Advance chain to correct message number
     const MAX_CHAIN_ADVANCE = 2000;
     if (message.message_number - state.messageNumber > MAX_CHAIN_ADVANCE) {
       throw new Error('Message gap too large — possible corruption or attack');
     }
-    while (state.messageNumber < message.message_number) {
-      const [nextChain] = await kdfChain(state.chainKey);
-      state.chainKey = nextChain;
-      state.messageNumber++;
+    // Mutate to a *copy* of chainKey while advancing, then commit only on
+    // a successful AES-GCM open. Without this, an auth failure (wrong key)
+    // would still leave the chain advanced and desync us from the sender
+    // forever.
+    let workingChain = state.chainKey;
+    for (let i = state.messageNumber; i < message.message_number; i++) {
+      const [nextChain] = await kdfChain(workingChain);
+      workingChain = nextChain;
     }
 
-    const [nextChain, messageKey] = await kdfChain(state.chainKey);
+    const [nextChain, messageKey] = await kdfChain(workingChain);
+    const plaintext = await aesGcmDecrypt(messageKey, new Uint8Array(message.ciphertext));
+    // Decrypt succeeded — commit advanced state.
     state.chainKey = nextChain;
-    state.messageNumber++;
-
-    return aesGcmDecrypt(messageKey, new Uint8Array(message.ciphertext));
+    state.messageNumber = message.message_number + 1;
+    return plaintext;
   }
 
   /** Serialize for storage */

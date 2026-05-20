@@ -191,7 +191,7 @@ select.set-input {
   padding-right: 26px;
 }
 
-/* .set-btn rules live in styles/button.css now (unified .btn system). */
+/* Buttons in this file use the canonical .btn (styles/button.css). */
 
 .set-toggle {
   width: 36px; height: 20px;
@@ -299,7 +299,7 @@ select.set-input {
   display: flex; align-items: center; gap: 10px;
   width: 100%;
 }
-.set-meter-row .set-btn { flex-shrink: 0; }
+.set-meter-row .btn { flex-shrink: 0; }
 
 .set-avatar-row { display: flex; align-items: center; gap: 10px; }
 .set-avatar {
@@ -509,7 +509,7 @@ select.set-input {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.set-link-cell .set-btn {
+.set-link-cell .btn {
   flex: 0 0 auto;
   white-space: nowrap;
 }

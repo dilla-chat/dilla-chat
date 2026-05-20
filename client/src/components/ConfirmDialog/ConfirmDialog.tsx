@@ -60,14 +60,14 @@ export default function ConfirmDialog() {
         <footer className="modal-foot">
           <button
             ref={cancelRef}
-            className="sc-btn"
+            className="btn"
             onClick={() => answer(false)}
           >
             {cancelLabel}
           </button>
           <button
             ref={confirmRef}
-            className={'sc-btn ' + (pending.danger ? 'danger' : 'primary')}
+            className={'btn ' + (pending.danger ? 'btn--danger' : 'btn--primary')}
             onClick={() => answer(true)}
           >
             {confirmLabel}

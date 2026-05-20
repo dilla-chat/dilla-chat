@@ -39,6 +39,17 @@ export class VoiceActivityDetector {
   startRemoteVAD(): void {
     if (this.remoteVadTimer) return; // already running
     const wasSpeaking = new Map<string, boolean>();
+    const lastLevel = new Map<string, number>();
+    // Only emit a store update when something a human would
+    // notice changes:
+    //   - speaking flag transition (rare), OR
+    //   - level moved by more than this delta WHILE speaking.
+    // When not speaking we force level=0 once and stay silent. Without
+    // this gate every tick (10 Hz × N peers) pushed a Zustand update
+    // and re-rendered the entire member list — see github issue note in
+    // changelog. Keeping the threshold small enough that the VU bar
+    // still animates smoothly during speech.
+    const LEVEL_EMIT_DELTA = 0.05;
     this.remoteVadTimer = setInterval(() => {
       const store = useVoiceStore.getState();
       const userThreshold = useUserSettingsStore.getState().inputThreshold;
@@ -49,11 +60,21 @@ export class VoiceActivityDetector {
         const level = Math.min(avg / 80, 1);
         const speaking = avg > vadThreshold;
         const prev = wasSpeaking.get(entry.userId) ?? false;
-        if (speaking !== prev || level > 0) {
-          wasSpeaking.set(entry.userId, speaking);
-          if (store.peers[entry.userId]) {
-            store.updatePeer(entry.userId, { voiceLevel: level, speaking });
-          }
+        const prevLevel = lastLevel.get(entry.userId) ?? 0;
+
+        const transition = speaking !== prev;
+        const meaningfulLevelChange =
+          speaking && Math.abs(level - prevLevel) >= LEVEL_EMIT_DELTA;
+
+        if (!transition && !meaningfulLevelChange) continue;
+
+        // Snap to 0 on transition-to-silent so the UI doesn't keep
+        // showing the last animated bar value.
+        const emitLevel = speaking ? level : 0;
+        wasSpeaking.set(entry.userId, speaking);
+        lastLevel.set(entry.userId, emitLevel);
+        if (store.peers[entry.userId]) {
+          store.updatePeer(entry.userId, { voiceLevel: emitLevel, speaking });
         }
       }
     }, VAD_INTERVAL_MS);
@@ -66,11 +87,25 @@ export class VoiceActivityDetector {
     }
   }
 
+  // Mirror of the remote-VAD throttle: only push voiceLevel into the
+  // store when it shifts by a perceptible amount during active speech.
+  // Tracks last emitted value across calls.
+  private localLastLevel = 0;
+  private localLastSpeaking = false;
   updateLocalLevel(level: number, speaking: boolean, localUserId: string | null): void {
     if (!localUserId) return;
+    const LEVEL_EMIT_DELTA = 0.05;
+    const transition = speaking !== this.localLastSpeaking;
+    const meaningfulLevelChange =
+      speaking && Math.abs(level - this.localLastLevel) >= LEVEL_EMIT_DELTA;
+    if (!transition && !meaningfulLevelChange) return;
+
+    const emitLevel = speaking ? level : 0;
+    this.localLastLevel = emitLevel;
+    this.localLastSpeaking = speaking;
     const store = useVoiceStore.getState();
     if (store.peers[localUserId]) {
-      store.updatePeer(localUserId, { voiceLevel: level, speaking });
+      store.updatePeer(localUserId, { voiceLevel: emitLevel, speaking });
     }
   }
 

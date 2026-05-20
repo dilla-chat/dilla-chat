@@ -394,7 +394,7 @@
   display: flex; align-items: center; justify-content: space-between;
   gap: 8px;
 }
-/* .sc-btn rules live in styles/button.css now (unified .btn system). */
+/* Buttons in this file use the canonical .btn (styles/button.css). */
 .sc-verified {
   display: flex; align-items: center; gap: 10px;
   padding: 12px 14px;

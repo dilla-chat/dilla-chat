@@ -450,7 +450,7 @@ describe('ApiService', () => {
   // ── DMs ───────────────────────────────────────────────────────────────────
 
   describe('createDM', () => {
-    it('posts member_ids to DM endpoint', async () => {
+    it('posts user_ids to DM endpoint', async () => {
       api.addTeam('t-dm', 'https://dm.io');
       api.setToken('t-dm', 'tok');
       globalThis.fetch = mockFetchResponse({ id: 'dm1' });
@@ -458,7 +458,7 @@ describe('ApiService', () => {
       await api.createDM('t-dm', ['u1', 'u2']);
 
       const body = JSON.parse(lastFetchCall().init.body as string);
-      expect(body).toEqual({ member_ids: ['u1', 'u2'] });
+      expect(body).toEqual({ user_ids: ['u1', 'u2'] });
     });
   });
 
@@ -1048,9 +1048,14 @@ describe('ApiService', () => {
       });
 
       const { url, init } = lastFetchCall();
-      // uploadPrekeyBundle passes teamId directly as baseUrl
-      expect(url).toBe('t-upk/api/v1/prekeys');
+      // Should resolve against the team's baseUrl, not the teamId itself.
+      // The teamId-as-baseUrl bug made fetch interpret the UUID as a
+      // relative URL and Vite returned its dev HTML, which then crashed
+      // res.json() with "JSON.parse: unexpected character" — exactly the
+      // error blocking voice E2E key distribution in production.
+      expect(url).toBe('https://upk.io/api/v1/prekeys');
       expect(init.method).toBe('POST');
+      expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok');
       const body = JSON.parse(init.body as string);
       expect(body.identity_key).toBe('ik');
       expect(body.one_time_prekeys).toEqual(['otk1', 'otk2']);
@@ -1070,9 +1075,9 @@ describe('ApiService', () => {
 
       const result = await api.getPrekeyBundle('t-gpk', 'user-1');
       expect(result.identity_key).toBe('ik');
-      const { url } = lastFetchCall();
-      // getPrekeyBundle passes teamId directly as baseUrl
-      expect(url).toBe('t-gpk/api/v1/prekeys/user-1');
+      const { url, init } = lastFetchCall();
+      expect(url).toBe('https://gpk.io/api/v1/prekeys/user-1');
+      expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok');
     });
   });
 

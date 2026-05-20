@@ -96,6 +96,22 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
       } catch {
         // ignore disconnect errors
       }
+      // Pull self out of voiceOccupants[oldChannel] locally so the
+      // sidebar's 'Active voice' group hides immediately on switch.
+      // The server's voice:user-left broadcast may or may not echo
+      // back to the sender depending on hub.broadcast_to_all — this
+      // mirrors what leaveChannel does for the explicit leave path.
+      const prevChannelId = state.currentChannelId;
+      const myId = state.currentTeamId
+        ? useAuthStore.getState().teams.get(state.currentTeamId)?.user?.id
+        : null;
+      let cleanedOccupants = state.voiceOccupants;
+      if (prevChannelId && myId) {
+        cleanedOccupants = { ...state.voiceOccupants };
+        const filtered = (cleanedOccupants[prevChannelId] ?? []).filter((p) => p.user_id !== myId);
+        if (filtered.length === 0) delete cleanedOccupants[prevChannelId];
+        else cleanedOccupants[prevChannelId] = filtered;
+      }
       set({
         currentChannelId: null,
         currentTeamId: null,
@@ -107,6 +123,7 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
         screenSharingUserId: null,
         remoteScreenStream: null,
         localScreenStream: null,
+        voiceOccupants: cleanedOccupants,
         webcamSharing: false,
         localWebcamStream: null,
         remoteWebcamStreams: {},

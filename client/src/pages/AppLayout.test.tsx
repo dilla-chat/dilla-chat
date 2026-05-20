@@ -38,12 +38,21 @@ vi.mock('../services/websocket', () => ({
 vi.mock('../services/crypto', () => ({
   initCrypto: vi.fn(),
   resetCrypto: vi.fn(),
+  // Default false so useCryptoRestore actually runs initCrypto in tests.
+  // Individual tests can override via vi.mocked(isCryptoInitialized).mockReturnValue(true).
+  isCryptoInitialized: vi.fn(() => false),
   cryptoService: {
     rotateChannelKey: vi.fn().mockResolvedValue('{"sender_id":"self","chain_key":[1],"signing_public_key":[2]}'),
     processSenderKey: vi.fn().mockResolvedValue(undefined),
   },
 }));
-vi.mock('../services/keyStore', () => ({ unlockWithPrf: vi.fn(), exportIdentityBlob: vi.fn() }));
+vi.mock('../services/keyStore', () => ({
+  unlockWithPrf: vi.fn(),
+  exportIdentityBlob: vi.fn(),
+  // Default to passkey identity for restore-from-derivedKey tests.
+  hasPasskeyKeySlot: vi.fn(() => Promise.resolve(true)),
+  hasPasswordSlot: vi.fn(() => Promise.resolve(false)),
+}));
 vi.mock('../services/cryptoCore', () => ({ fromBase64: vi.fn() }));
 
 vi.mock('react-router-dom', () => ({

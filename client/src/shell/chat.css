@@ -2747,8 +2747,7 @@ img.attach-img {
   display: flex; gap: 6px;
   margin-top: 12px;
 }
-/* .pp-btn rules live in styles/button.css now (unified .btn system).
-   Keeping this comment as a breadcrumb. */
+/* Buttons in this file use the canonical .btn (styles/button.css). */
 
 /* ───── Emoji picker ───── */
 .emoji-pick {
@@ -2888,7 +2887,7 @@ img.attach-img {
 
 /* Subtle hover lift on channel rows + members for tactile feel */
 .channel-row, .member, .voice-participant, .rxn, .vctrl, .icon-btn,
-.set-btn, .pp-btn, .ep-btn, .ms-cta, .v-badge {
+.btn, .ep-btn, .ms-cta, .v-badge {
   transition: background .12s, color .12s, border-color .12s, transform .12s;
 }
 

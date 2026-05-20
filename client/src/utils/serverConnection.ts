@@ -53,6 +53,10 @@ export async function uploadPrekeyBundle(derivedKey: string, teamId: string): Pr
     const toB64 = (arr: number[]) => btoa(String.fromCodePoint(...arr));
     await api.uploadPrekeyBundle(teamId, {
       identity_key: toB64(bundle.identity_key),
+      // X25519 public DH key — needed for X3DH DH2. Dropping it in
+      // upload was the root cause of `Data provided to an operation
+      // does not meet requirements` in voice key distribution.
+      identity_dh_key: toB64(bundle.identity_dh_key),
       signed_prekey: toB64(bundle.signed_prekey),
       signed_prekey_signature: toB64(bundle.signed_prekey_signature),
       one_time_prekeys: bundle.one_time_prekeys.map(toB64),

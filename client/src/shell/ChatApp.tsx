@@ -463,8 +463,8 @@ function NewChannelModal({ onClose, onCreate }) {
           </div>
         </div>
         <footer className="modal-foot">
-          <button className="sc-btn" onClick={onClose}>Cancel</button>
-          <button className="sc-btn primary" disabled={!ok} onClick={() => onCreate({ id: slug, name: slug, kind, topic, category: group.trim(), private: priv })}>Create kanal</button>
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn btn--primary" disabled={!ok} onClick={() => onCreate({ id: slug, name: slug, kind, topic, category: group.trim(), private: priv })}>Create kanal</button>
         </footer>
       </div>
     </div>
@@ -560,8 +560,8 @@ function ChannelAccessModal({ channel, onClose }) {
           {err && <div className="modal-hint" style={{ color: 'var(--danger)' }}>{err}</div>}
         </div>
         <footer className="modal-foot">
-          <button className="sc-btn" onClick={onClose}>Cancel</button>
-          <button className="sc-btn primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn btn--primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
         </footer>
       </div>
     </div>
@@ -658,8 +658,8 @@ function GroupAccessModal({ group, onClose }: { group: { id: string; name: strin
           {err && <div className="modal-hint" style={{ color: 'var(--danger)' }}>{err}</div>}
         </div>
         <footer className="modal-foot">
-          <button className="sc-btn" onClick={onClose}>Cancel</button>
-          <button className="sc-btn primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn btn--primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
         </footer>
       </div>
     </div>
@@ -739,20 +739,20 @@ function GroupSettingsModal({ group, onClose }: { group: { id: string; name: str
               <label style={{ color: 'var(--danger)' }}>Delete group</label>
               <div className="modal-hint">Channels in <strong>{group.name}</strong> won't be deleted — they'll just lose the group. Restricted-by-group channels will become open.</div>
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                <button className="sc-btn" onClick={() => setConfirmDelete(false)}>Cancel</button>
-                <button className="sc-btn danger" disabled={busy} onClick={remove}>{busy ? 'Deleting…' : 'Delete group'}</button>
+                <button className="btn" onClick={() => setConfirmDelete(false)}>Cancel</button>
+                <button className="btn btn--danger" disabled={busy} onClick={remove}>{busy ? 'Deleting…' : 'Delete group'}</button>
               </div>
             </div>
           ) : (
             <div className="modal-row">
-              <button className="sc-btn danger" onClick={() => setConfirmDelete(true)}>Delete group…</button>
+              <button className="btn btn--danger" onClick={() => setConfirmDelete(true)}>Delete group…</button>
             </div>
           )}
           {err && <div className="modal-hint" style={{ color: 'var(--danger)' }}>{err}</div>}
         </div>
         <footer className="modal-foot">
-          <button className="sc-btn" onClick={onClose}>Cancel</button>
-          <button className="sc-btn primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn btn--primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
         </footer>
       </div>
     </div>
@@ -850,20 +850,20 @@ function ChannelSettingsModal({ channel, onClose }) {
               <label style={{ color: 'var(--danger)' }}>Delete kanal</label>
               <div className="modal-hint">Permanently removes <strong>#{channel?.name}</strong> and every message in it. This can't be undone.</div>
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                <button className="sc-btn" onClick={() => setConfirmDelete(false)}>Cancel</button>
-                <button className="sc-btn danger" disabled={busy} onClick={remove}>{busy ? 'Deleting…' : 'Delete kanal'}</button>
+                <button className="btn" onClick={() => setConfirmDelete(false)}>Cancel</button>
+                <button className="btn btn--danger" disabled={busy} onClick={remove}>{busy ? 'Deleting…' : 'Delete kanal'}</button>
               </div>
             </div>
           ) : (
             <div className="modal-row">
-              <button className="sc-btn danger" onClick={() => setConfirmDelete(true)}>Delete kanal…</button>
+              <button className="btn btn--danger" onClick={() => setConfirmDelete(true)}>Delete kanal…</button>
             </div>
           )}
           {err && <div className="modal-hint" style={{ color: 'var(--danger)' }}>{err}</div>}
         </div>
         <footer className="modal-foot">
-          <button className="sc-btn" onClick={onClose}>Cancel</button>
-          <button className="sc-btn primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn btn--primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
         </footer>
       </div>
     </div>
@@ -921,8 +921,8 @@ function NewServerModal({ onClose, onCreate }) {
           )}
         </div>
         <footer className="modal-foot">
-          <button className="sc-btn" onClick={onClose}>Cancel</button>
-          <button className="sc-btn primary" disabled={!ok} onClick={() => onCreate({
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn btn--primary" disabled={!ok} onClick={() => onCreate({
             id: mode === 'create' ? slug : 'joined-' + Date.now(),
             name: mode === 'create' ? name : 'New team',
             short: (mode === 'create' ? name : 'NT').slice(0, 1).toUpperCase() || 'N',
@@ -1032,8 +1032,8 @@ function ProfilePopover({ pop, onClose, onDM, federated }) {
           </div>
         )}
         <div className="pp-actions">
-          <button className="pp-btn primary" onClick={() => { onDM(m.id); onClose(); }}>Send message</button>
-          <button className="pp-btn" onClick={onClose}>View profile</button>
+          <button className="btn btn--primary btn--block" onClick={() => { onDM(m.id); onClose(); }}>Send message</button>
+          <button className="btn btn--block" onClick={onClose}>View profile</button>
         </div>
       </div>
     </div>

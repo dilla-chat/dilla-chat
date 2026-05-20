@@ -205,6 +205,35 @@ async function persistDerivedKey(key: string | null): Promise<void> {
   } catch { /* private browsing */ }
 }
 
+// Passphrase persistence — same wrap-key + sessionStorage pattern as the
+// derivedKey above. We persist the raw passphrase so passphrase users can
+// auto-unlock on reload via unlockWithPassphrase; without it, every reload
+// kicks them back to /login. The wrap key is per-origin and non-extractable;
+// sessionStorage is per-tab and cleared on tab close, so the passphrase
+// only lives for the lifetime of the tab.
+const PASSPHRASE_STORAGE = 'dilla:passphrase:enc';
+
+export async function persistPassphrase(passphrase: string | null): Promise<void> {
+  try {
+    if (passphrase) {
+      const encrypted = await encryptDerivedKey(passphrase);
+      sessionStorage.setItem(PASSPHRASE_STORAGE, encrypted);
+    } else {
+      sessionStorage.removeItem(PASSPHRASE_STORAGE);
+    }
+  } catch { /* private browsing */ }
+}
+
+export async function restorePassphrase(): Promise<string | null> {
+  try {
+    const stored = sessionStorage.getItem(PASSPHRASE_STORAGE);
+    if (!stored) return null;
+    return await decryptDerivedKey(stored);
+  } catch {
+    return null;
+  }
+}
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   isAuthenticated: false,
   passphrase: null,
@@ -353,6 +382,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     sessionStorage.removeItem(TEAMS_STORAGE_KEY);
     sessionStorage.removeItem(SERVERS_STORAGE_KEY);
     void persistDerivedKey(null);
+    void persistPassphrase(null);
     set({
       isAuthenticated: false,
       passphrase: null,

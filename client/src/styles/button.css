@@ -1,25 +1,15 @@
-/* Canonical button system.
- *
- * One base class + a small set of orthogonal modifiers. All existing
- * legacy button classes (.set-btn, .pp-btn, .sc-btn) are grouped on
- * the same selectors so they pick up the unified look without a
- * call-site migration; new code should use .btn / .btn--<modifier>.
+/* Canonical button system. One base class + composable modifiers.
  *
  *   .btn              — outline secondary, default
  *   .btn--primary     — filled accent CTA
- *   .btn--danger      — destructive (red text/border on hover)
- *   .btn--block       — flex:1 (fills its row, paired buttons share)
+ *   .btn--danger      — destructive (red text, red border on hover)
+ *   .btn--block       — flex:1 (paired buttons share a row evenly)
  *   .btn--icon        — square icon-only (2.25rem)
  *
- * Modifiers are composable: `.btn .btn--block` is a primary in a row
- * of two; `.btn .btn--primary .btn--block` is the filled primary at
- * full row width.
- */
+ * Compose: `<button class="btn btn--primary btn--block">` is a
+ * primary CTA that fills its row. */
 
-.btn,
-.set-btn,
-.pp-btn,
-.sc-btn {
+.btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -37,19 +27,13 @@
   transition: background .12s, border-color .12s, color .12s;
 }
 
-.btn:hover,
-.set-btn:hover,
-.pp-btn:hover,
-.sc-btn:hover {
+.btn:hover {
   background: var(--surface-hi);
   border-color: var(--accent);
   color: var(--accent);
 }
 
-.btn:disabled,
-.set-btn:disabled,
-.pp-btn:disabled,
-.sc-btn:disabled {
+.btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
   background: var(--surface-2);
@@ -57,49 +41,31 @@
   color: var(--fg-3);
 }
 
-/* Primary — filled accent. Legacy uses `.foo.primary` on each
- * legacy class; map both spellings onto the same look. */
-.btn--primary,
-.pp-btn.primary,
-.sc-btn.primary {
+.btn--primary {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-ink);
   font-weight: 600;
 }
-.btn--primary:hover,
-.pp-btn.primary:hover,
-.sc-btn.primary:hover {
+.btn--primary:hover {
   background: var(--accent-2);
   border-color: var(--accent-2);
   color: var(--accent-ink);
 }
 
-/* Danger — red text, red border on hover. */
-.btn--danger,
-.set-btn.danger,
-.sc-btn.danger {
+.btn--danger {
   color: var(--danger);
 }
-.btn--danger:hover,
-.set-btn.danger:hover,
-.sc-btn.danger:hover {
+.btn--danger:hover {
   border-color: var(--danger);
   color: var(--danger);
   background: color-mix(in oklab, var(--danger) 14%, transparent);
 }
 
-/* Block — flex:1, used in paired button rows. */
 .btn--block {
   flex: 1;
 }
-/* The profile popover stretches its .pp-btn pair across the row;
- * preserve that without a class change at the call site. */
-.pp-btn {
-  flex: 1;
-}
 
-/* Icon-only — square, no label padding. */
 .btn--icon {
   width: 2.25rem;
   height: 2.25rem;

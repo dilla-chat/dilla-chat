@@ -46,7 +46,7 @@ function setVoiceState(overrides: Record<string, unknown>) {
     speaking: false,
     screenSharing: false,
     screenSharingUserId: null,
-    remoteScreenStream: null,
+    remoteScreenStreams: {},
     localScreenStream: null,
     webcamSharing: false,
     localWebcamStream: null,
@@ -369,7 +369,7 @@ describe('VoiceChannel', () => {
       connected: true,
       currentChannelId: 'voice-ch-1',
       screenSharing: false,
-      remoteScreenStream: mockStream,
+      remoteScreenStreams: { 'user-2': mockStream },
       screenSharingUserId: 'user-2',
       peers: {
         'user-1': { user_id: 'user-1', username: 'alice', muted: false, deafened: false, speaking: false, voiceLevel: 0 },

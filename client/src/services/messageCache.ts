@@ -21,7 +21,17 @@ interface CachedMessage {
   channelId: string;
   /** AES-GCM encrypted plaintext (base64) — never stored unencrypted */
   ciphertext: string;
+  /** Hash of the server-side wire ciphertext when we cached this entry.
+   *  Lets readers detect a server-side edit (different wire ciphertext)
+   *  and bypass the cache instead of returning stale plaintext. */
+  sourceHash?: string;
   cachedAt: number;
+}
+
+async function hashSource(source: string): Promise<string> {
+  const buf = new TextEncoder().encode(source);
+  const digest = await crypto.subtle.digest('SHA-256', buf);
+  return btoa(String.fromCharCode(...new Uint8Array(digest)));
 }
 
 // ── Cache encryption helpers ────────────────────────────────────────────────
@@ -103,17 +113,19 @@ export async function cacheMessage(
   id: string,
   channelId: string,
   plaintext: string,
+  sourceCiphertext?: string,
 ): Promise<void> {
   const cacheKey = await getCacheKey();
   if (!cacheKey) return; // No key available — skip caching to avoid storing plaintext
 
   const ciphertext = await encryptForCache(plaintext, cacheKey);
+  const sourceHash = sourceCiphertext ? await hashSource(sourceCiphertext) : undefined;
 
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
-    const entry: CachedMessage = { id, channelId, ciphertext, cachedAt: Date.now() };
+    const entry: CachedMessage = { id, channelId, ciphertext, sourceHash, cachedAt: Date.now() };
     store.put(entry);
     tx.oncomplete = () => {
       db.close();
@@ -126,7 +138,14 @@ export async function cacheMessage(
   });
 }
 
-export async function getCachedMessage(id: string): Promise<string | null> {
+/** Returns the cached plaintext for `id`. If `sourceCiphertext` is passed and
+ *  the cached entry's source hash doesn't match, returns null — that signals
+ *  the server-side wire content changed (an edit landed while we were away)
+ *  and the caller should re-decrypt. */
+export async function getCachedMessage(
+  id: string,
+  sourceCiphertext?: string,
+): Promise<string | null> {
   const cacheKey = await getCacheKey();
   if (!cacheKey) return null;
 
@@ -138,6 +157,10 @@ export async function getCachedMessage(id: string): Promise<string | null> {
     req.onsuccess = async () => {
       const result = req.result as CachedMessage | undefined;
       if (!result?.ciphertext) { resolve(null); return; }
+      if (sourceCiphertext && result.sourceHash) {
+        const incomingHash = await hashSource(sourceCiphertext);
+        if (incomingHash !== result.sourceHash) { resolve(null); return; }
+      }
       try {
         resolve(await decryptFromCache(result.ciphertext, cacheKey));
       } catch {

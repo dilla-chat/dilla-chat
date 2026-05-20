@@ -17,7 +17,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useAuthStore, type User } from '../../stores/authStore';
+import { useAuthStore, persistPassphrase, type User } from '../../stores/authStore';
 import { api } from '../../services/api';
 import {
   createIdentity,
@@ -296,6 +296,9 @@ export default function Onboarding() {
           derivedKeyB64 = btoa(
             String.fromCodePoint(...new TextEncoder().encode(passphrase.slice(0, 32))),
           );
+          // Persist the raw passphrase (encrypted, per-tab) so reload can
+          // auto-unlock instead of kicking the user back to /login.
+          void persistPassphrase(passphrase);
         }
 
         await initCrypto(identity, derivedKeyB64);
@@ -454,6 +457,11 @@ export default function Onboarding() {
           identity = created.identity;
           derivedKey = publicKeyB64;
           setRecoveryKey(encodeRecoveryKey(created.recoveryKey));
+          // Persist the passphrase too — the create flow stores publicKey
+          // as derivedKey (used for session-blob encryption), but reload
+          // needs the actual passphrase to unwrap the identity MEK via
+          // PBKDF2. Without this, every reload bounces to /login.
+          void persistPassphrase(passphrase);
         }
 
         push(`  pub  ed25519:${(publicKeyHex || '').slice(0, 32)}…`);
@@ -472,7 +480,7 @@ export default function Onboarding() {
           }
         }
 
-        push(`signing nonce as "${username || 'thim'}"…`);
+        push(`signing nonce as "${username || ''}"…`);
         const tempId = url;
         api.addTeam(tempId, url);
         const { challenge_id, nonce } = await api.requestChallenge(tempId, publicKeyB64);
@@ -664,7 +672,7 @@ export default function Onboarding() {
           )}
           {step.id === 'done' && (
             <DoneStep
-              username={username || 'thim'}
+              username={username || ''}
               team={team || 'Dilla'}
               mode={mode}
               onOpen={async () => {
@@ -838,7 +846,7 @@ function ConnectStep({
               type="text"
               value={recoveryUsername}
               onChange={(e) => setRecoveryUsername(e.target.value)}
-              placeholder="thim"
+              placeholder="username"
             />
           </div>
           <div className="onb-field">
@@ -963,7 +971,7 @@ function IdentityStep({
           onChange={(e) =>
             setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))
           }
-          placeholder="thim"
+          placeholder="username"
           autoFocus
         />
         <div className="onb-hint">Lowercase letters, numbers, _, -. Visible to your team.</div>

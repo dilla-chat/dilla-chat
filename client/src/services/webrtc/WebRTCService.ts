@@ -661,7 +661,9 @@ class WebRTCService {
 
     try {
       this.screenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
+        video: {
+          frameRate: { ideal: 60 },
+        },
         audio: false,
       });
     } catch (err) {
@@ -746,7 +748,12 @@ class WebRTCService {
 
     try {
       this.webcamStream = await navigator.mediaDevices.getUserMedia({
-        video: { aspectRatio: 16 / 9, width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: {
+          aspectRatio: 16 / 9,
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 60 },
+        },
         audio: false,
       });
     } catch (err) {

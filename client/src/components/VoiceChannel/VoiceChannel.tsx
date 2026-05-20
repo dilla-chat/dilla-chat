@@ -11,21 +11,54 @@ interface Props {
 
 function VideoPreview({ stream, onClick, className }: Readonly<{ stream: MediaStream; onClick?: () => void; className?: string }>) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [stats, setStats] = useState<{ w: number; h: number; fps: number } | null>(null);
+
   useEffect(() => {
     if (videoRef.current) {
       videoRef.current.srcObject = stream;
     }
   }, [stream]);
 
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    let lastFrames = 0;
+    let lastTime = performance.now();
+    const tick = () => {
+      const w = el.videoWidth;
+      const h = el.videoHeight;
+      const now = performance.now();
+      const quality = el.getVideoPlaybackQuality?.();
+      const frames = quality?.totalVideoFrames ?? 0;
+      const dt = (now - lastTime) / 1000;
+      const fps = dt > 0 ? Math.round((frames - lastFrames) / dt) : 0;
+      lastFrames = frames;
+      lastTime = now;
+      if (w > 0 && h > 0) {
+        setStats({ w, h, fps });
+      }
+    };
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [stream]);
+
+  const cls = className ?? 'voice-tile-screen-preview';
   return (
-    <video
-      ref={videoRef}
-      className={className ?? 'voice-tile-screen-preview'}
-      autoPlay
-      playsInline
-      muted
-      onClick={onClick ? (e) => { e.stopPropagation(); onClick(); } : undefined}
-    />
+    <div className="video-preview-wrap">
+      <video
+        ref={videoRef}
+        className={cls}
+        autoPlay
+        playsInline
+        muted
+        onClick={onClick ? (e) => { e.stopPropagation(); onClick(); } : undefined}
+      />
+      {stats && (
+        <div className="video-preview-stats">
+          {stats.w}×{stats.h} · {stats.fps}fps
+        </div>
+      )}
+    </div>
   );
 }
 

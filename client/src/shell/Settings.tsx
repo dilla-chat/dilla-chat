@@ -187,7 +187,7 @@ function Settings({ open, mode, defaultTab, onClose }) {
                 fields had already auto-saved via useDebouncedSave —
                 drop it so the modal is honest about its model. */}
             <div className="set-foot-actions">
-              <button className="sc-btn" onClick={onClose}>Close · esc</button>
+              <button className="btn" onClick={onClose}>Close · esc</button>
             </div>
           </footer>
         </main>
@@ -237,7 +237,7 @@ function Select({ value, onChange, options }) {
   );
 }
 function Btn({ children, danger, onClick }) {
-  return <button className={'set-btn' + (danger ? ' danger' : '')} onClick={onClick}>{children}</button>;
+  return <button className={'btn' + (danger ? ' btn--danger' : '')} onClick={onClick}>{children}</button>;
 }
 
 // Shared dirty-state action bar for forms in the modal. Sits at the
@@ -271,7 +271,7 @@ function FormBar({
       {showSaved && <span className="set-form-bar-saved">Saved</span>}
       <Btn onClick={onDiscard}>Discard</Btn>
       <button
-        className="set-btn primary"
+        className="btn btn--primary"
         onClick={onSave}
         disabled={!dirty || saving}
       >
@@ -419,8 +419,8 @@ function CropModal({
           <p className="modal-hint">Drag to reposition, corners to resize. Output is a 256×256 square.</p>
         </div>
         <footer className="modal-foot">
-          <button className="sc-btn" onClick={onCancel}>Cancel</button>
-          <button className="sc-btn primary" onClick={save}>Save</button>
+          <button className="btn" onClick={onCancel}>Cancel</button>
+          <button className="btn btn--primary" onClick={save}>Save</button>
         </footer>
       </div>
     </div>
@@ -1988,8 +1988,8 @@ function RoleEditor({ teamId, role, onClose, onSaved }: { teamId: string; role: 
           <div style={{ color: 'var(--fg-3)', fontSize: 11, marginTop: 14 }}>Assign this role to members from the <strong>Members</strong> tab.</div>
         </div>
         <footer className="set-modal-foot">
-          <button className="sc-btn" onClick={onClose}>Cancel</button>
-          <button className="sc-btn primary" onClick={save} disabled={saving}>
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn btn--primary" onClick={save} disabled={saving}>
             {saving ? 'Saving…' : 'Save role'}
           </button>
         </footer>

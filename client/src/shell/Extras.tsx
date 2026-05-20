@@ -294,7 +294,7 @@ function SafetyCompare({ contactId, onClose }) {
             </svg>
             <span>Verified · safety number recorded for this device</span>
             <button
-              className="sc-btn"
+              className="btn"
               style={{ marginLeft: 'auto' }}
               onClick={() => verifiedContacts.clearVerified(contactId)}
             >
@@ -303,11 +303,11 @@ function SafetyCompare({ contactId, onClose }) {
           </div>
         ) : (
           <div className="sc-actions">
-            <button className="sc-btn" onClick={() => { setComparing(true); setTimeout(() => setComparing(false), 800); }}>Highlight blocks</button>
+            <button className="btn" onClick={() => { setComparing(true); setTimeout(() => setComparing(false), 800); }}>Highlight blocks</button>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button className="sc-btn danger" onClick={onClose}>Doesn't match</button>
+              <button className="btn btn--danger" onClick={onClose}>Doesn't match</button>
               <button
-                className="sc-btn primary"
+                className="btn btn--primary"
                 disabled={incomplete}
                 onClick={() => {
                   if (incomplete) return;
@@ -388,7 +388,7 @@ function AddPeerWizard({ open, onClose }) {
                           value={token} onChange={e => setToken(e.target.value)} />
                 <div className="apw-actions">
                   <span />
-                  <button className="sc-btn primary" disabled={token.length < 12} onClick={() => setStep(1)}>Parse →</button>
+                  <button className="btn btn--primary" disabled={token.length < 12} onClick={() => setStep(1)}>Parse →</button>
                 </div>
               </>
             ) : (
@@ -406,8 +406,8 @@ function AddPeerWizard({ open, onClose }) {
                   );
                 })()}
                 <div className="apw-actions">
-                  <button className="sc-btn" onClick={onClose}>Cancel</button>
-                  <button className="sc-btn primary">Copy command</button>
+                  <button className="btn" onClick={onClose}>Cancel</button>
+                  <button className="btn btn--primary">Copy command</button>
                 </div>
               </>
             )}
@@ -428,8 +428,8 @@ function AddPeerWizard({ open, onClose }) {
               <strong>This will replicate.</strong> Channels, messages, roles, and presence will sync to the new peer. Voice audio stays on the originating node.
             </div>
             <div className="apw-actions">
-              <button className="sc-btn" onClick={() => setStep(0)}>Back</button>
-              <button className="sc-btn primary" onClick={() => setStep(2)}>Connect peer</button>
+              <button className="btn" onClick={() => setStep(0)}>Back</button>
+              <button className="btn btn--primary" onClick={() => setStep(2)}>Connect peer</button>
             </div>
           </>
         )}
@@ -463,7 +463,7 @@ function AddPeerWizard({ open, onClose }) {
             </div>
             <div className="apw-actions">
               <span />
-              <button className="sc-btn primary" onClick={onClose}>Done</button>
+              <button className="btn btn--primary" onClick={onClose}>Done</button>
             </div>
           </>
         )}
