@@ -2525,8 +2525,7 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                               title="Pinned to this channel — open the pin pop to see all pins"
                               onClick={() => setPinnedOpen(true)}
                             >
-                              <Icon.Pin size={10} />
-                              pinned
+                              <Icon.Pin size={11} />
                             </span>
                           )}
                         </div>
@@ -2537,7 +2536,7 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                           title="Pinned to this channel"
                           onClick={() => setPinnedOpen(true)}
                         >
-                          <Icon.Pin size={10} />
+                          <Icon.Pin size={11} />
                         </span>
                       )}
                       <div className="body">
