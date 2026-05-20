@@ -582,6 +582,9 @@
   animation: dilla-settings-in 0.18s ease-out both;
   color: var(--fg);
 }
+/* Confirm dialog — narrower than the default modal-card so the prompt
+   doesn't read as a full settings panel. */
+.modal-card.confirm-card { width: min(420px, 100%); }
 .modal-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: 16px 22px;

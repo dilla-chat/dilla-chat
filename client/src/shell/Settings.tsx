@@ -11,6 +11,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useTeamStore } from '../stores/teamStore';
 import { useUserSettingsStore } from '../stores/userSettingsStore';
 import { useBlockStore } from '../stores/blockStore';
+import { dillaConfirm } from '../stores/confirmStore';
 import { api } from '../services/api';
 import { isMockSession } from '../services/mockSession';
 import { exportIdentityBlob } from '../services/keyStore';
@@ -113,7 +114,12 @@ function Settings({ open, mode, defaultTab, onClose }) {
                     ? useTeamStore.getState().teams.get(teamId)?.name ?? 'this team'
                     : 'this team';
                   if (!teamId) return;
-                  if (!confirm('Leave ' + teamName + '? You\'ll lose access to its channels and messages.')) return;
+                  if (!(await dillaConfirm({
+                    title: 'Leave ' + teamName + '?',
+                    body: 'You\'ll lose access to its channels and messages until you re-join with an invite.',
+                    confirmLabel: 'Leave team',
+                    danger: true,
+                  }))) return;
                   try {
                     if (!isMockSession()) await api.leaveTeam(teamId);
                     // Best-effort store cleanup. authStore's removeTeam drops
@@ -1497,7 +1503,12 @@ function TeamRoles() {
 
   async function deleteRole(roleId: string) {
     if (!teamId) return;
-    if (!window.confirm('Delete this role? Members keep their other roles.')) return;
+    if (!(await dillaConfirm({
+      title: 'Delete role?',
+      body: 'Members keep their other roles. This can\'t be undone.',
+      confirmLabel: 'Delete role',
+      danger: true,
+    }))) return;
     try {
       await api.deleteRole(teamId, roleId);
       await refresh();

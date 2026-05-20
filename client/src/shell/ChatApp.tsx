@@ -20,6 +20,7 @@ import { usePollStore, normalizePoll } from '../stores/pollStore';
 import { useChannelMuteStore } from '../stores/channelMuteStore';
 import { usePinStore } from '../stores/pinStore';
 import { useBlockStore } from '../stores/blockStore';
+import { dillaConfirm } from '../stores/confirmStore';
 import { api } from '../services/api';
 import { tryEncrypt } from '../hooks/useMessageDecryption';
 import { isMockSession } from '../services/mockSession';
@@ -1461,16 +1462,21 @@ function ServerRail({ servers, activeServer, onPick }) {
                    window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: s.name, author: 'system', text: 'All kanals in ' + s.name + ' marked as read.', duration: 2500 } }));
                  } },
                  { sep: true },
-                 { label: 'Leave team', danger: true, icon: null, onClick: () => {
-                   if (!confirm('Leave ' + s.name + '? You will lose access to channels and DMs in this team until you join again with a new invite.')) return;
+                 { label: 'Leave team', danger: true, icon: null, onClick: async () => {
+                   if (!(await dillaConfirm({
+                     title: 'Leave ' + s.name + '?',
+                     body: 'You\'ll lose access to channels and DMs in this team until you re-join with an invite.',
+                     confirmLabel: 'Leave team',
+                     danger: true,
+                   }))) return;
                    const teamId = useTeamStore.getState().activeTeamId;
                    const myId = useAuthStore.getState().teams.get(teamId || '')?.user?.id;
                    if (teamId && myId && !isMockSession()) {
-                     // No api.leaveTeam — self-kick via the member endpoint
-                     // achieves the same result. Server forwards the
-                     // member:left event so other clients drop us from
-                     // member lists.
-                     api.kickMember(teamId, myId).then(() => {
+                     // Real self-leave via the dedicated endpoint (server
+                     // enforces the sole-admin guard and audit-logs
+                     // member.leave). member:left is broadcast so other
+                     // clients drop us + rotate channel keys.
+                     api.leaveTeam(teamId).then(() => {
                        useAuthStore.getState().removeTeam?.(teamId);
                        window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: s.name, author: 'system', text: 'Left ' + s.name + '.', duration: 3000 } }));
                        window.location.assign('/');
@@ -3705,7 +3711,12 @@ function MemberList({ members, voiceConnection, rich, federated }) {
                      }
                    } }
                  : { label: 'Block', danger: true, icon: <Icon.Shield size={12} />, onClick: async () => {
-                     if (!confirm('Block ' + m.name + '? You won\'t see their messages or DMs.')) return;
+                     if (!(await dillaConfirm({
+                       title: 'Block ' + m.name + '?',
+                       body: 'You won\'t see their messages or DMs. They aren\'t notified.',
+                       confirmLabel: 'Block',
+                       danger: true,
+                     }))) return;
                      const teamId = useTeamStore.getState().activeTeamId;
                      useBlockStore.getState().block(m.id);
                      if (teamId && !isMockSession()) {
@@ -3714,8 +3725,13 @@ function MemberList({ members, voiceConnection, rich, federated }) {
                      }
                    } },
                { label: 'Mute', icon: <Icon.Mic size={13} off />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'system', text: m.name + ' muted in voice channels.', duration: 2200 } })) },
-               { label: 'Kick from team', danger: true, icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M10 4V2H3v12h7v-2M6 8h9M12 5l3 3-3 3M9 3v0" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>, onClick: () => {
-                 if (!confirm('Kick ' + m.name + ' from this team? Requires admin role on the server.')) return;
+               { label: 'Kick from team', danger: true, icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M10 4V2H3v12h7v-2M6 8h9M12 5l3 3-3 3M9 3v0" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>, onClick: async () => {
+                 if (!(await dillaConfirm({
+                   title: 'Kick ' + m.name + '?',
+                   body: 'They\'ll lose access to this team. They can be re-invited. Requires admin role.',
+                   confirmLabel: 'Kick',
+                   danger: true,
+                 }))) return;
                  const teamId = useTeamStore.getState().activeTeamId;
                  if (teamId && !isMockSession()) {
                    api.kickMember(teamId, m.id).then(() => {
@@ -3728,8 +3744,13 @@ function MemberList({ members, voiceConnection, rich, federated }) {
                    window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'admin', text: 'Demo only — kick would propagate across the mesh on a live server.', duration: 3000 } }));
                  }
                } },
-               { label: 'Ban from team', danger: true, icon: <Icon.Lock size={12} />, onClick: () => {
-                 if (!confirm('Ban ' + m.name + ' from this team? Bans prevent re-join via invite — irreversible without admin action.')) return;
+               { label: 'Ban from team', danger: true, icon: <Icon.Lock size={12} />, onClick: async () => {
+                 if (!(await dillaConfirm({
+                   title: 'Ban ' + m.name + '?',
+                   body: 'Bans prevent re-join via invite — irreversible without admin action.',
+                   confirmLabel: 'Ban',
+                   danger: true,
+                 }))) return;
                  const teamId = useTeamStore.getState().activeTeamId;
                  if (teamId && !isMockSession()) {
                    api.banMember(teamId, m.id).then(() => {

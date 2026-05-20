@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 import ChatApp from './ChatApp';
 import { TopBar, BottomBar, CommandPalette, SearchPalette } from './Chrome';
 import Settings from './Settings';
+import ConfirmDialog from '../components/ConfirmDialog/ConfirmDialog';
 import {
   NotificationStack,
   IncomingCall,
@@ -17,6 +18,7 @@ import {
 } from './Extras';
 import { THEMES } from './themes';
 import { useShellData } from './useShellData';
+import { ShellDataProvider } from './ShellDataContext';
 import { useTeamStore } from '../stores/teamStore';
 import { useAuthStore } from '../stores/authStore';
 import { useMeshStore } from '../stores/meshStore';
@@ -58,6 +60,18 @@ export default function AppShell({ ready }: AppShellProps) {
   const [ringCall, setRingCall] = useState<{ from: string; kind: string } | null>(null);
   const [safetyId, setSafetyId] = useState<string | null>(null);
   const [addPeerOpen, setAddPeerOpen] = useState(false);
+
+  // Ask once for browser-notification permission. The mention handler in
+  // useChannelEvents only fires a real Notification when permission is
+  // granted *and* the tab is hidden, so requesting up front gives us the
+  // option to alert the user when they're away — without an OS prompt in
+  // the middle of the conversation.
+  useEffect(() => {
+    if (typeof Notification === 'undefined') return;
+    if (Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => { /* user dismissed */ });
+    }
+  }, []);
 
   useEffect(() => {
     const onRing = (e: Event) => setRingCall((e as CustomEvent).detail ?? { from: 'ada', kind: 'voice' });
@@ -104,10 +118,15 @@ export default function AppShell({ ready }: AppShellProps) {
     };
   }, [cmdOpen, srchOpen]);
 
-  // ChatApp reads window.MOCK_DATA on every render — overwrite with the
-  // live-bridged shape produced by useShellData (Zustand → handoff schema).
+  // The live shell data (Zustand → handoff schema). Surfaced TWO ways:
+  // 1) `<ShellDataProvider>` for components migrating to context-based
+  //    consumption — the proper React pattern.
+  // 2) `window.SHELL_DATA` for legacy readers (ChatApp.tsx, Settings.tsx,
+  //    Extras.tsx, Chrome.tsx) that still do `window.SHELL_DATA?.X`.
+  //    Each reader is being ported to the context one at a time; the
+  //    window write can drop once the last reader is migrated.
   const shellData = useShellData();
-  (window as unknown as { MOCK_DATA: typeof shellData }).MOCK_DATA = shellData;
+  (window as unknown as { SHELL_DATA: typeof shellData }).SHELL_DATA = shellData;
 
   const activeTeamId = useTeamStore((s) => s.activeTeamId);
   const activeTeam = useTeamStore((s) => (s.activeTeamId ? s.teams.get(s.activeTeamId) : undefined));
@@ -172,6 +191,7 @@ export default function AppShell({ ready }: AppShellProps) {
   const wrapStyle = THEMES.themeVars(theme, opts);
 
   return (
+    <ShellDataProvider value={shellData as any}>
     <div className="mesh-wrap" style={wrapStyle}>
       <TopBar
         onCmdK={() => setCmdOpen(true)}
@@ -198,6 +218,7 @@ export default function AppShell({ ready }: AppShellProps) {
         scope={srchScope}
       />
       <NotificationStack />
+      <ConfirmDialog />
       <ConnectionBanner />
       {ringCall && (
         <IncomingCall
@@ -211,5 +232,6 @@ export default function AppShell({ ready }: AppShellProps) {
       )}
       <AddPeerWizard open={addPeerOpen} onClose={() => setAddPeerOpen(false)} />
     </div>
+    </ShellDataProvider>
   );
 }

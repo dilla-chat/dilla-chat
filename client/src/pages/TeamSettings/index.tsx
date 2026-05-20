@@ -12,6 +12,7 @@ import IntegrationsTab from './IntegrationsTab';
 import ModerationTab from './ModerationTab';
 import AuditLogTab from './AuditLogTab';
 import BansTab from './BansTab';
+import ConfirmDialog from '../../components/ConfirmDialog/ConfirmDialog';
 import type { Tab } from './types';
 import '../TeamSettings.css';
 
@@ -84,6 +85,7 @@ export default function TeamSettings() {
           </button>
         </div>
       )}
+      <ConfirmDialog />
     </SettingsLayout>
   );
 }
