@@ -76,6 +76,32 @@ export class VoiceActivityDetector {
         if (store.peers[entry.userId]) {
           store.updatePeer(entry.userId, { voiceLevel: emitLevel, speaking });
         }
+        // Mirror the speaking flag into voiceOccupants (separate
+        // source-of-truth consumed by the channel sidebar's
+        // Active-voice rows). Only on transitions — the level
+        // doesn't need to propagate there since the sidebar only
+        // toggles a CSS class, not a per-frame meter.
+        if (transition) {
+          const occ = store.voiceOccupants;
+          const next: typeof occ = {};
+          let changed = false;
+          for (const [chId, list] of Object.entries(occ)) {
+            let listChanged = false;
+            const nextList = list.map((p) => {
+              if (p.user_id !== entry.userId) return p;
+              if (p.speaking === speaking) return p;
+              listChanged = true;
+              return { ...p, speaking };
+            });
+            if (listChanged) {
+              next[chId] = nextList;
+              changed = true;
+            } else {
+              next[chId] = list;
+            }
+          }
+          if (changed) store.setVoiceOccupants(next);
+        }
       }
     }, VAD_INTERVAL_MS);
   }
@@ -106,6 +132,29 @@ export class VoiceActivityDetector {
     const store = useVoiceStore.getState();
     if (store.peers[localUserId]) {
       store.updatePeer(localUserId, { voiceLevel: emitLevel, speaking });
+    }
+    // Mirror to voiceOccupants so the sidebar sees the local user's
+    // own speaking state too. Only on transitions.
+    if (transition) {
+      const occ = store.voiceOccupants;
+      const next: typeof occ = {};
+      let changed = false;
+      for (const [chId, list] of Object.entries(occ)) {
+        let listChanged = false;
+        const nextList = list.map((p) => {
+          if (p.user_id !== localUserId) return p;
+          if (p.speaking === speaking) return p;
+          listChanged = true;
+          return { ...p, speaking };
+        });
+        if (listChanged) {
+          next[chId] = nextList;
+          changed = true;
+        } else {
+          next[chId] = list;
+        }
+      }
+      if (changed) store.setVoiceOccupants(next);
     }
   }
 
