@@ -463,6 +463,25 @@ select.set-input {
   background: var(--bg);
 }
 .set-tr.stale { opacity: 0.5; }
+/* Invite row whose state means Revoke would be a no-op (expired or
+   all uses spent). Dim the link and the meta cells, leave Copy
+   actionable in case the admin wants to share the dead URL as
+   evidence. The label in the actions column replaces the Revoke
+   button — see TeamInvites. */
+.set-tr-dead .set-link-code,
+.set-tr-dead > span:not(:first-child) { opacity: 0.55; }
+.set-invite-dead {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-3);
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  padding: 0.125rem 0.5rem;
+  text-align: center;
+}
 .set-tr.role { grid-template-columns: 1rem 1fr 5rem 2fr 8.75rem; }
 .set-tr code { font-family: var(--font-mono); color: var(--fg); overflow-wrap: anywhere; word-break: break-all; min-width: 0; }
 .set-tr > * { min-width: 0; overflow-wrap: anywhere; }

@@ -1249,8 +1249,12 @@ function TeamInvites() {
               id: inv.id,
               code: `${baseUrl}/join/${token}`,
               uses: `${inv.uses ?? 0} / ${inv.max_uses ?? '∞'}`,
-              // Store the raw timestamp; the render layer formats it
-              // relative so the cell can tick down without re-fetching.
+              // Keep the raw numbers + cap on the row so the render layer
+              // can decide whether Revoke is meaningful (an invite that's
+              // already hit max_uses or passed expires_at can't admit
+              // anyone, so revoking is a no-op).
+              usesUsed: inv.uses ?? 0,
+              usesMax: inv.max_uses ?? null,
               expiresAt: inv.expires_at ? new Date(inv.expires_at + 'Z') : null,
               who: userLabel(inv.created_by),
             };
@@ -1320,6 +1324,8 @@ function TeamInvites() {
           id,
           code: url,
           uses: `0 / ${inv.max_uses ?? '∞'}`,
+          usesUsed: 0,
+          usesMax: inv.max_uses ?? null,
           expiresAt: inv.expires_at ? new Date(inv.expires_at + 'Z') : null,
           who: userLabel(inv.created_by ?? meId),
         },
@@ -1355,23 +1361,43 @@ function TeamInvites() {
         <div className="set-th">
           <span>Link</span><span>Uses</span><span>Expires</span><span>Created by</span><span>Actions</span>
         </div>
-        {rows.map(r => (
-          <div key={r.code} className={'set-tr' + (r.stale ? ' stale' : '')}>
-            <span className="set-link-cell" title={r.code}>
-              <code className="set-link-code">{r.code}</code>
-              <Btn onClick={() => {
-                navigator.clipboard?.writeText(r.code);
-                window.dispatchEvent(new CustomEvent('dilla:notify', {
-                  detail: { channel: 'system', author: 'team', text: 'Invite link copied.', duration: 2000 },
-                }));
-              }}>Copy</Btn>
-            </span>
-            <span>{r.uses}</span>
-            <span>{formatExpiry(r.expiresAt)}</span>
-            <span>{r.who}</span>
-            <Btn danger onClick={() => revoke(r)}>Revoke</Btn>
-          </div>
-        ))}
+        {rows.map(r => {
+          // Revoke only does anything if the invite could still admit
+          // someone. Past expiry or maxed-out uses → it's already
+          // invalid; revoking is a no-op tidying action that masquerades
+          // as a security gesture. Disable the button + tag the row so
+          // the user reads it as "done" rather than "actionable".
+          const expired = r.expiresAt instanceof Date && r.expiresAt.getTime() <= Date.now();
+          const used = r.usesMax != null && r.usesUsed >= r.usesMax;
+          const dead = expired || used;
+          const deadReason = expired ? 'expired' : used ? 'all uses spent' : '';
+          return (
+            <div key={r.code} className={'set-tr' + (r.stale ? ' stale' : '') + (dead ? ' set-tr-dead' : '')}>
+              <span className="set-link-cell" title={r.code}>
+                <code className="set-link-code">{r.code}</code>
+                <Btn onClick={() => {
+                  navigator.clipboard?.writeText(r.code);
+                  window.dispatchEvent(new CustomEvent('dilla:notify', {
+                    detail: { channel: 'system', author: 'team', text: 'Invite link copied.', duration: 2000 },
+                  }));
+                }}>Copy</Btn>
+              </span>
+              <span>{r.uses}</span>
+              <span>{formatExpiry(r.expiresAt)}</span>
+              <span>{r.who}</span>
+              {dead ? (
+                <span
+                  className="set-invite-dead"
+                  title={'Already ' + deadReason + ' — no admin action needed'}
+                >
+                  {deadReason}
+                </span>
+              ) : (
+                <Btn danger onClick={() => revoke(r)}>Revoke</Btn>
+              )}
+            </div>
+          );
+        })}
       </div>
       <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <Btn onClick={create}>+ New invite link</Btn>
