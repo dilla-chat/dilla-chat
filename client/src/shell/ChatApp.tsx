@@ -2322,11 +2322,27 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
     return () => el.removeEventListener('scroll', onScroll);
   }, [channel.id]);
 
-  // Reset follow state whenever we switch channels.
+  // Reset follow state whenever we switch channels. We also schedule
+  // a few retries over the next second to catch late-loading images
+  // and other content that grows the feed after our initial snap —
+  // ResizeObserver covers most of those, but giphy/CDN media that
+  // mounts <img> elements asynchronously (e.g., decoded off the main
+  // thread) sometimes lands between observer cycles.
   useLayoutEffect(() => {
     userPagedUpRef.current = false;
     const el = feedRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    const retries: number[] = [];
+    [50, 150, 400, 900].forEach((ms) => {
+      retries.push(window.setTimeout(() => {
+        if (userPagedUpRef.current) return;
+        if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight;
+      }, ms));
+    });
+    return () => {
+      retries.forEach((id) => window.clearTimeout(id));
+    };
   }, [channel.id]);
 
   // Stick to bottom after any commit that changed the messages array.
