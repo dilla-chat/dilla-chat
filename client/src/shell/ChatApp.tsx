@@ -1577,7 +1577,7 @@ function UserPanel({ member }) {
 }
 
 // ───────────── main pane: text channel ─────────────
-function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, onSend, onReact, onVote, onEdit, onDelete, onAttach, replyTo, onSetReply, typing, onJoinVoice, membersOpen, onToggleMembers }) {
+function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, onSend, onReact, onVote, onEdit, onDelete, onAttach, replyTo, onSetReply, typing, onJoinVoice, membersOpen, onToggleMembers, slowModeLock }) {
   const data = (useShellDataContext() as any) || MOCK_DATA;
   const groups = useMemo(() => groupMessages(messages), [messages]);
   const feedRef = useRef(null);
@@ -2307,7 +2307,10 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
               )}
               <textarea
                 ref={textareaRef}
-                placeholder={channel.type === 'dm' ? `Message ${channel.name}` : `Message #${channel.name}`}
+                placeholder={slowModeLock
+                  ? `Slow mode — wait ${slowModeLock.secondsLeft}s before posting again`
+                  : (channel.type === 'dm' ? `Message ${channel.name}` : `Message #${channel.name}`)}
+                disabled={!!slowModeLock}
                 value={draft}
                 onChange={e => {
                   const v = e.target.value;
@@ -2375,12 +2378,21 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                 <Icon.Emoji size={15} />
               </button>
             </div>
-            <button className="send-btn" disabled={!draft.trim()} onClick={onSend} title="Send (↵)">
+            <button
+              className="send-btn"
+              disabled={!draft.trim() || !!slowModeLock}
+              onClick={onSend}
+              title={slowModeLock ? `Slow mode — ${slowModeLock.secondsLeft}s remaining` : 'Send (↵)'}
+            >
               <Icon.Send size={14} />
             </button>
           </div>
           <div className="composer-typing">
-            {typing.length > 0 ? (
+            {slowModeLock ? (
+              <span style={{ opacity: 0.8 }}>
+                <Icon.Lock size={10} /> Slow mode — {slowModeLock.secondsLeft}s before you can post again
+              </span>
+            ) : typing.length > 0 ? (
               <>{typing.join(', ')} {typing.length === 1 ? 'is' : 'are'} typing<span className="dot">.</span><span className="dot">.</span><span className="dot">.</span></>
             ) : (
               <span style={{ opacity: 0.6 }}>
@@ -3294,17 +3306,48 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   useEffect(() => { setMessages(data.MESSAGES); }, [data.MESSAGES]);
   useEffect(() => { setDmMessages(data.DM_MESSAGES); }, [data.DM_MESSAGES]);
 
+  // Per-channel slow-mode lock state. After 3 consecutive rejections we
+  // disable the composer until the cooldown expires; the 1s tick below
+  // forces a re-render so the countdown updates and the lock clears
+  // when the time-left hits zero.
+  const [slowLocks, setSlowLocks] = useState<Record<string, { strikes: number; until: number }>>({});
+  const [, tickSlowLocks] = useState(0);
+  useEffect(() => {
+    const hasActive = Object.values(slowLocks).some((l) => l.until > Date.now());
+    if (!hasActive) return;
+    const id = window.setInterval(() => {
+      tickSlowLocks((n) => n + 1);
+      setSlowLocks((prev) => {
+        const now = Date.now();
+        let changed = false;
+        const next: Record<string, { strikes: number; until: number }> = {};
+        for (const [cid, lock] of Object.entries(prev)) {
+          if (lock.until <= now) {
+            // Cooldown elapsed — reset strikes so a single late send doesn't
+            // immediately re-lock; user has to hit slow mode three times again.
+            changed = true;
+            continue;
+          }
+          next[cid] = lock;
+        }
+        return changed ? next : prev;
+      });
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [slowLocks]);
+
   // Server-side rejections (slow mode, future quota/perm gates) — roll
-  // back the optimistic message and restore its text to the composer so
-  // the user can retry after the cooldown.
+  // back the optimistic message, restore its text to the composer, and
+  // bump the strike count so we can disable the composer after three.
   useEffect(() => {
     const me = currentUserId();
     const unsub = ws.on('message:rejected', (payload: any) => {
       const channelId = payload?.channel_id;
       if (!channelId) return;
+      const reason = payload?.reason;
+      const retryIn = Number(payload?.retry_in ?? 0);
       setMessages(prev => {
         const list = (prev[channelId] || []) as any[];
-        // Most recent optimistic message authored by me in this channel.
         let removedText: string | null = null;
         const next = [...list];
         for (let i = next.length - 1; i >= 0; i--) {
@@ -3320,6 +3363,12 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
         }
         return { ...prev, [channelId]: next };
       });
+      if (reason === 'slow_mode' && retryIn > 0) {
+        setSlowLocks((prev) => {
+          const cur = prev[channelId] ?? { strikes: 0, until: 0 };
+          return { ...prev, [channelId]: { strikes: cur.strikes + 1, until: Date.now() + retryIn * 1000 } };
+        });
+      }
     });
     return () => { unsub(); };
   }, []);
@@ -4083,6 +4132,12 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
           dmPartner={dmPartner}
           draft={drafts[channel.id] || ''}
           setDraft={v => { setDrafts(prev => ({ ...prev, [channel.id]: v })); notifyTyping(); }}
+          slowModeLock={(() => {
+            const l = slowLocks[channel.id];
+            if (!l || l.strikes < 3) return null;
+            const secondsLeft = Math.max(0, Math.ceil((l.until - Date.now()) / 1000));
+            return secondsLeft > 0 ? { secondsLeft } : null;
+          })()}
           onSend={send}
           replyTo={replyTo[channel.id]}
           onSetReply={(id) => setReplyTo(prev => ({ ...prev, [channel.id]: id }))}
