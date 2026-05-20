@@ -976,15 +976,23 @@ function SafetyNumberQR({
     import('qrcode')
       .then((mod) => {
         if (cancelled || !ref.current) return;
-        // High error-correction so the QR survives being photographed
-        // off a screen; dark/light pulled from theme variables resolved
-        // on a temporary element.
+        // qrcode wants #rrggbb(aa). getComputedStyle().color returns
+        // "rgb(r, g, b)" or "rgba(r, g, b, a)", so parse and rebuild.
+        function toHex(cssColor: string, fallback: string): string {
+          const m = cssColor.match(/rgba?\(([^)]+)\)/i);
+          if (!m) return fallback;
+          const parts = m[1].split(',').map((s) => parseFloat(s.trim()));
+          const [r, g, b] = parts;
+          if ([r, g, b].some((n) => Number.isNaN(n))) return fallback;
+          const h = (n: number) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0');
+          return '#' + h(r) + h(g) + h(b);
+        }
         const probe = document.createElement('div');
-        probe.style.color = 'var(--fg)';
         document.body.appendChild(probe);
-        const fg = getComputedStyle(probe).color || '#000';
+        probe.style.color = 'var(--fg)';
+        const fg = toHex(getComputedStyle(probe).color, '#e8ece8');
         probe.style.color = 'var(--surface-1)';
-        const bg = getComputedStyle(probe).color || '#fff';
+        const bg = toHex(getComputedStyle(probe).color, '#0d100e');
         probe.remove();
         mod.default.toCanvas(ref.current, payload, {
           width: 256,
