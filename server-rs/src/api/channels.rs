@@ -270,7 +270,87 @@ pub async fn set_access(
         }
     }
 
+    // Force-disconnect any peers currently in the channel who no longer
+    // pass the new access list — admins shouldn't have to wait for users
+    // to leave on their own.
+    evict_inaccessible_peers(&state, &team_id, &channel_id).await;
+
     json_ok(serde_json::json!({ "role_ids": role_ids }))
+}
+
+/// After an access-list change, drop any active voice peers in `channel_id`
+/// whose access no longer passes. For each evicted peer we:
+///   1. Tell the SFU to tear down their peer connection.
+///   2. Remove them from the in-memory room map.
+///   3. Broadcast `voice:user-left` so every other client updates rosters.
+///   4. Send a `voice:force-disconnect` direct event so the affected
+///      client clears its local voice connection state and toasts the
+///      reason.
+async fn evict_inaccessible_peers(state: &AppState, team_id: &str, channel_id: &str) {
+    let room_mgr = match state.hub.voice_room_manager.as_ref() {
+        Some(rm) => rm.clone(),
+        None => return,
+    };
+    let peers = match room_mgr.get_room(channel_id).await {
+        Some(p) => p,
+        None => return,
+    };
+
+    // Resolve which peers lose access using a single DB connection.
+    let team = team_id.to_string();
+    let channel = channel_id.to_string();
+    let candidates: Vec<String> = peers.iter().map(|p| p.user_id.clone()).collect();
+    let losers = state
+        .db
+        .clone()
+        .with_read(|conn| {
+            let mut out = Vec::new();
+            for uid in &candidates {
+                let allowed =
+                    db::user_can_access_channel(conn, uid, &team, &channel).unwrap_or(false);
+                if !allowed {
+                    out.push(uid.clone());
+                }
+            }
+            Ok::<_, rusqlite::Error>(out)
+        })
+        .unwrap_or_default();
+
+    if losers.is_empty() {
+        return;
+    }
+
+    let sfu = state.hub.voice_sfu.as_ref().cloned();
+    for uid in losers {
+        if let Some(ref sfu) = sfu {
+            sfu.handle_leave(channel_id, &uid).await;
+        }
+        room_mgr.remove_peer(channel_id, &uid).await;
+
+        if let Ok(evt) = crate::ws::events::Event::new(
+            crate::ws::events::EVENT_VOICE_USER_LEFT,
+            crate::ws::events::VoiceUserLeftPayload {
+                channel_id: channel_id.to_string(),
+                user_id: uid.clone(),
+            },
+        ) {
+            if let Ok(bytes) = evt.to_bytes() {
+                state.hub.broadcast_to_all(bytes).await;
+            }
+        }
+
+        if let Ok(evt) = crate::ws::events::Event::new(
+            "voice:force-disconnect",
+            serde_json::json!({
+                "channel_id": channel_id,
+                "reason": "access_revoked",
+            }),
+        ) {
+            if let Ok(bytes) = evt.to_bytes() {
+                state.hub.send_to_user(&uid, bytes).await;
+            }
+        }
+    }
 }
 
 fn map_not_found_channel(e: AppError) -> AppError {

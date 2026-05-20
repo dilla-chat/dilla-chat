@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { usePresenceStore, type UserPresence } from '../stores/presenceStore';
 import { useVoiceStore } from '../stores/voiceStore';
+import type { VoicePeer } from '../services/api';
 import { ws } from '../services/websocket';
 
 /**
@@ -46,6 +47,31 @@ export function usePresenceEvents(activeTeamId: string | null): void {
       }
     });
 
+    const unsubJoinDenied = ws.on('voice:join-denied', (payload: { channel_id: string; reason?: string }) => {
+      const vs = useVoiceStore.getState();
+      if (vs.currentChannelId === payload.channel_id) {
+        vs.leaveChannel();
+      }
+      const reason = payload.reason === 'locked' ? 'Channel is locked.' : 'Voice join denied.';
+      window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: '', author: 'system', text: reason, duration: 3000 } }));
+    });
+
+    // Server-side eviction: an admin removed access while we were in the
+    // voice channel. Mirror the local leave-channel flow so WebRTC tears
+    // down and the UI reflects "not connected" without a reload.
+    const unsubForceDisconnect = ws.on('voice:force-disconnect', (payload: { channel_id?: string; reason?: string }) => {
+      const vs = useVoiceStore.getState();
+      if (vs.currentChannelId && (!payload.channel_id || vs.currentChannelId === payload.channel_id)) {
+        vs.leaveChannel();
+      }
+      const text = payload.reason === 'access_revoked'
+        ? 'You were removed from voice — channel access changed.'
+        : 'You were disconnected from voice.';
+      window.dispatchEvent(new CustomEvent('dilla:notify', {
+        detail: { channel: '', author: 'system', text, duration: 4500 },
+      }));
+    });
+
     // Global voice state updates: keep sidebar occupants in sync
     const unsubMuteUpdate = ws.on('voice:mute-update', (payload: { channel_id: string; user_id: string; muted: boolean; deafened: boolean }) => {
       if (payload.channel_id && payload.user_id) {
@@ -72,13 +98,27 @@ export function usePresenceEvents(activeTeamId: string | null): void {
       }
     });
 
+    // Initial snapshot from the server when the WS connects. Replaces
+    // any stale voiceOccupants entries for the team. Subsequent deltas
+    // come via the voice:user-joined/left handlers above.
+    const unsubRoomsSnapshot = ws.on(
+      'voice:rooms-snapshot',
+      (payload: { team_id: string; rooms: Record<string, VoicePeer[]> }) => {
+        if (!payload?.rooms) return;
+        useVoiceStore.getState().setVoiceOccupants(payload.rooms);
+      },
+    );
+
     return () => {
       unsubPresence();
       unsubVoiceJoin();
       unsubVoiceLeft();
+      unsubJoinDenied();
+      unsubForceDisconnect();
       unsubMuteUpdate();
       unsubScreenUpdate();
       unsubWebcamUpdate();
+      unsubRoomsSnapshot();
     };
   }, [activeTeamId, updatePresence]);
 }
