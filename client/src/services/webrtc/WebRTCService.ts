@@ -31,6 +31,13 @@ class WebRTCService {
   private unsubscribers: Array<() => void> = [];
   private pendingCandidates: RTCIceCandidateInit[] = [];
   private remoteDescSet = false;
+  // Serialise voice:offer handling so a second offer arriving mid-
+  // handshake (between setRemoteDescription's await and the
+  // corresponding setLocalDescription) doesn't trample the
+  // RTCPeerConnection signalingState. Reproduces as
+  //   'no pending remote description' or
+  //   'Cannot set local answer when createAnswer has not been called'.
+  private offerQueue: Promise<unknown> = Promise.resolve();
   private localUserId: string | null = null;
   private screenSender: RTCRtpSender | null = null;
   private webcamStream: MediaStream | null = null;
@@ -293,25 +300,49 @@ class WebRTCService {
     const store = useVoiceStore.getState;
 
     this.unsubscribers.push(
-      ws.on('voice:offer', async (payload: { sdp: string; channel_id?: string }) => {
-        if (!this.pc) return;
-        try {
-          const desc: RTCSessionDescriptionInit = { type: 'offer', sdp: payload.sdp };
-          await this.pc.setRemoteDescription(new RTCSessionDescription(desc));
-          this.remoteDescSet = true;
-          // Flush any ICE candidates that arrived before the offer
-          for (const c of this.pendingCandidates) {
-            await this.pc.addIceCandidate(new RTCIceCandidate(c));
+      ws.on('voice:offer', (payload: { sdp: string; channel_id?: string }) => {
+        // Chain onto the offer queue so two close-together offers
+        // can't interleave their await points. Each offer waits for
+        // the previous one's setLocalDescription to land before its
+        // own setRemoteDescription runs.
+        this.offerQueue = this.offerQueue.then(async () => {
+          if (!this.pc) return;
+          // signalingState !== 'stable' means we're already mid-
+          // negotiation — abandon the older offer and let this one
+          // run. Anything else (closed, etc.) bails out cleanly.
+          if (this.pc.signalingState === 'closed') return;
+          try {
+            const desc: RTCSessionDescriptionInit = { type: 'offer', sdp: payload.sdp };
+            await this.pc.setRemoteDescription(new RTCSessionDescription(desc));
+            // If a second offer arrived during the await above, the
+            // pc state may have moved on. Skip the rest so we don't
+            // build an answer for a description that's no longer
+            // current — the next queue tick will handle the newer
+            // offer.
+            if (this.pc.signalingState !== 'have-remote-offer') return;
+            this.remoteDescSet = true;
+            for (const c of this.pendingCandidates) {
+              try {
+                await this.pc.addIceCandidate(new RTCIceCandidate(c));
+              } catch (e) {
+                console.warn('[WebRTC] pending ICE flush failed:', e);
+              }
+            }
+            this.pendingCandidates = [];
+            const answer = await this.pc.createAnswer();
+            // Same check again — state can advance during createAnswer.
+            if (this.pc.signalingState !== 'have-remote-offer') return;
+            await this.pc.setLocalDescription(answer);
+            if (this.teamId && this.channelId && answer) {
+              ws.voiceAnswer(this.teamId, this.channelId, answer);
+            }
+          } catch (err) {
+            console.error('[WebRTC] Failed to handle offer:', err);
           }
-          this.pendingCandidates = [];
-          const answer = await this.pc.createAnswer();
-          await this.pc.setLocalDescription(answer);
-          if (this.teamId && this.channelId && answer) {
-            ws.voiceAnswer(this.teamId, this.channelId, answer);
-          }
-        } catch (err) {
-          console.error('[WebRTC] Failed to handle offer:', err);
-        }
+        }).catch((err) => {
+          // Defensive: don't let one failure poison the chain.
+          console.error('[WebRTC] offer queue error:', err);
+        });
       }),
       ws.on(
         'voice:ice-candidate',
