@@ -15,6 +15,8 @@ import { useVerifiedContacts } from '../stores/verifiedContactsStore';
 import { dillaConfirm } from '../stores/confirmStore';
 import PasskeyManager from '../components/PasskeyManager/PasskeyManager';
 import { api } from '../services/api';
+import { cryptoService } from '../services/crypto';
+import { ws } from '../services/websocket';
 import { isMockSession } from '../services/mockSession';
 import { exportIdentityBlob } from '../services/keyStore';
 import { useShellDataContext } from './ShellDataContext';
@@ -1116,14 +1118,49 @@ function UserPrivacy() {
         <Row label="Double Ratchet sessions" hint="Currently active per-contact key chains.">
           <span className="set-stat">{others.length} session{others.length === 1 ? '' : 's'}</span>
         </Row>
-        <Row label="Rotate session keys" hint="Forces new key exchange with everyone you've talked to. Old messages stay readable.">
+        <Row label="Rotate session keys" hint="Forces new sender keys for every text channel you participate in. Old messages stay readable on devices that already have them.">
           <Btn onClick={async () => {
-            // No bulk-rotation API yet; the underlying cryptoService has
-            // rotateChannelKey(channelId, removedUserId) for the per-channel
-            // case. A "rotate everything" path would iterate channels and
-            // call that, but it's a heavy operation behind a confirm —
-            // leave as an explicit notify until the dedicated UI exists.
-            window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'crypto', text: 'Bulk-rotate not wired yet. Per-channel rotation runs automatically when a member leaves.', duration: 4500 } }));
+            const ok = await dillaConfirm({
+              title: 'Rotate sender keys?',
+              body: 'Generates a new sender key per channel and re-distributes it to every member. Use this after a suspected device compromise. Existing messages stay readable on devices that already received them.',
+              confirmLabel: 'Rotate now',
+              cancelLabel: 'Cancel',
+            });
+            if (!ok) return;
+            try {
+              const teamId = useTeamStore.getState().activeTeamId;
+              if (!teamId) throw new Error('no active team');
+              const derivedKey = useAuthStore.getState().derivedKey;
+              if (!derivedKey) throw new Error('identity is locked');
+              const channels = (useTeamStore.getState().channels.get(teamId) ?? [])
+                .filter((c) => c.type === 'text');
+              let rotated = 0;
+              for (const ch of channels) {
+                // Empty removedUserId = "no exclusion" — we just want a
+                // fresh sender key broadcast to the current member set.
+                // rotateChannelKey returns null when this client has no
+                // session for the channel yet (e.g., a channel they've
+                // never sent to); we skip those quietly.
+                const dist = await cryptoService.rotateChannelKey(ch.id, '', derivedKey);
+                if (!dist) continue;
+                ws.distributeChannelKey(teamId, ch.id, dist);
+                rotated += 1;
+              }
+              window.dispatchEvent(new CustomEvent('dilla:notify', { detail: {
+                author: 'crypto',
+                text: rotated
+                  ? `Rotated sender keys for ${rotated} channel${rotated === 1 ? '' : 's'}.`
+                  : 'No active sender keys to rotate yet.',
+                duration: 3500,
+              } }));
+            } catch (err) {
+              console.warn('[Settings] bulk rotate failed', err);
+              window.dispatchEvent(new CustomEvent('dilla:notify', { detail: {
+                author: 'crypto',
+                text: 'Rotate failed: ' + (err as Error).message,
+                duration: 4500,
+              } }));
+            }
           }}>Rotate now</Btn>
         </Row>
         <Row label="Export identity backup" hint="Encrypted with your passphrase. Keep it offline.">

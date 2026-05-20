@@ -4800,10 +4800,6 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
       });
       return null;
     }
-    if (text === '/remind' || text.startsWith('/remind ')) {
-      notify('Reminders are not implemented yet.');
-      return null;
-    }
     if (text.startsWith('/')) {
       notify('Unknown command: ' + text.split(' ')[0] + ' — try /help.');
       return null;
