@@ -76,6 +76,8 @@ function mapChannel(ch, occupants, unreadCounts) {
     unread,
     locked: !!ch.locked,
     accessRoleIds: ch.accessRoleIds ?? [],
+    hiddenIfRestricted: !!(ch.hiddenIfRestricted ?? ch.hidden_if_restricted),
+    slowModeSeconds: (ch.slowModeSeconds ?? ch.slow_mode_seconds ?? 0) as number,
   };
   if (ch.type === 'voice') {
     const peers = occupants ?? [];
