@@ -230,7 +230,16 @@ function buildSyncInitPayload() {
   return {
     team: MOCK_TEAM,
     channels: MOCK_CHANNELS.map((ch) => ({ ...ch, team_id: DEMO_TEAM_ID, group_id: ch.groupId ?? null })),
-    members: MOCK_MEMBERS,
+    // The real server sends role_ids per member (it doesn't echo full
+    // role objects); the normalizer in useTeamSync reads role_ids and
+    // resolves them against the roles table. The fixtures held a roles
+    // array of objects for ergonomics so normalize them here — without
+    // this, mock alice ended up with zero permissions and admin menu
+    // items were silently hidden for her.
+    members: MOCK_MEMBERS.map((m) => ({
+      ...m,
+      role_ids: m.roles?.map((r: { id: string }) => r.id) ?? [],
+    })),
     roles: MOCK_ROLES,
     groups: MOCK_GROUPS.map((g) => ({
       id: g.id, team_id: g.teamId, name: g.name, position: g.position,

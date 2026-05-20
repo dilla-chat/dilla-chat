@@ -21,6 +21,7 @@ import { useChannelMuteStore } from '../stores/channelMuteStore';
 import { usePinStore } from '../stores/pinStore';
 import { useBlockStore } from '../stores/blockStore';
 import { dillaConfirm } from '../stores/confirmStore';
+import { resolvePermissions, PERM_MANAGE_CHANNELS, PERM_MANAGE_MEMBERS, PERM_MANAGE_MESSAGES, PERM_CREATE_INVITES, PERM_MANAGE_TEAM } from '../hooks/usePermissions';
 import { api } from '../services/api';
 import { tryEncrypt } from '../hooks/useMessageDecryption';
 import { isMockSession } from '../services/mockSession';
@@ -1517,6 +1518,11 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
   const sidebarTeamId = useTeamStore((s) => s.activeTeamId);
   const teamRoles = useTeamStore((s) => (sidebarTeamId ? s.roles.get(sidebarTeamId) ?? [] : [])) as any[];
   const teamMembers = useTeamStore((s) => (sidebarTeamId ? s.members.get(sidebarTeamId) ?? [] : [])) as any[];
+  // Resolved permissions bitmask for the current user in this team.
+  // Components read perms.has(bit) so admin-only menu items disappear
+  // for users who lack that bit — matches the server's require_permission
+  // gates so the UI doesn't dangle actions that would 403.
+  const perms = useMemo(() => resolvePermissions(teamMembers, currentUserId()), [teamMembers]);
   const teamGroups = useTeamStore((s) => (sidebarTeamId ? s.groups.get(sidebarTeamId) : undefined)) ?? EMPTY_LIST;
   const groupsById = useMemo(() => new Map<string, { name: string; accessRoleIds: string[]; hiddenIfRestricted: boolean }>(teamGroups.map((g) => [g.id, g])), [teamGroups]);
   const everyoneRoleId = teamRoles.find((r) => r.isDefault)?.id;
@@ -1707,11 +1713,13 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
                           ? { label: 'Disconnect from voice', danger: true, icon: <Icon.Mic size={13} off />, onClick: onLeaveVoice }
                           : { label: joinAllowed ? 'Join voice' : 'Locked', disabled: !joinAllowed, icon: joinAllowed ? <Icon.Speaker size={13} /> : <Icon.Lock size={13} />, onClick: () => { if (joinAllowed) onJoinVoice?.(c.id); } },
                         { label: 'Copy link', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6 10l4-4M6 6l4 4" stroke="currentColor" strokeWidth="1.4"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/></svg>, onClick: () => { navigator.clipboard?.writeText(('dilla://' + nodeHost + '/k/') + c.id); window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Voice kanal link copied.', duration: 2000 } })); } },
-                        { sep: true },
-                        c.groupId
-                          ? { label: 'Access is handled by group', icon: <Icon.Lock size={12} />, disabled: true, onClick: () => {} }
-                          : { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-channel-access', { detail: c.id })) },
-                        { label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-channel-settings', { detail: c.id })) },
+                        ...(perms.has(PERM_MANAGE_CHANNELS) ? [
+                          { sep: true },
+                          c.groupId
+                            ? { label: 'Access is handled by group', icon: <Icon.Lock size={12} />, disabled: true, onClick: () => {} }
+                            : { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-channel-access', { detail: c.id })) },
+                          { label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-channel-settings', { detail: c.id })) },
+                        ] : []),
                       ] } }));
                     }}>
                     <span className="ch-glyph"><Icon.Speaker size={14} /></span>
@@ -1780,6 +1788,9 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
                   // get no settings menu — admins create a real group via
                   // Kanal Settings → Group on a channel.
                   if (!grp.key.startsWith('g:')) return;
+                  // Group settings exist for admins only — no point opening a
+                  // ctx menu that's all-empty for a regular member.
+                  if (!perms.has(PERM_MANAGE_CHANNELS)) return;
                   e.preventDefault();
                   const groupId = grp.key.slice(2);
                   window.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
@@ -1821,11 +1832,13 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
                    } },
                    { label: (mutedChannels.has(c.id) ? 'Unmute kanal' : 'Mute kanal'), icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 6h2l3-3v10l-3-3H2zM10 5l3 3-3 3M13 5l-3 3 3 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>, onClick: () => { toggleMuteChannel(c.id); window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: (mutedChannels.has(c.id) ? 'Unmuted ' : 'Muted ') + '#' + c.name + '.', duration: 2500 } })); } },
                    { label: 'Copy link', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6 10l4-4M6 6l4 4" stroke="currentColor" strokeWidth="1.4"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/></svg>, onClick: () => { navigator.clipboard?.writeText(('dilla://' + nodeHost + '/k/') + c.id); window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Link copied.', duration: 2000 } })); } },
-                   { sep: true },
-                   c.groupId
-                     ? { label: 'Access is handled by group', icon: <Icon.Lock size={12} />, disabled: true, onClick: () => {} }
-                     : { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-channel-access', { detail: c.id })) },
-                   { label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-channel-settings', { detail: c.id })) },
+                   ...(perms.has(PERM_MANAGE_CHANNELS) ? [
+                     { sep: true },
+                     c.groupId
+                       ? { label: 'Access is handled by group', icon: <Icon.Lock size={12} />, disabled: true, onClick: () => {} }
+                       : { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-channel-access', { detail: c.id })) },
+                     { label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-channel-settings', { detail: c.id })) },
+                   ] : []),
                  ] } }));
                  }}>
               <span className="ch-glyph"><Icon.Hash size={14} /></span>
@@ -1848,6 +1861,7 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
                 title={collapsedGroups.has('voice:' + grp.key) ? 'Expand' : 'Collapse'}
                 onContextMenu={(e) => {
                   if (!grp.key.startsWith('g:')) return;
+                  if (!perms.has(PERM_MANAGE_CHANNELS)) return;
                   e.preventDefault();
                   const groupId = grp.key.slice(2);
                   window.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
@@ -1870,11 +1884,13 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
                        window.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
                          { label: joinAllowed ? 'Join voice' : 'Locked', disabled: !joinAllowed, icon: joinAllowed ? <Icon.Speaker size={13} /> : <Icon.Lock size={13} />, onClick: () => { if (joinAllowed) { onPickChannel(c.id); onJoinVoice?.(c.id); } } },
                          { label: 'Copy link', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6 10l4-4M6 6l4 4" stroke="currentColor" strokeWidth="1.4"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/></svg>, onClick: () => { navigator.clipboard?.writeText(('dilla://' + nodeHost + '/k/') + c.id); window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Voice kanal link copied.', duration: 2000 } })); } },
-                         { sep: true },
-                         c.groupId
-                           ? { label: 'Access is handled by group', icon: <Icon.Lock size={12} />, disabled: true, onClick: () => {} }
-                           : { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-channel-access', { detail: c.id })) },
-                         { label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-channel-settings', { detail: c.id })) },
+                         ...(perms.has(PERM_MANAGE_CHANNELS) ? [
+                           { sep: true },
+                           c.groupId
+                             ? { label: 'Access is handled by group', icon: <Icon.Lock size={12} />, disabled: true, onClick: () => {} }
+                             : { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-channel-access', { detail: c.id })) },
+                           { label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-channel-settings', { detail: c.id })) },
+                         ] : []),
                        ] } }));
                      }}>
                   <span className="ch-glyph"><Icon.Speaker size={14} /></span>
@@ -2079,6 +2095,15 @@ function UserPanel({ member }) {
 
 // ───────────── main pane: text channel ─────────────
 function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, onSend, onReact, onVote, onEdit, onDelete, onAttach, replyTo, onSetReply, typing, onJoinVoice, membersOpen, onToggleMembers, slowModeLock }) {
+  // Viewer permissions for this team, used to gate the message context
+  // menu (pin / unpin / delete-others). Mirrors the server's
+  // require_permission gates so we don't dangle an action that 403s.
+  const tcTeamId = useTeamStore((s) => s.activeTeamId);
+  const tcTeamMembers = useTeamStore((s) => (tcTeamId ? s.members.get(tcTeamId) ?? [] : [])) as any[];
+  const msgPerms = useMemo(
+    () => resolvePermissions(tcTeamMembers, currentUserId()),
+    [tcTeamMembers],
+  );
   const data = (useShellDataContext() as any) || MOCK_DATA;
   const groups = useMemo(() => groupMessages(messages), [messages]);
   const feedRef = useRef(null);
@@ -3009,35 +3034,39 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 8h11l-3-3M13 8l-3 3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
               Forward to…
             </button>
-            <div className="ctx-sep" />
-            <button onClick={() => {
-              const teamId = useTeamStore.getState().activeTeamId;
-              const ps = usePinStore.getState();
-              const already = ps.isPinned(channel.id, contextMenu.msgId);
-              // Optimistic flip so the icon updates instantly; rollback
-              // on failure. The server echoes message:pin-update which
-              // converges every other client.
-              if (already) ps.unpin(channel.id, contextMenu.msgId); else ps.pin(channel.id, contextMenu.msgId);
-              if (teamId && !isMockSession()) {
-                const call = already
-                  ? api.unpinMessage(teamId, channel.id, contextMenu.msgId)
-                  : api.pinMessage(teamId, channel.id, contextMenu.msgId);
-                call.catch((err) => {
-                  if (already) ps.pin(channel.id, contextMenu.msgId); else ps.unpin(channel.id, contextMenu.msgId);
-                  window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'pins', text: (err as Error).message || 'Pin failed — manage-messages permission required.', duration: 3500 } }));
-                });
-              } else if (isMockSession() && teamId) {
-                // Keep mockApi store in sync with the UI store on /mesh.
-                (already
-                  ? api.unpinMessage(teamId, channel.id, contextMenu.msgId)
-                  : api.pinMessage(teamId, channel.id, contextMenu.msgId)
-                ).catch(() => {});
-              }
-              setContextMenu(null);
-            }}>
-              <Icon.Pin size={13} />
-              {usePinStore.getState().isPinned(channel.id, contextMenu.msgId) ? 'Unpin from channel' : 'Pin to channel'}
-            </button>
+            {msgPerms.has(PERM_MANAGE_MESSAGES) && (
+              <>
+                <div className="ctx-sep" />
+                <button onClick={() => {
+                  const teamId = useTeamStore.getState().activeTeamId;
+                  const ps = usePinStore.getState();
+                  const already = ps.isPinned(channel.id, contextMenu.msgId);
+                  // Optimistic flip so the icon updates instantly; rollback
+                  // on failure. The server echoes message:pin-update which
+                  // converges every other client.
+                  if (already) ps.unpin(channel.id, contextMenu.msgId); else ps.pin(channel.id, contextMenu.msgId);
+                  if (teamId && !isMockSession()) {
+                    const call = already
+                      ? api.unpinMessage(teamId, channel.id, contextMenu.msgId)
+                      : api.pinMessage(teamId, channel.id, contextMenu.msgId);
+                    call.catch((err) => {
+                      if (already) ps.pin(channel.id, contextMenu.msgId); else ps.unpin(channel.id, contextMenu.msgId);
+                      window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'pins', text: (err as Error).message || 'Pin failed — manage-messages permission required.', duration: 3500 } }));
+                    });
+                  } else if (isMockSession() && teamId) {
+                    // Keep mockApi store in sync with the UI store on /mesh.
+                    (already
+                      ? api.unpinMessage(teamId, channel.id, contextMenu.msgId)
+                      : api.pinMessage(teamId, channel.id, contextMenu.msgId)
+                    ).catch(() => {});
+                  }
+                  setContextMenu(null);
+                }}>
+                  <Icon.Pin size={13} />
+                  {usePinStore.getState().isPinned(channel.id, contextMenu.msgId) ? 'Unpin from channel' : 'Pin to channel'}
+                </button>
+              </>
+            )}
             <button onClick={() => {
               setUnreadAt(contextMenu.msgId);
               // Roll the read watermark back to the message *before* the
@@ -3649,6 +3678,16 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
 
 // ───────────── member list ─────────────
 function MemberList({ members, voiceConnection, rich, federated }) {
+  // Resolve the viewer's perms once per render so menu items can hide
+  // admin actions for non-admins instead of toasting 'permission required'
+  // after a 403. teamMembers comes from the store so role changes flow in
+  // without a prop drill.
+  const memberListTeamId = useTeamStore((s) => s.activeTeamId);
+  const memberListTeamMembers = useTeamStore((s) => (memberListTeamId ? s.members.get(memberListTeamId) ?? [] : [])) as any[];
+  const memberPerms = useMemo(
+    () => resolvePermissions(memberListTeamMembers, currentUserId()),
+    [memberListTeamMembers],
+  );
   const data = (useShellDataContext() as any) || MOCK_DATA;
   const teamName = data?.SERVERS?.[0]?.name || '';
   const MC = window.MeshChrome || {};
@@ -3725,6 +3764,7 @@ function MemberList({ members, voiceConnection, rich, federated }) {
                      }
                    } },
                { label: 'Mute', icon: <Icon.Mic size={13} off />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'system', text: m.name + ' muted in voice channels.', duration: 2200 } })) },
+               ...(memberPerms.has(PERM_MANAGE_MEMBERS) && m.id !== currentUserId() ? [
                { label: 'Kick from team', danger: true, icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M10 4V2H3v12h7v-2M6 8h9M12 5l3 3-3 3M9 3v0" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>, onClick: async () => {
                  if (!(await dillaConfirm({
                    title: 'Kick ' + m.name + '?',
@@ -3763,6 +3803,7 @@ function MemberList({ members, voiceConnection, rich, federated }) {
                    window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'admin', text: 'Demo only — ban would propagate across the mesh on a live server.', duration: 3000 } }));
                  }
                } },
+               ] : []),
              ] } }));
            }}>
         <Avatar member={m} />

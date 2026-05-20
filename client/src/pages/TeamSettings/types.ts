@@ -12,19 +12,22 @@ export type Tab =
   | 'federation'
   | 'delete-server';
 
+// Canonical permission table — bits and order MUST match
+// server-rs/src/db/models.rs (PERM_*). The previous order had
+// manageRoles / manageMembers swapped and listed four bits the server
+// doesn't know about (voiceConnect, voiceSpeak, uploadFiles,
+// createThreads, mentionEveryone), so saving them via PATCH /roles
+// either no-op'd or persisted the wrong gate. Synced now.
 export const PERMISSION_FLAGS = [
-  { bit: 0x1, label: 'permissions.admin' },
-  { bit: 0x2, label: 'permissions.manageChannels' },
-  { bit: 0x4, label: 'permissions.manageRoles' },
-  { bit: 0x8, label: 'permissions.manageMembers' },
-  { bit: 0x10, label: 'permissions.createInvites' },
-  { bit: 0x20, label: 'permissions.sendMessages' },
-  { bit: 0x40, label: 'permissions.manageMessages' },
-  { bit: 0x80, label: 'permissions.voiceConnect' },
-  { bit: 0x100, label: 'permissions.voiceSpeak' },
-  { bit: 0x200, label: 'permissions.uploadFiles' },
-  { bit: 0x400, label: 'permissions.createThreads' },
-  { bit: 0x800, label: 'permissions.mentionEveryone' },
+  { bit: 0x001, label: 'permissions.admin' },           // PERM_ADMIN
+  { bit: 0x002, label: 'permissions.manageChannels' },  // PERM_MANAGE_CHANNELS
+  { bit: 0x004, label: 'permissions.manageMembers' },   // PERM_MANAGE_MEMBERS
+  { bit: 0x008, label: 'permissions.manageRoles' },     // PERM_MANAGE_ROLES
+  { bit: 0x010, label: 'permissions.sendMessages' },    // PERM_SEND_MESSAGES
+  { bit: 0x020, label: 'permissions.manageMessages' },  // PERM_MANAGE_MESSAGES
+  { bit: 0x040, label: 'permissions.createInvites' },   // PERM_CREATE_INVITES
+  { bit: 0x080, label: 'permissions.manageTeam' },      // PERM_MANAGE_TEAM
+  { bit: 0x100, label: 'permissions.bypassSlowMode' },  // PERM_BYPASS_SLOW_MODE
 ];
 
 export interface Invite {
