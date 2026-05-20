@@ -64,6 +64,17 @@ pub async fn create(
     let role = spawn_db(state.db.clone(), move |conn| {
         require_permission(conn, &user_id, &team_id, db::PERM_MANAGE_ROLES)?;
 
+        // Privilege-escalation guard: a non-admin moderator with
+        // manage_roles must not be able to mint a role that holds bits
+        // they don't hold themselves (and especially not PERM_ADMIN).
+        // Team owner has bits == !0 so this is a no-op for them.
+        let my_bits = db::user_permissions_bits(conn, &user_id, &team_id)?;
+        if body.permissions & !my_bits != 0 {
+            return Err(rusqlite::Error::InvalidParameterName(
+                "escalation".into(),
+            ));
+        }
+
         // Get current max position.
         let roles = db::get_roles_by_team(conn, &team_id)?;
         let max_pos = roles.iter().map(|r| r.position).max().unwrap_or(0);
@@ -80,9 +91,24 @@ pub async fn create(
             updated_at: String::new(),
         };
         db::create_role(conn, &role)?;
+        let _ = db::insert_audit_event(
+            conn,
+            &team_id,
+            Some(&user_id),
+            "role.create",
+            Some("role"),
+            Some(&role.id),
+            Some(&serde_json::json!({ "name": role.name, "permissions": role.permissions })),
+        );
         Ok(role)
     })
-    .await?;
+    .await
+    .map_err(|e| match e {
+        AppError::Forbidden(msg) if msg == "escalation" => AppError::Forbidden(
+            "you can't grant a permission you don't hold yourself".into(),
+        ),
+        other => other,
+    })?;
 
     json_ok(role)
 }
@@ -97,13 +123,39 @@ pub async fn update(
         require_permission(conn, &user_id, &team_id, db::PERM_MANAGE_ROLES)?;
 
         let mut role = get_role_for_team(conn, &role_id, &team_id)?;
+        let prev_perms = role.permissions;
         apply_role_updates(&mut role, &body);
+        // Reject any new bits the caller doesn't hold themselves —
+        // including PERM_ADMIN. Bits being CLEARED are fine (you can
+        // demote anyone you currently outrank). Only newly-added bits
+        // are checked against the caller's own permissions.
+        let added = role.permissions & !prev_perms;
+        if added != 0 {
+            let my_bits = db::user_permissions_bits(conn, &user_id, &team_id)?;
+            if added & !my_bits != 0 {
+                return Err(rusqlite::Error::InvalidParameterName(
+                    "escalation".into(),
+                ));
+            }
+        }
         db::update_role(conn, &role)?;
+        let _ = db::insert_audit_event(
+            conn,
+            &team_id,
+            Some(&user_id),
+            "role.update",
+            Some("role"),
+            Some(&role.id),
+            Some(&serde_json::json!({ "name": role.name, "permissions": role.permissions, "color": role.color })),
+        );
         Ok(role)
     })
     .await
     .map_err(|e| match e {
         AppError::NotFound(_) => AppError::NotFound("role not found".into()),
+        AppError::Forbidden(msg) if msg == "escalation" => AppError::Forbidden(
+            "you can't grant a permission you don't hold yourself".into(),
+        ),
         other => other,
     })?;
 
@@ -134,6 +186,15 @@ pub async fn delete_role(
         }
 
         db::delete_role(conn, &role_id)?;
+        let _ = db::insert_audit_event(
+            conn,
+            &team_id,
+            Some(&user_id),
+            "role.delete",
+            Some("role"),
+            Some(&role_id),
+            Some(&serde_json::json!({ "name": role.name })),
+        );
         Ok(())
     })
     .await
@@ -166,6 +227,16 @@ pub async fn reorder(
                 }
             }
         }
+
+        let _ = db::insert_audit_event(
+            conn,
+            &team_id,
+            Some(&user_id),
+            "role.reorder",
+            None,
+            None,
+            Some(&serde_json::json!({ "role_ids": body.role_ids })),
+        );
 
         db::get_roles_by_team(conn, &team_id)
     })

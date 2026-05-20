@@ -1634,6 +1634,16 @@ function RoleEditor({ teamId, role, onClose, onSaved }: { teamId: string; role: 
   const [color, setColor] = useStateS(role?.color ?? '#7a9aa7');
   const [perms, setPerms] = useStateS<number>(role?.permissions ?? 0);
   const [saving, setSaving] = useStateS(false);
+  // Privilege-escalation guard, UI side. Bits the current user doesn't
+  // hold themselves are checked-but-disabled if already set on the role
+  // (don't silently drop them on save) and hidden otherwise. The server
+  // also rejects with 403 if a moderator tries to grant a bit past
+  // their ceiling — this is the discoverability half of the same gate.
+  const teamMembersForGuard = useTeamStore((s) => s.members.get(teamId) ?? []);
+  const myBits = useMemo(
+    () => resolvePermissions(teamMembersForGuard as any, currentUserId()).bits,
+    [teamMembersForGuard],
+  );
 
   if (!role) return null;
 
@@ -1676,16 +1686,28 @@ function RoleEditor({ teamId, role, onClose, onSaved }: { teamId: string; role: 
           <div style={{ height: 8 }} />
           <div style={{ color: 'var(--fg-3)', fontSize: 11, marginBottom: 6 }}>PERMISSIONS</div>
           {(() => {
-            // When PERM_ADMIN is on, every other bit is implicitly true —
-            // user_has_permission() in the server early-returns. Show the
-            // others as visually-checked + disabled with a "covered by
-            // Admin" hint so the role looks honest about what each toggle
-            // actually does.
             const adminOn = (perms & 0x1) !== 0;
-            return PERM_FLAGS.map((f) => {
+            // Full-admin viewers hold every bit; non-admins hold only
+            // their union. Hide bits we don't hold AND that the role
+            // doesn't already have — keeping the previously-granted
+            // ones visible (read-only) so a save doesn't silently
+            // strip permissions the role used to have. A viewer with
+            // myBits === -1 (admin/owner) passes everything through.
+            const iAmAdmin = (myBits & 0x1) !== 0 || myBits === -1;
+            return PERM_FLAGS.flatMap((f) => {
               const isAdminBit = f.bit === 0x1;
-              const covered = adminOn && !isAdminBit;
-              return (
+              const covered = adminOn && !isAdminBit; // PERM_ADMIN swallows the rest
+              const onTheRole = (perms & f.bit) !== 0;
+              const iHoldIt = iAmAdmin || (myBits & f.bit) !== 0;
+              if (!iHoldIt && !onTheRole) return []; // hide entirely
+              const escalation = !iHoldIt && onTheRole;
+              const disabled = covered || escalation;
+              const tip = covered
+                ? 'Covered by Admin (all permissions)'
+                : escalation
+                ? "You don't hold this permission yourself — it's read-only to you"
+                : undefined;
+              return [
                 <label
                   key={f.key}
                   style={{
@@ -1693,15 +1715,15 @@ function RoleEditor({ teamId, role, onClose, onSaved }: { teamId: string; role: 
                     alignItems: 'center',
                     gap: 8,
                     padding: '6px 0',
-                    cursor: covered ? 'default' : 'pointer',
-                    opacity: covered ? 0.5 : 1,
+                    cursor: disabled ? 'default' : 'pointer',
+                    opacity: disabled ? 0.5 : 1,
                   }}
-                  title={covered ? 'Covered by Admin (all permissions)' : undefined}
+                  title={tip}
                 >
                   <input
                     type="checkbox"
-                    checked={covered || (perms & f.bit) !== 0}
-                    disabled={covered}
+                    checked={covered || onTheRole}
+                    disabled={disabled}
                     onChange={() => togglePerm(f.bit)}
                   />
                   <span>{f.label}</span>
@@ -1710,8 +1732,13 @@ function RoleEditor({ teamId, role, onClose, onSaved }: { teamId: string; role: 
                       via Admin
                     </span>
                   )}
+                  {escalation && (
+                    <span style={{ marginLeft: 'auto', fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--fg-3)' }}>
+                      above your ceiling
+                    </span>
+                  )}
                 </label>
-              );
+              ];
             });
           })()}
           <div style={{ color: 'var(--fg-3)', fontSize: 11, marginTop: 14 }}>Assign this role to members from the <strong>Members</strong> tab.</div>

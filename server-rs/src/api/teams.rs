@@ -286,12 +286,39 @@ pub async fn update_member(
         if let Some(ref role_ids) = body.role_ids {
             // Validate every role belongs to this team before touching the
             // member_roles table, so a partial failure can't half-apply.
+            // OR the role bitmasks while we have them so the privilege
+            // check below doesn't repeat the DB read.
+            let mut assigned_bits: i64 = 0;
             for rid in role_ids {
                 let role = db::get_role_by_id(conn, rid)?
                     .ok_or_else(|| rusqlite::Error::InvalidParameterName(format!("role {rid} not found")))?;
                 if role.team_id != team_id {
                     return Err(rusqlite::Error::InvalidParameterName(
                         "role does not belong to this team".into(),
+                    ));
+                }
+                assigned_bits |= role.permissions;
+                if role.permissions & db::PERM_ADMIN != 0 {
+                    assigned_bits = !0;
+                }
+            }
+            // Privilege-escalation guard: assigning a role that would
+            // grant the target a permission the actor doesn't hold is
+            // a no. Only newly-added bits are checked — losing bits is
+            // always fine. Compare against the union of the target's
+            // CURRENT bits and what they'd hold after.
+            let prev = db::get_member_roles(conn, &member.id)?;
+            let mut prev_bits: i64 = 0;
+            for r in &prev {
+                prev_bits |= r.permissions;
+                if r.permissions & db::PERM_ADMIN != 0 { prev_bits = !0; break; }
+            }
+            let added = assigned_bits & !prev_bits;
+            if added != 0 {
+                let my_bits = db::user_permissions_bits(conn, &user_id, &team_id)?;
+                if added & !my_bits != 0 {
+                    return Err(rusqlite::Error::InvalidParameterName(
+                        "escalation".into(),
                     ));
                 }
             }
@@ -319,7 +346,12 @@ pub async fn update_member(
         Ok(member)
     })
     .await
-    .map_err(map_not_found("member"))?;
+    .map_err(|e| match e {
+        AppError::Forbidden(msg) if msg == "escalation" => AppError::Forbidden(
+            "you can't grant a permission you don't hold yourself".into(),
+        ),
+        other => map_not_found("member")(other),
+    })?;
 
     if roles_changed {
         // Broadcast so other clients (including the affected user) refresh

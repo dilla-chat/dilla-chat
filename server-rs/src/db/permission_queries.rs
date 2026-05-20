@@ -55,23 +55,51 @@ pub fn get_member_roles(
 
 // ── Permission check ────────────────────────────────────────────────────────
 
+/// Resolve the full permissions bitmask the user holds in this team.
+/// Team owner returns -1 (every bit set) so the caller's "does the
+/// requested perm fit within mine?" check trivially passes. Used by the
+/// privilege-escalation guards in role + member updates so a moderator
+/// can't grant a permission they don't hold themselves.
+pub fn user_permissions_bits(
+    conn: &Connection,
+    user_id: &str,
+    team_id: &str,
+) -> Result<i64, rusqlite::Error> {
+    let is_owner: bool = conn
+        .query_row(
+            "SELECT created_by FROM teams WHERE id = ?1",
+            [team_id],
+            |row| row.get::<_, String>(0),
+        )
+        .map(|owner| owner == user_id)
+        .unwrap_or(false);
+    if is_owner {
+        return Ok(!0);
+    }
+    let member = get_member_by_user_and_team(conn, user_id, team_id)?;
+    let Some(member) = member else { return Ok(0); };
+    let roles = get_member_roles(conn, &member.id)?;
+    let mut bits: i64 = 0;
+    for role in roles {
+        bits |= role.permissions;
+        // PERM_ADMIN implies everything — short-circuit so a non-admin
+        // can't peek at admin-only flags on a different role they hold.
+        if role.permissions & PERM_ADMIN != 0 {
+            return Ok(!0);
+        }
+    }
+    Ok(bits)
+}
+
 pub fn user_has_permission(
     conn: &Connection,
     user_id: &str,
     team_id: &str,
     perm: i64,
 ) -> Result<bool, rusqlite::Error> {
-    // Check if user is admin (admins have all permissions).
-    let is_admin: bool = conn
-        .query_row(
-            "SELECT is_admin FROM users WHERE id = ?1",
-            [user_id],
-            |row| row.get::<_, i32>(0).map(|v| v != 0),
-        )
-        .unwrap_or(false);
-    if is_admin {
-        return Ok(true);
-    }
+    // Global users.is_admin no longer short-circuits team-scoped perms.
+    // All team-level rights derive from team-owner status or assigned roles
+    // — keeps server-operator and team-admin from being conflated.
 
     // Check if user is team owner.
     let is_owner: bool = conn
