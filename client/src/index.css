@@ -9,7 +9,10 @@
   color: var(--text-normal);
   background-color: var(--bg-tertiary);
 
-  font-synthesis: none;
+  /* Our self-hosted fonts ship upright-only (no italic file, JetBrains
+     Mono tops out at 500), so synthesised faces are the only thing
+     making `*italic*` and `**bold**` visually distinct in chat. */
+  font-synthesis: weight style;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -59,10 +62,12 @@ button:hover {
 button:active {
   transform: scale(0.98);
 }
+/* No focus outline on buttons — accepted accessibility tradeoff for
+   the visual style. Keep `:focus` reachable via tabindex for
+   screen-reader users, just don't render a ring around the element. */
 button:focus,
 button:focus-visible {
-  outline: 0.125rem solid var(--brand-500);
-  outline-offset: calc(-1 * var(--spacing-xs));
+  outline: none;
 }
 
 input:focus, textarea:focus {
