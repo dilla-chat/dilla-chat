@@ -1335,15 +1335,6 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
                    { sep: true },
                    { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-channel-access', { detail: c.id })) },
                    { label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-channel-settings', { detail: c.id })) },
-                   { label: 'Leave kanal', danger: true, icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M10 4V2H3v12h7v-2M6 8h9M12 5l3 3-3 3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>, onClick: () => {
-                     if (!confirm('Leave #' + c.name + '?')) return;
-                     // No api.leaveChannel — channels are team-wide and members
-                     // see them by default. Best we can do client-side is drop
-                     // the channel from the local store + emit a leave hint.
-                     const teamId = useTeamStore.getState().activeTeamId;
-                     if (teamId) useTeamStore.getState().removeChannel(teamId, c.id);
-                     window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Left #' + c.name + ' locally. Admins can permanently delete in Team Settings.', duration: 3000 } }));
-                   } },
                  ] } }));
                  }}>
               <span className="ch-glyph"><Icon.Hash size={14} /></span>
