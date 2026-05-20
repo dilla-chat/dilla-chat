@@ -155,14 +155,14 @@ export default function NewServerModal({
         <footer className="new-server-modal-actions">
           <button
             type="button"
-            className="new-server-modal-btn secondary"
+            className="btn"
             onClick={onClose}
           >
             Cancel
           </button>
           <button
             type="button"
-            className="new-server-modal-btn primary"
+            className="btn btn--primary"
             onClick={handleSubmit}
             disabled={!canSubmit}
           >

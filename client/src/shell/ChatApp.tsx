@@ -3437,8 +3437,8 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
             </div>
             <blockquote className="cd-preview">{deleteTarget.text}</blockquote>
             <div className="cd-actions">
-              <button className="cd-btn" onClick={() => setDeleteConfirm(null)}>Cancel · esc</button>
-              <button className="cd-btn danger" autoFocus
+              <button className="btn" onClick={() => setDeleteConfirm(null)}>Cancel · esc</button>
+              <button className="btn btn--danger" autoFocus
                       onClick={() => {
                         if (onDelete) onDelete(deleteConfirm);
                         setDeleteConfirm(null);

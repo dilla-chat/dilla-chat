@@ -154,7 +154,7 @@ export default function ForwardModal({
         <footer className="forward-modal-actions">
           <button
             type="button"
-            className="forward-modal-btn secondary"
+            className="btn"
             onClick={onClose}
           >
             Cancel

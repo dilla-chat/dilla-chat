@@ -130,14 +130,14 @@ export default function SafetyCompare({
         <footer className="safety-compare-actions">
           <button
             type="button"
-            className="safety-compare-btn danger"
+            className="btn btn--danger"
             onClick={onMarkMismatch}
           >
             Doesn't match
           </button>
           <button
             type="button"
-            className="safety-compare-btn primary"
+            className="btn btn--primary"
             onClick={onMarkVerified}
           >
             Mark verified ✓

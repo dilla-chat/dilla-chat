@@ -139,7 +139,7 @@ export default function NewDMModal({ currentUserId, onClose, onDMCreated }: Read
 
         <div className="new-dm-footer">
           <button
-            className="new-dm-create-btn"
+            className="btn btn--primary"
             disabled={selected.length === 0 || creating}
             onClick={handleCreate}
           >

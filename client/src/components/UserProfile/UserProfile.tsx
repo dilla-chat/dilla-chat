@@ -66,7 +66,7 @@ export default function UserProfile({ member, presence, x, y, onSendMessage }: R
         )}
 
         {onSendMessage && (
-          <button className="user-profile-send-btn" onClick={onSendMessage}>
+          <button className="btn btn--primary btn--block" onClick={onSendMessage}>
             {t('profile.sendMessage')}
           </button>
         )}

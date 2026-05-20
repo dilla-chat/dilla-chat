@@ -913,7 +913,7 @@ function ConnectStep({
       <div className="onb-actions">
         <span />
         <button
-          className="onb-btn primary"
+          className="btn btn--primary"
           disabled={
             connecting ||
             (mode === 'existing'
@@ -1074,10 +1074,10 @@ function IdentityStep({
       )}
 
       <div className="onb-actions">
-        <button className="onb-btn" onClick={onBack}>
+        <button className="btn" onClick={onBack}>
           Back
         </button>
-        <button className="onb-btn primary" disabled={!ok} onClick={onNext}>
+        <button className="btn btn--primary" disabled={!ok} onClick={onNext}>
           Generate keys
         </button>
       </div>
@@ -1113,7 +1113,7 @@ function KeyGenStep({ lines, error, onBack }) {
 
       {error && (
         <div className="onb-actions">
-          <button className="onb-btn" onClick={onBack}>
+          <button className="btn" onClick={onBack}>
             ← Back to identity
           </button>
         </div>
@@ -1178,7 +1178,7 @@ function SafetyStep({ fingerprint, recoveryKey, onBack, onNext }) {
           <div className="onb-fp-text">{fingerprint || '— pending —'}</div>
           <div className="onb-fp-actions">
             <button
-              className="onb-btn"
+              className="btn"
               onClick={() => {
                 if (!fingerprint) return;
                 navigator.clipboard?.writeText(fingerprint);
@@ -1188,10 +1188,10 @@ function SafetyStep({ fingerprint, recoveryKey, onBack, onNext }) {
             >
               {copiedFp ? 'Copied' : 'Copy'}
             </button>
-            <button className="onb-btn" disabled>
+            <button className="btn" disabled>
               Print
             </button>
-            <button className="onb-btn" disabled>
+            <button className="btn" disabled>
               Save QR
             </button>
           </div>
@@ -1219,7 +1219,7 @@ function SafetyStep({ fingerprint, recoveryKey, onBack, onNext }) {
             </div>
             <div className="onb-fp-actions">
               <button
-                className="onb-btn"
+                className="btn"
                 onClick={() => {
                   navigator.clipboard?.writeText(recoveryKey);
                   setCopiedRk(true);
@@ -1250,11 +1250,11 @@ function SafetyStep({ fingerprint, recoveryKey, onBack, onNext }) {
       )}
 
       <div className="onb-actions">
-        <button className="onb-btn" onClick={onBack}>
+        <button className="btn" onClick={onBack}>
           Back
         </button>
         <button
-          className="onb-btn primary"
+          className="btn btn--primary"
           onClick={onNext}
           disabled={!!recoveryKey && !recoveryConfirmed}
         >
@@ -1303,7 +1303,7 @@ function DoneStep({ username, team, mode, onOpen }) {
 
       <div className="onb-actions">
         <span />
-        <button type="button" className="onb-btn primary" onClick={onOpen}>
+        <button type="button" className="btn btn--primary" onClick={onOpen}>
           Open Dilla →
         </button>
       </div>

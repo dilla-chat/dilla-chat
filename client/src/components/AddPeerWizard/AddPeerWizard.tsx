@@ -144,14 +144,14 @@ export default function AddPeerWizard({ open, onClose, onComplete }: Readonly<Pr
               <div className="add-peer-actions">
                 <button
                   type="button"
-                  className="add-peer-btn secondary"
+                  className="btn"
                   onClick={onClose}
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
-                  className="add-peer-btn primary"
+                  className="btn btn--primary"
                   onClick={handleParseToken}
                   disabled={!tokenInput.trim()}
                 >
@@ -183,14 +183,14 @@ export default function AddPeerWizard({ open, onClose, onComplete }: Readonly<Pr
               <div className="add-peer-actions">
                 <button
                   type="button"
-                  className="add-peer-btn secondary"
+                  className="btn"
                   onClick={() => setStep('token')}
                 >
                   ← Back
                 </button>
                 <button
                   type="button"
-                  className="add-peer-btn primary"
+                  className="btn btn--primary"
                   onClick={() => setStep('handshake')}
                 >
                   Begin handshake →
@@ -230,7 +230,7 @@ export default function AddPeerWizard({ open, onClose, onComplete }: Readonly<Pr
               <div className="add-peer-actions">
                 <button
                   type="button"
-                  className="add-peer-btn primary"
+                  className="btn btn--primary"
                   onClick={() => {
                     onComplete?.({ url: peerUrl, label: peerUrl });
                     onClose();

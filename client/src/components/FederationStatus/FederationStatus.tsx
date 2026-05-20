@@ -173,7 +173,7 @@ export default function FederationStatus({ teamId }: Readonly<{ teamId: string }
       <div className="federation-join">
         <h3>{t('federation.joinCommand')}</h3>
         <button
-          className="federation-generate-btn"
+          className="btn btn--primary"
           onClick={handleGenerateToken}
           disabled={generating}
         >
