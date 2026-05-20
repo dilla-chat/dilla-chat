@@ -1794,16 +1794,17 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
                     {(c.participants || []).map(pid => {
                       const m = members.byId[pid];
                       const peer = c.voicePeers && c.voicePeers[pid];
-                      // peer.speaking comes from server voice:state
-                      // broadcasts (throttled) — safe to read here for
-                      // remote peers. We don't surface the local user's
-                      // own speaking state in this row (they see their
-                      // mic activity via the voice-dock below).
+                      // For self, the local toggles are the source of
+                      // truth (the peer object the server echoes back
+                      // may not carry our local mute/cam/screen flags
+                      // until we explicitly propagate them). For remote
+                      // peers, read from peer.* which comes from the
+                      // throttled voice:state broadcast.
                       const isSelf = pid === currentUserId();
-                      const muted = peer ? !!peer.muted : (isSelf && mute);
-                      const deafened = peer ? !!peer.deafened : (isSelf && deaf);
-                      const screenOn = peer ? !!peer.screen_sharing : false;
-                      const camOn = peer ? !!peer.webcam_sharing : (isSelf && cam);
+                      const muted = isSelf ? mute : !!peer?.muted;
+                      const deafened = isSelf ? deaf : !!peer?.deafened;
+                      const screenOn = isSelf ? screen : !!peer?.screen_sharing;
+                      const camOn = isSelf ? cam : !!peer?.webcam_sharing;
                       const speaking = !isSelf && !muted && !!peer?.speaking;
                       return (
                         <div key={pid} className={'voice-participant' + (speaking ? ' speaking' : '') + (muted ? ' muted' : '')}
