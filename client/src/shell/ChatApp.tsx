@@ -2302,40 +2302,24 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
     handleFiles(files);
   }
   // Sticky-bottom strategy:
-  //   1. `userPagedUp` flips to true only on a user-driven scroll
-  //      *upward* (wheel/keyboard/touch). Programmatic scrolls
-  //      don't toggle it.
-  //   2. As long as it's false, we snap to scrollHeight after any
-  //      render that adds messages (useLayoutEffect — runs before
-  //      paint, so the user never sees a wrong position) and after
-  //      any ResizeObserver firing (catches image loads etc.).
-  //   3. When the user scrolls back to within 30px of the bottom,
-  //      `userPagedUp` flips to false again — follow resumes.
+  //   `userPagedUpRef` mirrors the scroll position. Whenever a
+  //   `scroll` event fires we set it based on distance from the
+  //   bottom — > 30px = paged up, ≤ 30px = at the live edge. This
+  //   catches every kind of user-initiated scroll (wheel, scrollbar
+  //   drag, touch, keyboard) since they all fire `scroll`. It does
+  //   NOT flip false-positive on async content growth because
+  //   scrollTop staying constant means no scroll event fires.
   const userPagedUpRef = useRef(false);
 
   useEffect(() => {
     const el = feedRef.current;
     if (!el) return;
-    function onUserScrollUp() {
-      // Any wheel/keydown that doesn't put us at the live edge
-      // counts as the user wanting to read history.
-      const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-      if (dist > 30) userPagedUpRef.current = true;
-    }
     function onScroll() {
       const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-      if (dist < 30) userPagedUpRef.current = false;
+      userPagedUpRef.current = dist > 30;
     }
-    el.addEventListener('wheel', onUserScrollUp, { passive: true });
-    el.addEventListener('touchmove', onUserScrollUp, { passive: true });
-    el.addEventListener('keydown', onUserScrollUp);
     el.addEventListener('scroll', onScroll, { passive: true });
-    return () => {
-      el.removeEventListener('wheel', onUserScrollUp);
-      el.removeEventListener('touchmove', onUserScrollUp);
-      el.removeEventListener('keydown', onUserScrollUp);
-      el.removeEventListener('scroll', onScroll);
-    };
+    return () => el.removeEventListener('scroll', onScroll);
   }, [channel.id]);
 
   // Reset follow state whenever we switch channels.
