@@ -364,6 +364,11 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
         ...payload,
         teamId: teamIdFromPayload,
         accessRoleIds: (payload.access_role_ids ?? payload.accessRoleIds ?? (idx >= 0 ? list[idx].accessRoleIds : [])) as string[],
+        // Server emits snake_case fields; normalize to the camelCase
+        // names the rest of the client uses so live edits to slow mode
+        // or the hidden flag actually take effect.
+        slowModeSeconds: (payload.slow_mode_seconds ?? payload.slowModeSeconds ?? (idx >= 0 ? list[idx].slowModeSeconds : 0)) as number,
+        hiddenIfRestricted: Boolean(payload.hidden_if_restricted ?? payload.hiddenIfRestricted ?? (idx >= 0 ? list[idx].hiddenIfRestricted : false)),
       } as Channel;
       const next = idx >= 0 ? list.map((c, i) => (i === idx ? updated : c)) : [...list, updated];
       teamStore.setChannels(teamIdFromPayload, next);
