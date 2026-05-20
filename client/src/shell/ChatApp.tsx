@@ -3454,12 +3454,14 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
           setLightbox((cur) => cur ? { ...cur, index: (cur.index + delta + cur.sources.length) % cur.sources.length } : cur);
         // Square chrome to match the rest of the GUI — matches the
         // settings modal's icon buttons and the bottom-bar chunk look.
+        // Icon glyphs adopt --accent so they read as theme-coloured
+        // affordances instead of plain white chrome.
         const orbBtn = {
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           width: '2.5rem', height: '2.5rem',
           borderRadius: 'var(--r-sm)',
           background: 'rgba(255,255,255,0.12)',
-          color: '#fff',
+          color: 'var(--accent)',
           border: '1px solid rgba(255,255,255,0.2)',
           cursor: 'pointer',
           backdropFilter: 'blur(4px)',
@@ -3490,7 +3492,7 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                   style={{ ...orbBtn, position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)' }}
                 >
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
-                    <path d="M15 6l-6 6 6 6" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </button>
                 <button
@@ -3500,7 +3502,7 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                   style={{ ...orbBtn, position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)' }}
                 >
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
-                    <path d="M9 6l6 6-6 6" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </button>
                 <div
