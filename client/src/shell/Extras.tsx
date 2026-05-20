@@ -216,16 +216,28 @@ function SafetyCompare({ contactId, onClose }) {
   const status = peerHex ? verifiedContacts.isVerified(contactId, peerHex) : 'unverified';
   const verified = status === 'verified';
   const keyChanged = status === 'changed';
-  const formatHex = (hex) => [0,1,2,3,4,5]
-    .map(i => hex.slice(i * 8, i * 8 + 8).replace(/(.{4})(.{4})/, '$1 $2'))
-    .filter(Boolean)
-    .join('  ');
-  const yours = ownHex ? formatHex(ownHex) : '— — — — no key available — — — —';
-  const theirs = peerHex ? formatHex(peerHex) : '— — — — no key available — — — —';
-  // Pair the numbers into 12-block pairs for side-by-side comparison
-  const yp = yours.split(/\s+/).filter(Boolean);
-  const tp = theirs.split(/\s+/).filter(Boolean);
-  while (tp.length < yp.length) tp.push('····');
+  // An Ed25519 public key is 32 bytes = 64 hex chars. Anything shorter
+  // means we never got the full key from the server for that side, so
+  // the comparison can't be trusted — surface that to the user instead
+  // of silently padding with placeholder dots.
+  const EXPECTED_HEX = 64;
+  const ownIncomplete = !ownHex || ownHex.length < EXPECTED_HEX;
+  const peerIncomplete = !peerHex || peerHex.length < EXPECTED_HEX;
+  const incomplete = ownIncomplete || peerIncomplete;
+  // Render the FULL 32-byte key as 16 4-char tokens (8 rows × 2 cols).
+  // Pad each side to the expected length with em-dashes so missing data
+  // is visually distinct (and aligned across sides) — never with the
+  // dot pattern that previously made bad data look like real digits.
+  function tokensFor(hex: string): string[] {
+    const tokens: string[] = [];
+    for (let i = 0; i < EXPECTED_HEX; i += 4) {
+      const chunk = hex.slice(i, i + 4);
+      tokens.push(chunk.length === 4 ? chunk : '——');
+    }
+    return tokens;
+  }
+  const yp = tokensFor(ownHex);
+  const tp = tokensFor(peerHex);
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="sc-dialog" onClick={e => e.stopPropagation()}>
@@ -264,7 +276,12 @@ function SafetyCompare({ contactId, onClose }) {
             </div>
           </div>
         </div>
-        {keyChanged && (
+        {incomplete && (
+          <div className="sc-warn">
+            ⚠ Identity key not fully loaded ({ownIncomplete && peerIncomplete ? 'both sides' : ownIncomplete ? 'you' : m.name}: {ownIncomplete ? `${ownHex.length / 2 || 0}` : `${peerHex.length / 2}`}/32 bytes). Reload the team — comparing now would be meaningless.
+          </div>
+        )}
+        {keyChanged && !incomplete && (
           <div className="sc-warn">
             ⚠ Their identity key has changed since you last verified — compare again before trusting messages.
           </div>
@@ -291,9 +308,9 @@ function SafetyCompare({ contactId, onClose }) {
               <button className="sc-btn danger" onClick={onClose}>Doesn't match</button>
               <button
                 className="sc-btn primary"
-                disabled={!peerHex}
+                disabled={incomplete}
                 onClick={() => {
-                  if (!peerHex) return;
+                  if (incomplete) return;
                   verifiedContacts.markVerified(contactId, peerHex);
                 }}
               >
