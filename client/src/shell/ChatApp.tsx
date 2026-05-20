@@ -1263,7 +1263,7 @@ function ThreadPanel({ channelId, messageId, members, onClose, onReact }) {
               }}
               rows={1}
             />
-            <button className="send-btn" disabled={!draft.trim()} onClick={send} title="Send (↵)">
+            <button className="btn btn--primary btn--icon" disabled={!draft.trim()} onClick={send} title="Send (↵)">
               <Icon.Send size={14} />
             </button>
           </div>
@@ -3231,7 +3231,7 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
               </button>
             </div>
             <button
-              className="send-btn"
+              className="btn btn--primary btn--icon"
               disabled={
                 (!draft.trim() && (pendingAttachments?.length ?? 0) === 0) ||
                 !!slowModeLock

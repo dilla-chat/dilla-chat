@@ -2128,20 +2128,8 @@ img.attach-img {
   display: inline-flex; align-items: center; justify-content: center;
 }
 .composer-input .comp-btn:hover { color: var(--accent); background: var(--surface-hi); }
-.send-btn {
-  width: 32px; height: 32px;
-  padding: 0;
-  border-radius: var(--r-sm);
-  background: var(--accent);
-  color: var(--accent-ink);
-  border: none;
-  display: flex; align-items: center; justify-content: center;
-  cursor: pointer;
-  flex: 0 0 auto;
-  transition: transform .1s, box-shadow .1s, background .12s, opacity .12s;
-}
-.send-btn[disabled] { background: var(--surface-2); color: var(--fg-3); cursor: default; opacity: 0.7; }
-.send-btn:not([disabled]):hover { transform: translateY(-1px); box-shadow: 0 4px 10px var(--accent-soft); }
+/* The composer's send button is now a plain `.btn .btn--primary
+   .btn--icon` (see styles/button.css). */
 
 /* ───── Member sidebar ───── */
 .members {
@@ -2814,7 +2802,7 @@ img.attach-img {
 .chat[data-style="mesh"] .main-head .ch-title { text-transform: uppercase; letter-spacing: 0.04em; }
 .chat[data-style="mesh"] .tab { text-transform: uppercase; letter-spacing: 0.04em; }
 .chat[data-style="mesh"] .icon-btn:hover { background: var(--accent-soft); color: var(--accent); }
-.chat[data-style="mesh"] .send-btn { box-shadow: 0 0 0 1px var(--accent); }
+.chat[data-style="mesh"] .btn--primary.btn--icon { box-shadow: 0 0 0 1px var(--accent); }
 .chat[data-style="mesh"] .rail-item { border-radius: 2px; }
 .chat[data-style="mesh"] .channel-row { font-family: var(--font-mono); }
 .chat[data-style="mesh"] .composer-typing,
