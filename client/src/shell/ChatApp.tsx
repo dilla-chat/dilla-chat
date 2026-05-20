@@ -2301,50 +2301,105 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
     const files = Array.from(e.dataTransfer.files || []);
     handleFiles(files);
   }
-  // With .feed in column-reverse, the bottom (newest) sits at
-  // scrollTop = 0 by default and the browser anchors there even
-  // when late-loading media grows the feed. The two cases the
-  // browser *doesn't* handle for us:
-  //
-  //   1. Channel switch — `.feed` is the same DOM element across
-  //      channels, so its scrollTop persists. Reset to 0 whenever
-  //      channel.id changes so the new channel opens at its newest.
-  //   2. New message authored by the current user — if they'd
-  //      scrolled up to read history, sending should snap them back
-  //      to their own message instead of leaving it offscreen.
+  // Sticky-bottom: keep the viewport pinned to the newest message
+  // whenever the user is at (or near) the bottom, even when content
+  // grows asynchronously (image loads, reactions populate, GIFs
+  // resize). A ResizeObserver on the feed watches the .msg-group
+  // children and re-snaps to scrollHeight whenever the content
+  // height changes — provided the user hasn't deliberately scrolled
+  // up to read history. Channel switch and own-message sends always
+  // force the snap regardless of where the user was.
   const myUserIdRef = useRef<string | null>(null);
   useEffect(() => { myUserIdRef.current = currentUserId(); });
-  useEffect(() => {
-    if (feedRef.current) feedRef.current.scrollTop = 0;
-  }, [channel.id]);
+
+  const wasNearBottomRef = useRef(true);
   const lastMessageIdRef = useRef<string | null>(null);
+
+  // Track whether we're near the bottom so the resize observer can
+  // decide whether to follow the growing content.
   useEffect(() => {
-    if (!feedRef.current || messages.length === 0) return;
+    const el = feedRef.current;
+    if (!el) return;
+    function onScroll() {
+      const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+      wasNearBottomRef.current = dist < 80;
+    }
+    el.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [channel.id]);
+
+  // Channel switch: always land on the newest.
+  useEffect(() => {
+    const el = feedRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    wasNearBottomRef.current = true;
+    lastMessageIdRef.current = messages.length
+      ? messages[messages.length - 1].id
+      : null;
+  }, [channel.id]);
+
+  // New-message snap: when *our* message arrives at the bottom, force
+  // the snap so the sender always sees their own send land.
+  useEffect(() => {
+    const el = feedRef.current;
+    if (!el || messages.length === 0) return;
     const newest = messages[messages.length - 1];
     const prev = lastMessageIdRef.current;
     lastMessageIdRef.current = newest.id;
-    // Only snap when the *new* arrival is from us; incoming messages
-    // from others while reading history shouldn't yank the viewport.
     if (prev && newest.id !== prev && newest.author === myUserIdRef.current) {
-      feedRef.current.scrollTop = 0;
+      el.scrollTop = el.scrollHeight;
+      wasNearBottomRef.current = true;
     }
   }, [messages]);
+
+  // ResizeObserver: when the feed's content grows (initial mount, an
+  // image loading, a reaction row populating, etc.), re-snap to the
+  // bottom *only* if the user was already near the bottom — so
+  // scrolling up into history isn't fought by the observer.
+  useEffect(() => {
+    const el = feedRef.current;
+    if (!el) return;
+    let raf = 0;
+    const snap = () => {
+      raf = 0;
+      if (!el) return;
+      if (wasNearBottomRef.current) el.scrollTop = el.scrollHeight;
+    };
+    const ro = new ResizeObserver(() => {
+      if (raf) return;
+      raf = requestAnimationFrame(snap);
+    });
+    // Observe each direct child so we catch content growth (images
+    // loading, reactions/edits resizing a bubble) — the .feed
+    // container itself doesn't resize when its scrollable content
+    // does, so observing the container alone wouldn't fire.
+    const observed = new Set<Element>();
+    const observeChildren = () => {
+      for (const c of Array.from(el.children)) {
+        if (!observed.has(c)) {
+          ro.observe(c);
+          observed.add(c);
+        }
+      }
+    };
+    observeChildren();
+    const mo = new MutationObserver(observeChildren);
+    mo.observe(el, { childList: true });
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [channel.id]);
 
   useEffect(() => {
     const el = feedRef.current;
     if (!el) return;
     function onScroll() {
-      // column-reverse scrollTop semantics differ between browsers:
-      // Chrome/Firefox keep scrollTop ≥ 0 with 0 = visual bottom,
-      // older Safari has gone negative. Take the absolute distance
-      // from "at the live edge" so the button appears regardless of
-      // sign, and compare against both possible representations of
-      // the bottom (raw 0 and the legacy scrollHeight-clientHeight).
-      const distFromBottom = Math.min(
-        Math.abs(el.scrollTop),
-        Math.abs(el.scrollHeight - el.scrollTop - el.clientHeight),
-      );
-      setShowJump(distFromBottom > 120);
+      const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+      setShowJump(dist > 120);
     }
     el.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
@@ -2352,8 +2407,9 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
   }, [channel.id]);
 
   function scrollToBottom() {
-    // scrollTop = 0 is the visual bottom in a column-reverse flex.
-    if (feedRef.current) feedRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    if (feedRef.current) {
+      feedRef.current.scrollTo({ top: feedRef.current.scrollHeight, behavior: 'smooth' });
+    }
   }
 
   // Compute day dividers
@@ -2566,11 +2622,7 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
       <div className="feed" ref={feedRef}>
         {groups.length === 0 ? (
           <EmptyFeed channel={channel} dmPartner={dmPartner} />
-        ) : /* JSX is reversed below so .feed (column-reverse) can flip
-             it back to oldest-on-top visually. seenDays still tracks
-             natural iteration order so day dividers land before the
-             first group of each day in the resulting visual layout. */
-        groups.map((g, i) => {
+        ) : groups.map((g, i) => {
           const dayKey = g.at.toDateString();
           const showDay = !seenDays.has(dayKey);
           seenDays.add(dayKey);
@@ -2578,7 +2630,7 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
           const author = members.byId[g.author] || { name: g.author, color: '#666', initials: '??' };
           if (g.base.kind === 'system') {
             return (
-              <div className="msg-group" key={i}>
+              <React.Fragment key={i}>
                 {showDay && <div className="day-divider">{dayLabel(g.at)}</div>}
                 <div className="msg system">
                   <div></div>
@@ -2587,11 +2639,11 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                     {g.base.meta && <div className="meta">{g.base.meta}</div>}
                   </div>
                 </div>
-              </div>
+              </React.Fragment>
             );
           }
           return (
-            <div className="msg-group" key={i}>
+            <React.Fragment key={i}>
               {showDay && <div className="day-divider">{dayLabel(g.at)}</div>}
               {showUnreadAbove && (
                 <div className="unread-divider"><span>new</span></div>
@@ -2886,9 +2938,9 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                   </div>
                 );
               })}
-            </div>
+            </React.Fragment>
           );
-        }).reverse()}
+        })}
       </div>
 
       <div className="composer-wrap">

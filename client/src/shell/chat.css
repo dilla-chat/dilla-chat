@@ -968,30 +968,15 @@
 }
 .chat[data-style="slate"] .enc-badge { background: var(--accent-soft); color: var(--accent); }
 
-/* Messages — column-reverse pins the bottom natively: the natural
- * scrollTop = 0 corresponds to the visual bottom (newest message),
- * so new arrivals don't yank the viewport and reloads land at the
- * latest message without any scroll juggling. We feed the JSX in
- * reverse order (see ChatApp.tsx) so the visual flip restores the
- * oldest-on-top reading direction. */
+/* Messages — natural top-to-bottom flow. Sticky-bottom is handled
+ * in JS (see useStickyBottom in ChatApp.tsx) using a ResizeObserver
+ * on the content so late-loading media doesn't strand the viewport. */
 .feed {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   padding: 16px 0 6px;
   scroll-behavior: smooth;
-  display: flex;
-  flex-direction: column-reverse;
-}
-
-/* Each timeframe-grouped collection of messages renders as a single
- * flex item of .feed. Without this wrapper every individual .msg
- * would be a direct child of the column-reverse container and the
- * flip would scramble within-group order. The inner block layout is
- * the default top-to-bottom flow, so day-divider + messages stay in
- * natural reading order. */
-.msg-group {
-  display: block;
 }
 .day-divider {
   display: flex; align-items: center;

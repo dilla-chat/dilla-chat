@@ -34,11 +34,7 @@ export function useChannelLazyLoad(
     async function maybeLoad() {
       if (inflight.current) return;
       if (!el) return;
-      // The feed renders column-reverse: scrollTop = 0 is the visual
-      // bottom (newest), and the visual TOP (oldest, where we want to
-      // page in older history) is at scrollTop ≈ scrollHeight − clientHeight.
-      const distanceFromVisualTop = el.scrollHeight - el.scrollTop - el.clientHeight;
-      if (distanceFromVisualTop > TOP_THRESHOLD_PX) return;
+      if (el.scrollTop > TOP_THRESHOLD_PX) return;
 
       const teamId = useTeamStore.getState().activeTeamId;
       if (!teamId) return;
@@ -54,10 +50,13 @@ export function useChannelLazyLoad(
       inflight.current = true;
       state.setLoadingHistory(channelId!, true);
 
-      // With .feed in column-reverse, prepending older messages adds
-      // them to the visual TOP without shifting the viewport — the
-      // browser anchors to scrollTop = 0 (visual bottom). No manual
-      // scroll restoration needed; just fetch and append.
+      // Capture viewport anchor: distance from the current scroll
+      // position to the bottom of the scrollable content. After
+      // prepending older history we restore that offset so the user
+      // stays parked on the same messages instead of being yanked
+      // upward by the freshly mounted prepend.
+      const anchorOffsetFromBottom = el.scrollHeight - el.scrollTop;
+
       try {
         const raw = (await api.getMessages(
           teamId,
@@ -83,6 +82,13 @@ export function useChannelLazyLoad(
 
         useMessageStore.getState().prependMessages(channelId!, decrypted);
         useMessageStore.getState().setHasMore(channelId!, decrypted.length >= PAGE_SIZE);
+
+        // Wait a frame for the new DOM to mount, then restore scroll
+        // so the user keeps reading the messages they were looking at.
+        requestAnimationFrame(() => {
+          if (!el) return;
+          el.scrollTop = el.scrollHeight - anchorOffsetFromBottom;
+        });
       } catch (err) {
         console.warn('[useChannelLazyLoad] fetch failed', err);
       } finally {
