@@ -2302,9 +2302,33 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
     handleFiles(files);
   }
   // With .feed in column-reverse, the bottom (newest) sits at
-  // scrollTop = 0 by default — no manual scroll-to-bottom needed on
-  // mount, new arrivals, or late-loading media. The browser anchors
-  // the viewport for us.
+  // scrollTop = 0 by default and the browser anchors there even
+  // when late-loading media grows the feed. The two cases the
+  // browser *doesn't* handle for us:
+  //
+  //   1. Channel switch — `.feed` is the same DOM element across
+  //      channels, so its scrollTop persists. Reset to 0 whenever
+  //      channel.id changes so the new channel opens at its newest.
+  //   2. New message authored by the current user — if they'd
+  //      scrolled up to read history, sending should snap them back
+  //      to their own message instead of leaving it offscreen.
+  const myUserIdRef = useRef<string | null>(null);
+  useEffect(() => { myUserIdRef.current = currentUserId(); });
+  useEffect(() => {
+    if (feedRef.current) feedRef.current.scrollTop = 0;
+  }, [channel.id]);
+  const lastMessageIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!feedRef.current || messages.length === 0) return;
+    const newest = messages[messages.length - 1];
+    const prev = lastMessageIdRef.current;
+    lastMessageIdRef.current = newest.id;
+    // Only snap when the *new* arrival is from us; incoming messages
+    // from others while reading history shouldn't yank the viewport.
+    if (prev && newest.id !== prev && newest.author === myUserIdRef.current) {
+      feedRef.current.scrollTop = 0;
+    }
+  }, [messages]);
 
   useEffect(() => {
     const el = feedRef.current;
