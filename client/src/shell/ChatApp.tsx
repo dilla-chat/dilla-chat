@@ -4509,29 +4509,51 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   }
   const channel = viewChannel;
 
-  // /giphy picker handoff: GiphyPicker dispatches dilla:giphy-pick with
-  // the chosen URL; we route it through the same optimistic-send + ws
-  // send path that the slash command would have used before. Mirrors
-  // sendRawText inside processSlash to avoid touching its closure. Must
-  // sit AFTER `const channel` because the dep array reads it.
+  // /giphy picker handoff. Two flavours of payload:
+  //   • { url, attachment }: server materialized the gif into an
+  //     attachment; we post as a kind:'image' message so the bytes
+  //     stream from our /attachments path, not media.giphy.com.
+  //   • { url } only: embed failed or /mesh has no real backend;
+  //     fall back to posting the raw URL as text (renderText inlines
+  //     it via the .gif extension).
+  // Must sit AFTER `const channel` because the dep array reads it.
   useEffect(() => {
     function onPick(e: Event) {
-      const url = (e as CustomEvent).detail?.url;
+      const detail = (e as CustomEvent).detail as { url?: string; attachment?: { id: string } } | undefined;
+      const url = detail?.url;
+      const att = detail?.attachment;
       if (!url) return;
       const ts = new Date();
-      const optimistic = { id: 'new-' + Date.now(), author: currentUserId(), at: ts, kind: 'text', text: url, replyTo: null };
-      if (channel?.type === 'dm') {
+      const isDM = channel?.type === 'dm';
+      const isImagePath = !!att;
+      const optimistic: Record<string, unknown> = isImagePath
+        ? {
+            id: 'new-' + Date.now(),
+            author: currentUserId(),
+            at: ts,
+            kind: 'image',
+            text: '',
+            attachment: { kind: 'image', label: 'giphy.gif', src: url, w: 320, h: 200 },
+            replyTo: null,
+          }
+        : { id: 'new-' + Date.now(), author: currentUserId(), at: ts, kind: 'text', text: url, replyTo: null };
+      if (isDM && channel) {
         setDmMessages(prev => ({ ...prev, [channel.id]: [...(prev[channel.id] || []), optimistic] }));
         if (activeTeamId) {
-          api.sendDMMessage(activeTeamId, channel.id, url).catch((err) => console.warn('[giphy] DM send failed', err));
+          // DM endpoint doesn't take attachment_ids — bake the id into
+          // the body the way the file-upload path does. Receivers parse
+          // the [file:<id>] marker and resolve to /attachments.
+          const body = att ? `[file:${att.id}] giphy.gif` : url;
+          api.sendDMMessage(activeTeamId, channel.id, body).catch((err) => console.warn('[giphy] DM send failed', err));
         }
       } else if (activeChannel) {
         setMessages(prev => ({ ...prev, [activeChannel]: [...(prev[activeChannel] || []), optimistic] }));
         if (activeTeamId && !isMockSession()) {
           (async () => {
             try {
-              const encrypted = await tryEncrypt(url, activeChannel, derivedKey);
-              ws.sendMessage(activeTeamId, activeChannel, encrypted);
+              const body = att ? ' ' : url; // image-only message — body is a space the encrypt step can chew on
+              const encrypted = await tryEncrypt(body, activeChannel, derivedKey);
+              ws.sendMessage(activeTeamId, activeChannel, encrypted, 'text', undefined, att ? [att.id] : undefined);
             } catch (err) {
               console.warn('[giphy] channel send failed', err);
             }
@@ -5092,13 +5114,35 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
         <GiphyPicker
           query={giphyPicker.query}
           results={giphyPicker.results}
-          onPick={(url) => {
-            // TextChannel listens for this and routes it through its
-            // existing sendRawText (same path /giphy used to take
-            // automatically). Drops the picker first so the modal is
-            // gone before the optimistic message renders.
+          onPick={async (url) => {
+            // Drop the picker first so the modal closes before the
+            // round-trip — keeps the UI snappy. Then ask the server
+            // to materialize the URL into a team attachment (avoids
+            // hot-linking media.giphy.com from every recipient's
+            // browser) and dispatch the resulting attachment id to
+            // the send path. Fallback: if embed fails, post the URL
+            // as plain text so the user isn't left empty-handed.
             setGiphyPicker(null);
-            window.dispatchEvent(new CustomEvent('dilla:giphy-pick', { detail: { url } }));
+            const teamId = useTeamStore.getState().activeTeamId;
+            if (!teamId) return;
+            try {
+              if (isMockSession()) {
+                // /mesh embed returns the URL as storage_path; demo
+                // path posts the raw URL since mock has no /attachments
+                // server to fetch from.
+                window.dispatchEvent(new CustomEvent('dilla:giphy-pick', { detail: { url } }));
+                return;
+              }
+              const att = await api.embedGif(teamId, url);
+              const attUrl = api.getAttachmentUrl(teamId, att.id);
+              window.dispatchEvent(new CustomEvent('dilla:giphy-pick', { detail: {
+                url: attUrl,
+                attachment: att,
+              } }));
+            } catch (err) {
+              console.warn('[giphy] embed failed, falling back to URL', err);
+              window.dispatchEvent(new CustomEvent('dilla:giphy-pick', { detail: { url } }));
+            }
           }}
           onClose={() => setGiphyPicker(null)}
         />

@@ -272,6 +272,10 @@ pub fn create_router(state: AppState) -> Router {
         // the key lives in settings (team:<tid>:giphy_api_key) and is
         // set via Team Settings → Integrations. Stays out of the bundle.
         .route("/api/v1/teams/{team_id}/gif", get(gif::search))
+        // Materialize a picked Giphy URL into a team attachment — keeps
+        // viewer IPs off media.giphy.com and survives Giphy rotating
+        // the URL. Returns the same attachment shape /upload does.
+        .route("/api/v1/teams/{team_id}/gif/embed", post(gif::embed))
         .route(
             "/api/v1/teams/{team_id}/integrations/giphy",
             get(integrations::get_giphy).put(integrations::set_giphy),

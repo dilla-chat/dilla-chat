@@ -10,6 +10,7 @@ use axum::extract::{Path, Query, State};
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::Value;
+use std::path::PathBuf;
 
 use crate::api::helpers::{json_ok, require_team_member, spawn_db};
 use crate::api::AppState;
@@ -152,4 +153,140 @@ pub async fn search(
         "query": q,
         "results": results,
     }))
+}
+
+#[derive(Deserialize)]
+pub struct EmbedRequest {
+    /// A Giphy CDN URL the client picked from /gif's results. The
+    /// server fetches the bytes, stores them as a team attachment, and
+    /// returns the attachment so the client can post a normal image
+    /// message — no more hot-linking media.giphy.com from every
+    /// recipient's browser.
+    pub url: String,
+}
+
+/// True if `url` is on a Giphy CDN host we accept. Anchors the host
+/// to "giphy.com" with a leading dot so subdomains like
+/// `media.giphy.com` / `media1.giphy.com` pass while a crafted host
+/// like `media.giphy.com.attacker.tld` doesn't. SSRF guard.
+fn is_giphy_url(url: &str) -> bool {
+    if !url.starts_with("https://") { return false; }
+    let after = &url[8..];
+    let host_end = after.find('/').unwrap_or(after.len());
+    let host = &after[..host_end];
+    let host_no_port = host.split(':').next().unwrap_or(host);
+    host_no_port == "giphy.com"
+        || host_no_port.ends_with(".giphy.com")
+        || host_no_port == "i.giphy.com"
+}
+
+/// Materialize a picked Giphy URL into a team attachment. The client
+/// then sends a normal image message referencing the attachment id, so
+/// the asset is fetched from our own /attachments path (federated +
+/// privacy-respecting) instead of media.giphy.com directly.
+pub async fn embed(
+    Extension(UserId(user_id)): Extension<UserId>,
+    State(state): State<AppState>,
+    Path(team_id): Path<String>,
+    Json(body): Json<EmbedRequest>,
+) -> Result<Json<Value>, AppError> {
+    if !is_giphy_url(&body.url) {
+        return Err(AppError::BadRequest(
+            "embed only accepts giphy.com URLs".into(),
+        ));
+    }
+    // Membership check up front so SSRF-style attempts get a 403 before
+    // we touch the network.
+    let uid = user_id.clone();
+    let tid = team_id.clone();
+    spawn_db(state.db.clone(), move |conn| {
+        require_team_member(conn, &uid, &tid)?;
+        Ok::<_, rusqlite::Error>(())
+    })
+    .await?;
+
+    // Fetch the gif. Re-use the same client + timeout as the search
+    // proxy. Bounded by the team's max upload size so a malicious
+    // redirect can't fill the disk.
+    let client: reqwest::Client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(8))
+        .build()
+        .map_err(|e| AppError::Internal(format!("http client: {}", e)))?;
+    let res: reqwest::Response = client
+        .get(&body.url)
+        .send()
+        .await
+        .map_err(|e| AppError::BadGateway(format!("giphy fetch failed: {}", e)))?;
+    if !res.status().is_success() {
+        return Err(AppError::BadGateway(format!(
+            "giphy returned {}",
+            res.status()
+        )));
+    }
+    let content_type = res
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("image/gif")
+        .to_string();
+    let bytes = res
+        .bytes()
+        .await
+        .map_err(|e| AppError::BadGateway(format!("giphy body: {}", e)))?;
+    let max_size = state.config.max_upload_size;
+    if bytes.len() as i64 > max_size {
+        return Err(AppError::BadRequest(format!(
+            "gif too large (max {} bytes)",
+            max_size
+        )));
+    }
+
+    if team_id.contains("..") || team_id.contains('/') || team_id.contains('\\') {
+        return Err(AppError::BadRequest("invalid team id".into()));
+    }
+
+    // Write to disk + create attachment row — same shape upload() uses.
+    let attachment_id = db::new_id();
+    let upload_dir = PathBuf::from(&state.config.upload_dir).join(&team_id);
+    tokio::fs::create_dir_all(&upload_dir)
+        .await
+        .map_err(|e| AppError::Internal(format!("create upload dir: {}", e)))?;
+    let file_path = upload_dir.join(&attachment_id);
+    tokio::fs::write(&file_path, &bytes)
+        .await
+        .map_err(|e| AppError::Internal(format!("write file: {}", e)))?;
+    let storage_path = file_path
+        .to_str()
+        .ok_or_else(|| AppError::Internal("upload path contains invalid UTF-8".into()))?
+        .to_string();
+    // Pull a stable filename out of the URL path for the download
+    // affordance — Giphy URLs like .../<id>/giphy.gif end in giphy.gif.
+    let filename = body
+        .url
+        .rsplit('/')
+        .next()
+        .unwrap_or("giphy.gif")
+        .split('?')
+        .next()
+        .unwrap_or("giphy.gif")
+        .to_string();
+
+    let aid = attachment_id.clone();
+    let size = bytes.len() as i64;
+    let attachment = spawn_db(state.db.clone(), move |conn| {
+        let att = db::Attachment {
+            id: aid,
+            message_id: String::new(), // linked later when the message is sent
+            filename_encrypted: filename.into_bytes(),
+            content_type_encrypted: content_type.into_bytes(),
+            size,
+            storage_path,
+            created_at: db::now_str(),
+        };
+        db::create_attachment(conn, &att)?;
+        Ok(att)
+    })
+    .await?;
+
+    json_ok(serde_json::json!(attachment))
 }

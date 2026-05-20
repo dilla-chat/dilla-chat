@@ -389,6 +389,20 @@ export class MockApiService {
 
   // Gif search — mock returns a recognizable placeholder so the design
   // preview can demonstrate the message rendering without a network call.
+  async embedGif(_teamId: string, url: string): Promise<Attachment> {
+    // /mesh has no real attachments table; pretend the URL is an
+    // attachment so the picker can still demo the flow end-to-end.
+    return {
+      id: 'giphy-' + Date.now(),
+      message_id: '',
+      filename_encrypted: 'giphy.gif',
+      content_type_encrypted: 'image/gif',
+      size: 0,
+      storage_path: url,
+      created_at: new Date().toISOString(),
+    } as unknown as Attachment;
+  }
+
   async searchGif(_teamId: string, query: string, limit?: number): Promise<{ url: string; query: string; results?: Array<{ url: string; preview: string }> }> {
     // Three demo URLs the mock cycles through so the picker has
     // distinguishable tiles. Real Giphy paths.

@@ -664,6 +664,20 @@ class ApiService {
     ) as Promise<{ url: string; query: string; results?: Array<{ url: string; preview: string }> }>;
   }
 
+  /** Materialize a picked Giphy URL into a team attachment so the gif
+   *  is served from /attachments instead of media.giphy.com — keeps
+   *  viewer IPs off Giphy and the asset doesn't rot when Giphy
+   *  rotates URLs. Returns the same shape uploadFile returns. */
+  async embedGif(teamId: string, url: string): Promise<Attachment> {
+    const conn = this.getConnection(teamId);
+    return this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/gif/embed`,
+      { method: 'POST', body: JSON.stringify({ url }) },
+      conn.token,
+    ) as Promise<Attachment>;
+  }
+
   /** Returns whether the team has a Giphy API key on file. The key
    *  itself never crosses the wire — admins set it via setGiphyApiKey. */
   async getGiphyIntegration(teamId: string): Promise<{ configured: boolean }> {
