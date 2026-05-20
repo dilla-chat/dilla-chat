@@ -470,6 +470,31 @@ select.set-input {
    button — see TeamInvites. */
 .set-tr-dead .set-link-code,
 .set-tr-dead > span:not(:first-child) { opacity: 0.55; }
+/* Per-form Save / Discard bar. Sits at the bottom of a tab whose
+   fields have an explicit save flow (TeamInfo / UserAccount /
+   UserNotif). Saved chip fades for 2s after a successful round-trip. */
+.set-form-bar {
+  display: flex; align-items: center; justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--hairline);
+}
+.set-form-bar-saved {
+  margin-right: auto;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ok);
+  animation: dilla-form-saved 2s ease-out forwards;
+}
+@keyframes dilla-form-saved {
+  0% { opacity: 0; transform: translateY(0.25rem); }
+  15%, 75% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; }
+}
+
 .set-invite-dead {
   font-family: var(--font-mono);
   font-size: 0.6875rem;

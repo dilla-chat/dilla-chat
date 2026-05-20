@@ -178,12 +178,13 @@ function Settings({ open, mode, defaultTab, onClose }) {
           </div>
           <footer className="set-foot">
             <span className="set-foot-hint">changes are saved per-device · push to peers on save</span>
+            {/* Per-form Save / Discard buttons live inside each tab now
+                (TeamInfo, UserAccount, UserNotif). The old footer had a
+                'Save changes' button that did nothing because the
+                fields had already auto-saved via useDebouncedSave —
+                drop it so the modal is honest about its model. */}
             <div className="set-foot-actions">
-              <button className="sc-btn" onClick={onClose}>Cancel · esc</button>
-              <button className="sc-btn primary" onClick={() => {
-                window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: mode === 'team' ? (team?.name?.toUpperCase() || '') : null, author: 'preferences', text: 'Preferences saved.', duration: 3000 } }));
-                onClose();
-              }}>Save changes · ⌘↵</button>
+              <button className="sc-btn" onClick={onClose}>Close · esc</button>
             </div>
           </footer>
         </main>
@@ -234,6 +235,47 @@ function Select({ value, onChange, options }) {
 }
 function Btn({ children, danger, onClick }) {
   return <button className={'set-btn' + (danger ? ' danger' : '')} onClick={onClick}>{children}</button>;
+}
+
+// Shared dirty-state action bar for forms in the modal. Sits at the
+// bottom of a tab; Save commits, Discard reverts. 'Saved' chip fades
+// in for 2s after a successful save so the user knows the round-trip
+// landed. Replaces the modal's old footer Save/Cancel pair which
+// didn't actually do anything (debounced autosave had already
+// committed before the user clicked).
+function FormBar({
+  dirty,
+  saving,
+  savedAt,
+  onSave,
+  onDiscard,
+}: Readonly<{
+  dirty: boolean;
+  saving: boolean;
+  savedAt: number | null;
+  onSave: () => void;
+  onDiscard: () => void;
+}>) {
+  const [showSaved, setShowSaved] = useStateS(false);
+  useEffectS(() => {
+    if (!savedAt) return;
+    setShowSaved(true);
+    const id = window.setTimeout(() => setShowSaved(false), 2000);
+    return () => window.clearTimeout(id);
+  }, [savedAt]);
+  return (
+    <div className="set-form-bar">
+      {showSaved && <span className="set-form-bar-saved">Saved</span>}
+      <Btn onClick={onDiscard}>Discard</Btn>
+      <button
+        className="set-btn primary"
+        onClick={onSave}
+        disabled={!dirty || saving}
+      >
+        {saving ? 'Saving…' : 'Save'}
+      </button>
+    </div>
+  );
 }
 
 // ───────── USER tabs ─────────
@@ -505,63 +547,67 @@ function UserAccount() {
   const meId = data?.currentUserId;
   const me = meId ? data?.byId?.[meId] : null;
   const auth = useActiveTeamAuth();
-  const [name, setName] = useStateS(me?.name || '');
-  const [status, setStatus] = useStateS(me?.custom || '');
-  const initials = me?.initials || '?';
-  const avatarColor = me?.color || 'var(--muted)';
+  const origName = me?.name || '';
+  const origStatus = me?.custom || '';
+  const [name, setName] = useStateS(origName);
+  const [status, setStatus] = useStateS(origStatus);
+  const [saving, setSaving] = useStateS(false);
+  const [savedAt, setSavedAt] = useStateS<number | null>(null);
+  useEffectS(() => {
+    // Pull-in from server-side changes only when the field isn't dirty.
+    setName((v) => (v === origName ? me?.name || '' : v));
+    setStatus((v) => (v === origStatus ? me?.custom || '' : v));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me?.name, me?.custom]);
   const publicKey =
     useAuthStore((s) => s.publicKey) ||
     data?.publicKey ||
     '';
 
-  // Debounced persistence: PATCH /api/v1/users/me for display name + status.
-  // On /mesh (auth === null) the field is local-only; the value still
-  // updates in the form, just doesn't round-trip through a real backend.
-  const persistName = useDebouncedSave((v: string) => {
-    if (!auth) return;
-    api
-      .updateMe(auth.baseUrl, auth.token, { display_name: v })
-      .catch((err) => console.warn('[Settings] display_name update failed', err));
-  });
-  const persistStatus = useDebouncedSave((v: string) => {
-    if (!auth) return;
-    // status_text rides on PATCH /users/me; presence-broadcast event uses
-    // api.updatePresence so other clients see the change live.
-    api
-      .updateMe(auth.baseUrl, auth.token, { status_text: v })
-      .catch((err) => console.warn('[Settings] status_text update failed', err));
-    api
-      .updatePresence(auth.teamId, 'online', v)
-      .catch((err) => console.warn('[Settings] presence update failed', err));
-  });
+  const dirty = name !== origName || status !== origStatus;
+
+  async function save() {
+    if (!auth || saving || !dirty) return;
+    setSaving(true);
+    try {
+      const updates: Parameters<typeof api.updateMe>[2] = {};
+      if (name !== origName) updates.display_name = name;
+      if (status !== origStatus) updates.status_text = status;
+      await api.updateMe(auth.baseUrl, auth.token, updates);
+      // Custom status also rides over the presence broadcast so it
+      // surfaces immediately in the member list. Independent of the
+      // PATCH so a transient WS hiccup doesn't fail the save.
+      if (status !== origStatus) {
+        api.updatePresence(auth.teamId, 'online', status)
+          .catch((err) => console.warn('[Settings] presence update failed', err));
+      }
+      setSavedAt(Date.now());
+    } catch (err) {
+      console.warn('[Settings] account update failed', err);
+      window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'account', text: 'Save failed — try again.', duration: 3500 } }));
+    } finally {
+      setSaving(false);
+    }
+  }
+  function discard() {
+    setName(origName);
+    setStatus(origStatus);
+  }
 
   return (
-    <Group title="Identity" hint="Your display name and status are visible to everyone on the team.">
-      <Row label="Display name">
-        <TextField
-          value={name}
-          onChange={(v) => {
-            setName(v);
-            persistName(v);
-          }}
-        />
-      </Row>
-      <Row label="Custom status" hint="Visible next to your name in the member list.">
-        <TextField
-          value={status}
-          onChange={(v) => {
-            setStatus(v);
-            persistStatus(v);
-          }}
-        />
-      </Row>
-      <Row label="Avatar">
-        <AvatarUploader />
-      </Row>
-      <Row label="Public key" hint="ed25519 — verified by your safety number.">
-        <TextField mono readOnly value={publicKey} onChange={() => {}} />
-      </Row>
-    </Group>
+    <>
+      <Group title="Identity" hint="Your display name and status are visible to everyone on the team.">
+        <Row label="Display name"><TextField value={name} onChange={setName} /></Row>
+        <Row label="Custom status" hint="Visible next to your name in the member list.">
+          <TextField value={status} onChange={setStatus} />
+        </Row>
+        <Row label="Avatar"><AvatarUploader /></Row>
+        <Row label="Public key" hint="ed25519 — verified by your safety number.">
+          <TextField mono readOnly value={publicKey} onChange={() => {}} />
+        </Row>
+      </Group>
+      <FormBar dirty={dirty} saving={saving} savedAt={savedAt} onSave={save} onDiscard={discard} />
+    </>
   );
 }
 function UserNotif() {
@@ -586,38 +632,57 @@ function UserNotif() {
       setSound(false);
     }
   };
-  // Quiet hours are server-backed via PATCH /users/me so the window follows
-  // the identity across devices. Optimistic local update + debounced PATCH;
-  // the store value is the source of truth for the form. Hydration from
-  // /me happens in useUserMeSync (mounts at AppShell) so the form already
-  // shows the saved window when the modal opens.
+  // Quiet hours are server-backed via PATCH /users/me so the window
+  // follows the identity across devices. Local draft until the user
+  // hits Save; useUserMeSync hydrates the original values at boot so
+  // the form opens with the saved window.
   const auth = useActiveTeamAuth();
-  const quiet = useUserSettingsStore((s) => s.quietHoursEnabled);
-  const quietFrom = useUserSettingsStore((s) => s.quietHoursFrom);
-  const quietTo = useUserSettingsStore((s) => s.quietHoursTo);
+  const storedQuiet = useUserSettingsStore((s) => s.quietHoursEnabled);
+  const storedFrom = useUserSettingsStore((s) => s.quietHoursFrom);
+  const storedTo = useUserSettingsStore((s) => s.quietHoursTo);
   const setQuietHours = useUserSettingsStore((s) => s.setQuietHours);
-  const persistQuiet = useDebouncedSave((next: { enabled?: boolean; from?: string; to?: string }) => {
-    if (!auth) return;
-    const body: Record<string, unknown> = {};
-    if (next.enabled !== undefined) body.quiet_hours_enabled = next.enabled;
-    if (next.from !== undefined) body.quiet_hours_from = next.from;
-    if (next.to !== undefined) body.quiet_hours_to = next.to;
-    api
-      .updateMe(auth.baseUrl, auth.token, body as Parameters<typeof api.updateMe>[2])
-      .catch((err) => console.warn('[Settings] quiet hours update failed', err));
-  });
-  const setQuiet = (enabled: boolean) => {
-    setQuietHours({ enabled });
-    persistQuiet({ enabled });
-  };
-  const setQuietFrom = (from: string) => {
-    setQuietHours({ from });
-    persistQuiet({ from });
-  };
-  const setQuietTo = (to: string) => {
-    setQuietHours({ to });
-    persistQuiet({ to });
-  };
+  const [quiet, setQuiet] = useStateS(storedQuiet);
+  const [quietFrom, setQuietFrom] = useStateS(storedFrom);
+  const [quietTo, setQuietTo] = useStateS(storedTo);
+  const [saving, setSaving] = useStateS(false);
+  const [savedAt, setSavedAt] = useStateS<number | null>(null);
+  // Pull-in store changes when the field isn't dirty (e.g. another
+  // device updated the quiet hours and useUserMeSync hydrated us).
+  useEffectS(() => {
+    setQuiet((v) => (v === storedQuiet ? storedQuiet : v));
+    setQuietFrom((v) => (v === storedFrom ? storedFrom : v));
+    setQuietTo((v) => (v === storedTo ? storedTo : v));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storedQuiet, storedFrom, storedTo]);
+
+  const dirty = quiet !== storedQuiet || quietFrom !== storedFrom || quietTo !== storedTo;
+
+  async function save() {
+    if (!auth || saving || !dirty) return;
+    setSaving(true);
+    try {
+      const body: Parameters<typeof api.updateMe>[2] = {};
+      if (quiet !== storedQuiet) body.quiet_hours_enabled = quiet;
+      if (quietFrom !== storedFrom) body.quiet_hours_from = quietFrom;
+      if (quietTo !== storedTo) body.quiet_hours_to = quietTo;
+      await api.updateMe(auth.baseUrl, auth.token, body);
+      // Sync the store so other consumers (e.g. notification gating)
+      // pick up the new window without re-fetching /me.
+      setQuietHours({ enabled: quiet, from: quietFrom, to: quietTo });
+      setSavedAt(Date.now());
+    } catch (err) {
+      console.warn('[Settings] quiet hours update failed', err);
+      window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'notif', text: 'Save failed — try again.', duration: 3500 } }));
+    } finally {
+      setSaving(false);
+    }
+  }
+  function discard() {
+    setQuiet(storedQuiet);
+    setQuietFrom(storedFrom);
+    setQuietTo(storedTo);
+  }
+
   return (
     <>
       <Group title="Default behaviour">
@@ -642,6 +707,7 @@ function UserNotif() {
           </div>
         </Row>
       </Group>
+      <FormBar dirty={dirty} saving={saving} savedAt={savedAt} onSave={save} onDiscard={discard} />
     </>
   );
 }
@@ -1113,47 +1179,70 @@ function TeamInfo() {
     ? `${data.teamCreatedAt} · by ${me?.name ?? 'admin'}`
     : `today · by ${me?.name ?? 'admin'}`;
   const auth = useActiveTeamAuth();
-  const [name, setName] = useStateS(team?.name ?? '');
-  const [description, setDescription] = useStateS(team?.description ?? '');
-  const [defaultChannel, setDefaultChannel] = useStateS(channelNames[0] ?? '#general');
-  const [slowMode, setSlowMode] = useStateS('0');
+  // Local drafts. Save commits in one PATCH; Discard reverts to the
+  // bridged team value. Previously fields PATCH'd on each keystroke,
+  // which made the modal footer's 'Save changes' button purely
+  // decorative and meant Cancel didn't actually cancel.
+  const origName = team?.name ?? '';
+  const origDescription = team?.description ?? '';
+  const origDefaultChannel = channelNames[0] ?? '#general'; // best-effort — server doesn't surface this yet
+  const origSlowMode = '0';
+  const [name, setName] = useStateS(origName);
+  const [description, setDescription] = useStateS(origDescription);
+  const [defaultChannel, setDefaultChannel] = useStateS(origDefaultChannel);
+  const [slowMode, setSlowMode] = useStateS(origSlowMode);
+  const [saving, setSaving] = useStateS(false);
+  const [savedAt, setSavedAt] = useStateS<number | null>(null);
   // Re-sync local state when the bridged team value changes (e.g. another
-  // admin renames the team).
+  // admin renames the team). Only patch if the field isn't dirty so we
+  // don't yank a half-typed name out from under the user.
   useEffectS(() => {
-    if (team?.name !== undefined) setName(team.name);
-    if (team?.description !== undefined) setDescription(team.description);
+    setName((v) => (v === origName || v === '' ? team?.name ?? '' : v));
+    setDescription((v) => (v === origDescription || v === '' ? team?.description ?? '' : v));
   }, [team?.name, team?.description]);
 
-  // PATCH /api/v1/teams/{id} for name/description. Server enforces admin
-  // permission; non-admins will get a 403 and the form just won't save.
-  const persistTeam = useDebouncedSave((updates: Record<string, unknown>) => {
-    if (!auth) return;
-    api
-      .updateTeam(auth.teamId, updates)
-      .catch((err) => console.warn('[Settings] team update failed', err));
-  });
+  const dirty =
+    name !== origName ||
+    description !== origDescription ||
+    defaultChannel !== origDefaultChannel ||
+    slowMode !== origSlowMode;
+
+  async function save() {
+    if (!auth || saving || !dirty) return;
+    setSaving(true);
+    try {
+      const updates: Record<string, unknown> = {};
+      if (name !== origName) updates.name = name;
+      if (description !== origDescription) updates.description = description;
+      if (defaultChannel !== origDefaultChannel) {
+        const ch = (data?.CHANNELS ?? []).find((c: any) => `#${c.name}` === defaultChannel);
+        if (ch) updates.default_channel_id = ch.id;
+      }
+      if (slowMode !== origSlowMode) {
+        const n = Number.parseInt(slowMode, 10);
+        if (!Number.isNaN(n) && n >= 0) updates.slow_mode_seconds = n;
+      }
+      await api.updateTeam(auth.teamId, updates);
+      setSavedAt(Date.now());
+    } catch (err) {
+      console.warn('[Settings] team update failed', err);
+      window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'team', text: 'Save failed — admin permission required.', duration: 3500 } }));
+    } finally {
+      setSaving(false);
+    }
+  }
+  function discard() {
+    setName(origName);
+    setDescription(origDescription);
+    setDefaultChannel(origDefaultChannel);
+    setSlowMode(origSlowMode);
+  }
 
   return (
     <>
       <Group title="Team">
-        <Row label="Name">
-          <TextField
-            value={name}
-            onChange={(v) => {
-              setName(v);
-              persistTeam({ name: v });
-            }}
-          />
-        </Row>
-        <Row label="Description">
-          <TextField
-            value={description}
-            onChange={(v) => {
-              setDescription(v);
-              persistTeam({ description: v });
-            }}
-          />
-        </Row>
+        <Row label="Name"><TextField value={name} onChange={setName} /></Row>
+        <Row label="Description"><TextField value={description} onChange={setDescription} /></Row>
         <Row label="Created"><span className="set-stat">{created}</span></Row>
         <Row label="Storage"><span className="set-stat">0 GB / 10 GB</span></Row>
       </Group>
@@ -1162,30 +1251,18 @@ function TeamInfo() {
           <Select
             value={defaultChannel}
             options={channelNames.length ? channelNames : ['#general']}
-            onChange={(v) => {
-              setDefaultChannel(v);
-              // Server-side default channel is a team-level field; the API
-              // accepts default_channel_id but we only have the display
-              // name here. Map name → id via the bridged data.
-              const ch = (data?.CHANNELS ?? []).find(
-                (c: any) => `#${c.name}` === v,
-              );
-              if (ch) persistTeam({ default_channel_id: ch.id });
-            }}
+            onChange={setDefaultChannel}
           />
         </Row>
         <Row label="Slow mode (seconds)">
           <TextField
             mono
             value={slowMode}
-            onChange={(v) => {
-              setSlowMode(v);
-              const n = Number.parseInt(v, 10);
-              if (!Number.isNaN(n) && n >= 0) persistTeam({ slow_mode_seconds: n });
-            }}
+            onChange={(v) => setSlowMode(v.replace(/[^0-9]/g, ''))}
           />
         </Row>
       </Group>
+      <FormBar dirty={dirty} saving={saving} savedAt={savedAt} onSave={save} onDiscard={discard} />
     </>
   );
 }
