@@ -11,6 +11,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useTeamStore } from '../stores/teamStore';
 import { useUserSettingsStore } from '../stores/userSettingsStore';
 import { useBlockStore } from '../stores/blockStore';
+import { useVerifiedContacts } from '../stores/verifiedContactsStore';
 import { dillaConfirm } from '../stores/confirmStore';
 import PasskeyManager from '../components/PasskeyManager/PasskeyManager';
 import { api } from '../services/api';
@@ -959,10 +960,71 @@ function UserAppear() {
     </>
   );
 }
+
+function SafetyNumberQR({
+  payload,
+  label,
+  onClose,
+}: {
+  payload: string;
+  label: string;
+  onClose: () => void;
+}) {
+  const ref = React.useRef<HTMLCanvasElement | null>(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    import('qrcode')
+      .then((mod) => {
+        if (cancelled || !ref.current) return;
+        // High error-correction so the QR survives being photographed
+        // off a screen; dark/light pulled from theme variables resolved
+        // on a temporary element.
+        const probe = document.createElement('div');
+        probe.style.color = 'var(--fg)';
+        document.body.appendChild(probe);
+        const fg = getComputedStyle(probe).color || '#000';
+        probe.style.color = 'var(--surface-1)';
+        const bg = getComputedStyle(probe).color || '#fff';
+        probe.remove();
+        mod.default.toCanvas(ref.current, payload, {
+          width: 256,
+          errorCorrectionLevel: 'M',
+          color: { dark: fg, light: bg },
+          margin: 1,
+        });
+      })
+      .catch((err) => {
+        console.warn('[SafetyNumberQR] failed to render', err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [payload]);
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+        <header className="modal-head">
+          <h3>{label} — safety number</h3>
+          <button className="modal-x" onClick={onClose}>×</button>
+        </header>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+          <canvas ref={ref} aria-label="Safety number QR code" />
+          <p className="modal-hint" style={{ textAlign: 'center', maxWidth: '20rem' }}>
+            Have your contact scan this QR (or compare digits) on a separate channel before
+            trusting messages from this device.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function UserPrivacy() {
   const data = useShellDataContext() as any;
+  const verified = useVerifiedContacts();
   const meId = data?.currentUserId; const me = meId ? data?.byId?.[meId] : null;
   const meName = me?.name || 'me';
+  const [qrOpen, setQrOpen] = React.useState(false);
   // Safety number is derived from the user's real Ed25519 public key.
   // Members in byId carry `publicKeyHex` (64 hex chars = 32 bytes). We
   // split it into 12 4-hex groups laid out as two 3-row columns to mirror
@@ -997,10 +1059,17 @@ function UserPrivacy() {
               navigator.clipboard?.writeText(full);
               window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'preferences', text: 'Safety number copied.', duration: 2000 } }));
             }}>Copy</Btn>
-            <Btn onClick={() => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'preferences', text: 'QR display requires a renderer — copy and paste the number for now.', duration: 3000 } }))}>Show QR</Btn>
+            <Btn disabled={!pkReady} onClick={() => setQrOpen(true)}>Show QR</Btn>
           </div>
         </div>
       </Group>
+      {qrOpen && pkReady && (
+        <SafetyNumberQR
+          payload={pkHex}
+          label={meName}
+          onClose={() => setQrOpen(false)}
+        />
+      )}
       <Group title="Encryption">
         <Row label="Double Ratchet sessions" hint="Currently active per-contact key chains.">
           <span className="set-stat">{others.length} session{others.length === 1 ? '' : 's'}</span>
@@ -1041,21 +1110,33 @@ function UserPrivacy() {
       <Group title="Verify contacts" hint="Compare safety numbers with someone to confirm they are who they say they are — not the server impersonating them.">
         {others.length === 0 ? (
           <div className="set-empty">No contacts to verify yet.</div>
-        ) : others.map((m: any) => (
-          <Row key={m.id} label={
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              <span
-                className={'set-avatar' + (m.avatarUrl ? ' has-image' : '')}
-                style={m.avatarUrl
-                  ? { backgroundImage: `url(${m.avatarUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', width: 22, height: 22, fontSize: 10, color: 'transparent' }
-                  : { backgroundColor: m.color, width: 22, height: 22, fontSize: 10 }}
-              >{!m.avatarUrl && m.initials}</span>
-              {m.name}
-            </span>
-          }>
-            <Btn onClick={() => window.dispatchEvent(new CustomEvent('dilla:verify-safety', { detail: m.id }))}>Verify</Btn>
-          </Row>
-        ))}
+        ) : others.map((m: any) => {
+          const peerHex = (m?.publicKeyHex || '').replace(/[^0-9a-f]/gi, '').toLowerCase();
+          const vstatus = peerHex ? verified.isVerified(m.id, peerHex) : 'unverified';
+          return (
+            <Row key={m.id} label={
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <span
+                  className={'set-avatar' + (m.avatarUrl ? ' has-image' : '')}
+                  style={m.avatarUrl
+                    ? { backgroundImage: `url(${m.avatarUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', width: 22, height: 22, fontSize: 10, color: 'transparent' }
+                    : { backgroundColor: m.color, width: 22, height: 22, fontSize: 10 }}
+                >{!m.avatarUrl && m.initials}</span>
+                {m.name}
+                {vstatus === 'verified' && (
+                  <span className="set-verify-pill set-verify-ok" title="Safety number verified on this device">✓ verified</span>
+                )}
+                {vstatus === 'changed' && (
+                  <span className="set-verify-pill set-verify-warn" title="Identity key changed since verification">⚠ key changed</span>
+                )}
+              </span>
+            }>
+              <Btn onClick={() => window.dispatchEvent(new CustomEvent('dilla:verify-safety', { detail: m.id }))}>
+                {vstatus === 'verified' ? 'Re-verify' : 'Verify'}
+              </Btn>
+            </Row>
+          );
+        })}
       </Group>
       <Group title="Passkeys" hint="Per-device WebAuthn credentials that unlock your identity blob. Add more devices or revoke ones you no longer use.">
         <PasskeyManager />

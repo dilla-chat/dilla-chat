@@ -7,6 +7,7 @@
 import React from 'react';
 import { Icon } from './icons';
 import { useShellDataContext } from './ShellDataContext';
+import { useVerifiedContacts } from '../stores/verifiedContactsStore';
 
 const { useState: useT2, useEffect: useT2E, useRef: useT2R } = React;
 
@@ -197,18 +198,24 @@ function IncomingCall({ call, onAccept, onDecline }) {
 // ───────── Safety number compare ─────────
 function SafetyCompare({ contactId, onClose }) {
   const shell = useShellDataContext() as any;
-  const [verified, setVerified] = useT2(false);
+  const verifiedContacts = useVerifiedContacts();
   const [comparing, setComparing] = useT2(false);
   if (!contactId) return null;
   const m = shell?.byId?.[contactId];
   if (!m) return null;
   // Real fingerprints come straight from the bridged member record
   // (publicKeyHex), populated by useShellData.mapMember from the team
-  // store. No more hardcoded hex fallbacks — if either side's key isn't
-  // in the bridge yet, show the missing-data placeholder so the user
-  // can tell something didn't load instead of comparing fake digits.
-  const ownHex = (shell?.publicKey || '').replace(/^[^:]*:/, '').replace(/[^0-9a-f]/gi, '');
-  const peerHex = (m?.publicKeyHex || '').replace(/^[^:]*:/, '').replace(/[^0-9a-f]/gi, '');
+  // store. If a side isn't loaded yet, show the missing-data placeholder
+  // so the user can tell something didn't load instead of comparing
+  // fake digits.
+  const meId = shell?.currentUserId;
+  const ownHex = ((meId ? shell?.byId?.[meId]?.publicKeyHex : '') || '')
+    .replace(/[^0-9a-f]/gi, '')
+    .toLowerCase();
+  const peerHex = (m?.publicKeyHex || '').replace(/[^0-9a-f]/gi, '').toLowerCase();
+  const status = peerHex ? verifiedContacts.isVerified(contactId, peerHex) : 'unverified';
+  const verified = status === 'verified';
+  const keyChanged = status === 'changed';
   const formatHex = (hex) => [0,1,2,3,4,5]
     .map(i => hex.slice(i * 8, i * 8 + 8).replace(/(.{4})(.{4})/, '$1 $2'))
     .filter(Boolean)
@@ -257,6 +264,11 @@ function SafetyCompare({ contactId, onClose }) {
             </div>
           </div>
         </div>
+        {keyChanged && (
+          <div className="sc-warn">
+            ⚠ Their identity key has changed since you last verified — compare again before trusting messages.
+          </div>
+        )}
         {verified ? (
           <div className="sc-verified">
             <svg width="20" height="20" viewBox="0 0 16 16" fill="none">
@@ -264,13 +276,29 @@ function SafetyCompare({ contactId, onClose }) {
               <path d="M5 8l2 2 4-4" stroke="var(--accent)" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             <span>Verified · safety number recorded for this device</span>
+            <button
+              className="sc-btn"
+              style={{ marginLeft: 'auto' }}
+              onClick={() => verifiedContacts.clearVerified(contactId)}
+            >
+              Reset
+            </button>
           </div>
         ) : (
           <div className="sc-actions">
             <button className="sc-btn" onClick={() => { setComparing(true); setTimeout(() => setComparing(false), 800); }}>Highlight blocks</button>
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="sc-btn danger" onClick={onClose}>Doesn't match</button>
-              <button className="sc-btn primary" onClick={() => setVerified(true)}>Mark verified</button>
+              <button
+                className="sc-btn primary"
+                disabled={!peerHex}
+                onClick={() => {
+                  if (!peerHex) return;
+                  verifiedContacts.markVerified(contactId, peerHex);
+                }}
+              >
+                Mark verified
+              </button>
             </div>
           </div>
         )}

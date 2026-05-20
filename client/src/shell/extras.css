@@ -426,6 +426,37 @@
   font-size: 12.5px;
 }
 
+.sc-warn {
+  display: flex; align-items: center; gap: 10px;
+  padding: 0.75rem 0.875rem;
+  background: color-mix(in oklab, var(--warn) 12%, transparent);
+  border: 1px solid color-mix(in oklab, var(--warn) 40%, transparent);
+  border-radius: var(--r-sm);
+  color: var(--warn);
+  font-size: 0.78125rem;
+  margin-bottom: 0.625rem;
+}
+
+.set-verify-pill {
+  display: inline-flex; align-items: center;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 0.125rem 0.4rem;
+  border-radius: 999px;
+  margin-left: 0.25rem;
+}
+.set-verify-ok {
+  color: var(--ok);
+  background: color-mix(in oklab, var(--ok) 14%, transparent);
+  border: 1px solid color-mix(in oklab, var(--ok) 40%, transparent);
+}
+.set-verify-warn {
+  color: var(--warn);
+  background: color-mix(in oklab, var(--warn) 14%, transparent);
+  border: 1px solid color-mix(in oklab, var(--warn) 40%, transparent);
+}
+
 /* ───── Add peer wizard ───── */
 /* Scrim is .modal-overlay (defined in chat.css). */
 .apw {
