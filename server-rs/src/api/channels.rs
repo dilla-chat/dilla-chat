@@ -73,11 +73,12 @@ pub async fn create(
     Path(team_id): Path<String>,
     Json(body): Json<CreateChannelRequest>,
 ) -> Result<Json<Value>, AppError> {
-    if body.name.is_empty() {
+    let trimmed_name = body.name.trim().to_string();
+    if trimmed_name.is_empty() {
         return Err(AppError::BadRequest("name is required".into()));
     }
 
-    if body.name.len() > 100 {
+    if trimmed_name.chars().count() > 100 {
         return Err(AppError::BadRequest("name too long (max 100 chars)".into()));
     }
 
@@ -88,11 +89,20 @@ pub async fn create(
     let channel = spawn_db(state.db.clone(), move |conn| {
         require_permission(conn, &user_id, &team_id, db::PERM_MANAGE_CHANNELS)?;
 
+        // Pre-flight uniqueness check so we can return a clear error instead
+        // of leaking a sqlite constraint message. The unique index is the
+        // real guard (migration 019); this is just the friendlier path.
+        if channel_name_exists(conn, &team_id, &trimmed_name, &body.channel_type, None)? {
+            return Err(rusqlite::Error::InvalidParameterName(
+                "channel_name_conflict".into(),
+            ));
+        }
+
         let now = db::now_str();
         let channel = db::Channel {
             id: db::new_id(),
             team_id: team_id.clone(),
-            name: body.name.clone(),
+            name: trimmed_name.clone(),
             topic: body.topic.clone(),
             channel_type: body.channel_type.clone(),
             position: 0,
@@ -114,7 +124,8 @@ pub async fn create(
         );
         Ok(channel)
     })
-    .await?;
+    .await
+    .map_err(map_channel_name_conflict)?;
 
     json_ok(channel)
 }
@@ -144,7 +155,11 @@ pub async fn update(
     Json(body): Json<UpdateChannelRequest>,
 ) -> Result<Json<Value>, AppError> {
     if let Some(ref name) = body.name {
-        if name.len() > 100 {
+        let trimmed = name.trim();
+        if trimmed.is_empty() {
+            return Err(AppError::BadRequest("name cannot be empty".into()));
+        }
+        if trimmed.chars().count() > 100 {
             return Err(AppError::BadRequest("name too long (max 100 chars)".into()));
         }
     }
@@ -160,6 +175,17 @@ pub async fn update(
         let mut channel = get_channel_for_team(conn, &channel_id, &team_id)?;
         let prev_locked = channel.locked;
         apply_channel_updates(&mut channel, &body);
+        // After applying the rename, make sure no sibling channel of the
+        // same type already owns the normalized name. The unique index
+        // would catch this anyway, but pre-checking lets us surface a
+        // 409 with a clear message instead of a sqlite constraint dump.
+        if body.name.is_some()
+            && channel_name_exists(conn, &team_id, &channel.name, &channel.channel_type, Some(&channel.id))?
+        {
+            return Err(rusqlite::Error::InvalidParameterName(
+                "channel_name_conflict".into(),
+            ));
+        }
         db::update_channel(conn, &channel)?;
 
         let action = if prev_locked != channel.locked {
@@ -182,7 +208,7 @@ pub async fn update(
     .await
     .map_err(|e| match e {
         AppError::NotFound(_) => AppError::NotFound("channel not found".into()),
-        other => other,
+        other => map_channel_name_conflict(other),
     })?;
 
     // Broadcast so other clients refresh their sidebars without a re-sync —
@@ -360,6 +386,48 @@ fn map_not_found_channel(e: AppError) -> AppError {
     }
 }
 
+/// True if another channel in the same team and of the same type already
+/// uses this name (case-insensitive, trimmed). `ignore_id` lets the update
+/// path exclude the channel being renamed so the check doesn't trip on
+/// the row's own existing name. Mirrors the unique-index condition from
+/// migration 019 so the pre-flight check and the DB constraint agree.
+fn channel_name_exists(
+    conn: &rusqlite::Connection,
+    team_id: &str,
+    name: &str,
+    channel_type: &str,
+    ignore_id: Option<&str>,
+) -> Result<bool, rusqlite::Error> {
+    let normalized = name.trim().to_lowercase();
+    let mut stmt = conn.prepare(
+        "SELECT 1 FROM channels \
+         WHERE team_id = ?1 AND type = ?2 \
+           AND lower(trim(name)) = ?3 \
+           AND (?4 IS NULL OR id != ?4) \
+         LIMIT 1",
+    )?;
+    let exists = stmt
+        .query_row(
+            rusqlite::params![team_id, channel_type, normalized, ignore_id],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some();
+    Ok(exists)
+}
+
+/// Translate the sentinel produced by channel_name_exists into a 409
+/// Conflict. Other errors pass through unchanged so callers can still
+/// distinguish NotFound, Forbidden, etc.
+fn map_channel_name_conflict(e: AppError) -> AppError {
+    match e {
+        AppError::Forbidden(msg) if msg == "channel_name_conflict" => AppError::Conflict(
+            "a channel with that name already exists in this team".into(),
+        ),
+        other => other,
+    }
+}
+
 /// Fetch a channel by ID and verify it belongs to the given team.
 fn get_channel_for_team(
     conn: &rusqlite::Connection,
@@ -380,7 +448,7 @@ fn get_channel_for_team(
 /// Apply optional update fields to a channel.
 fn apply_channel_updates(channel: &mut db::Channel, body: &UpdateChannelRequest) {
     if let Some(ref name) = body.name {
-        channel.name = name.clone();
+        channel.name = name.trim().to_string();
     }
     if let Some(ref topic) = body.topic {
         channel.topic = topic.clone();

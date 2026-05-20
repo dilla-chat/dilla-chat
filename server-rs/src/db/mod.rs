@@ -70,6 +70,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
     ("016_channel_hidden_if_restricted.sql", include_str!("../../migrations/016_channel_hidden_if_restricted.sql")),
     ("017_channel_slow_mode.sql", include_str!("../../migrations/017_channel_slow_mode.sql")),
     ("018_channel_mutes.sql", include_str!("../../migrations/018_channel_mutes.sql")),
+    ("019_channel_name_unique.sql", include_str!("../../migrations/019_channel_name_unique.sql")),
 ];
 
 /// Default number of read connections in the pool.
