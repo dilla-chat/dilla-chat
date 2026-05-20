@@ -245,7 +245,14 @@ class WebRTCService {
         audio.volume = useUserSettingsStore.getState().outputVolume;
         audio.style.display = 'none';
         document.body.appendChild(audio);
-        audio.play().catch(() => {});
+        // Surface autoplay rejections so they're not swallowed silently —
+        // an unplayable audio element is the most common 'why don't I
+        // hear them' bug. Browsers can block play() if it's called
+        // outside the original user gesture (the WS roundtrip + SDP
+        // handshake may push us past that window).
+        audio.play().catch((err: unknown) => {
+          console.error('[WebRTC] audio.play() rejected for', streamId, err);
+        });
         this.vad.addRemoteAnalyser(stream, userId);
       }
     };
