@@ -102,11 +102,39 @@ function Settings({ open, mode, defaultTab, onClose }) {
           <div className="set-nav-foot">
             <button
               className="set-nav-item danger"
-              onClick={() => {
+              onClick={async () => {
                 if (mode === 'team') {
-                  // Leave-team isn't wired yet (server-side endpoint TODO);
-                  // surface that explicitly rather than silently no-op.
-                  window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'system', text: 'Leaving a team isn\'t implemented yet.', duration: 2500 } }));
+                  // Self-leave. Server enforces the sole-admin guard with
+                  // a 409 we surface verbatim. On success, drop the team
+                  // from authStore + teamStore so the rail updates without
+                  // a reload, and bounce to /join if it was the last team.
+                  const teamId = useTeamStore.getState().activeTeamId;
+                  const teamName = teamId
+                    ? useTeamStore.getState().teams.get(teamId)?.name ?? 'this team'
+                    : 'this team';
+                  if (!teamId) return;
+                  if (!confirm('Leave ' + teamName + '? You\'ll lose access to its channels and messages.')) return;
+                  try {
+                    if (!isMockSession()) await api.leaveTeam(teamId);
+                    // Best-effort store cleanup. authStore's removeTeam drops
+                    // the WS connection + token; teamStore wipes channels /
+                    // members / etc. as a side effect of activeTeamId
+                    // becoming null.
+                    const auth = useAuthStore.getState();
+                    if (typeof (auth as { removeTeam?: (id: string) => void }).removeTeam === 'function') {
+                      (auth as { removeTeam: (id: string) => void }).removeTeam(teamId);
+                    }
+                    const ts = useTeamStore.getState();
+                    const next = Array.from(ts.teams.keys()).find((id) => id !== teamId);
+                    if (next) {
+                      ts.setActiveTeam(next);
+                    }
+                    onClose();
+                    if (!next) navigate('/join');
+                  } catch (err) {
+                    const msg = (err as Error).message || 'Could not leave the team.';
+                    window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'system', text: msg, duration: 4500 } }));
+                  }
                   return;
                 }
                 // Sign out: clear all auth/derivedKey/passphrase from

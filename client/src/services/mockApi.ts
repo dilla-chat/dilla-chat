@@ -396,6 +396,11 @@ export class MockApiService {
     };
   }
 
+  // Self-leave — mock no-op. On /mesh the demo team only has one member;
+  // the real flow would tear down auth + redirect, but the demo session
+  // can't re-bootstrap so we just resolve and let the UI notify.
+  async leaveTeam(_teamId: string): Promise<void> { /* noop */ }
+
   // Block list — in-memory Set so /mesh can demo the unblock flow.
   private blocks: Set<string> = new Set();
   async listBlocks(_teamId: string): Promise<string[]> {

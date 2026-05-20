@@ -162,6 +162,12 @@ pub fn create_router(state: AppState) -> Router {
             "/api/v1/teams/{team_id}/members/{user_id}",
             patch(teams::update_member).delete(teams::kick_member),
         )
+        // Self-leave — caller drops their own membership. Distinct from
+        // DELETE /members/{user_id} which requires manage-members.
+        .route(
+            "/api/v1/teams/{team_id}/leave",
+            post(teams::leave_team),
+        )
         .route(
             "/api/v1/teams/{team_id}/members/{user_id}/ban",
             post(teams::ban_member).delete(teams::unban_member),

@@ -389,6 +389,80 @@ pub async fn kick_member(
     json_ok_true()
 }
 
+/// The caller voluntarily leaves a team. Sole-admin check borrows the
+/// same rule delete_user uses — if the caller is the only PERM_ADMIN
+/// member, the team would be ungovernable, so we refuse with 409
+/// Conflict and ask the user to transfer ownership first.
+pub async fn leave_team(
+    Extension(UserId(user_id)): Extension<UserId>,
+    State(state): State<AppState>,
+    Path(team_id): Path<String>,
+) -> Result<Json<Value>, AppError> {
+    let tid = team_id.clone();
+    let uid = user_id.clone();
+
+    spawn_db(state.db.clone(), move |conn| {
+        // Must be a member to leave.
+        let member = db::get_member_by_user_and_team(conn, &uid, &tid)?;
+        let Some(m) = member else {
+            return Err(rusqlite::Error::QueryReturnedNoRows);
+        };
+        // Sole-admin guard. Counts other members holding any PERM_ADMIN
+        // role; if zero, this user is the only governor and can't leave.
+        let other_admins: i32 = conn.query_row(
+            "SELECT COUNT(DISTINCT m.user_id)
+             FROM members m
+             JOIN member_roles mr ON mr.member_id = m.id
+             JOIN roles r ON r.id = mr.role_id
+             WHERE m.team_id = ?1 AND m.user_id != ?2 AND r.permissions & 1 != 0",
+            rusqlite::params![tid, uid],
+            |row| row.get(0),
+        )?;
+        // Did this user have admin themselves? If yes and there are no
+        // other admins, fail loudly.
+        let i_am_admin: bool = conn.query_row(
+            "SELECT EXISTS (
+                SELECT 1 FROM member_roles mr
+                JOIN roles r ON r.id = mr.role_id
+                WHERE mr.member_id = ?1 AND r.permissions & 1 != 0
+             )",
+            rusqlite::params![m.id],
+            |row| row.get(0),
+        )?;
+        if i_am_admin && other_admins == 0 {
+            return Err(rusqlite::Error::InvalidParameterName(
+                "sole_admin".into(),
+            ));
+        }
+
+        db::clear_member_roles(conn, &m.id)?;
+        db::delete_member(conn, &uid, &tid)?;
+        let _ = db::insert_audit_event(
+            conn,
+            &tid,
+            Some(&uid),
+            "member.leave",
+            Some("user"),
+            Some(&uid),
+            None,
+        );
+        Ok(())
+    })
+    .await
+    .map_err(|e| match e {
+        AppError::NotFound(_) => AppError::NotFound("not a member of this team".into()),
+        AppError::Forbidden(msg) if msg == "sole_admin" => AppError::Conflict(
+            "you're the only admin — promote someone else before leaving".into(),
+        ),
+        other => other,
+    })?;
+
+    // Same broadcast the kick path uses so remaining members rotate keys.
+    broadcast_member_left(&state.hub, &team_id, &user_id).await;
+
+    json_ok_true()
+}
+
 pub async fn ban_member(
     Extension(UserId(user_id)): Extension<UserId>,
     State(state): State<AppState>,

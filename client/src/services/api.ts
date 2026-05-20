@@ -577,6 +577,18 @@ class ApiService {
     );
   }
 
+  /** The caller voluntarily leaves the team. Server enforces a sole-admin
+   *  guard and responds with 409 if the user is the only admin. */
+  async leaveTeam(teamId: string): Promise<void> {
+    const conn = this.getConnection(teamId);
+    await this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/leave`,
+      { method: 'POST' },
+      conn.token,
+    );
+  }
+
   /** User-id list of everyone the caller has blocked. */
   async listBlocks(teamId: string): Promise<string[]> {
     const conn = this.getConnection(teamId);
