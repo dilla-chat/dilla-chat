@@ -625,6 +625,31 @@ function UserVoice() {
   const ns = useAudioSettingsStore((s) => s.noiseSuppression);
   const setNs = useAudioSettingsStore((s) => s.setNoiseSuppression);
   const pttKey = useAudioSettingsStore((s) => s.pushToTalkKey);
+  const setPttKey = useAudioSettingsStore((s) => s.setPushToTalkKey);
+  // PTT capture is a "press the next key" mode. Hooking on globalThis with
+  // capture=true so the keystroke isn't swallowed by any open input;
+  // preventDefault keeps the captured key (Space, modifiers) from also
+  // triggering whatever it would normally do.
+  const [capturingPtt, setCapturingPtt] = useStateS(false);
+  useEffectS(() => {
+    if (!capturingPtt) return;
+    const handler = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setPttKey(e.code);
+      setCapturingPtt(false);
+    };
+    globalThis.addEventListener('keydown', handler, true);
+    return () => globalThis.removeEventListener('keydown', handler, true);
+  }, [capturingPtt, setPttKey]);
+  // Strip the KeyboardEvent.code prefix into something a user reads as a
+  // key cap. "KeyV" -> "V", "ArrowLeft" -> "Arrow Left", "Space" -> "Space".
+  const pttLabel = (() => {
+    if (capturingPtt) return 'Press a key…';
+    if (pttKey.startsWith('Key')) return pttKey.slice(3);
+    if (pttKey.startsWith('Digit')) return pttKey.slice(5);
+    return pttKey.replace(/([a-z])([A-Z])/g, '$1 $2');
+  })();
 
   const [camera, setCamera] = useStateS('FaceTime HD');
   const [mirror, setMirror] = useStateS(true);
@@ -767,8 +792,14 @@ function UserVoice() {
         <Row label="Noise suppression"><Toggle value={ns} onChange={setNs} /></Row>
         <Row label="Push to talk" hint="Hold a key to transmit; release to mute.">
           <div className="set-kbd-row">
-            <TextField mono value={pttKey} onChange={() => { /* TODO: capture key */ }} />
-            <Btn>Record</Btn>
+            <button
+              className={'set-input mono set-kbd-capture' + (capturingPtt ? ' capturing' : '')}
+              onClick={() => setCapturingPtt((v) => !v)}
+              aria-label="Click to bind a push-to-talk key"
+            >
+              {pttLabel}
+            </button>
+            <Btn onClick={() => setCapturingPtt(true)}>{capturingPtt ? 'Listening…' : 'Bind'}</Btn>
           </div>
         </Row>
       </Group>
