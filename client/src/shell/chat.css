@@ -188,7 +188,10 @@
 .tab.active { color: var(--fg); background: var(--surface); box-shadow: var(--shadow-1); }
 
 /* Side list */
-.side-scroll { flex: 1; overflow-y: auto; padding: 6px 8px 80px; min-height: 0; }
+/* Bottom padding used to be 80px to clear an absolutely-positioned
+   voice dock / user panel — both are now normal-flow flex siblings
+   inside .side, so the scroll area doesn't need to leave them room. */
+.side-scroll { flex: 1; overflow-y: auto; padding: 6px 8px 8px; min-height: 0; }
 .cat {
   margin-top: 14px;
   padding: 6px 8px 4px;
@@ -2077,7 +2080,7 @@
 }
 
 /* ───── Mock webcam ───── */
-.mock-cam {
+.cam-tile {
   width: 100%;
   aspect-ratio: 1;
   position: relative;
@@ -2088,27 +2091,27 @@
     linear-gradient(180deg, #2b2620 0%, #161210 100%);
   --vctrl-bg: rgba(20,20,20,0.9);
 }
-.mock-cam::before {
+.cam-tile::before {
   /* warm spotlight */
   content: '';
   position: absolute; inset: 0;
   background: radial-gradient(ellipse 80% 60% at 50% 30%, rgba(255,220,160,0.18), transparent 70%);
   pointer-events: none;
 }
-.mock-cam::after {
+.cam-tile::after {
   /* faint scanlines for video grain */
   content: '';
   position: absolute; inset: 0;
   background: repeating-linear-gradient(0deg, transparent 0 2px, rgba(0,0,0,0.06) 2px 3px);
   pointer-events: none;
 }
-.mock-cam-head {
+.cam-tile-head {
   position: absolute; left: 0; right: 0; bottom: 0;
   width: 100%; height: 100%;
   filter: blur(0.4px);
   opacity: 0.5;
 }
-.mock-cam-label {
+.cam-tile-label {
   position: absolute;
   bottom: 7px; left: 8px;
   font-family: var(--font-mono);
@@ -2120,7 +2123,7 @@
   letter-spacing: 0.04em;
   z-index: 1;
 }
-.mock-cam-rec {
+.cam-tile-rec {
   position: absolute;
   top: 7px; left: 8px;
   font-family: var(--font-mono);
@@ -2133,10 +2136,21 @@
   font-weight: 700;
   z-index: 1;
 }
-.mock-cam.mini { aspect-ratio: 1; border-radius: var(--r-sm); }
+.cam-tile.mini { aspect-ratio: 1; border-radius: var(--r-sm); }
+/* When a real video stream is rendering inside the tile, suppress the
+   spotlight/scanline overlays — those decorations are for the silhouette
+   placeholder, not real footage. `:has()` lets us flip the styling
+   purely from the presence of a <video> child. */
+.cam-tile:has(video) {
+  background: #000;
+}
+.cam-tile:has(video)::before,
+.cam-tile:has(video)::after {
+  display: none;
+}
 
 /* ───── Mock screen-share ───── */
-.mock-screen {
+.screen-tile {
   width: 100%;
   aspect-ratio: 16/9;
   background: #0c0d0e;
@@ -2147,62 +2161,62 @@
   border: 1px solid rgba(255,255,255,0.04);
   --vctrl-bg: rgba(12,13,14,1);
 }
-.ms-titlebar {
+.screen-titlebar {
   display: flex; align-items: center; gap: 6px;
   padding: 7px 10px;
   background: linear-gradient(180deg, #22252a, #1a1c20);
   border-bottom: 1px solid rgba(0,0,0,0.4);
   flex: 0 0 auto;
 }
-.ms-dot { width: 8px; height: 8px; border-radius: 50%; }
-.ms-dot.r { background: #ff5f57; }
-.ms-dot.y { background: #febc2e; }
-.ms-dot.g { background: #28c840; }
-.ms-title {
+.screen-dot { width: 8px; height: 8px; border-radius: 50%; }
+.screen-dot.r { background: #ff5f57; }
+.screen-dot.y { background: #febc2e; }
+.screen-dot.g { background: #28c840; }
+.screen-title {
   color: rgba(255,255,255,0.35);
   font-family: var(--font-mono);
   font-size: 9.5px;
   margin: 0 auto;
   padding: 0 24px;
 }
-.ms-body {
+.screen-body {
   display: flex; flex: 1; min-height: 0;
   padding: 8px;
   gap: 6px;
 }
-.ms-sidebar {
+.screen-sidebar {
   width: 22%; max-width: 70px;
   display: flex; flex-direction: column;
   gap: 4px;
   padding-top: 4px;
 }
-.ms-side-line {
+.screen-side-line {
   height: 5px;
   background: rgba(255,255,255,0.08);
   border-radius: 2px;
 }
-.ms-editor {
+.screen-editor {
   flex: 1;
   display: flex; flex-direction: column;
   gap: 3px;
   padding-top: 2px;
   min-width: 0;
 }
-.ms-row { display: flex; align-items: center; gap: 6px; }
-.ms-num {
+.screen-row { display: flex; align-items: center; gap: 6px; }
+.screen-num {
   font-family: var(--font-mono);
   font-size: 8px;
   color: rgba(255,255,255,0.15);
   min-width: 14px;
   text-align: right;
 }
-.ms-line {
+.screen-line {
   flex: 0 0 auto;
   height: 5px;
   background: linear-gradient(90deg, rgba(124,255,142,0.32) 0%, rgba(180,200,255,0.18) 50%, rgba(255,180,100,0.18) 100%);
   border-radius: 1px;
 }
-.ms-foot {
+.screen-foot {
   padding: 5px 10px;
   background: rgba(0,0,0,0.3);
   font-family: var(--font-mono);
@@ -2211,7 +2225,7 @@
   letter-spacing: 0.02em;
   border-top: 1px solid rgba(255,255,255,0.04);
 }
-.ms-pip {
+.screen-pip {
   position: absolute;
   bottom: 30px; right: 10px;
   width: 80px; height: 80px;
@@ -2219,6 +2233,35 @@
   overflow: hidden;
   border: 1.5px solid var(--accent);
   box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+}
+
+/* Clickable PIP shown in focus mode — appears over the focused stream
+   and shows a thumbnail of the OTHER stream. Click to swap focus. */
+.voice-pip-swap {
+  position: absolute;
+  bottom: 16px; right: 16px;
+  width: 160px; height: 100px;
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  border: 2px solid var(--accent);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.5);
+  background: rgba(0,0,0,0.6);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 120ms ease, border-color 120ms ease;
+}
+.voice-pip-swap:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in oklab, var(--accent) 130%, white);
+}
+.voice-pip-swap > * {
+  width: 100%; height: 100%;
+}
+/* Hide the screen-share chrome (titlebar, footer) inside the swap PIP
+   — the small thumbnail should be just the video frame. */
+.voice-pip-swap .screen-titlebar,
+.voice-pip-swap .screen-foot {
+  display: none;
 }
 
 /* Voice focus mode */
@@ -2245,12 +2288,23 @@
   flex: 1;
   min-height: 0;
 }
-.voice-focus .mock-screen,
-.voice-focus .mock-cam {
+.voice-focus .screen-tile,
+.voice-focus .cam-tile {
   aspect-ratio: auto;
   width: 100%;
   height: 100%;
   min-height: 360px;
+}
+/* Reset the min-height inside the swap PIP — without this, the .voice-focus
+   descendant rule above forces the PIP's screen-tile/cam-tile to 360px
+   tall inside a 100px-tall PIP container, pushing the rendered video
+   out of the visible area (looked like a black thumbnail). */
+.voice-pip-swap .screen-tile,
+.voice-pip-swap .cam-tile {
+  aspect-ratio: auto;
+  min-height: 0;
+  height: 100%;
+  width: 100%;
 }
 .voice-strip {
   display: flex;
@@ -2287,8 +2341,8 @@
   z-index: 2;
 }
 .voice-card.mini .voice-media { margin-bottom: 4px; }
-.voice-card.mini .mock-cam,
-.voice-card.mini .mock-screen { min-height: 0; }
+.voice-card.mini .cam-tile,
+.voice-card.mini .screen-tile { min-height: 0; }
 .voice-card.mini .v-name { font-size: 12px; }
 .voice-card.mini::before,
 .voice-card.mini::after { display: none !important; }
@@ -2613,7 +2667,10 @@
 .pop-profile,
 .emoji-pick,
 .cmdk           { animation: dilla-pop-in     0.15s ease-out both; }
-.presence       { animation: dilla-presence-pop 0.35s cubic-bezier(.3,1.5,.5,1) both; }
+/* The dilla-presence-pop entrance animation was firing whenever a member
+   row remounted (role regroup, presence flip), which read as a "vibrate"
+   on the dot — especially during voice activity that updates surrounding
+   state. The dot doesn't need an entrance animation. */
 .unread-pill    { animation: dilla-unread-in 0.2s ease-out both; }
 
 /* Subtle hover lift on channel rows + members for tactile feel */
@@ -2724,3 +2781,11 @@
 .chat[data-style="mesh"] .members { border-left-color: var(--hairline-2); }
 .chat[data-style="mesh"] .main-head { border-bottom-color: var(--hairline-2); }
 .chat[data-style="mesh"] .user-panel { border-top-color: var(--hairline-2); }
+
+.channel-row.locked .ch-name,
+.channel-row.locked .ch-glyph {
+  opacity: 0.55;
+}
+.channel-row.locked {
+  cursor: not-allowed;
+}
