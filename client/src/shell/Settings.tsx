@@ -12,6 +12,7 @@ import { useTeamStore } from '../stores/teamStore';
 import { useUserSettingsStore } from '../stores/userSettingsStore';
 import { useBlockStore } from '../stores/blockStore';
 import { dillaConfirm } from '../stores/confirmStore';
+import PasskeyManager from '../components/PasskeyManager/PasskeyManager';
 import { api } from '../services/api';
 import { isMockSession } from '../services/mockSession';
 import { exportIdentityBlob } from '../services/keyStore';
@@ -982,6 +983,9 @@ function UserPrivacy() {
             <Btn onClick={() => window.dispatchEvent(new CustomEvent('dilla:verify-safety', { detail: m.id }))}>Verify</Btn>
           </Row>
         ))}
+      </Group>
+      <Group title="Passkeys" hint="Per-device WebAuthn credentials that unlock your identity blob. Add more devices or revoke ones you no longer use.">
+        <PasskeyManager />
       </Group>
       <BlockListGroup />
     </>
