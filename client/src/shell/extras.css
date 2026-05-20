@@ -6,7 +6,7 @@
   top: 56px; right: 16px;
   display: flex; flex-direction: column;
   gap: 8px;
-  z-index: 400;
+  z-index: 1000;
   pointer-events: none;
   max-width: 360px;
 }
@@ -34,6 +34,21 @@
 .notify-toast.mention { border-left-color: var(--mention); }
 .notify-toast.clickable { cursor: pointer; }
 .notify-toast.clickable:hover { border-color: var(--accent); }
+/* Belt-and-braces: explicit pointer-events on every interactive child so
+   the toast always catches hover/click regardless of inheritance edge
+   cases on safari/older browsers. */
+.notify-toast,
+.notify-toast > * {
+  pointer-events: auto;
+}
+/* Force solid state on hover — overrides any inherited / animated opacity
+   so the toast stays fully visible while the user reads or clicks it. */
+.notify-toast:hover,
+.notify-toast:focus-within {
+  opacity: 1 !important;
+  visibility: visible !important;
+  background: var(--surface) !important;
+}
 @keyframes nt-shrink-out {
   0%   { opacity: 1; transform: translateY(0); max-height: 200px; }
   100% { opacity: 0; transform: translateY(-8px); max-height: 0; padding: 0 12px; margin-top: -8px; }
