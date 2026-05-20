@@ -1879,13 +1879,11 @@ img.attach-img {
 .composer-typing .dot { animation: blink 1.4s infinite; }
 .composer-typing .dot:nth-child(2) { animation-delay: .2s; }
 .composer-typing .dot:nth-child(3) { animation-delay: .4s; }
-/* Space between the "typing" label and the animated dots so the
-   ellipsis reads as a separate beat instead of running into the
-   word. The wrapper keeps the three dots together as one unit. */
-.composer-typing .typing-dots {
-  display: inline-flex;
+/* Small gap between the word "typing" and the animated ellipsis
+   so the dots read as a separate beat. Only the first dot gets a
+   margin so the trio stays tightly grouped. */
+.composer-typing .dot:first-of-type {
   margin-inline-start: 0.25rem;
-  letter-spacing: 0.15em;
 }
 @keyframes blink { 0%, 60%, 100% { opacity: 0.2; } 30% { opacity: 1; } }
 .composer-input {
