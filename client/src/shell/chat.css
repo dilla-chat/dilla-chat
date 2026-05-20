@@ -2769,17 +2769,6 @@ img.attach-img {
 }
 .pp-btn.primary:hover { background: var(--accent-2); color: var(--accent-ink); }
 
-/* Icon-only variant of .pp-btn for floating chrome (lightbox nav,
- * download, etc.). Same surface/border/hover as the regular button,
- * just sized for a centred glyph instead of label text. */
-.pp-btn.icon-only {
-  flex: 0 0 auto;
-  width: 2.25rem;
-  height: 2.25rem;
-  padding: 0;
-  display: inline-flex; align-items: center; justify-content: center;
-}
-
 /* ───── Emoji picker ───── */
 .emoji-pick {
   position: fixed;
