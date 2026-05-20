@@ -963,15 +963,22 @@ function UserPrivacy() {
   const data = useShellDataContext() as any;
   const meId = data?.currentUserId; const me = meId ? data?.byId?.[meId] : null;
   const meName = me?.name || 'me';
-  // Pull a safety-number-like 24-hex grouping from the public key when
-  // available; fall back to the handoff placeholder grouping otherwise.
-  const pk = data?.publicKey || 'ed25519:8e1d3c447a529bf622d14e08af31000000000000';
-  const pkHex = pk.replace(/^[^:]*:/, '').replace(/[^0-9a-f]/gi, '');
-  function fp(start) {
-    return [0, 1, 2].map(i => pkHex.slice(start + i * 8, start + i * 8 + 8).replace(/(.{4})(.{4})/, '$1 $2'));
+  // Safety number is derived from the user's real Ed25519 public key.
+  // Members in byId carry `publicKeyHex` (64 hex chars = 32 bytes). We
+  // split it into 12 4-hex groups laid out as two 3-row columns to mirror
+  // the Signal visual style. Empty → em-dash placeholder so it's obvious
+  // the key isn't loaded yet rather than displaying zero-padded fakery.
+  const pkHex = (me?.publicKeyHex || '').replace(/[^0-9a-f]/gi, '').toLowerCase();
+  const pkReady = pkHex.length >= 48;
+  function fp(start: number) {
+    return [0, 1, 2].map((i) => {
+      const chunk = pkHex.slice(start + i * 8, start + i * 8 + 8);
+      if (chunk.length < 8) return '';
+      return chunk.replace(/(.{4})(.{4})/, '$1 $2');
+    });
   }
-  const block1 = fp(0).map(s => s || '— — — —');
-  const block2 = fp(24).map(s => s || '— — — —');
+  const block1 = pkReady ? fp(0) : ['— — — —', '— — — —', '— — — —'];
+  const block2 = pkReady ? fp(24) : ['— — — —', '— — — —', '— — — —'];
   // Verify contacts: iterate over real team members (excluding current user).
   const others = (data?.MEMBERS ?? []).filter((m: any) => m.id !== meId);
   return (

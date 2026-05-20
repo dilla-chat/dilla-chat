@@ -36,10 +36,26 @@ function normalizeMembers(data: Record<string, unknown>[]) {
       statusType: (usr.status_type ?? usr.statusType ?? raw.status_type ?? raw.statusType ?? '') as string,
       // isAdmin is now derived from role permissions, not a global flag.
       isAdmin: false,
-      // Member.publicKeyHex is required by the store type (safety-number
-      // compare uses it). Fall back to empty string until the server
-      // surfaces it on the sync/REST payload.
-      publicKeyHex: (mem.public_key_hex ?? usr.public_key_hex ?? raw.public_key_hex ?? '') as string,
+      // Member.publicKeyHex feeds the safety-number panel in user
+      // privacy settings. The server serialises `public_key` as base64
+      // (32 bytes Ed25519); convert it to lowercase hex here so the
+      // store contract stays "hex string". If the field is missing,
+      // fall back to empty so the UI shows the em-dash placeholder
+      // instead of a fake fingerprint.
+      publicKeyHex: ((): string => {
+        const direct = (mem.public_key_hex ?? usr.public_key_hex ?? raw.public_key_hex) as string | undefined;
+        if (direct) return direct;
+        const b64 = (usr.public_key ?? mem.public_key ?? raw.public_key) as string | undefined;
+        if (!b64) return '';
+        try {
+          const bin = atob(b64);
+          let hex = '';
+          for (let i = 0; i < bin.length; i++) hex += bin.charCodeAt(i).toString(16).padStart(2, '0');
+          return hex;
+        } catch {
+          return '';
+        }
+      })(),
       avatarUrl: (usr.avatar_url ?? usr.avatarUrl ?? raw.avatar_url ?? raw.avatarUrl ?? '') as string,
     };
   });
