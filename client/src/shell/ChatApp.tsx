@@ -281,7 +281,8 @@ function GroupCombobox({ value, onChange, existing }: {
           ))}
           {canCreate && (
             <div className="grp-opt grp-opt-new" onMouseDown={(e) => { e.preventDefault(); commit(draft); }}>
-              + Create <strong>{draft.trim()}</strong>
+              <span className="grp-opt-new-label">+ Create</span>
+              <span className="grp-pill grp-pill-static">{draft.trim()}</span>
             </div>
           )}
         </div>
