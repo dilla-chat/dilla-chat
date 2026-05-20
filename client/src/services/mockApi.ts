@@ -396,6 +396,17 @@ export class MockApiService {
     };
   }
 
+  // Integrations — Giphy key flag, mirrored locally so /mesh can demo
+  // the admin flow without a real backend.
+  private giphyConfigured = false;
+  async getGiphyIntegration(_teamId: string): Promise<{ configured: boolean }> {
+    return { configured: this.giphyConfigured };
+  }
+  async setGiphyApiKey(_teamId: string, apiKey: string): Promise<{ configured: boolean }> {
+    this.giphyConfigured = apiKey.trim().length > 0;
+    return { configured: this.giphyConfigured };
+  }
+
   // Channel groups — mirror the real-server CRUD + access endpoints so
   // /mesh can demo the right-click group settings flow.
   private groups: Array<{ id: string; name: string; position: number; access_role_ids: string[]; hidden_if_restricted: boolean }> = [];

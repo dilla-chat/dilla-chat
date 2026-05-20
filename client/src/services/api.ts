@@ -577,10 +577,34 @@ class ApiService {
     const conn = this.getConnection(teamId);
     return this.request(
       conn.baseUrl,
-      `/api/v1/gif?q=${encodeURIComponent(query)}`,
+      `/api/v1/teams/${teamId}/gif?q=${encodeURIComponent(query)}`,
       { method: 'GET' },
       conn.token,
     ) as Promise<{ url: string; query: string }>;
+  }
+
+  /** Returns whether the team has a Giphy API key on file. The key
+   *  itself never crosses the wire — admins set it via setGiphyApiKey. */
+  async getGiphyIntegration(teamId: string): Promise<{ configured: boolean }> {
+    const conn = this.getConnection(teamId);
+    return this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/integrations/giphy`,
+      { method: 'GET' },
+      conn.token,
+    ) as Promise<{ configured: boolean }>;
+  }
+
+  /** Store (or clear, when apiKey is empty) the team's Giphy API key.
+   *  Requires admin permission server-side. */
+  async setGiphyApiKey(teamId: string, apiKey: string): Promise<{ configured: boolean }> {
+    const conn = this.getConnection(teamId);
+    return this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/integrations/giphy`,
+      { method: 'PUT', body: JSON.stringify({ api_key: apiKey }) },
+      conn.token,
+    ) as Promise<{ configured: boolean }>;
   }
 
   /** List the current user's muted channels across all teams. */

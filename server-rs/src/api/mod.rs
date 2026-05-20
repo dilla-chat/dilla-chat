@@ -21,6 +21,7 @@ pub mod polls;
 pub mod channel_mutes;
 pub mod channel_groups;
 pub mod gif;
+pub mod integrations;
 
 use crate::auth::{self, AuthService};
 use crate::config::Config;
@@ -240,9 +241,14 @@ pub fn create_router(state: AppState) -> Router {
             "/api/v1/teams/{team_id}/groups/{group_id}/access",
             get(channel_groups::get_access).put(channel_groups::set_access),
         )
-        // Gif search proxy for the /giphy slash command. Server-side so
-        // the Giphy API key (DILLA_GIPHY_API_KEY) stays out of the bundle.
-        .route("/api/v1/gif", get(gif::search))
+        // Gif search proxy for the /giphy slash command. Team-scoped:
+        // the key lives in settings (team:<tid>:giphy_api_key) and is
+        // set via Team Settings → Integrations. Stays out of the bundle.
+        .route("/api/v1/teams/{team_id}/gif", get(gif::search))
+        .route(
+            "/api/v1/teams/{team_id}/integrations/giphy",
+            get(integrations::get_giphy).put(integrations::set_giphy),
+        )
         // Invites
         .route(
             "/api/v1/teams/{team_id}/invites",

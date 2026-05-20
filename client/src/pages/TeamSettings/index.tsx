@@ -8,6 +8,7 @@ import OverviewTab from './OverviewTab';
 import RolesTab from './RolesTab';
 import MembersTab from './MembersTab';
 import InvitesTab from './InvitesTab';
+import IntegrationsTab from './IntegrationsTab';
 import ModerationTab from './ModerationTab';
 import BansTab from './BansTab';
 import type { Tab } from './types';
@@ -30,6 +31,7 @@ export default function TeamSettings() {
           { id: 'roles', label: t('settings.roles') },
           { id: 'members', label: t('settings.members') },
           { id: 'invites', label: t('settings.invites') },
+          { id: 'integrations', label: t('settings.integrations', 'Integrations') },
         ],
       },
       {
@@ -65,6 +67,7 @@ export default function TeamSettings() {
       {tab === 'roles' && activeTeamId && <RolesTab teamId={activeTeamId} />}
       {tab === 'members' && activeTeamId && <MembersTab teamId={activeTeamId} />}
       {tab === 'invites' && activeTeamId && <InvitesTab teamId={activeTeamId} />}
+      {tab === 'integrations' && activeTeamId && <IntegrationsTab teamId={activeTeamId} />}
       {tab === 'federation' && activeTeamId && <FederationStatus teamId={activeTeamId} />}
       {tab === 'moderation' && activeTeamId && <ModerationTab teamId={activeTeamId} />}
       {tab === 'audit-log' && (

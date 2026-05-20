@@ -52,11 +52,6 @@ pub struct Config {
     pub sentry_dsn: String,
     pub environment: String,
 
-    /// Giphy API key for the `/giphy` slash command. When unset the server
-    /// returns 503 from `GET /api/v1/gif` and the client falls back to
-    /// posting a search-link. Operators get a key at developers.giphy.com.
-    pub giphy_api_key: String,
-
     // OpenTelemetry
     pub otel_enabled: bool,
     pub otel_protocol: String,
@@ -159,7 +154,6 @@ impl Config {
             telemetry_adapter: env_str("DILLA_TELEMETRY_ADAPTER", "none"),
             sentry_dsn: env_str("DILLA_SENTRY_DSN", ""),
             environment: env_str("DILLA_ENVIRONMENT", "production"),
-            giphy_api_key: env_str("DILLA_GIPHY_API_KEY", ""),
             otel_enabled: env_bool("DILLA_OTEL_ENABLED", false),
             otel_protocol: env_str("DILLA_OTEL_PROTOCOL", "http"),
             otel_endpoint: env_str("DILLA_OTEL_ENDPOINT", "localhost:4317"),

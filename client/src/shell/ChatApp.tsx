@@ -4290,7 +4290,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           if (msg.includes('503') || msg.toLowerCase().includes('not configured')) {
-            notify('Gif search is disabled — operator needs to set DILLA_GIPHY_API_KEY.');
+            notify('Gif search is disabled — an admin can add a Giphy API key in Team Settings → Integrations.');
           } else if (msg.includes('404') || msg.toLowerCase().includes('no gif')) {
             notify(`No gif matches "${q}".`);
           } else {

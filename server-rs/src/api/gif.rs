@@ -1,20 +1,20 @@
-// Server-side proxy for the `/giphy` slash command. We don't want a
-// Giphy API key shipped in the browser bundle, so the client just calls
-// `GET /api/v1/gif?q=<query>` and the server hits Giphy's translate
-// endpoint with `DILLA_GIPHY_API_KEY`.
-//
-// Returns `{ "url": "https://media.giphy.com/.../giphy.gif", "query": "..." }`
-// for the inline image renderer, or 503 with an `error` field if the
-// operator hasn't configured a key.
+// Server-side proxy for the `/giphy` slash command. The Giphy API key
+// is a per-team setting (Team Settings → Integrations writes
+// `team:<tid>:giphy_api_key` into the settings table); the client calls
+// `GET /api/v1/teams/{tid}/gif?q=<query>` and we look the key up by
+// team. Returns
+//   { "url": "https://media.giphy.com/.../giphy.gif", "query": "..." }
+// or 503 if the team admin hasn't pasted a key yet.
 
-use axum::extract::{Query, State};
+use axum::extract::{Path, Query, State};
 use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::api::helpers::json_ok;
+use crate::api::helpers::{json_ok, require_team_member, spawn_db};
 use crate::api::AppState;
 use crate::auth::UserId;
+use crate::db;
 use crate::error::AppError;
 
 /// Minimal percent-encoder for query-string values. We only need it for
@@ -38,20 +38,32 @@ pub struct GifQuery {
 }
 
 pub async fn search(
-    Extension(UserId(_user_id)): Extension<UserId>,
+    Extension(UserId(user_id)): Extension<UserId>,
     State(state): State<AppState>,
+    Path(team_id): Path<String>,
     Query(params): Query<GifQuery>,
 ) -> Result<Json<Value>, AppError> {
-    let q = params.q.trim();
+    let q = params.q.trim().to_string();
     if q.is_empty() {
         return Err(AppError::BadRequest("query is required".into()));
     }
-    let key = state.config.giphy_api_key.trim();
+    let team_id_clone = team_id.clone();
+    let user_id_clone = user_id.clone();
+    let key_opt = spawn_db(state.db.clone(), move |conn| {
+        require_team_member(conn, &user_id_clone, &team_id_clone)?;
+        let key = format!("team:{}:giphy_api_key", team_id_clone);
+        Ok::<_, rusqlite::Error>(db::get_setting(conn, &key)?)
+    })
+    .await?;
+    let key = key_opt.unwrap_or_default();
+    let key = key.trim().to_string();
     if key.is_empty() {
         return Err(AppError::ServiceUnavailable(
-            "gif provider not configured (set DILLA_GIPHY_API_KEY)".into(),
+            "gif provider not configured for this team".into(),
         ));
     }
+    let q = q.as_str();
+    let key = key.as_str();
 
     let url = format!(
         "https://api.giphy.com/v1/gifs/translate?api_key={}&s={}",

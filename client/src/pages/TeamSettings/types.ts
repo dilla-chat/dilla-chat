@@ -5,6 +5,7 @@ export type Tab =
   | 'roles'
   | 'members'
   | 'invites'
+  | 'integrations'
   | 'moderation'
   | 'audit-log'
   | 'bans'
