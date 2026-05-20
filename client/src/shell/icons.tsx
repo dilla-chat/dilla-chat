@@ -127,6 +127,17 @@ export const Icon = {
       <path d="M5 2.5L1.5 6L5 9.5M2 6h6a3 3 0 013 3v1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ),
+  File: ({ size = 14 }) => (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none">
+      <path d="M9 1.5H4a1 1 0 00-1 1v11a1 1 0 001 1h8a1 1 0 001-1V5.5L9 1.5z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+      <path d="M9 1.5V5.5h4" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+    </svg>
+  ),
+  Download: ({ size = 14 }) => (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none">
+      <path d="M8 2v9M4.5 7.5L8 11l3.5-3.5M2.5 13.5h11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
   Bars: ({ size = 14 }) => (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none">
       <path d="M2 12V8M6 12V5M10 12V9M14 12V3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />

@@ -1571,6 +1571,45 @@
   width: 100%;
 }
 
+/* Compact non-image attachment row. Replaces the giant .attach-img
+   block for files like zip / pdf / etc — a 10 KB zip shouldn't look
+   like a 4K photo. */
+.attach-file {
+  display: inline-flex; align-items: center; gap: 0.625rem;
+  margin-top: 0.375rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  color: var(--fg);
+  text-decoration: none;
+  max-width: 22rem;
+  transition: border-color 0.12s, color 0.12s;
+}
+.attach-file:hover { border-color: var(--accent); }
+.attach-file:hover .attach-file-action { color: var(--accent); }
+.attach-file-icon {
+  display: inline-flex; align-items: center;
+  color: var(--fg-3);
+}
+.attach-file-meta {
+  display: inline-flex; flex-direction: column; min-width: 0; flex: 1;
+}
+.attach-file-name {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.attach-file-size {
+  font-size: 0.6875rem;
+  font-family: var(--font-mono);
+  color: var(--fg-3);
+}
+.attach-file-action {
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--fg-2);
+}
+
 /* Reactions */
 .rxns { display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap; }
 .rxn {

@@ -2642,13 +2642,29 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                               </div>
                             )}
                             {m.kind === 'file' && (
-                              <div className="attach">
-                                <div className="attach-img" style={{ background: 'var(--surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'var(--fg-3)' }}>FILE</div>
-                                <div className="attach-name">
-                                  {m.attachment?.label}
-                                  {m.attachment?.size != null && ` · ${Math.max(1, Math.round(m.attachment.size / 1024))} KB`}
-                                </div>
-                              </div>
+                              // Compact one-row card for non-image attachments.
+                              // The 360×280 placeholder we had before looked
+                              // identical to a 4K photo's tile — confusing for
+                              // small files. <a download> triggers the browser
+                              // download path against the existing attachment
+                              // URL (already authorized for team members).
+                              <a
+                                className="attach-file"
+                                href={m.attachment?.src}
+                                download={m.attachment?.label || 'file'}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <span className="attach-file-icon"><Icon.File size={16} /></span>
+                                <span className="attach-file-meta">
+                                  <span className="attach-file-name">{m.attachment?.label || 'file'}</span>
+                                  {m.attachment?.size != null && (
+                                    <span className="attach-file-size">{Math.max(1, Math.round(m.attachment.size / 1024))} KB</span>
+                                  )}
+                                </span>
+                                <span className="attach-file-action" title="Download">
+                                  <Icon.Download size={14} />
+                                </span>
+                              </a>
                             )}
                             {m.kind === 'text' && renderText(m.text, members)}
                             {m.kind === 'action' && (
@@ -3173,6 +3189,29 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
             onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: '95vw', maxHeight: '95vh', objectFit: 'contain', borderRadius: 4 }}
           />
+          {/* Download button — fixed top-right of the overlay. <a download>
+              picks the filename from the URL when our attachment URL
+              already encodes the name; if it doesn't, the browser falls
+              back to the response Content-Disposition. */}
+          <a
+            href={lightboxSrc}
+            download
+            onClick={(e) => e.stopPropagation()}
+            title="Download image"
+            style={{
+              position: 'absolute', top: '1rem', right: '1rem',
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: '2.5rem', height: '2.5rem',
+              borderRadius: '50%',
+              background: 'rgba(255,255,255,0.12)',
+              color: '#fff',
+              border: '1px solid rgba(255,255,255,0.2)',
+              cursor: 'pointer',
+              backdropFilter: 'blur(4px)',
+            }}
+          >
+            <Icon.Download size={18} />
+          </a>
         </div>
       )}
     </div>
