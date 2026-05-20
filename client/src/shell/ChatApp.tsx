@@ -1150,8 +1150,18 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
     const access = c.accessRoleIds ?? [];
     return access.length > 0 && everyoneRoleId !== undefined && !access.includes(everyoneRoleId);
   };
-  const voiceChs = channels.filter(c => c.type === 'voice' && (c.participants || []).length > 0);
-  const textChsRaw = channels.filter(c => c.type === 'text');
+  // Mirror the server-side filter: channels marked hidden_if_restricted
+  // are hidden from members who can't access them. The server applies the
+  // same rule at sync time, but channels can become restricted live (via
+  // channel:access-update / channel:updated) without a re-sync, so we
+  // need to re-check on every render too.
+  const hiddenForMe = (c: { accessRoleIds?: string[]; hiddenIfRestricted?: boolean; hidden_if_restricted?: boolean }) => {
+    const hidden = !!(c.hiddenIfRestricted ?? c.hidden_if_restricted);
+    return hidden && !canJoinChannel(c);
+  };
+  const visibleChannels = channels.filter((c) => !hiddenForMe(c));
+  const voiceChs = visibleChannels.filter(c => c.type === 'voice' && (c.participants || []).length > 0);
+  const textChsRaw = visibleChannels.filter(c => c.type === 'text');
   const textChs = orderOverride
     ? orderOverride.map(id => textChsRaw.find(c => c.id === id)).filter(Boolean).concat(textChsRaw.filter(c => !orderOverride.includes(c.id)))
     : textChsRaw;
@@ -1165,7 +1175,7 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
     next.splice(to, 0, srcId);
     setOrderOverride(next);
   }
-  const otherVoice = channels.filter(c => c.type === 'voice' && !voiceChs.includes(c));
+  const otherVoice = visibleChannels.filter(c => c.type === 'voice' && !voiceChs.includes(c));
 
   return (
     <aside className="side">
@@ -3412,12 +3422,20 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     }
     function onChannelSettings(e) {
       const id = e.detail;
-      const ch = (data?.CHANNELS ?? []).find((c: any) => c.id === id);
+      // Read from the LIVE teamStore each time the menu fires — the
+      // closure that captured `data` may be stale.
+      const tid = useTeamStore.getState().activeTeamId;
+      const ch = tid
+        ? (useTeamStore.getState().channels.get(tid) ?? []).find((c) => c.id === id)
+        : undefined;
       if (ch) setChanSettings(ch);
     }
     function onChannelAccess(e) {
       const id = e.detail;
-      const ch = (data?.CHANNELS ?? []).find((c: any) => c.id === id);
+      const tid = useTeamStore.getState().activeTeamId;
+      const ch = tid
+        ? (useTeamStore.getState().channels.get(tid) ?? []).find((c) => c.id === id)
+        : undefined;
       if (ch) setChanAccess(ch);
     }
     function onCloseDm(e) {
