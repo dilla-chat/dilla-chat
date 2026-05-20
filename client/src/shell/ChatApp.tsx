@@ -2429,8 +2429,47 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
   }, [groups]);
   const seenDays = new Set();
 
+  // Drag-and-drop attach. dragOver flips on first dragenter that
+  // carries files, off on a coordinated dragleave/drop. A counter
+  // balances enter/leave fired for every child element the pointer
+  // crosses so a quick swipe doesn't flicker the overlay.
+  const dragCounterRef = useRef(0);
+  const hasFiles = (e: React.DragEvent) =>
+    Array.from(e.dataTransfer?.types || []).includes('Files');
+  function onDragEnter(e: React.DragEvent) {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    dragCounterRef.current += 1;
+    setDragOver(true);
+  }
+  function onDragOverEvt(e: React.DragEvent) {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+  }
+  function onDragLeave(e: React.DragEvent) {
+    if (!hasFiles(e)) return;
+    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
+    if (dragCounterRef.current === 0) setDragOver(false);
+  }
+
   return (
-    <div className="main">
+    <div
+      className="main"
+      onDragEnter={onDragEnter}
+      onDragOver={onDragOverEvt}
+      onDragLeave={onDragLeave}
+      onDrop={(e) => { dragCounterRef.current = 0; onDrop(e); }}
+    >
+      {dragOver && (
+        <div className="drop-overlay">
+          <div className="drop-card">
+            <div className="drop-glyph"><Icon.Attach size={36} /></div>
+            <div className="drop-title">Drop to attach</div>
+            <div className="drop-sub">files are encrypted on this device before upload · Signal sender keys for {channel.type === 'dm' ? 'this DM' : '#' + channel.name}</div>
+          </div>
+        </div>
+      )}
       <div className="main-head">
         <div className="ch-title">
           {channel.type === 'dm' ? (
@@ -3533,48 +3572,9 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
     remoteWebcamStreams,
     remoteScreenStream,
   ]);
-  // Drag-and-drop attach. dragOver flips on first dragenter that
-  // carries files, off on a coordinated dragleave/drop. We track a
-  // counter because dragenter/leave fire for every child element the
-  // pointer crosses; counting balances the events so a quick swipe
-  // across the message bubbles doesn't flicker the overlay.
-  const dragCounterRef = useRef(0);
-  const hasFiles = (e: React.DragEvent) =>
-    Array.from(e.dataTransfer?.types || []).includes('Files');
-  function onDragEnter(e: React.DragEvent) {
-    if (!hasFiles(e)) return;
-    e.preventDefault();
-    dragCounterRef.current += 1;
-    setDragOver(true);
-  }
-  function onDragOver(e: React.DragEvent) {
-    if (!hasFiles(e)) return;
-    e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
-  }
-  function onDragLeave(e: React.DragEvent) {
-    if (!hasFiles(e)) return;
-    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
-    if (dragCounterRef.current === 0) setDragOver(false);
-  }
 
   return (
-    <div
-      className="main"
-      onDragEnter={onDragEnter}
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={(e) => { dragCounterRef.current = 0; onDrop(e); }}
-    >
-      {dragOver && (
-        <div className="drop-overlay">
-          <div className="drop-card">
-            <div className="drop-glyph"><Icon.Attach size={36} /></div>
-            <div className="drop-title">Drop to attach</div>
-            <div className="drop-sub">files are encrypted on this device before upload · Signal sender keys for {channel.type === 'dm' ? 'this DM' : '#' + channel.name}</div>
-          </div>
-        </div>
-      )}
+    <div className="main">
       <div className="main-head">
         <button className="chat-menu-btn" title="Open menu" onClick={() => window.dispatchEvent(new CustomEvent('dilla:toggle-drawer'))}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
