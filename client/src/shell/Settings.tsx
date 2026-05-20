@@ -1076,7 +1076,7 @@ function TeamRoles() {
       {editing && (
         <RoleEditor
           teamId={teamId!}
-          role={roles.find((r) => r.id === editing.id)}
+          role={storeRoles.find((r) => r.id === editing.id)}
           onClose={() => setEditing(null)}
           onSaved={async () => {
             await refresh();
