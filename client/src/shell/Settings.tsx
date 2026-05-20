@@ -888,7 +888,7 @@ function TeamInvites() {
     <Group title="Active invites" hint="Anyone with a working link can join this team. Revoke unused links.">
       <div className="set-table">
         <div className="set-th">
-          <span>Link</span><span>Uses</span><span>Expires</span><span>Created by</span><span></span>
+          <span>Link</span><span>Uses</span><span>Expires</span><span>Created by</span><span>Actions</span>
         </div>
         {rows.map(r => (
           <div key={r.code} className={'set-tr' + (r.stale ? ' stale' : '')}>
