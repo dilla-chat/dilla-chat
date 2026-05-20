@@ -2334,11 +2334,17 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
     const el = feedRef.current;
     if (!el) return;
     function onScroll() {
-      // In column-reverse, scrollTop is distance from the visual
-      // bottom (newest). 0 = pinned to newest, larger = scrolled up
-      // into history. The jump-to-newest button shows once the user
-      // is more than ~120px above the live edge.
-      setShowJump(el.scrollTop > 120);
+      // column-reverse scrollTop semantics differ between browsers:
+      // Chrome/Firefox keep scrollTop ≥ 0 with 0 = visual bottom,
+      // older Safari has gone negative. Take the absolute distance
+      // from "at the live edge" so the button appears regardless of
+      // sign, and compare against both possible representations of
+      // the bottom (raw 0 and the legacy scrollHeight-clientHeight).
+      const distFromBottom = Math.min(
+        Math.abs(el.scrollTop),
+        Math.abs(el.scrollHeight - el.scrollTop - el.clientHeight),
+      );
+      setShowJump(distFromBottom > 120);
     }
     el.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
@@ -2572,7 +2578,7 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
           const author = members.byId[g.author] || { name: g.author, color: '#666', initials: '??' };
           if (g.base.kind === 'system') {
             return (
-              <React.Fragment key={i}>
+              <div className="msg-group" key={i}>
                 {showDay && <div className="day-divider">{dayLabel(g.at)}</div>}
                 <div className="msg system">
                   <div></div>
@@ -2581,11 +2587,11 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                     {g.base.meta && <div className="meta">{g.base.meta}</div>}
                   </div>
                 </div>
-              </React.Fragment>
+              </div>
             );
           }
           return (
-            <React.Fragment key={i}>
+            <div className="msg-group" key={i}>
               {showDay && <div className="day-divider">{dayLabel(g.at)}</div>}
               {showUnreadAbove && (
                 <div className="unread-divider"><span>new</span></div>
@@ -2880,7 +2886,7 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                   </div>
                 );
               })}
-            </React.Fragment>
+            </div>
           );
         }).reverse()}
       </div>

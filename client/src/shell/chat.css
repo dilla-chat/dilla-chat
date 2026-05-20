@@ -983,6 +983,16 @@
   display: flex;
   flex-direction: column-reverse;
 }
+
+/* Each timeframe-grouped collection of messages renders as a single
+ * flex item of .feed. Without this wrapper every individual .msg
+ * would be a direct child of the column-reverse container and the
+ * flip would scramble within-group order. The inner block layout is
+ * the default top-to-bottom flow, so day-divider + messages stay in
+ * natural reading order. */
+.msg-group {
+  display: block;
+}
 .day-divider {
   display: flex; align-items: center;
   margin: 12px 16px 4px;
