@@ -2364,7 +2364,28 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                       {pinnedMsgs.map(pm => {
                         const a = members.byId[pm.author] || { name: pm.author, color: '#666', initials: '??' };
                         return (
-                          <div key={pm.id} className="pin-row" onClick={() => setPinnedOpen(false)}>
+                          <div
+                            key={pm.id}
+                            className="pin-row"
+                            onClick={() => {
+                              // Same scroll+flash pattern as the reply-ref
+                              // jump above. Close the pop first so the
+                              // flash isn't obscured.
+                              setPinnedOpen(false);
+                              // setState is async — wait a tick for the
+                              // pop to unmount before scrolling, otherwise
+                              // its layout shift can race with the smooth
+                              // scroll and land the target off-screen.
+                              setTimeout(() => {
+                                const el = feedRef.current && feedRef.current.querySelector('[data-msg-id="' + pm.id + '"]');
+                                if (el) {
+                                  el.classList.add('msg-flash');
+                                  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                  setTimeout(() => el.classList.remove('msg-flash'), 1400);
+                                }
+                              }, 0);
+                            }}
+                          >
                             <div className="pin-av" style={{ background: a.color }}>{a.initials}</div>
                             <div>
                               <div className="pin-meta"><span className="pin-author">{a.name}</span> <span className="pin-time">· {timeShort(pm.at)}</span></div>
@@ -2425,9 +2446,10 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
               {g.children.map((m, idx) => {
                 const isFirst = idx === 0;
                 const hasMention = (m.mentions || []).includes(currentUserId());
+                const isPinned = pinnedSet?.has(m.id) ?? false;
                 return (
                   <div key={m.id}
-                       className={'msg' + (isFirst ? '' : ' compact') + (hasMention ? ' has-mention' : '') + (m.replyTo ? ' has-reply' : '')}
+                       className={'msg' + (isFirst ? '' : ' compact') + (hasMention ? ' has-mention' : '') + (m.replyTo ? ' has-reply' : '') + (isPinned ? ' is-pinned' : '')}
                        data-msg-id={m.id}
                        onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, msgId: m.id, isMine: m.author === currentUserId() }); }}>
                     {m.replyTo && (() => {
@@ -2497,7 +2519,30 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                             );
                           })()}
                           {author.role === 'admin' && <span className="enc-badge" style={{ fontSize: 9, padding: '1px 5px' }}>admin</span>}
+                          {isPinned && (
+                            <span
+                              className="msg-pin-chip"
+                              title="Pinned to this channel — open the pin pop to see all pins"
+                              onClick={() => setPinnedOpen(true)}
+                            >
+                              <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
+                                <path d="M3 2v12l5-3 5 3V2z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
+                              </svg>
+                              pinned
+                            </span>
+                          )}
                         </div>
+                      )}
+                      {isPinned && !isFirst && (
+                        <span
+                          className="msg-pin-chip msg-pin-chip-compact"
+                          title="Pinned to this channel"
+                          onClick={() => setPinnedOpen(true)}
+                        >
+                          <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
+                            <path d="M3 2v12l5-3 5 3V2z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
+                          </svg>
+                        </span>
                       )}
                       <div className="body">
                         {editingId === m.id ? (
