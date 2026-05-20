@@ -2304,16 +2304,49 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
   // Track the newest message id so we only auto-scroll when a *new*
   // message arrives at the bottom (or the channel itself changed) —
   // not when lazy-load prepends older messages above the viewport.
+  // We defer the scroll across a frame and also listen for late image
+  // loads, since embedded media (giphy, attachments) frequently push
+  // the bottom further down after our initial measurement.
   const lastBottomIdRef = useRef<string | null>(null);
   const lastChannelRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!feedRef.current) return;
+    const el = feedRef.current;
+    if (!el) return;
     const newestId = messages.length ? messages[messages.length - 1].id : null;
     const channelChanged = lastChannelRef.current !== channel.id;
     const newestChanged = lastBottomIdRef.current !== newestId;
+
     if (channelChanged || newestChanged) {
-      feedRef.current.scrollTop = feedRef.current.scrollHeight;
+      const stick = () => {
+        if (!el) return;
+        el.scrollTop = el.scrollHeight;
+      };
+      // Run now, on the next frame, and once more after layout settles.
+      // Belt-and-braces against media that loads asynchronously and
+      // grows the feed after our first measurement.
+      stick();
+      const raf = requestAnimationFrame(stick);
+      const t = window.setTimeout(stick, 120);
+
+      // Late image loads: if any <img> inside the feed finishes after
+      // the initial pass, re-stick to the bottom. The listener is
+      // scoped to this effect cycle so it doesn't fight the user
+      // when they scroll up.
+      const onMediaLoad = (e: Event) => {
+        const t = e.target as HTMLElement | null;
+        if (t && el.contains(t)) stick();
+      };
+      el.addEventListener('load', onMediaLoad, true);
+
+      lastBottomIdRef.current = newestId;
+      lastChannelRef.current = channel.id;
+      return () => {
+        cancelAnimationFrame(raf);
+        window.clearTimeout(t);
+        el.removeEventListener('load', onMediaLoad, true);
+      };
     }
+
     lastBottomIdRef.current = newestId;
     lastChannelRef.current = channel.id;
   }, [messages, channel.id]);
