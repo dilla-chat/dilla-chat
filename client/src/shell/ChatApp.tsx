@@ -1794,21 +1794,19 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
                     {(c.participants || []).map(pid => {
                       const m = members.byId[pid];
                       const peer = c.voicePeers && c.voicePeers[pid];
-                      // Voice activity (speaking ring + level meter) is
-                      // intentionally NOT shown in the left-sidebar
-                      // participants — it pushed a Zustand update every
-                      // VAD tick and re-rendered this whole section
-                      // many times per second. Speaking visualization
-                      // lives in the main voice-channel UI instead, where
-                      // it has somewhere meaningful to display. We still
-                      // surface the static toggles (muted/deafened/cam/
-                      // screen) since those only change on user action.
-                      const muted = peer ? !!peer.muted : (pid === currentUserId() && mute);
-                      const deafened = peer ? !!peer.deafened : (pid === currentUserId() && deaf);
+                      // peer.speaking comes from server voice:state
+                      // broadcasts (throttled) — safe to read here for
+                      // remote peers. We don't surface the local user's
+                      // own speaking state in this row (they see their
+                      // mic activity via the voice-dock below).
+                      const isSelf = pid === currentUserId();
+                      const muted = peer ? !!peer.muted : (isSelf && mute);
+                      const deafened = peer ? !!peer.deafened : (isSelf && deaf);
                       const screenOn = peer ? !!peer.screen_sharing : false;
-                      const camOn = peer ? !!peer.webcam_sharing : (pid === currentUserId() && cam);
+                      const camOn = peer ? !!peer.webcam_sharing : (isSelf && cam);
+                      const speaking = !isSelf && !muted && !!peer?.speaking;
                       return (
-                        <div key={pid} className={'voice-participant' + (muted ? ' muted' : '')}
+                        <div key={pid} className={'voice-participant' + (speaking ? ' speaking' : '') + (muted ? ' muted' : '')}
                              onContextMenu={(e) => {
                                e.preventDefault();
                                window.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
@@ -1823,6 +1821,7 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
                           <div className={memberAvatarClass(m, 'vp-avatar')} style={memberAvatarStyle(m)}>{!m.avatarUrl && m.initials}</div>
                           <span className="vp-name">{m.name}</span>
                           <div className="vp-state">
+                            {speaking && <MiniMeter />}
                             {camOn && <span className="vp-icon screen" title="camera on"><Icon.Video size={11} /></span>}
                             {screenOn && <span className="vp-icon screen" title="sharing screen"><Icon.Screen size={11} /></span>}
                             {deafened && <span className="vp-icon mute" title="deafened"><Icon.Headphones size={11} off /></span>}
