@@ -759,6 +759,30 @@ function TeamInvites() {
   const [rows, setRows] = useStateS<any[]>([]);
   const [maxUsesOpt, setMaxUsesOpt] = useStateS<string>('inf');
   const [expiresOpt, setExpiresOpt] = useStateS<string>('never');
+  // 1 s tick — re-renders the table so the live "expires" countdown
+  // updates without an explicit setTimeout per row.
+  const [, setNowTick] = useStateS(0);
+  useEffectS(() => {
+    const id = window.setInterval(() => setNowTick((n) => n + 1), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  function formatExpiry(expiresAt: Date | null): string {
+    if (!expiresAt) return '—';
+    const ms = expiresAt.getTime() - Date.now();
+    if (ms <= 0) return 'expired';
+    const totalSecs = Math.floor(ms / 1000);
+    const days = Math.floor(totalSecs / 86400);
+    const hours = Math.floor((totalSecs % 86400) / 3600);
+    const mins = Math.floor((totalSecs % 3600) / 60);
+    const secs = totalSecs % 60;
+    // > 24 h: show the absolute date so admins can plan; under 24 h:
+    // start ticking with progressively finer granularity.
+    if (days >= 1) return expiresAt.toLocaleDateString();
+    if (hours >= 1) return `in ${hours}h ${mins}m`;
+    if (mins >= 1) return `in ${mins}m ${secs}s`;
+    return `in ${secs}s`;
+  }
 
   // Resolve a user_id to a human-friendly label using whatever the shell
   // bridge already loaded — falls back to a short id when the lookup
@@ -786,9 +810,9 @@ function TeamInvites() {
               id: inv.id,
               code: `${baseUrl}/join/${token}`,
               uses: `${inv.uses ?? 0} / ${inv.max_uses ?? '∞'}`,
-              expires: inv.expires_at
-                ? new Date(inv.expires_at).toLocaleDateString()
-                : '—',
+              // Store the raw timestamp; the render layer formats it
+              // relative so the cell can tick down without re-fetching.
+              expiresAt: inv.expires_at ? new Date(inv.expires_at + 'Z') : null,
               who: userLabel(inv.created_by),
             };
           }),
@@ -850,8 +874,6 @@ function TeamInvites() {
       const inv = (await api.createInvite(auth.teamId, maxUses, expiresInHours)) as any;
       const id = inv.id;
       const code = inv.code || inv.token || id;
-      // Server returns the token; turn it into a deep-link URL the user
-      // can paste anywhere.
       const url = `${auth.baseUrl.replace(/\/$/, '')}/join/${code}`;
       setRows((prev) => [
         ...prev,
@@ -859,7 +881,7 @@ function TeamInvites() {
           id,
           code: url,
           uses: `0 / ${inv.max_uses ?? '∞'}`,
-          expires: inv.expires_at ? new Date(inv.expires_at).toLocaleDateString() : '—',
+          expiresAt: inv.expires_at ? new Date(inv.expires_at + 'Z') : null,
           who: userLabel(inv.created_by ?? meId),
         },
       ]);
@@ -906,7 +928,7 @@ function TeamInvites() {
               }}>Copy</Btn>
             </span>
             <span>{r.uses}</span>
-            <span>{r.expires}</span>
+            <span>{formatExpiry(r.expiresAt)}</span>
             <span>{r.who}</span>
             <Btn danger onClick={() => revoke(r)}>Revoke</Btn>
           </div>

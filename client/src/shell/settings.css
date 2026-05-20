@@ -392,11 +392,10 @@ select.set-input {
 .set-tr code { font-family: var(--font-mono); color: var(--fg); overflow-wrap: anywhere; word-break: break-all; min-width: 0; }
 .set-tr > * { min-width: 0; overflow-wrap: anywhere; }
 .set-link-cell {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 0.375rem;
   min-width: 0;
-  overflow: hidden;
 }
 .set-link-code {
   flex: 1 1 auto;
@@ -405,20 +404,10 @@ select.set-input {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.set-link-copy {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+.set-link-cell .set-btn {
   flex: 0 0 auto;
-  width: 22px;
-  height: 22px;
-  background: transparent;
-  border: 1px solid var(--hairline);
-  color: var(--fg-2);
-  border-radius: var(--r-sm);
-  cursor: pointer;
+  white-space: nowrap;
 }
-.set-link-copy:hover { background: var(--surface-hi); color: var(--fg); border-color: var(--accent); }
 
 .set-dot {
   display: inline-block;
