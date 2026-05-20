@@ -1,6 +1,6 @@
 import {
   MOCK_USERS, RANDOM_MESSAGES, DEMO_CURRENT_USER_ID, DEMO_TEAM_ID,
-  MOCK_TEAM, MOCK_CHANNELS, MOCK_MEMBERS, MOCK_ROLES,
+  MOCK_TEAM, MOCK_CHANNELS, MOCK_MEMBERS, MOCK_ROLES, MOCK_GROUPS,
   MOCK_PRESENCES, MOCK_VOICE_STATES,
 } from './mockData';
 
@@ -229,9 +229,13 @@ export class MockWebSocketService {
 function buildSyncInitPayload() {
   return {
     team: MOCK_TEAM,
-    channels: MOCK_CHANNELS.map((ch) => ({ ...ch, team_id: DEMO_TEAM_ID })),
+    channels: MOCK_CHANNELS.map((ch) => ({ ...ch, team_id: DEMO_TEAM_ID, group_id: ch.groupId ?? null })),
     members: MOCK_MEMBERS,
     roles: MOCK_ROLES,
+    groups: MOCK_GROUPS.map((g) => ({
+      id: g.id, team_id: g.teamId, name: g.name, position: g.position,
+      access_role_ids: g.accessRoleIds,
+    })),
     presences: MOCK_PRESENCES,
     voice_states: MOCK_VOICE_STATES,
     unread_counts: {},

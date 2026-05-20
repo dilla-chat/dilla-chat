@@ -396,6 +396,37 @@ export class MockApiService {
     };
   }
 
+  // Channel groups — mirror the real-server CRUD + access endpoints so
+  // /mesh can demo the right-click group settings flow.
+  private groups: Array<{ id: string; name: string; position: number; access_role_ids: string[] }> = [];
+  async listGroups(_teamId: string): Promise<Array<{ id: string; name: string; position: number; access_role_ids: string[] }>> {
+    return this.groups.map((g) => ({ ...g }));
+  }
+  async createGroup(_teamId: string, name: string): Promise<{ id: string; name: string; position: number }> {
+    const g = { id: uid('grp'), name: name.trim(), position: this.groups.length, access_role_ids: [] };
+    this.groups.push(g);
+    return { id: g.id, name: g.name, position: g.position };
+  }
+  async updateGroup(_teamId: string, groupId: string, body: { name?: string; position?: number }): Promise<{ id: string; name: string; position: number }> {
+    const g = this.groups.find((x) => x.id === groupId);
+    if (!g) throw new Error('group not found');
+    if (body.name !== undefined) g.name = body.name.trim();
+    if (body.position !== undefined) g.position = body.position;
+    return { id: g.id, name: g.name, position: g.position };
+  }
+  async deleteGroup(_teamId: string, groupId: string): Promise<void> {
+    this.groups = this.groups.filter((g) => g.id !== groupId);
+  }
+  async getGroupAccess(_teamId: string, groupId: string): Promise<{ role_ids: string[] }> {
+    const g = this.groups.find((x) => x.id === groupId);
+    return { role_ids: g?.access_role_ids ?? [] };
+  }
+  async setGroupAccess(_teamId: string, groupId: string, roleIds: string[]): Promise<{ role_ids: string[] }> {
+    const g = this.groups.find((x) => x.id === groupId);
+    if (g) g.access_role_ids = [...roleIds];
+    return { role_ids: roleIds };
+  }
+
   // Health
   async checkHealth(): Promise<boolean> { return true; }
 

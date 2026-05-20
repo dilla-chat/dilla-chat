@@ -471,6 +471,185 @@ function ChannelAccessModal({ channel, onClose }) {
   );
 }
 
+// Group-level access modal. Same role-checkbox pattern as ChannelAccessModal,
+// but persists via api.setGroupAccess and the WS broadcasts a
+// group:access-update event that every channel in the group reads through
+// its inherited resolveAccessRoles — one change ripples to N channels.
+function GroupAccessModal({ group, onClose }: { group: { id: string; name: string; accessRoleIds: string[] }; onClose: () => void }) {
+  const teamId = useTeamStore((s) => s.activeTeamId) as string | null;
+  const roles = useTeamStore((s) => (teamId ? s.roles.get(teamId) ?? [] : []));
+  const [selected, setSelected] = useState<Set<string>>(new Set(group.accessRoleIds ?? []));
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  function toggle(roleId: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(roleId)) next.delete(roleId); else next.add(roleId);
+      return next;
+    });
+  }
+
+  async function save() {
+    setErr('');
+    if (!teamId) { onClose(); return; }
+    if (isMockSession()) {
+      // /mesh: skip the API and patch the store directly so the demo
+      // shows the change. The real path below does both.
+      const next = Array.from(selected);
+      useTeamStore.getState().upsertGroup(teamId, { ...group, accessRoleIds: next });
+      onClose();
+      return;
+    }
+    setBusy(true);
+    const next = Array.from(selected);
+    try {
+      await api.setGroupAccess(teamId, group.id, next);
+      useTeamStore.getState().upsertGroup(teamId, { ...group, accessRoleIds: next });
+      onClose();
+    } catch (e) {
+      setErr((e as Error).message || 'Failed — manage-channels permission required.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const ordered = [...roles].sort((a: any, b: any) => {
+    if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1;
+    return (b.position ?? 0) - (a.position ?? 0);
+  });
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+        <header className="modal-head">
+          <h2>{group.name} · access</h2>
+          <button className="modal-x" onClick={onClose}>×</button>
+        </header>
+        <div className="modal-body">
+          <div className="modal-row">
+            <label>Roles that can see channels in this group</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
+              {ordered.map((r: any) => (
+                <label key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggle(r.id)} />
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: r.color || 'var(--fg-3)' }} />
+                  <span>{r.name}</span>
+                  {r.isDefault && <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--fg-3)', border: '1px solid var(--hairline)', padding: '1px 5px', borderRadius: 3 }}>default · everyone</span>}
+                </label>
+              ))}
+            </div>
+            <div className="modal-hint">Every channel in <strong>{group.name}</strong> inherits this list. Include the default role to keep them open; remove it to restrict.</div>
+          </div>
+          {err && <div className="modal-hint" style={{ color: 'var(--danger)' }}>{err}</div>}
+        </div>
+        <footer className="modal-foot">
+          <button className="sc-btn" onClick={onClose}>Cancel</button>
+          <button className="sc-btn primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+// Rename + delete a group. Lives next to GroupAccessModal so the right-
+// click context menu can hand off cleanly.
+function GroupSettingsModal({ group, onClose }: { group: { id: string; name: string }; onClose: () => void }) {
+  const teamId = useTeamStore((s) => s.activeTeamId) as string | null;
+  const [name, setName] = useState(group.name);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  async function save() {
+    setErr('');
+    if (!teamId) { onClose(); return; }
+    const trimmed = name.trim();
+    if (!trimmed) { setErr('Name cannot be empty.'); return; }
+    if (trimmed === group.name) { onClose(); return; }
+    setBusy(true);
+    try {
+      if (!isMockSession()) {
+        await api.updateGroup(teamId, group.id, { name: trimmed });
+      }
+      const existing = (useTeamStore.getState().groups.get(teamId) ?? []).find((g) => g.id === group.id);
+      if (existing) useTeamStore.getState().upsertGroup(teamId, { ...existing, name: trimmed });
+      onClose();
+    } catch (e) {
+      setErr((e as Error).message || 'Rename failed — manage-channels required, or that name is taken.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove() {
+    setErr('');
+    if (!teamId) { onClose(); return; }
+    setBusy(true);
+    try {
+      if (!isMockSession()) await api.deleteGroup(teamId, group.id);
+      // Clear group_id on every channel that pointed at this group, then
+      // remove the group itself. Mirrors the server's ON DELETE SET NULL.
+      const ts = useTeamStore.getState();
+      const list = ts.channels.get(teamId) ?? [];
+      const next = list.map((c) => (c.groupId === group.id ? { ...c, groupId: null } : c));
+      ts.setChannels(teamId, next);
+      ts.removeGroup(teamId, group.id);
+      onClose();
+    } catch (e) {
+      setErr((e as Error).message || 'Delete failed — manage-channels permission required.');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+        <header className="modal-head">
+          <h2>{group.name} · settings</h2>
+          <button className="modal-x" onClick={onClose}>×</button>
+        </header>
+        <div className="modal-body">
+          <div className="modal-row">
+            <label>Group name</label>
+            <input value={name} autoFocus onChange={(e) => setName(e.target.value)} />
+            <div className="modal-hint">Channels stay in the group — only the header label changes.</div>
+          </div>
+          {confirmDelete ? (
+            <div className="modal-row" style={{ border: '1px solid var(--danger)', padding: '0.75rem', borderRadius: 'var(--r-sm)' }}>
+              <label style={{ color: 'var(--danger)' }}>Delete group</label>
+              <div className="modal-hint">Channels in <strong>{group.name}</strong> won't be deleted — they'll just lose the group. Restricted-by-group channels will become open.</div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <button className="sc-btn" onClick={() => setConfirmDelete(false)}>Cancel</button>
+                <button className="sc-btn danger" disabled={busy} onClick={remove}>{busy ? 'Deleting…' : 'Delete group'}</button>
+              </div>
+            </div>
+          ) : (
+            <div className="modal-row">
+              <button className="sc-btn danger" onClick={() => setConfirmDelete(true)}>Delete group…</button>
+            </div>
+          )}
+          {err && <div className="modal-hint" style={{ color: 'var(--danger)' }}>{err}</div>}
+        </div>
+        <footer className="modal-foot">
+          <button className="sc-btn" onClick={onClose}>Cancel</button>
+          <button className="sc-btn primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
 function ChannelSettingsModal({ channel, onClose }) {
   const data = (useShellDataContext() as any) || MOCK_DATA;
   const [topic, setTopic] = useState(channel?.topic ?? '');
@@ -1492,7 +1671,24 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
 
           {groupByCategory(textChs, 'Kanals').map((grp, gi) => (
             <React.Fragment key={'tg-' + grp.key}>
-              <div className="cat cat-collapsible" onClick={() => toggleGroupCollapsed(grp.key)} title={collapsedGroups.has(grp.key) ? 'Expand' : 'Collapse'}>
+              <div
+                className="cat cat-collapsible"
+                onClick={() => toggleGroupCollapsed(grp.key)}
+                title={collapsedGroups.has(grp.key) ? 'Expand' : 'Collapse'}
+                onContextMenu={(e) => {
+                  // Real groups have key 'g:<id>'. The default and legacy
+                  // category buckets don't have backing entities, so they
+                  // get no settings menu — admins create a real group via
+                  // Kanal Settings → Group on a channel.
+                  if (!grp.key.startsWith('g:')) return;
+                  e.preventDefault();
+                  const groupId = grp.key.slice(2);
+                  window.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
+                    { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-group-access', { detail: groupId })) },
+                    { label: 'Group settings', icon: <Icon.Cog size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-group-settings', { detail: groupId })) },
+                  ] } }));
+                }}
+              >
                 <span className="cat-chev" style={{ transform: collapsedGroups.has(grp.key) ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▾</span>
                 <span>{grp.label}</span>
                 {gi === 0 && (
@@ -1545,7 +1741,20 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
 
           {otherVoice.length > 0 && groupByCategory(otherVoice, 'Voice').map((grp) => (
             <React.Fragment key={'vg-' + grp.key}>
-              <div className="cat cat-collapsible" onClick={() => toggleGroupCollapsed('voice:' + grp.key)} title={collapsedGroups.has('voice:' + grp.key) ? 'Expand' : 'Collapse'}>
+              <div
+                className="cat cat-collapsible"
+                onClick={() => toggleGroupCollapsed('voice:' + grp.key)}
+                title={collapsedGroups.has('voice:' + grp.key) ? 'Expand' : 'Collapse'}
+                onContextMenu={(e) => {
+                  if (!grp.key.startsWith('g:')) return;
+                  e.preventDefault();
+                  const groupId = grp.key.slice(2);
+                  window.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
+                    { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-group-access', { detail: groupId })) },
+                    { label: 'Group settings', icon: <Icon.Cog size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-group-settings', { detail: groupId })) },
+                  ] } }));
+                }}
+              >
                 <span className="cat-chev" style={{ transform: collapsedGroups.has('voice:' + grp.key) ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▾</span>
                 <span>{grp.label}</span>
               </div>
@@ -3651,6 +3860,8 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   const [newChanOpen, setNewChanOpen] = useState(false);
   const [chanSettings, setChanSettings] = useState(null); // {id, name, topic} or null
   const [chanAccess, setChanAccess] = useState(null); // {id, name, accessRoleIds, hidden_if_restricted} or null
+  const [groupAccess, setGroupAccess] = useState<{ id: string; name: string; accessRoleIds: string[] } | null>(null);
+  const [groupSettings, setGroupSettings] = useState<{ id: string; name: string } | null>(null);
   const [newServerOpen, setNewServerOpen] = useState(false);
   // Generic context menu: { x, y, items: [{ label, icon, danger, onClick }] }
   const [menuPop, setMenuPop] = useState(null);
@@ -3732,6 +3943,22 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
         : undefined;
       if (ch) setChanAccess(ch);
     }
+    function onGroupAccess(e) {
+      const id = e.detail;
+      const tid = useTeamStore.getState().activeTeamId;
+      const g = tid
+        ? (useTeamStore.getState().groups.get(tid) ?? []).find((x) => x.id === id)
+        : undefined;
+      if (g) setGroupAccess({ id: g.id, name: g.name, accessRoleIds: g.accessRoleIds });
+    }
+    function onGroupSettings(e) {
+      const id = e.detail;
+      const tid = useTeamStore.getState().activeTeamId;
+      const g = tid
+        ? (useTeamStore.getState().groups.get(tid) ?? []).find((x) => x.id === id)
+        : undefined;
+      if (g) setGroupSettings({ id: g.id, name: g.name });
+    }
     function onCloseDm(e) {
       const dmId = e.detail;
       if (!dmId) return;
@@ -3787,6 +4014,8 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     window.addEventListener('dilla:insert-mention', onInsertMention);
     window.addEventListener('dilla:open-channel-settings', onChannelSettings);
     window.addEventListener('dilla:open-channel-access', onChannelAccess);
+    window.addEventListener('dilla:open-group-access', onGroupAccess);
+    window.addEventListener('dilla:open-group-settings', onGroupSettings);
     function onKey(e) {
       const inField = e.target.matches && e.target.matches('input, textarea, [contenteditable="true"]');
       if (inField) return;
@@ -3813,6 +4042,8 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
       window.removeEventListener('dilla:insert-mention', onInsertMention);
       window.removeEventListener('dilla:open-channel-settings', onChannelSettings);
       window.removeEventListener('dilla:open-channel-access', onChannelAccess);
+      window.removeEventListener('dilla:open-group-access', onGroupAccess);
+      window.removeEventListener('dilla:open-group-settings', onGroupSettings);
       window.removeEventListener('dilla:open-menu', onMenu);
       window.removeEventListener('keydown', onKey);
     };
@@ -4467,6 +4698,12 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
       )}
       {chanAccess && (
         <ChannelAccessModal channel={chanAccess} onClose={() => setChanAccess(null)} />
+      )}
+      {groupAccess && (
+        <GroupAccessModal group={groupAccess} onClose={() => setGroupAccess(null)} />
+      )}
+      {groupSettings && (
+        <GroupSettingsModal group={groupSettings} onClose={() => setGroupSettings(null)} />
       )}
       {chanSettings && (
         <ChannelSettingsModal channel={chanSettings} onClose={() => setChanSettings(null)} />

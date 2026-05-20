@@ -357,6 +357,64 @@ class ApiService {
     )) as { role_ids: string[] };
   }
 
+  // Channel groups — first-class entities that own permissions; channels
+  // inherit the group's access list (pure inheritance, see migration 020).
+  async listGroups(teamId: string): Promise<Array<{ id: string; name: string; position: number; access_role_ids: string[] }>> {
+    const conn = this.getConnection(teamId);
+    const data = await this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/groups`,
+      { method: 'GET' },
+      conn.token,
+    );
+    return (Array.isArray(data) ? data : []) as Array<{ id: string; name: string; position: number; access_role_ids: string[] }>;
+  }
+  async createGroup(teamId: string, name: string): Promise<{ id: string; name: string; position: number }> {
+    const conn = this.getConnection(teamId);
+    return (await this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/groups`,
+      { method: 'POST', body: JSON.stringify({ name }) },
+      conn.token,
+    )) as { id: string; name: string; position: number };
+  }
+  async updateGroup(teamId: string, groupId: string, body: { name?: string; position?: number }): Promise<{ id: string; name: string; position: number }> {
+    const conn = this.getConnection(teamId);
+    return (await this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/groups/${groupId}`,
+      { method: 'PUT', body: JSON.stringify(body) },
+      conn.token,
+    )) as { id: string; name: string; position: number };
+  }
+  async deleteGroup(teamId: string, groupId: string): Promise<void> {
+    const conn = this.getConnection(teamId);
+    await this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/groups/${groupId}`,
+      { method: 'DELETE' },
+      conn.token,
+    );
+  }
+  async getGroupAccess(teamId: string, groupId: string): Promise<{ role_ids: string[] }> {
+    const conn = this.getConnection(teamId);
+    return (await this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/groups/${groupId}/access`,
+      { method: 'GET' },
+      conn.token,
+    )) as { role_ids: string[] };
+  }
+  async setGroupAccess(teamId: string, groupId: string, roleIds: string[]): Promise<{ role_ids: string[] }> {
+    const conn = this.getConnection(teamId);
+    return (await this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/groups/${groupId}/access`,
+      { method: 'PUT', body: JSON.stringify({ role_ids: roleIds }) },
+      conn.token,
+    )) as { role_ids: string[] };
+  }
+
   async deleteChannel(teamId: string, channelId: string): Promise<void> {
     const conn = this.getConnection(teamId);
     await this.request(
