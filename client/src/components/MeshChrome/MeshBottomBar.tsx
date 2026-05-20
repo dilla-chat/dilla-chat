@@ -1,6 +1,8 @@
 import { useMeshStore } from '../../stores/meshStore';
 import { useVoiceStore } from '../../stores/voiceStore';
+import { useAuthStore } from '../../stores/authStore';
 import { useServerConfig } from '../../hooks/useServerConfig';
+import { isCryptoInitialized } from '../../services/crypto';
 import './MeshBottomBar.css';
 
 // Injected at build time by Vite from package.json + git short SHA
@@ -23,6 +25,23 @@ export default function MeshBottomBar() {
       : dbEncrypted
         ? 'SQLCIPHER · AES-256'
         : 'PLAIN SQLITE · UNENCRYPTED';
+
+  // e2e chip: only claim Signal/X3DH/AES-256-GCM when crypto is actually
+  // initialized for this session. Pre-unlock (no derivedKey) or before
+  // initCrypto runs, surface the real state instead of misleading the
+  // user.
+  const derivedKey = useAuthStore((s) => s.derivedKey);
+  const e2eState: 'active' | 'initializing' | 'locked' = derivedKey
+    ? isCryptoInitialized()
+      ? 'active'
+      : 'initializing'
+    : 'locked';
+  const e2eLabel =
+    e2eState === 'active'
+      ? 'SIGNAL · X3DH · AES-256-GCM'
+      : e2eState === 'initializing'
+        ? 'INITIALIZING…'
+        : 'LOCKED';
 
   return (
     <div className="mesh-bottom" role="contentinfo" aria-label="Mesh bottom bar">
@@ -70,13 +89,21 @@ export default function MeshBottomBar() {
 
       <button
         type="button"
-        className="mb-chunk mb-clickable"
-        title="Click for encryption details"
+        className={
+          'mb-chunk mb-clickable' + (e2eState === 'locked' ? ' mb-warn' : '')
+        }
+        title={
+          e2eState === 'active'
+            ? 'X3DH key agreement + Double Ratchet, AES-256-GCM AEAD. Click for encryption details.'
+            : e2eState === 'initializing'
+              ? 'Identity unlocked; crypto manager booting…'
+              : 'No derived key in this session — messages cannot be decrypted until you unlock.'
+        }
         onClick={() =>
           window.dispatchEvent(new CustomEvent('mesh:open-privacy'))
         }
       >
-        <span className="mb-k">e2e</span> SIGNAL · X3DH · AES-256-GCM
+        <span className="mb-k">e2e</span> {e2eLabel}
       </button>
 
       {voiceConnected ? (

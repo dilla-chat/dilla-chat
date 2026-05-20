@@ -8,6 +8,7 @@ import { useShellDataContext } from './ShellDataContext';
 import { useVoiceStore } from '../stores/voiceStore';
 import { useAuthStore } from '../stores/authStore';
 import { useServerConfig } from '../hooks/useServerConfig';
+import { isCryptoInitialized } from '../services/crypto';
 
 const { useState: useStateMC, useEffect: useEffectMC, useRef: useRefMC, useMemo: useMemoMC } = React;
 
@@ -65,6 +66,11 @@ function BottomBar({ voiceConnection, peerStatus, federated = true, degraded = f
   const dbLabel =
     dbEncrypted === null ? 'CHECKING…' :
     dbEncrypted ? 'SQLCIPHER · AES-256' : 'PLAIN SQLITE · UNENCRYPTED';
+  const derivedKey = useAuthStore((s) => s.derivedKey);
+  const e2eState = derivedKey ? (isCryptoInitialized() ? 'active' : 'initializing') : 'locked';
+  const e2eLabel = e2eState === 'active'
+    ? 'SIGNAL · X3DH · AES-256-GCM'
+    : e2eState === 'initializing' ? 'INITIALIZING…' : 'LOCKED';
   useEffectMC(() => {
     const id = setInterval(() => {
       setLamport((l) => l + Math.floor(Math.random() * 4));
@@ -93,10 +99,13 @@ function BottomBar({ voiceConnection, peerStatus, federated = true, degraded = f
           <div className="mb-chunk"><span className="mb-k">latency</span> {degraded ? '—' : latency + 'ms p50'}</div>
         </> :
       null}
-      <div className="mb-chunk mb-clickable"
-           title="Click for encryption details"
+      <div className={'mb-chunk mb-clickable' + (e2eState === 'locked' ? ' mb-warn' : '')}
+           title={e2eState === 'active'
+             ? 'X3DH key agreement + Double Ratchet, AES-256-GCM AEAD. Click for encryption details.'
+             : e2eState === 'initializing' ? 'Identity unlocked; crypto manager booting…'
+             : 'No derived key in this session — messages cannot be decrypted until you unlock.'}
            onClick={() => window.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'user', tab: 'privacy' } }))}>
-        <span className="mb-k">e2e</span> SIGNAL · X3DH · AES-256-GCM
+        <span className="mb-k">e2e</span> {e2eLabel}
       </div>
       {voiceConnection ?
       <div className="mb-chunk mb-voice mb-clickable"
