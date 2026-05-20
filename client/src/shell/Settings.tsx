@@ -775,19 +775,23 @@ function TeamInvites() {
   // same as before.
   useEffectS(() => {
     if (!auth) return;
+    const baseUrl = auth.baseUrl.replace(/\/$/, '');
     api
       .listInvites(auth.teamId)
       .then((list: any[]) => {
         setRows(
-          list.map((inv: any) => ({
-            id: inv.id,
-            code: inv.code || inv.token || inv.id,
-            uses: `${inv.uses ?? 0} / ${inv.max_uses ?? '∞'}`,
-            expires: inv.expires_at
-              ? new Date(inv.expires_at).toLocaleDateString()
-              : '—',
-            who: userLabel(inv.created_by),
-          })),
+          list.map((inv: any) => {
+            const token = inv.code || inv.token || inv.id;
+            return {
+              id: inv.id,
+              code: `${baseUrl}/join/${token}`,
+              uses: `${inv.uses ?? 0} / ${inv.max_uses ?? '∞'}`,
+              expires: inv.expires_at
+                ? new Date(inv.expires_at).toLocaleDateString()
+                : '—',
+              who: userLabel(inv.created_by),
+            };
+          }),
         );
       })
       .catch((err) => console.warn('[Settings] listInvites failed', err));
