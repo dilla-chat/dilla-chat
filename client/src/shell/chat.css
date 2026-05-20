@@ -1934,9 +1934,14 @@
   cursor: pointer;
   text-align: left;
 }
-.ctx-menu button:hover { background: var(--surface-hi); color: var(--accent); }
+.ctx-menu button:hover:not(:disabled) { background: var(--surface-hi); color: var(--accent); }
 .ctx-menu button.danger { color: var(--danger); }
 .ctx-menu button.danger:hover { background: color-mix(in oklab, var(--danger) 14%, transparent); color: var(--danger); }
+.ctx-menu button:disabled {
+  color: var(--fg-3);
+  cursor: default;
+  font-style: italic;
+}
 .ctx-menu button svg { color: inherit; opacity: 0.8; flex-shrink: 0; }
 .ctx-sep {
   height: 1px;
