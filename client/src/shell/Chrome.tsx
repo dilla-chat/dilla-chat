@@ -4,37 +4,22 @@
 
 import React from 'react';
 import { Icon } from './icons';
+import { useShellDataContext } from './ShellDataContext';
+import { useVoiceStore } from '../stores/voiceStore';
+import { useAuthStore } from '../stores/authStore';
 
-const { useState: useStateMC, useEffect: useEffectMC, useRef: useRefMC } = React;
+const { useState: useStateMC, useEffect: useEffectMC, useRef: useRefMC, useMemo: useMemoMC } = React;
 
-// Tag members with the node they live on.
-const MEMBER_NODES = {
-  thim: 'gbg-1.dilla.local',
-  ada: 'gbg-1.dilla.local',
-  mira: 'gbg-1.dilla.local',
-  ben: 'rust.berra.io',
-  ola: 'rust.berra.io',
-  juno: 'gbg-1.dilla.local',
-  kai: 'rust.berra.io',
-  sven: 'rust.berra.io',
-  noa: 'gbg-1.dilla.local'
-};
-
-// Static safety numbers (would be derived from key fingerprints in real signal protocol).
-const FINGERPRINTS = {
-  thim: '4f7a 9c12 8d3b e5f0 17ac 6b29',
-  ada: '8e1d 3c44 7a52 9bf6 22d1 4e08',
-  mira: 'a013 7b88 e2cd 1f54 6c9e b370',
-  ben: '6c2a 91e0 4d33 b7f8 5e10 a92c',
-  ola: '0e88 4173 cf2a 9b06 8d51 743f',
-  juno: 'b541 27ec 9080 3a6d ef12 c4b9',
-  kai: '3d77 e119 8c40 a5b2 fb6e 0291',
-  sven: 'f218 4e0a 7361 d9c5 1b08 a44e',
-  noa: '99c1 b07e 2d5f 8311 ac46 7e9b'
-};
+// Mock per-member node/fingerprint tables removed — those values come
+// from the team store / server now (member.publicKeyHex, the team's
+// node host). Keeping empty stubs here only to avoid touching callers
+// that still read them; the real lookups happen via the shell-data
+// context (useShellDataContext) at render time.
+const MEMBER_NODES = {};
+const FINGERPRINTS = {};
 
 // ───────── top bar ─────────
-function TopBar({ onCmdK, onSearch, onHelp, federated = true, degraded = false, teamName = 'BERRALITOS', nodeName = 'gbg-1' }) {
+function TopBar({ onCmdK, onSearch, onHelp, federated = true, degraded = false, teamName = '', nodeName = 'local' }) {
   const [tick, setTick] = useStateMC(0);
   useEffectMC(() => {
     const id = setInterval(() => setTick((t) => t + 1), 1000);
@@ -71,7 +56,7 @@ function TopBar({ onCmdK, onSearch, onHelp, federated = true, degraded = false, 
 }
 
 // ───────── bottom status bar ─────────
-function BottomBar({ voiceConnection, peerStatus, federated = true, degraded = false, nodeHost = 'gbg-1.dilla.local' }) {
+function BottomBar({ voiceConnection, peerStatus, federated = true, degraded = false, nodeHost = 'local' }) {
   const [lamport, setLamport] = useStateMC(12944);
   const [latency, setLatency] = useStateMC(14);
   useEffectMC(() => {
@@ -118,32 +103,51 @@ function BottomBar({ voiceConnection, peerStatus, federated = true, degraded = f
       <div className="mb-chunk"><span className="mb-k">db</span> SQLCIPHER · AES-256</div>
       }
       <div className="mb-chunk mb-grow"></div>
-      <div className="mb-chunk"><span className="mb-k">v</span> 0.4.2-nightly · build c0ffee</div>
+      <div className="mb-chunk"><span className="mb-k">v</span> {__APP_VERSION__} · build {__GIT_SHA__}</div>
     </div>);
 
 }
 
 // ───────── audio level meter ─────────
+// Renders 12 bars driven by the user's actual mic level. The VAD pump
+// writes `voiceLevel` (0..1 RMS) onto the local user's peer entry on
+// every audio frame; we subscribe to that here. When muted or before
+// joining voice, level is 0 and the bars sit at their resting opacity.
 function AudioMeter() {
-  const [bars, setBars] = useStateMC(() => Array(12).fill(0));
-  useEffectMC(() => {
-    const id = setInterval(() => {
-      setBars((prev) => prev.map((_, i) => {
-        // weight middle bars more
-        const base = Math.sin(Date.now() / 200 + i * 0.5) * 0.5 + 0.5;
-        const jitter = Math.random();
-        return base * 0.6 + jitter * 0.4;
-      }));
-    }, 120);
-    return () => clearInterval(id);
-  }, []);
+  const currentTeamId = useVoiceStore((s) => s.currentTeamId);
+  const myUserId = useAuthStore((s) =>
+    currentTeamId ? s.teams.get(currentTeamId)?.user?.id ?? null : null,
+  );
+  const level = useVoiceStore((s) =>
+    myUserId ? s.peers[myUserId]?.voiceLevel ?? 0 : 0,
+  );
+
+  // Shape the 0..1 level into 12 bars. Center bars react slightly
+  // earlier than edges so the indicator reads like a typical VU meter.
+  const bars = useMemoMC(() => {
+    const out: number[] = [];
+    for (let i = 0; i < 12; i++) {
+      // Distance from center, 0..1
+      const d = Math.abs(i - 5.5) / 5.5;
+      // Center bars need less signal to light. Edges need more.
+      const threshold = 0.05 + d * 0.6;
+      const v = Math.max(0, Math.min(1, (level - threshold) / (1 - threshold)));
+      out.push(v);
+    }
+    return out;
+  }, [level]);
+
   return (
     <span className="audio-meter">
-      {bars.map((v, i) =>
-      <span key={i} className="am-bar" style={{ opacity: 0.25 + v * 0.75, height: 4 + Math.round(v * 8) }} />
-      )}
-    </span>);
-
+      {bars.map((v, i) => (
+        <span
+          key={i}
+          className="am-bar"
+          style={{ opacity: 0.25 + v * 0.75, height: 4 + Math.round(v * 8) }}
+        />
+      ))}
+    </span>
+  );
 }
 
 // ───────── command palette ─────────
@@ -240,29 +244,88 @@ function CommandPalette({ open, onClose, onPickChannel, commands }) {
 
 // ───────── search palette (opens on /) ─────────
 function SearchPalette({ open, onClose, onPickChannel }) {
+  const data = useShellDataContext() as any;
   const [q, setQ] = useStateMC('');
   const [idx, setIdx] = useStateMC(0);
   const inputRef = useRefMC(null);
   useEffectMC(() => {if (open && inputRef.current) inputRef.current.focus();setIdx(0);setQ('');}, [open]);
 
-  const data = window.MOCK_DATA;
+  // Parse query into structured filters. The tips row advertises three
+  // operators: from:<author> in:#<channel> has:<image|file|link>. They
+  // AND with the remaining free-text. Unknown prefix:value tokens fall
+  // through to free-text so a typo doesn't silently mismatch.
+  const parsed = (() => {
+    const tokens = q.split(/\s+/).filter(Boolean);
+    const filters: { from?: string; inChan?: string; has?: 'image' | 'file' | 'link' } = {};
+    const free: string[] = [];
+    const opRe = /^(from|in|has):(.+)$/i;
+    for (const tok of tokens) {
+      const m = tok.match(opRe);
+      if (!m) { free.push(tok); continue; }
+      const key = m[1].toLowerCase();
+      const val = m[2];
+      if (key === 'from') filters.from = val.replace(/^@/, '').toLowerCase();
+      else if (key === 'in') filters.inChan = val.replace(/^#/, '').toLowerCase();
+      else if (key === 'has' && (val === 'image' || val === 'file' || val === 'link')) filters.has = val;
+      else free.push(tok);
+    }
+    return { filters, text: free.join(' ') };
+  })();
+
   const results = (() => {
     if (!q || q.length < 2) return [];
-    const ql = q.toLowerCase();
-    const hits = [];
+    if (!data?.MESSAGES) return [];
+    const { filters, text } = parsed;
+    const ql = text.toLowerCase();
+    // Pre-resolve channel id when in: was used; empty set means no
+    // match (in:#bogus -> zero results).
+    let inChanIds: Set<string> | null = null;
+    if (filters.inChan) {
+      const channels = (data.CHANNELS ?? []) as Array<{ id: string; name: string }>;
+      const matches = channels
+        .filter((c) => c.name.toLowerCase() === filters.inChan)
+        .map((c) => c.id);
+      inChanIds = new Set(matches);
+      if (matches.length === 0) return [];
+    }
+    // Same pre-resolve for from: — match against member display names
+    // and username.
+    let fromUserIds: Set<string> | null = null;
+    if (filters.from) {
+      const members = (data.MEMBERS ?? []) as Array<{ id: string; name: string; username?: string }>;
+      const matches = members
+        .filter((m) =>
+          m.name?.toLowerCase() === filters.from ||
+          m.username?.toLowerCase() === filters.from,
+        )
+        .map((m) => m.id);
+      fromUserIds = new Set(matches);
+      if (matches.length === 0) return [];
+    }
+    const hits: Array<{ chId: string; msg: any }> = [];
     Object.entries(data.MESSAGES).forEach(([chId, msgs]) => {
-      msgs.forEach((m) => {
+      if (inChanIds && !inChanIds.has(chId)) return;
+      (msgs as any[]).forEach((m) => {
         if (m.kind === 'system') return;
-        const text = m.text || '';
-        if (text.toLowerCase().includes(ql)) {
-          hits.push({ chId, msg: m });
+        if (fromUserIds && !fromUserIds.has(m.author)) return;
+        if (filters.has === 'image' && m.kind !== 'image') return;
+        if (filters.has === 'file' && m.kind !== 'file') return;
+        if (filters.has === 'link') {
+          const t = m.text || '';
+          if (!/https?:\/\//i.test(t)) return;
         }
+        if (ql) {
+          const body = (m.text || '').toLowerCase();
+          if (!body.includes(ql)) return;
+        }
+        hits.push({ chId, msg: m });
       });
     });
     return hits.slice(0, 20);
   })();
 
   function highlight(text, ql) {
+    if (!ql) return text;
     const ix = text.toLowerCase().indexOf(ql.toLowerCase());
     if (ix < 0) return text;
     const start = Math.max(0, ix - 30);
@@ -325,7 +388,7 @@ function SearchPalette({ open, onClose, onPickChannel }) {
                   <span className="srch-sep">·</span>
                   <span className="srch-time">{r.msg.at.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
-                <div className="srch-snippet">{highlight(r.msg.text || '', q)}</div>
+                <div className="srch-snippet">{highlight(r.msg.text || '', parsed.text || q)}</div>
               </div>);
 
           })}
