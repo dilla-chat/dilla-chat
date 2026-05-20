@@ -18,18 +18,22 @@ pub(in crate::ws) async fn handle_message_send(
         }
     };
 
-    // Verify the channel belongs to the user's team before creating the message.
+    // Verify the channel belongs to the user's team AND the user's roles
+    // intersect the channel's access list. user_can_access_channel covers
+    // both: it short-circuits on team-owner, returns true when the channel
+    // grants the everyone role, and otherwise checks per-role membership.
     let db = hub.db.clone();
     let cid = p.channel_id.clone();
     let tid = team_id.to_string();
+    let uid = user_id.to_string();
     let channel_ok = tokio::task::spawn_blocking(move || {
         db.with_conn(|conn| {
             let channel = db::get_channel_by_id(conn, &cid)?;
-            match channel {
-                Some(ch) if ch.team_id == tid => Ok(true),
-                Some(_) => Ok(false),
-                None => Ok(false),
+            let belongs = matches!(channel, Some(ref ch) if ch.team_id == tid);
+            if !belongs {
+                return Ok::<bool, rusqlite::Error>(false);
             }
+            db::user_can_access_channel(conn, &uid, &tid, &cid)
         })
     })
     .await
@@ -41,7 +45,7 @@ pub(in crate::ws) async fn handle_message_send(
             user_id = user_id,
             channel_id = %p.channel_id,
             team_id = team_id,
-            "message:send denied — channel does not belong to user's team"
+            "message:send denied — access denied for channel"
         );
         return;
     }

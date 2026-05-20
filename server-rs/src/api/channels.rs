@@ -34,6 +34,8 @@ pub struct UpdateChannelRequest {
     pub topic: Option<String>,
     pub position: Option<i32>,
     pub category: Option<String>,
+    pub locked: Option<bool>,
+    pub hidden_if_restricted: Option<bool>,
 }
 
 pub async fn list(
@@ -43,7 +45,21 @@ pub async fn list(
 ) -> Result<Json<Value>, AppError> {
     let channels = spawn_db(state.db.clone(), move |conn| {
         require_team_member(conn, &user_id, &team_id)?;
-        db::get_channels_by_team(conn, &team_id)
+        let all = db::get_channels_by_team(conn, &team_id)?;
+        let mut out: Vec<serde_json::Value> = Vec::new();
+        for ch in all {
+            let access = db::get_channel_access_roles(conn, &ch.id).unwrap_or_default();
+            if ch.hidden_if_restricted {
+                let allowed = db::user_can_access_channel(conn, &user_id, &team_id, &ch.id).unwrap_or(false);
+                if !allowed { continue; }
+            }
+            let mut v = serde_json::to_value(&ch).unwrap_or(serde_json::Value::Null);
+            if let serde_json::Value::Object(ref mut m) = v {
+                m.insert("access_role_ids".to_string(), serde_json::json!(access));
+            }
+            out.push(v);
+        }
+        Ok::<_, rusqlite::Error>(out)
     })
     .await?;
 
@@ -83,6 +99,7 @@ pub async fn create(
             created_by: user_id.clone(),
             created_at: now.clone(),
             updated_at: now.clone(),
+            locked: false, hidden_if_restricted: false,
         };
         db::create_channel(conn, &channel)?;
         Ok(channel)
@@ -131,8 +148,25 @@ pub async fn update(
         require_permission(conn, &user_id, &team_id, db::PERM_MANAGE_CHANNELS)?;
 
         let mut channel = get_channel_for_team(conn, &channel_id, &team_id)?;
+        let prev_locked = channel.locked;
         apply_channel_updates(&mut channel, &body);
         db::update_channel(conn, &channel)?;
+
+        let action = if prev_locked != channel.locked {
+            if channel.locked { "channel.lock" } else { "channel.unlock" }
+        } else {
+            "channel.update"
+        };
+        let _ = db::insert_audit_event(
+            conn,
+            &team_id,
+            Some(&user_id),
+            action,
+            Some("channel"),
+            Some(&channel.id),
+            Some(&serde_json::json!({ "name": channel.name, "locked": channel.locked })),
+        );
+
         Ok(channel)
     })
     .await
@@ -141,7 +175,99 @@ pub async fn update(
         other => other,
     })?;
 
+    // Broadcast so other clients refresh their sidebars without a re-sync —
+    // notably so the lock icon appears for users who don't have manage-
+    // channels permission as soon as an admin toggles it.
+    if let Ok(evt) = crate::ws::events::Event::new(
+        crate::ws::events::EVENT_CHANNEL_UPDATED,
+        serde_json::to_value(&channel).unwrap_or(serde_json::Value::Null),
+    ) {
+        if let Ok(data) = evt.to_bytes() {
+            state.hub.broadcast_to_all(data).await;
+        }
+    }
+
     json_ok(channel)
+}
+
+#[derive(Deserialize)]
+pub struct AccessRequest {
+    pub role_ids: Vec<String>,
+}
+
+pub async fn get_access(
+    Extension(UserId(user_id)): Extension<UserId>,
+    State(state): State<AppState>,
+    Path((team_id, channel_id)): Path<(String, String)>,
+) -> Result<Json<Value>, AppError> {
+    let role_ids = spawn_db(state.db.clone(), move |conn| {
+        crate::api::helpers::require_team_member(conn, &user_id, &team_id)?;
+        get_channel_for_team(conn, &channel_id, &team_id)?;
+        db::get_channel_access_roles(conn, &channel_id)
+    })
+    .await
+    .map_err(map_not_found_channel)?;
+    json_ok(serde_json::json!({ "role_ids": role_ids }))
+}
+
+pub async fn set_access(
+    Extension(UserId(user_id)): Extension<UserId>,
+    State(state): State<AppState>,
+    Path((team_id, channel_id)): Path<(String, String)>,
+    Json(body): Json<AccessRequest>,
+) -> Result<Json<Value>, AppError> {
+    let team_id_clone = team_id.clone();
+    let channel_id_clone = channel_id.clone();
+    let user_id_clone = user_id.clone();
+    let role_ids = spawn_db(state.db.clone(), move |conn| {
+        require_permission(conn, &user_id_clone, &team_id_clone, db::PERM_MANAGE_CHANNELS)?;
+        get_channel_for_team(conn, &channel_id_clone, &team_id_clone)?;
+        // Validate each role belongs to this team.
+        for rid in &body.role_ids {
+            let role = db::get_role_by_id(conn, rid)?
+                .ok_or_else(|| rusqlite::Error::InvalidParameterName(format!("role {rid} not found")))?;
+            if role.team_id != team_id_clone {
+                return Err(rusqlite::Error::InvalidParameterName(
+                    "role does not belong to this team".into(),
+                ));
+            }
+        }
+        db::set_channel_access_roles(conn, &channel_id_clone, &body.role_ids)?;
+        let _ = db::insert_audit_event(
+            conn,
+            &team_id_clone,
+            Some(&user_id_clone),
+            "channel.access.update",
+            Some("channel"),
+            Some(&channel_id_clone),
+            Some(&serde_json::json!({ "role_ids": &body.role_ids })),
+        );
+        db::get_channel_access_roles(conn, &channel_id_clone)
+    })
+    .await
+    .map_err(map_not_found_channel)?;
+
+    // Broadcast so other clients refresh their sidebar gating immediately.
+    if let Ok(evt) = crate::ws::events::Event::new(
+        "channel:access-update",
+        serde_json::json!({
+            "channel_id": &channel_id,
+            "role_ids": &role_ids,
+        }),
+    ) {
+        if let Ok(data) = evt.to_bytes() {
+            state.hub.broadcast_to_all(data).await;
+        }
+    }
+
+    json_ok(serde_json::json!({ "role_ids": role_ids }))
+}
+
+fn map_not_found_channel(e: AppError) -> AppError {
+    match e {
+        AppError::NotFound(_) => AppError::NotFound("channel not found".into()),
+        other => other,
+    }
 }
 
 /// Fetch a channel by ID and verify it belongs to the given team.
@@ -174,6 +300,12 @@ fn apply_channel_updates(channel: &mut db::Channel, body: &UpdateChannelRequest)
     }
     if let Some(ref cat) = body.category {
         channel.category = cat.clone();
+    }
+    if let Some(locked) = body.locked {
+        channel.locked = locked;
+    }
+    if let Some(hidden) = body.hidden_if_restricted {
+        channel.hidden_if_restricted = hidden;
     }
 }
 

@@ -337,6 +337,26 @@ class ApiService {
     );
   }
 
+  async getChannelAccess(teamId: string, channelId: string): Promise<{ role_ids: string[] }> {
+    const conn = this.getConnection(teamId);
+    return (await this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/channels/${channelId}/access`,
+      { method: 'GET' },
+      conn.token,
+    )) as { role_ids: string[] };
+  }
+
+  async setChannelAccess(teamId: string, channelId: string, roleIds: string[]): Promise<{ role_ids: string[] }> {
+    const conn = this.getConnection(teamId);
+    return (await this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/channels/${channelId}/access`,
+      { method: 'PUT', body: JSON.stringify({ role_ids: roleIds }) },
+      conn.token,
+    )) as { role_ids: string[] };
+  }
+
   async deleteChannel(teamId: string, channelId: string): Promise<void> {
     const conn = this.getConnection(teamId);
     await this.request(
@@ -442,6 +462,77 @@ class ApiService {
     );
   }
 
+  // Polls — server-tracked interactive polls. The /poll slash command
+  // creates one and the kind:'poll' message renderer reads its state.
+  async getPolls(teamId: string, channelId: string): Promise<unknown[]> {
+    const conn = this.getConnection(teamId);
+    const data = await this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/channels/${channelId}/polls`,
+      { method: 'GET' },
+      conn.token,
+    );
+    return this.unwrapArray(data, 'polls');
+  }
+
+  async createPoll(
+    teamId: string,
+    channelId: string,
+    body: { question: string; options: string[] },
+  ): Promise<unknown> {
+    const conn = this.getConnection(teamId);
+    return this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/channels/${channelId}/polls`,
+      { method: 'POST', body: JSON.stringify(body) },
+      conn.token,
+    );
+  }
+
+  async votePoll(teamId: string, pollId: string, optionIndex: number): Promise<unknown> {
+    const conn = this.getConnection(teamId);
+    return this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/polls/${pollId}/votes`,
+      { method: 'POST', body: JSON.stringify({ option_index: optionIndex }) },
+      conn.token,
+    );
+  }
+
+  async unvotePoll(teamId: string, pollId: string): Promise<unknown> {
+    const conn = this.getConnection(teamId);
+    return this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/polls/${pollId}/votes`,
+      { method: 'DELETE' },
+      conn.token,
+    );
+  }
+
+  async getAuditEvents(teamId: string, limit?: number): Promise<unknown[]> {
+    const conn = this.getConnection(teamId);
+    const qs = limit ? `?limit=${limit}` : '';
+    const data = await this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/audit${qs}`,
+      { method: 'GET' },
+      conn.token,
+    );
+    return this.unwrapArray(data, 'audit_events');
+  }
+
+  /** Reorder roles. Pass role_ids ordered LOW position → HIGH position
+   *  (server assigns `position = index`). */
+  async reorderRoles(teamId: string, roleIds: string[]): Promise<unknown> {
+    const conn = this.getConnection(teamId);
+    return this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/roles/reorder`,
+      { method: 'PUT', body: JSON.stringify({ role_ids: roleIds }) },
+      conn.token,
+    );
+  }
+
   // Messages
   async getMessages(
     teamId: string,
@@ -506,7 +597,7 @@ class ApiService {
     return this.request(
       conn.baseUrl,
       `/api/v1/teams/${teamId}/dms`,
-      { method: 'POST', body: JSON.stringify({ member_ids: memberIds }) },
+      { method: 'POST', body: JSON.stringify({ user_ids: memberIds }) },
       conn.token,
     );
   }
@@ -831,20 +922,37 @@ class ApiService {
     }
   }
 
-  // Prekey bundles (E2E encryption)
+  // Prekey bundles (E2E encryption). `request` takes (baseUrl, path,
+  // …) — passing teamId for baseUrl makes fetch resolve the URL as a
+  // relative path against the Vite dev origin, which returns the dev
+  // server's HTML index. That HTML then fails res.json() with
+  // `SyntaxError: JSON.parse: unexpected character at line 1 column 1`
+  // — the same error that blocked voice E2E key distribution to every
+  // peer. Use conn.baseUrl + conn.token like every other endpoint.
   async uploadPrekeyBundle(
     teamId: string,
     bundle: {
       identity_key: string;
+      // X25519 public DH key. Required by X3DH's DH2 step; without
+      // this the peer's session-init fails with
+      // `Data provided to an operation does not meet requirements`
+      // when WebCrypto rejects an empty/wrong-shape buffer.
+      identity_dh_key: string;
       signed_prekey: string;
       signed_prekey_signature: string;
       one_time_prekeys: string[];
     },
   ): Promise<void> {
-    await this.request(teamId, '/api/v1/prekeys', {
-      method: 'POST',
-      body: JSON.stringify(bundle),
-    });
+    const conn = this.getConnection(teamId);
+    await this.request(
+      conn.baseUrl,
+      '/api/v1/prekeys',
+      {
+        method: 'POST',
+        body: JSON.stringify(bundle),
+      },
+      conn.token,
+    );
   }
 
   async getPrekeyBundle(
@@ -852,11 +960,18 @@ class ApiService {
     userId: string,
   ): Promise<{
     identity_key: string;
+    identity_dh_key: string;
     signed_prekey: string;
     signed_prekey_signature: string;
     one_time_prekeys: string[];
   }> {
-    return this.request(teamId, `/api/v1/prekeys/${userId}`, { method: 'GET' });
+    const conn = this.getConnection(teamId);
+    return this.request(
+      conn.baseUrl,
+      `/api/v1/prekeys/${userId}`,
+      { method: 'GET' },
+      conn.token,
+    );
   }
 }
 

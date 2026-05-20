@@ -18,6 +18,9 @@ mod thread_queries;
 mod reaction_queries;
 mod attachment_queries;
 mod read_queries;
+mod audit_queries;
+mod poll_queries;
+mod channel_access_queries;
 
 use rusqlite::Connection;
 use std::path::Path;
@@ -42,6 +45,9 @@ pub use thread_queries::*;
 pub use reaction_queries::*;
 pub use attachment_queries::*;
 pub use read_queries::*;
+pub use audit_queries::*;
+pub use poll_queries::*;
+pub use channel_access_queries::*;
 
 const MIGRATIONS: &[(&str, &str)] = &[
     ("001_initial.sql", include_str!("../../migrations/001_initial.sql")),
@@ -53,6 +59,13 @@ const MIGRATIONS: &[(&str, &str)] = &[
     ("007_nullable_fks.sql", include_str!("../../migrations/007_nullable_fks.sql")),
     ("008_channel_reads.sql", include_str!("../../migrations/008_channel_reads.sql")),
     ("009_team_federated.sql", include_str!("../../migrations/009_team_federated.sql")),
+    ("010_channel_reads_dm_support.sql", include_str!("../../migrations/010_channel_reads_dm_support.sql")),
+    ("011_prekey_identity_dh_key.sql", include_str!("../../migrations/011_prekey_identity_dh_key.sql")),
+    ("012_channel_locked.sql", include_str!("../../migrations/012_channel_locked.sql")),
+    ("013_audit_events.sql", include_str!("../../migrations/013_audit_events.sql")),
+    ("014_polls.sql", include_str!("../../migrations/014_polls.sql")),
+    ("015_channel_access.sql", include_str!("../../migrations/015_channel_access.sql")),
+    ("016_channel_hidden_if_restricted.sql", include_str!("../../migrations/016_channel_hidden_if_restricted.sql")),
 ];
 
 /// Default number of read connections in the pool.

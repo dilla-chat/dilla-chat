@@ -52,8 +52,29 @@ pub(in crate::ws) async fn handle_request(hub: &Hub, user_id: &str, team_id: &st
             let db2 = db.clone();
             let tid2 = tid.clone();
             let uid2 = uid.clone();
-            ws_spawn_db(db2, move |conn| {
-                let channels = db::get_channels_by_team(conn, &tid2)?;
+            let mut result = ws_spawn_db(db2, move |conn| {
+                let channels_raw = db::get_channels_by_team(conn, &tid2)?;
+                // Enrich each channel with its role-access list, and drop
+                // channels that are marked hidden_if_restricted when the
+                // current user can't access them — they should never see
+                // the channel exists.
+                let channels: Vec<serde_json::Value> = channels_raw
+                    .iter()
+                    .filter_map(|ch| {
+                        let access = db::get_channel_access_roles(conn, &ch.id).unwrap_or_default();
+                        if ch.hidden_if_restricted {
+                            let allowed = db::user_can_access_channel(conn, &uid2, &tid2, &ch.id).unwrap_or(false);
+                            if !allowed {
+                                return None;
+                            }
+                        }
+                        let mut v = serde_json::to_value(ch).unwrap_or_else(|_| serde_json::Value::Null);
+                        if let serde_json::Value::Object(ref mut m) = v {
+                            m.insert("access_role_ids".to_string(), serde_json::json!(access));
+                        }
+                        Some(v)
+                    })
+                    .collect();
                 let members = db::get_members_by_team(conn, &tid2)?;
                 let roles = db::get_roles_by_team(conn, &tid2)?;
                 let team = db::get_team(conn, &tid2)?;
@@ -62,20 +83,52 @@ pub(in crate::ws) async fn handle_request(hub: &Hub, user_id: &str, team_id: &st
                     .into_iter()
                     .map(|(cid, count)| (cid, serde_json::json!(count)))
                     .collect();
-                Ok(serde_json::json!({
-                    "team": team,
-                    "channels": channels,
-                    "members": members.iter().map(|(m, u)| {
+                let members_json: Vec<serde_json::Value> = members
+                    .iter()
+                    .map(|(m, u)| {
+                        let role_ids: Vec<String> = db::get_member_roles(conn, &m.id)
+                            .unwrap_or_default()
+                            .into_iter()
+                            .map(|r| r.id)
+                            .collect();
                         serde_json::json!({
                             "member": m,
                             "user": u,
+                            "role_ids": role_ids,
                         })
-                    }).collect::<Vec<_>>(),
+                    })
+                    .collect();
+                Ok(serde_json::json!({
+                    "team": team,
+                    "channels": channels,
+                    "members": members_json,
                     "roles": roles,
                     "unread_counts": unread_counts,
                 }))
             })
-            .await
+            .await;
+
+            // Enrich with current voice rooms for the team so a fresh
+            // client (login, reload, or page navigation) sees who's
+            // already active in voice channels. Without this, the
+            // sidebar shows empty voice rooms until someone joins/
+            // leaves and a delta event fires.
+            if let (Ok(ref mut value), Some(room_mgr)) =
+                (&mut result, hub.voice_room_manager.as_ref())
+            {
+                let rooms = room_mgr.get_rooms_by_team(&tid).await;
+                let mut by_channel = serde_json::Map::new();
+                for r in rooms {
+                    by_channel.insert(r.channel_id.clone(), serde_json::json!(r.peers));
+                }
+                if let Some(obj) = value.as_object_mut() {
+                    // Client field name is `voice_states` — see
+                    // applySyncData in useTeamSync.ts.
+                    obj.insert("voice_states".to_string(), serde_json::Value::Object(by_channel));
+                }
+            }
+
+            result
         }
         ACTION_MESSAGE_LIST => {
             let channel_id = payload_str(&req.payload, "channel_id");

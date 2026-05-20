@@ -7,25 +7,63 @@ import React from 'react';
 import { Icon } from './icons';
 import { MOCK_DATA } from './data';
 import { THEMES } from './themes';
+import { useShellDataContext } from './ShellDataContext';
 import { useAuthStore } from '../stores/authStore';
 import { useTeamStore } from '../stores/teamStore';
 import { useUnreadStore } from '../stores/unreadStore';
+import { useDMStore } from '../stores/dmStore';
 import { useThreadStore } from '../stores/threadStore';
+import { useVoiceStore } from '../stores/voiceStore';
 import { useVoiceConnection } from '../hooks/useVoiceConnection';
 import { ws } from '../services/websocket';
+import { usePollStore, normalizePoll } from '../stores/pollStore';
 import { api } from '../services/api';
 import { tryEncrypt } from '../hooks/useMessageDecryption';
 import { isMockSession } from '../services/mockSession';
 
 const { useState, useEffect, useRef, useMemo } = React;
-// chat-app.jsx originally read window.MOCK_DATA / window.THEMES / window.Icon
+// chat-app.jsx originally read window.SHELL_DATA / window.THEMES / window.Icon
 // — keep that contract until the bindings get rewired through Zustand.
 const w = window as unknown as Record<string, unknown>;
-w.MOCK_DATA = MOCK_DATA;
+w.SHELL_DATA = MOCK_DATA;
 w.THEMES = THEMES;
 w.Icon = Icon;
 
+// Helper: current user id. This is the ONE remaining `window.SHELL_DATA`
+// reader in the file — it's called from non-React utility helpers (eg.
+// renderText, sharingId calc, mention/peer matching) where threading a
+// React hook through every call site would be invasive. AppShell writes
+// `window.SHELL_DATA = useShellData()` on every render so the value is
+// always in sync. NO `'thim'` fallback — falling through to a hardcoded
+// mock id was the cause of every "thim is admin" / "messages marked as
+// mine when they aren't" bug on /app. An empty string means "no user
+// known", and downstream code treats that as "no match".
+function currentUserId(): string {
+  return (window as any).SHELL_DATA?.currentUserId || '';
+}
+
 // ───────────── helpers ─────────────
+// Convert a server-side poll payload to the local kind:'poll' message
+// shape that the timeline renderer expects. Uses the poll's id as the
+// message id so vote updates can find and patch it in place.
+function pollServerToMessage(p: any, me: string) {
+  const labels: string[] = p.options || [];
+  const tallies: number[] = p.tallies || [];
+  const voters: string[][] = p.voters || [];
+  return {
+    id: p.id,
+    kind: 'poll',
+    author: p.created_by || '',
+    at: p.created_at ? new Date(p.created_at) : new Date(),
+    question: p.question,
+    options: labels.map((label, i) => ({
+      label,
+      votes: tallies[i] || 0,
+      mine: (voters[i] || []).includes(me),
+    })),
+  };
+}
+
 function timeShort(d) {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
@@ -91,20 +129,20 @@ function MiniMeter() {
 
 // Modal: forward a message to another channel or DM
 function ForwardModal({ sourceMsg, members, onClose, onForward }) {
+  const data = (useShellDataContext() as any) || MOCK_DATA;
   const [q, setQ] = useState('');
   useEffect(() => {
     function onKey(e) { if (e.key === 'Escape') onClose(); }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
-  const data = window.MOCK_DATA;
   const targets = [
     ...data.CHANNELS.filter(c => c.type === 'text').map(c => ({ id: c.id, label: '#' + c.name, sub: c.topic || '', kind: 'channel' })),
     ...data.DMS.map(d => {
       const m = d.group ? null : data.byId[d.with];
-      return { id: d.id, label: d.group ? d.name : m?.name, sub: d.group ? 'group' : (m?.custom || 'direct message'), kind: 'dm', color: m?.color };
+      return { id: d.id, label: d.group ? d.name : (m?.name || 'Unknown'), sub: d.group ? 'group' : (m?.custom || 'direct message'), kind: 'dm', color: m?.color };
     }),
-  ].filter(t => !q || t.label.toLowerCase().includes(q.toLowerCase()));
+  ].filter(t => !q || (t.label || '').toLowerCase().includes(q.toLowerCase()));
   const author = data.byId[sourceMsg.author] || { name: sourceMsg.author };
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -149,7 +187,7 @@ function NewDmModal({ members, onClose, onPick }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
-  const list = (members.MEMBERS || []).filter(m => m.id !== (window.MOCK_DATA?.currentUserId || 'thim') && (!q || m.name.toLowerCase().includes(q.toLowerCase())));
+  const list = (members.MEMBERS || []).filter(m => m.id !== currentUserId() && (!q || m.name.toLowerCase().includes(q.toLowerCase())));
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card" onClick={e => e.stopPropagation()} style={{ width: 'min(480px, 100%)' }}>
@@ -181,6 +219,8 @@ function NewDmModal({ members, onClose, onPick }) {
 
 // Modal: create a new kanal (channel)
 function NewChannelModal({ onClose, onCreate }) {
+  const data = (useShellDataContext() as any) || MOCK_DATA;
+  const nodeHost = data?.SERVERS?.[0]?.node || 'local';
   const [name, setName] = useState('');
   const [kind, setKind] = useState('text');
   const [priv, setPriv] = useState(false);
@@ -215,7 +255,7 @@ function NewChannelModal({ onClose, onCreate }) {
                      onChange={e => setName(e.target.value.toLowerCase().replace(/[^a-z0-9 -]/g, ''))}
                      placeholder="ship-talk" />
             </div>
-            {slug && <div className="modal-hint">URL: <code>dilla://gbg-1/k/{slug}</code></div>}
+            {slug && <div className="modal-hint">URL: <code>dilla://{nodeHost}/k/{slug}</code></div>}
           </div>
           <div className="modal-row">
             <label>Topic <span className="modal-opt">optional</span></label>
@@ -241,6 +281,89 @@ function NewChannelModal({ onClose, onCreate }) {
 // Modal: edit an existing channel's topic + slow mode (admin/maintainer).
 // Patches the live record via api.updateChannel; useTeamSync's broadcast
 // echoes back to the store so other clients pick up the change.
+function ChannelAccessModal({ channel, onClose }) {
+  const teamId = useTeamStore((s) => s.activeTeamId) as string | null;
+  const roles = useTeamStore((s) => (teamId ? s.roles.get(teamId) ?? [] : []));
+  const [selected, setSelected] = useState<Set<string>>(new Set(channel?.accessRoleIds ?? []));
+  const [hidden, setHidden] = useState<boolean>(!!channel?.hidden_if_restricted || !!channel?.hiddenIfRestricted);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  function toggle(roleId: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(roleId)) next.delete(roleId); else next.add(roleId);
+      return next;
+    });
+  }
+
+  async function save() {
+    setErr('');
+    if (!teamId || !channel?.id) { onClose(); return; }
+    if (isMockSession()) { onClose(); return; }
+    setBusy(true);
+    try {
+      await api.setChannelAccess(teamId, channel.id, Array.from(selected));
+      await api.updateChannel(teamId, channel.id, { hidden_if_restricted: hidden });
+      onClose();
+    } catch (e) {
+      setErr((e as Error).message || 'Failed — manage-channels permission required.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Sort: default ("everyone") first, then descending position.
+  const ordered = [...roles].sort((a: any, b: any) => {
+    if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1;
+    return (b.position ?? 0) - (a.position ?? 0);
+  });
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+        <header className="modal-head">
+          <h2>#{channel?.name} access</h2>
+          <button className="modal-x" onClick={onClose}>×</button>
+        </header>
+        <div className="modal-body">
+          <div className="modal-row">
+            <label>Roles that can access this channel</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
+              {ordered.map((r: any) => (
+                <label key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggle(r.id)} />
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: r.color || 'var(--fg-3)' }} />
+                  <span>{r.name}</span>
+                  {r.isDefault && <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--fg-3)', border: '1px solid var(--hairline)', padding: '1px 5px', borderRadius: 3 }}>default · everyone</span>}
+                </label>
+              ))}
+            </div>
+            <div className="modal-hint">Include the default role to keep the channel open. Remove it to restrict.</div>
+          </div>
+          <div className="modal-row">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+              <input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} />
+              <span>Hide from members who can't access</span>
+            </label>
+            <div className="modal-hint">When on, restricted members won't see this channel at all instead of a padlock.</div>
+          </div>
+          {err && <div className="modal-hint" style={{ color: 'var(--danger)' }}>{err}</div>}
+        </div>
+        <footer className="modal-foot">
+          <button className="sc-btn" onClick={onClose}>Cancel</button>
+          <button className="sc-btn primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
 function ChannelSettingsModal({ channel, onClose }) {
   const [topic, setTopic] = useState(channel?.topic ?? '');
   const [slow, setSlow] = useState('0');
@@ -328,7 +451,7 @@ function NewServerModal({ onClose, onCreate }) {
                 <label>Team name</label>
                 <input value={name} autoFocus
                        onChange={e => setName(e.target.value)}
-                       placeholder="Berralitos" />
+                       placeholder="Team name" />
                 <div className="modal-hint">A team is hosted on a node you run. You'll be the admin.</div>
               </div>
               <div className="modal-row">
@@ -411,6 +534,7 @@ function EmptyFeed({ channel, dmPartner }) {
 
 // Profile popover — anchored to click coords.
 function ProfilePopover({ pop, onClose, onDM, federated }) {
+  const data = (useShellDataContext() as any) || MOCK_DATA;
   const ref = useRef(null);
   useEffect(() => {
     if (!pop) return;
@@ -424,7 +548,7 @@ function ProfilePopover({ pop, onClose, onDM, federated }) {
     };
   }, [pop, onClose]);
   if (!pop) return null;
-  const m = window.MOCK_DATA.byId[pop.memberId];
+  const m = data?.byId?.[pop.memberId];
   if (!m) return null;
   const nodes = (window.MeshChrome && window.MeshChrome.MEMBER_NODES) || {};
   const fps = (window.MeshChrome && window.MeshChrome.FINGERPRINTS) || {};
@@ -540,19 +664,18 @@ function ResizeHandle({ kind, value, onResize, min = 180, max = 380 }) {
 
 // Thread panel — opens when clicking a thread-preview on a message.
 function ThreadPanel({ channelId, messageId, members, onClose, onReact }) {
-  const data = window.MOCK_DATA;
-  const channel = data.CHANNELS.find(c => c.id === channelId);
-  const original = (data.MESSAGES[channelId] || []).find(m => m.id === messageId);
-  const initialReplies = (data.THREAD_REPLIES && data.THREAD_REPLIES[messageId]) || [];
-  const [replies, setReplies] = useState(initialReplies);
+  const data = (useShellDataContext() as any) || MOCK_DATA;
+  const channel = data?.CHANNELS?.find(c => c.id === channelId);
+  const original = (data?.MESSAGES?.[channelId] || []).find(m => m.id === messageId);
+  const liveReplies = data?.THREAD_REPLIES?.[messageId] || [];
+  const [replies, setReplies] = useState(liveReplies);
   const [draft, setDraft] = useState('');
   const scrollRef = useRef(null);
-  // Re-sync replies whenever useShellData re-derives THREAD_REPLIES from
+  // Re-sync replies whenever the context re-derives THREAD_REPLIES from
   // the store (incoming thread:message:new events from useThreadEvents).
   useEffect(() => {
-    const live = (window.MOCK_DATA?.THREAD_REPLIES?.[messageId]) || [];
-    setReplies(live);
-  }, [window.MOCK_DATA?.THREAD_REPLIES?.[messageId]]);
+    setReplies(liveReplies);
+  }, [liveReplies]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -564,7 +687,7 @@ function ThreadPanel({ channelId, messageId, members, onClose, onReact }) {
     // Optimistic local push.
     setReplies(prev => [...prev, {
       id: 'tr-' + Date.now(),
-      author: window.MOCK_DATA?.currentUserId || 'thim',
+      author: currentUserId(),
       at: new Date(),
       text,
     }]);
@@ -701,68 +824,192 @@ function ThreadPanel({ channelId, messageId, members, onClose, onReact }) {
   );
 }
 
-function MockCam({ member, mini }) {
-  // pick a warm skin/light tone derived from the member's brand color
-  const tones = {
-    thim: '#d4a06e',
-    ada:  '#c89476',
-    ben:  '#b07a5c',
-    mira: '#dab38a',
-    ola:  '#c69275',
-    juno: '#b88862',
-    kai:  '#cd9c7a',
-    sven: '#a87858',
-    noa:  '#c08c66',
-  };
-  const tone = tones[member.id] || '#c89770';
+// Renders a real <video> element bound to a MediaStream. Used for local +
+// remote camera and screen-share tiles. Falls back to null when no stream
+// is available — callers render the CamTile/ScreenTile placeholder in
+// that case.
+function VideoTile({ stream, fit = 'cover', mirror }: { stream: MediaStream; fit?: 'cover' | 'contain'; mirror?: boolean }) {
+  const ref = useRef<HTMLVideoElement | null>(null);
+  const [stats, setStats] = useState<{ w: number; h: number; fps: number } | null>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (el.srcObject !== stream) el.srcObject = stream;
+    // autoplay needs muted; the SFU mixes remote audio separately
+    el.muted = true;
+    el.play().catch(() => { /* ignore — autoplay policy */ });
+  }, [stream]);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    let frameCount = 0;
+    let cancelled = false;
+    const rvfc = (el as HTMLVideoElement & {
+      requestVideoFrameCallback?: (cb: (now: number, meta: { width: number; height: number }) => void) => number;
+    }).requestVideoFrameCallback;
+
+    const onFrame = (_now: number, meta: { width: number; height: number }) => {
+      if (cancelled) return;
+      frameCount++;
+      if (meta.width > 0 && meta.height > 0) {
+        setStats((prev) => (prev && prev.w === meta.width && prev.h === meta.height ? prev : { ...(prev ?? { fps: 0 }), w: meta.width, h: meta.height }));
+      }
+      rvfc?.call(el, onFrame);
+    };
+    rvfc?.call(el, onFrame);
+
+    const id = window.setInterval(() => {
+      const w = el.videoWidth;
+      const h = el.videoHeight;
+      if (w === 0 || h === 0) return;
+      const fps = frameCount;
+      frameCount = 0;
+      setStats({ w, h, fps });
+    }, 1000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [stream]);
+
   return (
-    <div className={'mock-cam' + (mini ? ' mini' : '')} style={{ '--cam-skin': tone }}>
-      <svg className="mock-cam-head" viewBox="0 0 100 100" preserveAspectRatio="xMidYMax meet">
-        <circle cx="50" cy="40" r="14" fill="rgba(0,0,0,0.22)" />
-        <path d="M20 100 C 22 76, 78 76, 80 100 Z" fill="rgba(0,0,0,0.22)" />
-      </svg>
-      {!mini && <span className="mock-cam-label">{member.name}</span>}
-      {!mini && <span className="mock-cam-rec">● LIVE</span>}
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <video
+        ref={ref}
+        autoPlay
+        playsInline
+        muted
+        className={'vid-tile' + (mirror ? ' mirror' : '')}
+        style={{
+          width: '100%',
+          height: '100%',
+          objectFit: fit,
+          // Letterbox-aware tiles want a black backdrop so the bars don't
+          // show through the stage background.
+          background: fit === 'contain' ? '#000' : undefined,
+          transform: mirror ? 'scaleX(-1)' : undefined,
+          display: 'block',
+        }}
+      />
+      {stats && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 6,
+            left: 6,
+            padding: '2px 6px',
+            fontFamily: 'var(--font-mono)',
+            fontSize: 11,
+            lineHeight: 1.4,
+            color: '#fff',
+            background: 'rgba(0,0,0,0.55)',
+            border: '1px solid rgba(255,255,255,0.15)',
+            borderRadius: 4,
+            pointerEvents: 'none',
+            zIndex: 2,
+          }}
+        >
+          {stats.w}×{stats.h} · {stats.fps}fps
+        </div>
+      )}
     </div>
   );
 }
 
-// Mock screen-share — stylized terminal / editor preview.
-function MockScreen({ member, pip }) {
+function CamTile({ member, mini }) {
+  // Pick the real webcam stream if available — local user reads from
+  // useVoiceStore.localWebcamStream, peers from remoteWebcamStreams[user_id].
+  // Falls back to the SVG silhouette when no stream exists yet.
+  const isSelf = member.id === currentUserId();
+  const localStream = useVoiceStore((s) => s.localWebcamStream);
+  const remoteStream = useVoiceStore((s) => s.remoteWebcamStreams?.[member.id] ?? null);
+  const stream = isSelf ? localStream : remoteStream;
+  const tone = '#c89770';
+  if (stream) {
+    return (
+      <div className={'cam-tile' + (mini ? ' mini' : '')} style={{ overflow: 'hidden', borderRadius: 'inherit' }}>
+        {/* Webcam tiles: `cover` for the full-size tile (people are used
+            to face-cropped video calls), `contain` for the mini PIP so
+            the whole frame is visible at a glance. */}
+        <VideoTile stream={stream} fit={mini ? 'contain' : 'cover'} mirror={isSelf} />
+        {!mini && <span className="cam-tile-label">{member.name}</span>}
+      </div>
+    );
+  }
+  return (
+    <div className={'cam-tile' + (mini ? ' mini' : '')} style={{ '--cam-skin': tone }}>
+      <svg className="cam-tile-head" viewBox="0 0 100 100" preserveAspectRatio="xMidYMax meet">
+        <circle cx="50" cy="40" r="14" fill="rgba(0,0,0,0.22)" />
+        <path d="M20 100 C 22 76, 78 76, 80 100 Z" fill="rgba(0,0,0,0.22)" />
+      </svg>
+      {!mini && <span className="cam-tile-label">{member.name}</span>}
+    </div>
+  );
+}
+
+// Screen-share tile. Real getDisplayMedia stream when available, otherwise
+// the stylized terminal/editor placeholder (kept for tests + offline UX).
+function ScreenTile({ member, pip }) {
+  const isSelf = member.id === currentUserId();
+  const localScreen = useVoiceStore((s) => s.localScreenStream);
+  const remoteScreen = useVoiceStore((s) => s.remoteScreenStream);
+  const stream = isSelf ? localScreen : remoteScreen;
+  if (stream) {
+    return (
+      <div className="screen-tile" style={{ overflow: 'hidden' }}>
+        {/* Screen-share ALWAYS uses `contain` — cropping a desktop screen
+            (top/bottom of a long window, or sides of a wide one) defeats
+            the purpose of sharing it. Black letterbox bars are fine. */}
+        <VideoTile stream={stream} fit="contain" />
+        <div className="screen-foot">
+          <span>{member.name}'s screen</span>
+        </div>
+        {pip && (
+          <div className="screen-pip">
+            <CamTile member={pip} mini />
+          </div>
+        )}
+      </div>
+    );
+  }
   // pre-computed line widths so they don't reshuffle every render
   const lines = [
     72, 56, 38, 84, 28, 64, 48, 90,
     34, 70, 58, 26, 80, 44, 60, 36, 78,
   ];
   return (
-    <div className="mock-screen">
-      <div className="ms-titlebar">
-        <span className="ms-dot r" />
-        <span className="ms-dot y" />
-        <span className="ms-dot g" />
-        <span className="ms-title">~/dilla/server-rs/src/voice/sfu.rs</span>
+    <div className="screen-tile">
+      <div className="screen-titlebar">
+        <span className="screen-dot r" />
+        <span className="screen-dot y" />
+        <span className="screen-dot g" />
+        <span className="screen-title">~/dilla/server-rs/src/voice/sfu.rs</span>
       </div>
-      <div className="ms-body">
-        <div className="ms-sidebar">
+      <div className="screen-body">
+        <div className="screen-sidebar">
           {Array.from({ length: 7 }).map((_, i) => (
-            <span key={i} className="ms-side-line" style={{ width: (50 + ((i * 17) % 40)) + '%' }} />
+            <span key={i} className="screen-side-line" style={{ width: (50 + ((i * 17) % 40)) + '%' }} />
           ))}
         </div>
-        <div className="ms-editor">
+        <div className="screen-editor">
           {lines.map((w, i) => (
-            <div key={i} className="ms-row">
-              <span className="ms-num">{i + 1}</span>
-              <span className="ms-line" style={{ width: w + '%' }} />
+            <div key={i} className="screen-row">
+              <span className="screen-num">{i + 1}</span>
+              <span className="screen-line" style={{ width: w + '%' }} />
             </div>
           ))}
         </div>
       </div>
-      <div className="ms-foot">
+      <div className="screen-foot">
         <span>{member.name}'s screen · 1920×1080 · 8fps</span>
       </div>
       {pip && (
-        <div className="ms-pip">
-          <MockCam member={pip} mini />
+        <div className="screen-pip">
+          <CamTile member={pip} mini />
         </div>
       )}
     </div>
@@ -813,12 +1060,12 @@ function ServerRail({ servers, activeServer, onPick }) {
                    // the channel:read echo. On /mesh the ws call is a no-op.
                    const teamId = useTeamStore.getState().activeTeamId;
                    const unread = useUnreadStore.getState();
-                   const list = (window as any).MOCK_DATA?.CHANNELS ?? [];
+                   const list = data?.CHANNELS ?? [];
                    for (const ch of list) {
                      unread.markRead(ch.id);
                      if (teamId && !isMockSession()) {
                        try {
-                         const msgs = (window as any).MOCK_DATA?.MESSAGES?.[ch.id] ?? [];
+                         const msgs = data?.MESSAGES?.[ch.id] ?? [];
                          const lastId = msgs.length > 0 ? msgs[msgs.length - 1].id : '';
                          if (lastId) ws.markChannelRead(teamId, ch.id, lastId);
                        } catch { /* ignore per-channel failures */ }
@@ -863,11 +1110,33 @@ function ServerRail({ servers, activeServer, onPick }) {
 // ───────────── channel sidebar ─────────────
 function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChannel,
                           voiceConnection, members, dms, activeDM, onPickDM,
-                          onLeaveVoice, mute, setMute, deaf, setDeaf, cam, setCam, screen, setScreen,
+                          onLeaveVoice, onJoinVoice, mute, setMute, deaf, setDeaf, cam, setCam, screen, setScreen,
                           mutedChannels = new Set(), toggleMuteChannel, onNewDm }) {
+  const data = (useShellDataContext() as any) || MOCK_DATA;
+  const nodeHost = data?.SERVERS?.[0]?.node || 'local';
   const [dragId, setDragId] = useState(null);
   const [overId, setOverId] = useState(null);
   const [orderOverride, setOrderOverride] = useState(null); // [ids…]
+  const isAdminHere = !!(members && members.byId && members.byId[currentUserId()]?.isAdmin);
+  // Pull the team's role catalog so we can identify the implicit
+  // "everyone" role and resolve which channels the current user can enter.
+  const teamRoles = useTeamStore((s) => (activeTeamId ? s.roles.get(activeTeamId) ?? [] : [])) as any[];
+  const teamMembers = useTeamStore((s) => (activeTeamId ? s.members.get(activeTeamId) ?? [] : [])) as any[];
+  const everyoneRoleId = teamRoles.find((r) => r.isDefault)?.id;
+  const myRoleIds = (teamMembers.find((m) => m.userId === currentUserId())?.roleIds ?? []) as string[];
+  const canJoinChannel = (c: { accessRoleIds?: string[] }) => {
+    if (isAdminHere) return true;
+    const access = c.accessRoleIds ?? [];
+    if (access.length === 0) return true; // back-compat: no access list = open
+    if (everyoneRoleId && access.includes(everyoneRoleId)) return true;
+    return access.some((rid) => myRoleIds.includes(rid));
+  };
+  // Channel is "restricted" (padlock icon) whenever its access list is
+  // non-empty AND doesn't include the everyone role.
+  const isRestricted = (c: { accessRoleIds?: string[] }) => {
+    const access = c.accessRoleIds ?? [];
+    return access.length > 0 && everyoneRoleId !== undefined && !access.includes(everyoneRoleId);
+  };
   const voiceChs = channels.filter(c => c.type === 'voice' && (c.participants || []).length > 0);
   const textChsRaw = channels.filter(c => c.type === 'text');
   const textChs = orderOverride
@@ -900,6 +1169,17 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
       <div className="tabs">
         <button className={'tab' + (tab === 'kanals' ? ' active' : '')} onClick={() => onTab('kanals')}>
           <Icon.Hash size={12} /> Kanals
+          {(() => {
+            const total = channels
+              .filter((c) => c.type === 'text' && !mutedChannels.has(c.id))
+              .reduce((a, c) => a + (c.unread || 0), 0);
+            if (total <= 0) return null;
+            return (
+              <span className="unread-pill mention" style={{ marginLeft: 4, padding: '0 5px' }}>
+                {total}
+              </span>
+            );
+          })()}
         </button>
         <button className={'tab' + (tab === 'pms' ? ' active' : '')} onClick={() => onTab('pms')}>
           <Icon.Chat size={12} /> PMs {dms.reduce((a,b) => a + b.unread, 0) > 0 && (
@@ -921,19 +1201,30 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
               {voiceChs.map(c => (
                 <div key={c.id}>
                   <div
-                    className={'channel-row' + (c.id === activeChannel ? ' active' : '')}
+                    className={'channel-row' + (c.id === activeChannel ? ' active' : '') + (c.locked && !canJoinChannel(c) ? ' locked' : '')}
                     onClick={() => onPickChannel(c.id)}
+                    onDoubleClick={() => { if (canJoinChannel(c)) onJoinVoice?.(c.id); }}
                     onContextMenu={(e) => {
                       e.preventDefault();
+                      // "Active voice" lists every channel that has
+                      // *someone* in it — not necessarily us. Show
+                      // Join when we're not connected to this channel
+                      // (or not in voice at all); show Disconnect
+                      // only when this is the channel we're in.
+                      const inThisChannel = voiceConnection?.channelId === c.id;
+                      const joinAllowed = canJoinChannel(c);
                       window.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
-                        { label: 'Disconnect from voice', danger: true, icon: <Icon.Mic size={13} off />, onClick: onLeaveVoice },
-                        { label: 'Copy link', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6 10l4-4M6 6l4 4" stroke="currentColor" strokeWidth="1.4"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/></svg>, onClick: () => { navigator.clipboard?.writeText('dilla://gbg-1/k/' + c.id); window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Voice kanal link copied.', duration: 2000 } })); } },
+                        inThisChannel
+                          ? { label: 'Disconnect from voice', danger: true, icon: <Icon.Mic size={13} off />, onClick: onLeaveVoice }
+                          : { label: joinAllowed ? 'Join voice' : 'Locked', disabled: !joinAllowed, icon: joinAllowed ? <Icon.Speaker size={13} /> : <Icon.Lock size={13} />, onClick: () => { if (joinAllowed) onJoinVoice?.(c.id); } },
+                        { label: 'Copy link', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6 10l4-4M6 6l4 4" stroke="currentColor" strokeWidth="1.4"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/></svg>, onClick: () => { navigator.clipboard?.writeText(('dilla://' + nodeHost + '/k/') + c.id); window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Voice kanal link copied.', duration: 2000 } })); } },
                         { sep: true },
                         { label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-channel-settings', { detail: c.id })) },
                       ] } }));
                     }}>
                     <span className="ch-glyph"><Icon.Speaker size={14} /></span>
                     <span className="ch-name">{c.name}</span>
+                    {isRestricted(c) && <span style={{ color: 'var(--fg-3)' }} title="restricted access"><Icon.Lock size={11} /></span>}
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--fg-3)' }}>
                       {(c.participants||[]).length}
                     </span>
@@ -942,13 +1233,21 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
                     {(c.participants || []).map(pid => {
                       const m = members.byId[pid];
                       const peer = c.voicePeers && c.voicePeers[pid];
-                      const speaking = peer ? !!peer.speaking : false;
-                      const muted = peer ? !!peer.muted : (pid === 'thim' && mute);
-                      const deafened = peer ? !!peer.deafened : (pid === 'thim' && deaf);
+                      // Voice activity (speaking ring + level meter) is
+                      // intentionally NOT shown in the left-sidebar
+                      // participants — it pushed a Zustand update every
+                      // VAD tick and re-rendered this whole section
+                      // many times per second. Speaking visualization
+                      // lives in the main voice-channel UI instead, where
+                      // it has somewhere meaningful to display. We still
+                      // surface the static toggles (muted/deafened/cam/
+                      // screen) since those only change on user action.
+                      const muted = peer ? !!peer.muted : (pid === currentUserId() && mute);
+                      const deafened = peer ? !!peer.deafened : (pid === currentUserId() && deaf);
                       const screenOn = peer ? !!peer.screen_sharing : false;
-                      const camOn = peer ? !!peer.webcam_sharing : (pid === 'thim' && cam);
+                      const camOn = peer ? !!peer.webcam_sharing : (pid === currentUserId() && cam);
                       return (
-                        <div key={pid} className={'voice-participant' + (speaking ? ' speaking' : '') + (muted ? ' muted' : '')}
+                        <div key={pid} className={'voice-participant' + (muted ? ' muted' : '')}
                              onContextMenu={(e) => {
                                e.preventDefault();
                                window.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
@@ -963,7 +1262,6 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
                           <div className="vp-avatar" style={{ background: m.color }}>{m.initials}</div>
                           <span className="vp-name">{m.name}</span>
                           <div className="vp-state">
-                            {speaking && <MiniMeter />}
                             {camOn && <span className="vp-icon screen" title="camera on"><Icon.Video size={11} /></span>}
                             {screenOn && <span className="vp-icon screen" title="sharing screen"><Icon.Screen size={11} /></span>}
                             {deafened && <span className="vp-icon mute" title="deafened"><Icon.Headphones size={11} off /></span>}
@@ -999,7 +1297,7 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
                      useUnreadStore.getState().markRead(c.id);
                      const teamId = useTeamStore.getState().activeTeamId;
                      if (teamId && !isMockSession()) {
-                       const msgs = (window as any).MOCK_DATA?.MESSAGES?.[c.id] ?? [];
+                       const msgs = data?.MESSAGES?.[c.id] ?? [];
                        const lastId = msgs.length > 0 ? msgs[msgs.length - 1].id : '';
                        if (lastId) {
                          try { ws.markChannelRead(teamId, c.id, lastId); } catch { /* ignore */ }
@@ -1008,8 +1306,9 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
                      window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Marked all messages in #' + c.name + ' as read.', duration: 2500 } }));
                    } },
                    { label: 'Mute kanal', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 6h2l3-3v10l-3-3H2zM10 5l3 3-3 3M13 5l-3 3 3 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>, onClick: () => { toggleMuteChannel(c.id); window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: (mutedChannels.has(c.id) ? 'Unmuted ' : 'Muted ') + '#' + c.name + '.', duration: 2500 } })); } },
-                   { label: 'Copy link', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6 10l4-4M6 6l4 4" stroke="currentColor" strokeWidth="1.4"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/></svg>, onClick: () => { navigator.clipboard?.writeText('dilla://gbg-1/k/' + c.id); window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Link copied.', duration: 2000 } })); } },
+                   { label: 'Copy link', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6 10l4-4M6 6l4 4" stroke="currentColor" strokeWidth="1.4"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/></svg>, onClick: () => { navigator.clipboard?.writeText(('dilla://' + nodeHost + '/k/') + c.id); window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Link copied.', duration: 2000 } })); } },
                    { sep: true },
+                   { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-channel-access', { detail: c.id })) },
                    { label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-channel-settings', { detail: c.id })) },
                    { label: 'Leave kanal', danger: true, icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M10 4V2H3v12h7v-2M6 8h9M12 5l3 3-3 3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>, onClick: () => {
                      if (!confirm('Leave #' + c.name + '?')) return;
@@ -1024,6 +1323,7 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
                  }}>
               <span className="ch-glyph"><Icon.Hash size={14} /></span>
               <span className="ch-name">{c.name}</span>
+              {isRestricted(c) && <span style={{ color: 'var(--fg-3)' }} title="restricted access"><Icon.Lock size={11} /></span>}
               {mutedChannels.has(c.id) && <span className="ch-muted" title="muted"><svg width="11" height="11" viewBox="0 0 16 16" fill="none"><path d="M2 6h2l3-3v10l-3-3H2zM10 5l3 3-3 3M13 5l-3 3 3 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg></span>}
               {c.unread > 0 && !mutedChannels.has(c.id) && (
                 <span className={'unread-pill' + (c.mention ? ' mention' : '')}>{c.unread}</span>
@@ -1036,33 +1336,25 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
               <div className="cat"><span>Voice</span></div>
               {otherVoice.map(c => (
                 <div key={c.id}
-                     className={'channel-row' + (c.id === activeChannel ? ' active' : '')}
+                     className={'channel-row' + (c.id === activeChannel ? ' active' : '') + (c.locked && !canJoinChannel(c) ? ' locked' : '')}
                      onClick={() => onPickChannel(c.id)}
+                     onDoubleClick={() => { if (canJoinChannel(c)) onJoinVoice?.(c.id); }}
                      onContextMenu={(e) => {
                        e.preventDefault();
+                       const joinAllowed = canJoinChannel(c);
                        window.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
-                         { label: 'Join voice', icon: <Icon.Speaker size={13} />, onClick: () => { onPickChannel(c.id); } },
-                         { label: 'Copy link', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6 10l4-4M6 6l4 4" stroke="currentColor" strokeWidth="1.4"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/></svg>, onClick: () => { navigator.clipboard?.writeText('dilla://gbg-1/k/' + c.id); window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Voice kanal link copied.', duration: 2000 } })); } },
+                         { label: joinAllowed ? 'Join voice' : 'Locked', disabled: !joinAllowed, icon: joinAllowed ? <Icon.Speaker size={13} /> : <Icon.Lock size={13} />, onClick: () => { if (joinAllowed) { onPickChannel(c.id); onJoinVoice?.(c.id); } } },
+                         { label: 'Copy link', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6 10l4-4M6 6l4 4" stroke="currentColor" strokeWidth="1.4"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/></svg>, onClick: () => { navigator.clipboard?.writeText(('dilla://' + nodeHost + '/k/') + c.id); window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Voice kanal link copied.', duration: 2000 } })); } },
                          { sep: true },
-                         { label: c.locked ? 'Unlock kanal' : 'Lock kanal', icon: <Icon.Lock size={12} />, onClick: () => {
-                          const teamId = useTeamStore.getState().activeTeamId;
-                          if (teamId && !isMockSession()) {
-                            api.updateChannel(teamId, c.id, { locked: !c.locked }).then(() => {
-                              window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'admin', text: (c.locked ? 'Unlocked ' : 'Locked ') + '#' + c.name + '.', duration: 2800 } }));
-                            }).catch((err: unknown) => {
-                              console.warn('[ChatApp] lock channel failed', err);
-                              window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'admin', text: 'Lock failed — admin role required.', duration: 3500 } }));
-                            });
-                          } else {
-                            window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'admin', text: 'Demo only — server enforces lock state.', duration: 2800 } }));
-                          }
+                         { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => {
+                          window.dispatchEvent(new CustomEvent('dilla:open-channel-access', { detail: c.id }));
                         } },
                          { label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-channel-settings', { detail: c.id })) },
                        ] } }));
                      }}>
                   <span className="ch-glyph"><Icon.Speaker size={14} /></span>
                   <span className="ch-name">{c.name}</span>
-                  {c.locked && <span style={{ color: 'var(--fg-3)' }}><Icon.Lock size={11} /></span>}
+                  {isRestricted(c) && <span style={{ color: 'var(--fg-3)' }} title="restricted access"><Icon.Lock size={11} /></span>}
                 </div>
               ))}
             </>
@@ -1075,7 +1367,11 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
           </div>
           {dms.map(d => {
             const isGroup = d.group;
-            const other = isGroup ? null : members.byId[d.with];
+            // `other` is the per-user record from members.byId. It can legitimately
+            // be missing — e.g. a DM that arrived before the team's member roster
+            // synced (cross-session case), or the peer left the team. Fall back to
+            // a placeholder so the sidebar still renders instead of crashing.
+            const other = isGroup ? null : (members.byId[d.with] || { name: 'Unknown', color: 'var(--muted)', initials: '?' });
             const name = isGroup ? d.name : other.name;
             return (
               <div key={d.id}
@@ -1091,7 +1387,7 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
                          useUnreadStore.getState().markRead(d.id);
                          const teamId = useTeamStore.getState().activeTeamId;
                          if (teamId && !isMockSession()) {
-                           const msgs = (window as any).MOCK_DATA?.DM_MESSAGES?.[d.id] ?? [];
+                           const msgs = data?.DM_MESSAGES?.[d.id] ?? [];
                            const lastId = msgs.length > 0 ? msgs[msgs.length - 1].id : '';
                            if (lastId) {
                              try { ws.markChannelRead(teamId, d.id, lastId); } catch { /* ignore */ }
@@ -1151,15 +1447,20 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
         </div>
       )}
 
-      <UserPanel member={members.byId.thim} />
+      <UserPanel member={members.byId[currentUserId()]} />
     </aside>
   );
 }
 
 function UserPanel({ member }) {
+  // `member` can legitimately be undefined for a beat after sign-in —
+  // currentUserId() reads from window.SHELL_DATA which AppShell refreshes
+  // every render, but between an auth-store update and the next shell-data
+  // re-derive there's a window where byId[currentUserId()] returns
+  // undefined. Render nothing rather than crash on `member.status`.
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [status, setStatus] = useState(member.status);
-  const [custom, setCustom] = useState(member.custom || '');
+  const [status, setStatus] = useState(member?.status ?? 'online');
+  const [custom, setCustom] = useState(member?.custom || '');
   const [draftCustom, setDraftCustom] = useState(custom);
   const popRef = useRef(null);
 
@@ -1192,6 +1493,10 @@ function UserPanel({ member }) {
       console.warn('[UserPanel] updatePresence failed', err),
     );
   }
+
+  // No identity yet (data still loading, or post-sign-in race) — render
+  // an empty slot rather than crashing on `member.name`.
+  if (!member) return <div className="user-panel" />;
 
   return (
     <div className="user-panel" style={{ position: 'relative' }}>
@@ -1249,6 +1554,7 @@ function UserPanel({ member }) {
 
 // ───────────── main pane: text channel ─────────────
 function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, onSend, onReact, onVote, onEdit, onDelete, onAttach, replyTo, onSetReply, typing, onJoinVoice, membersOpen, onToggleMembers }) {
+  const data = (useShellDataContext() as any) || MOCK_DATA;
   const groups = useMemo(() => groupMessages(messages), [messages]);
   const feedRef = useRef(null);
   const emojiBtnRef = useRef(null);
@@ -1292,23 +1598,25 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
   const deleteTarget = deleteConfirm ? messages.find(m => m.id === deleteConfirm) : null;
 
   const mentionMatches = mention
-    ? (members.MEMBERS || []).filter(m => m.name.toLowerCase().startsWith(mention.query) && m.id !== (window.MOCK_DATA?.currentUserId || 'thim')).slice(0, 6)
+    ? (members.MEMBERS || []).filter(m => m.name.toLowerCase().startsWith(mention.query) && m.id !== currentUserId()).slice(0, 6)
     : [];
 
   const SLASH_COMMANDS = [
     { cmd: '/me',      args: '<action>',  desc: 'narrate an action in italics' },
     { cmd: '/code',    args: '<language>', desc: 'start a code block' },
     { cmd: '/shrug',   args: '',          desc: "appends ¯\\_(ツ)_/¯" },
-    { cmd: '/poll',    args: '<question> | <opt1> | <opt2>', desc: 'create a quick poll' },
-    { cmd: '/giphy',   args: '<search>',  desc: 'embed a gif' },
-    { cmd: '/remind',  args: '<when> <what>', desc: 'set a personal reminder' },
-    { cmd: '/topic',   args: '<text>',    desc: 'set the kanal topic (admin)' },
-    { cmd: '/invite',  args: '<user>',    desc: 'invite to the team' },
-    { cmd: '/dm',      args: '<user>',    desc: 'open a private message' },
-    { cmd: '/help',    args: '',          desc: 'show all keyboard shortcuts' },
+    { cmd: '/poll',    args: '<question> | <opt1> | <opt2>', desc: 'post a poll · react with numbers to vote' },
+    { cmd: '/giphy',   args: '<search>',  desc: 'post a giphy search link' },
+    { cmd: '/topic',   args: '<text>',    desc: "set the channel topic (needs manage-channels)" },
+    { cmd: '/lock',    args: '',          desc: 'lock this voice channel (needs manage-channels)' },
+    { cmd: '/unlock',  args: '',          desc: 'unlock this voice channel (needs manage-channels)' },
+    { cmd: '/nick',    args: '<name>',    desc: 'set your nickname for this team' },
+    { cmd: '/invite',  args: '<user>',    desc: 'open Invites to create a link' },
+    { cmd: '/w',       args: '<user>',    desc: 'open a private message (whisper)' },
+    { cmd: '/help',    args: '',          desc: 'show keyboard shortcuts' },
   ];
   const slashMatches = slash
-    ? SLASH_COMMANDS.filter(s => s.cmd.startsWith('/' + slash.query)).slice(0, 8)
+    ? SLASH_COMMANDS.filter(s => s.cmd.startsWith('/' + slash.query))
     : [];
 
   function applyMention(name) {
@@ -1625,12 +1933,12 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
               )}
               {g.children.map((m, idx) => {
                 const isFirst = idx === 0;
-                const hasMention = (m.mentions || []).includes('thim');
+                const hasMention = (m.mentions || []).includes(currentUserId());
                 return (
                   <div key={m.id}
                        className={'msg' + (isFirst ? '' : ' compact') + (hasMention ? ' has-mention' : '') + (m.replyTo ? ' has-reply' : '')}
                        data-msg-id={m.id}
-                       onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, msgId: m.id, isMine: m.author === (window.MOCK_DATA?.currentUserId || 'thim') }); }}>
+                       onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, msgId: m.id, isMine: m.author === currentUserId() }); }}>
                     {m.replyTo && (() => {
                       const orig = messages.find(om => om.id === m.replyTo);
                       if (!orig) return null;
@@ -1676,13 +1984,27 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                                   }));
                                 }}>{author.name}</span>
                           <span className="at">{timeShort(m.at)}</span>
-                          {m.author === (window.MOCK_DATA?.currentUserId || 'thim') && (
-                            <span className="msg-seen" title="seen by ada, mira, ben">
-                              <svg width="14" height="10" viewBox="0 0 14 10" fill="none">
-                                <path d="M1 5l3 3 6-6M5 5l3 3 5-7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
-                            </span>
-                          )}
+                          {m.author === currentUserId() && (() => {
+                            // Render a real tooltip on the ack glyph. We
+                            // don't have per-user read receipts yet, but
+                            // we DO know the message reached the server
+                            // (echoed back with a server-assigned id —
+                            // optimistic locals are prefixed 'new-'). Show
+                            // "Sending…" for optimistic, "Delivered" once
+                            // the echo lands, with the server timestamp.
+                            const isLocal = typeof m.id === 'string' && m.id.startsWith('new-');
+                            const tip = isLocal
+                              ? 'Sending…'
+                              : `Delivered · ${m.at instanceof Date ? m.at.toLocaleString() : ''}`;
+                            return (
+                              <span className="msg-seen" title={tip}>
+                                <svg width="14" height="10" viewBox="0 0 14 10" fill="none">
+                                  <title>{tip}</title>
+                                  <path d="M1 5l3 3 6-6M5 5l3 3 5-7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              </span>
+                            );
+                          })()}
                           {author.role === 'admin' && <span className="enc-badge" style={{ fontSize: 9, padding: '1px 5px' }}>admin</span>}
                         </div>
                       )}
@@ -1743,15 +2065,27 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                                 <div className="poll-q">{m.question}</div>
                                 {(() => {
                                   const total = m.options.reduce((s, o) => s + (o.votes || 0), 0) || 1;
-                                  return m.options.map((o, oi) => (
-                                    <div key={oi}
-                                         className={'poll-opt' + (o.mine ? ' mine' : '')}
-                                         onClick={() => onVote && onVote(m.id, oi)}>
-                                      <div className="poll-bar" style={{ width: ((o.votes || 0) / total * 100) + '%' }} />
-                                      <span className="poll-label">{o.label}</span>
-                                      <span className="poll-count">{o.votes || 0}</span>
-                                    </div>
-                                  ));
+                                  // Seed each poll's color sequence from a
+                                  // hash of its id so colors stay stable
+                                  // across reloads and matching options.
+                                  const seed = [...String(m.id || '')].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 360, 0);
+                                  return m.options.map((o, oi) => {
+                                    const hue = (seed + Math.round((360 / m.options.length) * oi)) % 360;
+                                    const dot = `hsl(${hue} 65% 55%)`;
+                                    const bar = `hsl(${hue} 60% 50% / 0.5)`;
+                                    return (
+                                      <div key={oi}
+                                           className={'poll-opt' + (o.mine ? ' mine' : '')}
+                                           onClick={() => onVote && onVote(m.id, oi)}>
+                                        <div className="poll-bar" style={{ width: ((o.votes || 0) / total * 100) + '%', background: bar }} />
+                                        <span className="poll-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: dot, flex: '0 0 auto' }} />
+                                          {o.label}
+                                        </span>
+                                        <span className="poll-count">{o.votes || 0}</span>
+                                      </div>
+                                    );
+                                  });
                                 })()}
                                 <div className="poll-foot">click to vote · {m.options.reduce((s, o) => s + (o.votes || 0), 0)} votes</div>
                               </div>
@@ -1828,7 +2162,7 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                               }))}>
                         <Icon.Thread size={13} />
                       </button>
-                      {m.author === (window.MOCK_DATA?.currentUserId || 'thim') && (
+                      {m.author === currentUserId() && (
                         <button title="Edit"
                                 onClick={() => { setEditingId(m.id); setEditDraft(m.text || ''); }}>
                           <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
@@ -1836,7 +2170,7 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                           </svg>
                         </button>
                       )}
-                      {m.author === (window.MOCK_DATA?.currentUserId || 'thim') && (
+                      {m.author === currentUserId() && (
                         <button title="Delete"
                                 onClick={() => setDeleteConfirm(m.id)}>
                           <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
@@ -1932,10 +2266,11 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                 </div>
               )}
               {slash && slashMatches.length > 0 && (
-                <div className="mention-pop slash-pop">
+                <div className="mention-pop slash-pop" style={{ maxHeight: 320, overflowY: 'auto' }}>
                   <div className="mention-head">slash commands · ↑↓ navigate · ⇥/↵ pick · esc cancel</div>
                   {slashMatches.map((s, i) => (
                     <div key={s.cmd}
+                         ref={(el) => { if (el && i === slashIdx) el.scrollIntoView({ block: 'nearest' }); }}
                          className={'slash-row' + (i === slashIdx ? ' selected' : '')}
                          onMouseEnter={() => setSlashIdx(i)}
                          onMouseDown={(e) => { e.preventDefault(); applySlash(s); }}>
@@ -1985,6 +2320,23 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
                     if (draft.trim()) onSend();
+                  }
+                  // Empty-draft ArrowUp loads the most recent message you
+                  // sent in this channel for editing — matches the Slack /
+                  // Discord pattern. Skip when the autocomplete popups are
+                  // active (they own ArrowUp above) or when there's already
+                  // text the user might be navigating.
+                  if (e.key === 'ArrowUp' && !mention && !slash && !draft) {
+                    const mine = currentUserId();
+                    for (let i = messages.length - 1; i >= 0; i--) {
+                      const m: any = messages[i];
+                      if (m.author === mine && (m.kind === 'text' || m.kind === 'action' || !m.kind) && typeof m.text === 'string') {
+                        e.preventDefault();
+                        setEditingId(m.id);
+                        setEditDraft(m.text);
+                        return;
+                      }
+                    }
                   }
                 }}
                 rows={1}
@@ -2087,12 +2439,43 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 2v12l5-3 5 3V2z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/></svg>
               Pin to channel
             </button>
-            <button onClick={() => { setUnreadAt(contextMenu.msgId); setContextMenu(null); }}>
+            <button onClick={() => {
+              setUnreadAt(contextMenu.msgId);
+              // Roll the read watermark back to the message *before* the
+              // selected one so the sidebar pill reflects the unread span
+              // and the server agrees on reload. We use the previous
+              // message id (or empty if it's the first), and count messages
+              // from-here-onwards that aren't ours as the local pill count
+              // — server will recompute on next sync:init, but updating
+              // locally avoids a flicker while the WS round-trips.
+              const all = messages || [];
+              const idx = all.findIndex((m) => m.id === contextMenu.msgId);
+              if (idx >= 0) {
+                const myId = data?.currentUserId;
+                const fromHere = all.slice(idx).filter((m) => m.author !== myId).length;
+                useUnreadStore.setState((s) => ({
+                  counts: { ...s.counts, [channel.id]: fromHere },
+                }));
+                const teamId = useTeamStore.getState().activeTeamId;
+                const prevId = idx > 0 ? all[idx - 1].id : '';
+                if (teamId && !isMockSession()) {
+                  // Sending an empty string would store "" as the watermark
+                  // message, which the server treats as "never read"; that's
+                  // actually the right behaviour for "mark from the very
+                  // first message", so let it through.
+                  try { ws.markChannelRead(teamId, channel.id, prevId); } catch { /* ignore */ }
+                }
+              }
+              setContextMenu(null);
+            }}>
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M3 4h10M3 12h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>
               Mark unread from here
             </button>
             <button onClick={() => {
-              navigator.clipboard?.writeText(`dilla://gbg-1.dilla.local/channels/${channel.id}/messages/${contextMenu.msgId}`);
+              {(() => {
+                const host = data?.SERVERS?.[0]?.node || 'local';
+                navigator.clipboard?.writeText(`dilla://${host}/channels/${channel.id}/messages/${contextMenu.msgId}`);
+              })()}
               window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { kind: 'message', channel: channel.name, author: 'system', text: 'Link copied to clipboard.', duration: 3000 } }));
               setContextMenu(null);
             }}>
@@ -2200,7 +2583,16 @@ function renderText(text, members) {
       if (m.index > i) parts.push(b.text.slice(i, m.index));
       const t = m[0];
       if (t.startsWith('@')) {
-        const mine = t === '@thim';
+        // Strip the leading '@' and resolve against the current user's
+        // record. Previously this hardcoded `'@thim'` from the handoff.
+        // `renderText` is a free function called from JSX render paths and
+        // doesn't have the shell-data context in scope; read it via the
+        // window binding that AppShell keeps in sync. Same exception as
+        // `currentUserId()` above — both will go away once renderText is
+        // either componentized or takes `data` as an arg.
+        const handle = t.slice(1);
+        const me = (window as any).SHELL_DATA?.byId?.[currentUserId()];
+        const mine = !!me && (handle === me.name || handle === me.username);
         const broad = t === '@everyone' || t === '@here';
         parts.push(
           <span key={bi + '-' + parts.length}
@@ -2212,9 +2604,22 @@ function renderText(text, members) {
       }
       else if (t.startsWith('`'))  parts.push(<code key={bi + '-' + parts.length}>{t.slice(1,-1)}</code>);
       else if (t.startsWith('**')) parts.push(<strong key={bi + '-' + parts.length}>{t.slice(2,-2)}</strong>);
-      else if (t.startsWith('http')) parts.push(
-        <a key={bi + '-' + parts.length} href={t} target="_blank" rel="noopener noreferrer" className="ic-link">{t}</a>
-      );
+      else if (t.startsWith('http')) {
+        // Render direct image URLs inline (gif / png / jpg / webp). Strips
+        // query strings before extension check so Giphy CDN URLs match.
+        const cleanUrl = t.split('?')[0].toLowerCase();
+        if (/\.(gif|png|jpe?g|webp|avif)$/.test(cleanUrl)) {
+          parts.push(
+            <a key={bi + '-' + parts.length} href={t} target="_blank" rel="noopener noreferrer">
+              <img src={t} alt={t} style={{ display: 'block', maxWidth: 360, maxHeight: 280, borderRadius: 4, marginTop: 4 }} />
+            </a>
+          );
+        } else {
+          parts.push(
+            <a key={bi + '-' + parts.length} href={t} target="_blank" rel="noopener noreferrer" className="ic-link">{t}</a>
+          );
+        }
+      }
       i = m.index + t.length;
     }
     if (i < b.text.length) parts.push(b.text.slice(i));
@@ -2227,7 +2632,7 @@ function mockUnfurl(host, url) {
   if (host.includes('github.com')) {
     if (url.includes('/pull/')) return {
       title: 'PR #47 · voice-dock: tighten audio meter polling',
-      desc: 'ada wants to merge 6 commits into main. +112 −38. Reviewers: thim · sven.',
+      desc: '6 commits into main. +112 −38.',
       kind: 'github',
       meta: 'github · 6 commits · 4 files',
     };
@@ -2278,21 +2683,90 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
   const nodes = (window.MeshChrome && window.MeshChrome.MEMBER_NODES) || {};
   const participants = (channel.participants || []).map(id => members.byId[id]);
   const isConnected = voiceConnection && voiceConnection.channelId === channel.id;
-  const [focusedId, setFocusedId] = useState(null);
+  const meIsAdmin = !!members?.byId?.[currentUserId()]?.isAdmin;
+  const lockedForMe = !!channel.locked && !meIsAdmin;
+  // Focused stream: a tuple of (participant_id, 'cam' | 'screen'). Tracking
+  // the kind separately lets you focus the webcam alone, the screen alone,
+  // or swap between them — previously a participant with both shared their
+  // screen with the webcam stuck as a small PIP that couldn't be promoted.
+  const [focused, setFocused] = useState<{ id: string; kind: 'cam' | 'screen' } | null>(null);
+  const focusRef = useRef<HTMLDivElement | null>(null);
   const [volumes, setVolumes] = useState({}); // memberId -> 0..100
   function vol(id) { return volumes[id] === undefined ? 100 : volumes[id]; }
-  // Anyone currently sharing screen (for the auto-focus hint)
-  const sharingId = (cam || screen) ? 'thim' : 'ben';
-  const focused = focusedId ? participants.find(p => p.id === focusedId) : null;
-  // Strip shows all participants (including the focused one) for context
+  const focusedMember = focused ? participants.find(p => p.id === focused.id) : null;
+  // Strip shows all participants (including the focused one) for context.
   const others = focused ? participants : [];
 
   useEffect(() => {
     if (!focused) return;
-    function onKey(e) { if (e.key === 'Escape') setFocusedId(null); }
+    function onKey(e) { if (e.key === 'Escape') setFocused(null); }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [focused]);
+
+  // Fullscreen the focused stage. Uses the browser Fullscreen API and
+  // bails silently if the user denies the request or fullscreen isn't
+  // available (e.g. iOS Safari which is restrictive on non-video els).
+  function enterFullscreen() {
+    const el = focusRef.current;
+    if (!el) return;
+    const req = (el as any).requestFullscreen || (el as any).webkitRequestFullscreen;
+    if (!req) return;
+    req.call(el).catch((err: unknown) => console.warn('[voice] fullscreen failed', err));
+  }
+  // Per-peer voice state from voice:mute-update / voice:rooms-snapshot.
+  // Keyed by user_id within this channel. We look peers up here so the
+  // tiles can show each remote user's actual mute/deafen state instead
+  // of just our own.
+  const channelOccupants = useVoiceStore((s) => s.voiceOccupants[channel.id]);
+  // Stream-existence subscriptions so cardFor can fall back to the avatar
+  // when a peer is flagged as sharing but we have no track to render
+  // (e.g. when watching from outside the voice channel — the SFU hasn't
+  // forwarded the screen track to us). Without this guard ScreenTile
+  // renders its placeholder mockup instead.
+  const localScreenStream = useVoiceStore((s) => s.localScreenStream);
+  const remoteScreenStream = useVoiceStore((s) => s.remoteScreenStream);
+  const localWebcamStream = useVoiceStore((s) => s.localWebcamStream);
+  const remoteWebcamStreams = useVoiceStore((s) => s.remoteWebcamStreams);
+  // Per-peer sharing flags so we can hide tiles when a peer toggles
+  // a track off (the underlying stream is intentionally kept alive
+  // in the store across toggles — see voice:webcam-update handler).
+  const voicePeers = useVoiceStore((s) => s.peers);
+
+  // Keep the focused stage useful as the underlying streams change:
+  //   - both gone → exit focus (nothing to show)
+  //   - focused kind gone, other kind still live → flip focus to it
+  //   - focused kind still live → no change
+  // Same liveness gating as the showCam/showScreen rule in cardFor.
+  useEffect(() => {
+    if (!focused) return;
+    const isSelf = focused.id === currentUserId();
+    const peerVoice = !isSelf ? voicePeers?.[focused.id] : null;
+    const camLive = isSelf
+      ? !!(cam && localWebcamStream)
+      : !!(peerVoice?.webcam_sharing && remoteWebcamStreams?.[focused.id]);
+    const screenLive = isSelf
+      ? !!(screen && localScreenStream)
+      : !!(peerVoice?.screen_sharing && remoteScreenStream);
+    if (!camLive && !screenLive) {
+      setFocused(null);
+      return;
+    }
+    if (focused.kind === 'cam' && !camLive && screenLive) {
+      setFocused({ id: focused.id, kind: 'screen' });
+    } else if (focused.kind === 'screen' && !screenLive && camLive) {
+      setFocused({ id: focused.id, kind: 'cam' });
+    }
+  }, [
+    focused,
+    voicePeers,
+    cam,
+    screen,
+    localWebcamStream,
+    localScreenStream,
+    remoteWebcamStreams,
+    remoteScreenStream,
+  ]);
   return (
     <div className="main">
       {false && (
@@ -2327,22 +2801,46 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
 
       <div className="voice-view">
         {(() => {
-          function cardFor(p, isMini) {
+          function cardFor(p, isMini, focusKind?: 'cam' | 'screen') {
             const speaking = p.id === 'ada' && isConnected;
-            const mineMuted = p.id === 'thim' && mute;
-            const mineDeaf = p.id === 'thim' && deaf;
-            const mineCam = p.id === 'thim' && cam;
-            const mineScreen = p.id === 'thim' && screen;
-            const benScreen = p.id === 'ben';
-            const showScreen = mineScreen || benScreen;
-            const showCam = mineCam;
+            // For self, mute/deaf come straight from the local store (synced
+            // with webrtcService). For peers, look them up in voiceOccupants
+            // which is fed by voice:mute-update and voice:rooms-snapshot.
+            const isSelf = p.id === currentUserId();
+            const occupant = !isSelf ? channelOccupants?.find((o) => o.user_id === p.id) : null;
+            const mineMuted = isSelf ? mute : !!occupant?.muted;
+            const mineDeaf = isSelf ? deaf : !!occupant?.deafened;
+            const mineCam = isSelf && cam;
+            const mineScreen = isSelf && screen;
+            // For peers we gate on BOTH the UI flag and the stream
+            // being present. The stream now persists across toggles
+            // (sender uses replaceTrack for off/on so no new ontrack
+            // fires on resume), so the flag is what tells us whether
+            // the peer is currently sharing — we keep the stream alive
+            // so the existing <video> element resumes when frames
+            // come back, without remounting.
+            const peerVoice = !isSelf ? voicePeers?.[p.id] : null;
+            const peerSharingScreen = !!peerVoice?.screen_sharing;
+            const peerSharingCam = !!peerVoice?.webcam_sharing;
+            const showScreen = isSelf
+              ? mineScreen && !!localScreenStream
+              : peerSharingScreen && !!remoteScreenStream;
+            const showCam = isSelf
+              ? mineCam && !!localWebcamStream
+              : peerSharingCam && !!remoteWebcamStreams?.[p.id];
             const node = (nodes[p.id] || '').split('.')[0] || 'local';
             const focusable = showScreen || showCam;
+            // In focus mode, render JUST the requested stream. Outside
+            // focus, show screen (with PIP webcam) when both are on,
+            // otherwise whichever single stream is active.
+            const renderKind: 'screen' | 'cam' | 'avatar' = focusKind
+              ? focusKind
+              : (showScreen ? 'screen' : showCam ? 'cam' : 'avatar');
             return (
               <div key={p.id}
                    className={'voice-card'
                      + (speaking ? ' speaking' : '')
-                     + (showScreen ? ' has-screen' : showCam ? ' has-cam' : '')
+                     + (renderKind === 'screen' ? ' has-screen' : renderKind === 'cam' ? ' has-cam' : '')
                      + (isMini ? ' mini' : '')
                      + (isMini && focused && p.id === focused.id ? ' is-focused' : '')
                      + (focusable && !isMini ? ' focusable' : '')}
@@ -2352,7 +2850,8 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                      e.preventDefault();
                      window.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
                        { label: 'View profile', icon: <Icon.People size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-profile', { detail: { memberId: p.id, x: e.clientX, y: e.clientY } })) },
-                       { label: focusable ? (focusedId === p.id ? 'Exit focus' : 'Focus this stream') : 'No stream to focus', icon: null, onClick: () => focusable && setFocusedId(focusedId === p.id ? null : p.id) },
+                       ...(showScreen ? [{ label: focused?.id === p.id && focused.kind === 'screen' ? 'Exit screen focus' : 'Focus screen share', icon: <Icon.Screen size={13} />, onClick: () => setFocused(focused?.id === p.id && focused.kind === 'screen' ? null : { id: p.id, kind: 'screen' as const }) }] : []),
+                       ...(showCam ? [{ label: focused?.id === p.id && focused.kind === 'cam' ? 'Exit webcam focus' : 'Focus webcam', icon: <Icon.Video size={13} />, onClick: () => setFocused(focused?.id === p.id && focused.kind === 'cam' ? null : { id: p.id, kind: 'cam' as const }) }] : []),
                        { sep: true },
                        { label: 'Mute for me only', icon: <Icon.Mic size={13} off />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'mixer', text: 'Muted ' + p.name + ' for this session only.', duration: 2500 } })) },
                        { label: 'Server-mute (admin)', danger: true, icon: <Icon.Mic size={13} off />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'admin', text: 'Server-mute requires admin role. Propagates across the mesh.', duration: 3500 } })) },
@@ -2360,14 +2859,59 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                      ] } }));
                    }}
                    onClick={() => {
-                     if (isMini) { setFocusedId(p.id); return; }
-                     if (focusedId === p.id) { setFocusedId(null); return; }
-                     if (focusable) setFocusedId(p.id);
+                     // Click the mini strip → return to that stream.
+                     if (isMini && focused) { setFocused({ id: p.id, kind: focused.kind }); return; }
+                     // Click an already-focused tile → exit focus.
+                     if (focused?.id === p.id) { setFocused(null); return; }
+                     // Default: focus whichever single stream is showing.
+                     if (showScreen) setFocused({ id: p.id, kind: 'screen' });
+                     else if (showCam) setFocused({ id: p.id, kind: 'cam' });
                    }}>
                 <div className="voice-media">
-                  {showScreen ? <MockScreen member={p} pip={showCam ? p : null} /> :
-                   showCam ? <MockCam member={p} /> :
-                   <Avatar member={p} size={isMini ? 32 : 64} />}
+                  {renderKind === 'screen' ? (
+                    // Outside focus mode, render a non-interactive PIP via
+                    // ScreenTile's `pip` prop when both streams exist. In
+                    // focus mode we render our own clickable PIP overlay
+                    // below so the user can swap to the other stream by
+                    // clicking it.
+                    <ScreenTile member={p} pip={showCam && !focusKind ? p : null} />
+                  ) : renderKind === 'cam' ? (
+                    <CamTile member={p} />
+                  ) : (
+                    <Avatar member={p} size={isMini ? 32 : 64} />
+                  )}
+                  {/* Clickable swap PIP — only shown in focus mode when
+                      the participant has BOTH streams. Click the PIP to
+                      swap focus to the other stream. The pip shows the
+                      OPPOSITE kind of what's currently focused: if you're
+                      focused on the screen, the pip is the webcam (and
+                      vice versa). */}
+                  {focusKind && !isMini && showCam && showScreen && (
+                    // div+role rather than <button> because <video>
+                    // inside a <button> is invalid HTML — some browsers
+                    // refuse to play it and render the PIP black.
+                    <div
+                      className="voice-pip-swap"
+                      role="button"
+                      tabIndex={0}
+                      title={focusKind === 'screen' ? 'Switch to webcam' : 'Switch to screen'}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setFocused({ id: p.id, kind: focusKind === 'screen' ? 'cam' : 'screen' });
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setFocused({ id: p.id, kind: focusKind === 'screen' ? 'cam' : 'screen' });
+                        }
+                      }}
+                    >
+                      {focusKind === 'screen'
+                        ? <CamTile member={p} mini />
+                        : <ScreenTile member={p} pip={null} />}
+                    </div>
+                  )}
                 </div>
                 <div className="v-name">{p.name}</div>
                 {!isMini && <div className="v-state">
@@ -2382,11 +2926,16 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                   {showScreen && <span className="v-badge ok" title="sharing screen"><Icon.Screen size={11} /></span>}
                   <span className="v-badge nq" title="network quality">
                     {[0,1,2,3].map(i => (
-                      <span key={i} className="nq-bar" style={{ height: 3 + i * 2, opacity: i < 3 ? 1 : 0.4 }} />
+                      // Heights chosen so the tallest bar matches the
+                      // 11px Icon.Video / Icon.Screen glyph the sibling
+                      // .v-badge.ok renders — previously bars topped out
+                      // at 9px which made the nq badge look visibly
+                      // shorter than the rest of the row.
+                      <span key={i} className="nq-bar" style={{ height: 4 + i * 3, opacity: i < 3 ? 1 : 0.4 }} />
                     ))}
                   </span>
                 </div>
-                {!isMini && p.id !== 'thim' && (
+                {!isMini && p.id !== currentUserId() && (
                   <div className="v-volume" onClick={(e) => e.stopPropagation()}>
                     <Icon.Headphones size={10} />
                     <input type="range" min={0} max={100} value={vol(p.id)}
@@ -2406,17 +2955,40 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
             );
           }
 
-          if (focused) {
+          if (focused && focusedMember) {
+            // Does the focused participant have BOTH streams? If so, show
+            // a toggle so they can swap focus without backing out first.
+            const fm = focusedMember as any;
+            const isSelf = fm.id === currentUserId();
+            const hasCam = isSelf ? cam : false; // peer streams TODO via voiceOccupants flags
+            const hasScreen = isSelf ? screen : false;
+            const showSwap = (focused.kind === 'cam' && hasScreen) || (focused.kind === 'screen' && hasCam);
             return (
               <>
-                <div className="voice-focus">
-                  <button className="voice-unfocus" onClick={() => setFocusedId(null)} title="Exit focus (esc)">
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                      <path d="M2 2h5v5M7 2L2 7M14 9v5h-5M14 14l-5-5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                    exit focus
-                  </button>
-                  {cardFor(focused, false)}
+                <div className="voice-focus" ref={focusRef}>
+                  <div className="voice-focus-actions">
+                    {showSwap && (
+                      <button className="voice-unfocus" onClick={() => setFocused({ id: focused.id, kind: focused.kind === 'cam' ? 'screen' : 'cam' })} title={focused.kind === 'cam' ? 'Switch to screen' : 'Switch to webcam'}>
+                        {focused.kind === 'cam' ? <Icon.Screen size={14} /> : <Icon.Video size={14} />}
+                        {focused.kind === 'cam' ? 'screen' : 'webcam'}
+                      </button>
+                    )}
+                    {focused.kind === 'screen' && (
+                      <button className="voice-unfocus" onClick={enterFullscreen} title="Fullscreen (f)">
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                          <path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                        fullscreen
+                      </button>
+                    )}
+                    <button className="voice-unfocus" onClick={() => setFocused(null)} title="Exit focus (esc)">
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                        <path d="M2 2h5v5M7 2L2 7M14 9v5h-5M14 14l-5-5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                      exit focus
+                    </button>
+                  </div>
+                  {cardFor(focusedMember, false, focused.kind)}
                 </div>
                 <div className="voice-strip">
                   {others.map(p => cardFor(p, true))}
@@ -2429,9 +3001,15 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
               {participants.length === 0 && (
                 <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: 40, color: 'var(--fg-3)' }}>
                   <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, color: 'var(--fg-2)', marginBottom: 8 }}>
-                    Quiet here
+                    {lockedForMe ? 'Locked channel' : 'Quiet here'}
                   </div>
-                  <div>Click <em>Join</em> to be the first in <strong>#{channel.name}</strong>.</div>
+                  <div>
+                    {lockedForMe ? (
+                      <>Only members with manage-channels can join <strong>#{channel.name}</strong>.</>
+                    ) : (
+                      <>Click <em>Join</em> to be the first in <strong>#{channel.name}</strong>.</>
+                    )}
+                  </div>
                 </div>
               )}
               {participants.map(p => cardFor(p, false))}
@@ -2440,25 +3018,24 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
         })()}
 
         <div className="voice-controls-bar">
-          <button className={'ctrl' + (mute ? ' active' : '')} onClick={() => setMute(!mute)} title={mute ? "Unmute" : "Mute"}>
-            <Icon.Mic size={16} off={mute} />
-          </button>
-          <button className={'ctrl' + (deaf ? ' active' : '')} onClick={() => setDeaf(!deaf)} title={deaf ? "Undeafen" : "Deafen"}>
-            <Icon.Headphones size={16} off={deaf} />
-          </button>
-          <button className={'ctrl' + (cam ? ' on' : '')} onClick={() => setCam(!cam)} title={cam ? "Stop camera" : "Start camera"}>
-            <Icon.Video size={16} off={!cam} />
-          </button>
-          <button className={'ctrl' + (screen ? ' on' : '')} onClick={() => setScreen(!screen)} title={screen ? "Stop sharing" : "Share screen"}>
-            <Icon.Screen size={16} off={!screen} />
-          </button>
           {isConnected ? (
             <button className="ctrl danger" onClick={onLeave} title="Disconnect">
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 7c2-2 8-2 10 0v2l-3 1V8.5c-1-.5-3-.5-4 0V10L3 9V7z" fill="currentColor"/></svg>
             </button>
           ) : (
-            <button className="ctrl" style={{ background: 'var(--accent)', color: 'var(--accent-ink)', borderColor: 'var(--accent)' }} onClick={onJoin}>
-              Join
+            <button
+              className="ctrl"
+              style={{
+                background: lockedForMe ? 'var(--surface-hi)' : 'var(--accent)',
+                color: lockedForMe ? 'var(--fg-3)' : 'var(--accent-ink)',
+                borderColor: lockedForMe ? 'var(--hairline)' : 'var(--accent)',
+                cursor: lockedForMe ? 'not-allowed' : 'pointer',
+              }}
+              disabled={lockedForMe}
+              title={lockedForMe ? 'Channel is locked' : 'Join voice'}
+              onClick={() => { if (!lockedForMe) onJoin(); }}
+            >
+              {lockedForMe ? 'Locked' : 'Join'}
             </button>
           )}
         </div>
@@ -2469,19 +3046,33 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
 
 // ───────────── member list ─────────────
 function MemberList({ members, voiceConnection, rich, federated }) {
+  const data = (useShellDataContext() as any) || MOCK_DATA;
+  const teamName = data?.SERVERS?.[0]?.name || '';
   const MC = window.MeshChrome || {};
   const nodes = MC.MEMBER_NODES || {};
   const fps = MC.FINGERPRINTS || {};
-  const order = ['admin', 'maintainer', 'member', 'offline'];
-  const onlineRoles = { admin: [], maintainer: [], member: [] };
-  const offline = [];
-  members.MEMBERS.forEach(m => {
-    if (m.status === 'offline') offline.push(m);
-    else if (m.role === 'admin') onlineRoles.admin.push(m);
-    else if (m.role === 'maintainer') onlineRoles.maintainer.push(m);
-    else onlineRoles.member.push(m);
+  // Group online members by their highest-priority non-default role.
+  // Members with no explicit role land under "Online" (the default group).
+  // Offline members stay in their own group regardless of role.
+  const offline: any[] = [];
+  const groupOrder: string[] = []; // role names, ordered by max position desc
+  const groupMeta: Record<string, { name: string; color: string; position: number }> = {};
+  const groups: Record<string, any[]> = {};
+  const onlineDefault: any[] = [];
+  members.MEMBERS.forEach((m: any) => {
+    if (m.status === 'offline') { offline.push(m); return; }
+    const top = (m.roles && m.roles[0]) || null;
+    if (!top) { onlineDefault.push(m); return; }
+    const key = top.id;
+    if (!groups[key]) {
+      groups[key] = [];
+      groupMeta[key] = { name: top.name, color: top.color, position: top.position ?? 0 };
+      groupOrder.push(key);
+    }
+    groups[key].push(m);
   });
-  const onlineCount = members.MEMBERS.filter(m => m.status !== 'offline').length;
+  groupOrder.sort((a, b) => (groupMeta[b].position ?? 0) - (groupMeta[a].position ?? 0));
+  const onlineCount = members.MEMBERS.filter((m: any) => m.status !== 'offline').length;
 
   function Row({ m }) {
     const off = m.status === 'offline';
@@ -2507,19 +3098,19 @@ function MemberList({ members, voiceConnection, rich, federated }) {
                { label: 'View profile', icon: <Icon.People size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-profile', { detail: { memberId: m.id, x: 200, y: 200 } })) },
                { label: 'Verify safety number', icon: <Icon.Shield size={12} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:verify-safety', { detail: m.id })) },
                { sep: true },
-               { label: 'Mute', icon: <Icon.Mic size={13} off />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: 'Berralitos', author: 'system', text: m.name + ' muted in voice channels.', duration: 2200 } })) },
+               { label: 'Mute', icon: <Icon.Mic size={13} off />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'system', text: m.name + ' muted in voice channels.', duration: 2200 } })) },
                { label: 'Kick from team', danger: true, icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M10 4V2H3v12h7v-2M6 8h9M12 5l3 3-3 3M9 3v0" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>, onClick: () => {
                  if (!confirm('Kick ' + m.name + ' from this team? Requires admin role on the server.')) return;
                  const teamId = useTeamStore.getState().activeTeamId;
                  if (teamId && !isMockSession()) {
                    api.kickMember(teamId, m.id).then(() => {
-                     window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: 'Berralitos', author: 'admin', text: 'Kicked ' + m.name + ' from the team.', duration: 3000 } }));
+                     window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'admin', text: 'Kicked ' + m.name + ' from the team.', duration: 3000 } }));
                    }).catch((err: unknown) => {
                      console.warn('[ChatApp] kickMember failed', err);
-                     window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: 'Berralitos', author: 'admin', text: 'Kick failed — admin role required.', duration: 3500 } }));
+                     window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'admin', text: 'Kick failed — admin role required.', duration: 3500 } }));
                    });
                  } else {
-                   window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: 'Berralitos', author: 'admin', text: 'Demo only — kick would propagate across the mesh on a live server.', duration: 3000 } }));
+                   window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'admin', text: 'Demo only — kick would propagate across the mesh on a live server.', duration: 3000 } }));
                  }
                } },
                { label: 'Ban from team', danger: true, icon: <Icon.Lock size={12} />, onClick: () => {
@@ -2527,13 +3118,13 @@ function MemberList({ members, voiceConnection, rich, federated }) {
                  const teamId = useTeamStore.getState().activeTeamId;
                  if (teamId && !isMockSession()) {
                    api.banMember(teamId, m.id).then(() => {
-                     window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: 'Berralitos', author: 'admin', text: 'Banned ' + m.name + ' from the team.', duration: 3500 } }));
+                     window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'admin', text: 'Banned ' + m.name + ' from the team.', duration: 3500 } }));
                    }).catch((err: unknown) => {
                      console.warn('[ChatApp] banMember failed', err);
-                     window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: 'Berralitos', author: 'admin', text: 'Ban failed — admin role required.', duration: 3500 } }));
+                     window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'admin', text: 'Ban failed — admin role required.', duration: 3500 } }));
                    });
                  } else {
-                   window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: 'Berralitos', author: 'admin', text: 'Demo only — ban would propagate across the mesh on a live server.', duration: 3000 } }));
+                   window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'admin', text: 'Demo only — ban would propagate across the mesh on a live server.', duration: 3000 } }));
                  }
                } },
              ] } }));
@@ -2562,8 +3153,8 @@ function MemberList({ members, voiceConnection, rich, federated }) {
     <aside className="members">
       {rich && federated && (
         <div className="mesh-summary" title="This team is replicated across 2 server nodes. Members on a peer server are tagged.">
-          <div className="ms-row">
-            <span className="ms-dot" />
+          <div className="screen-row">
+            <span className="screen-dot" />
             <span className="ms-label">Mesh</span>
             <span className="ms-sep">·</span>
             <span>2 nodes</span>
@@ -2580,44 +3171,94 @@ function MemberList({ members, voiceConnection, rich, federated }) {
           </div>
         </div>
       )}
-      {onlineRoles.admin.length > 0 && (
+      {groupOrder.map((key) => (
+        <React.Fragment key={key}>
+          <div className="members-section" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: groupMeta[key].color }} />
+            {groupMeta[key].name} — {groups[key].length}
+          </div>
+          {groups[key].map((m: any) => <Row key={m.id} m={m} />)}
+        </React.Fragment>
+      ))}
+      {onlineDefault.length > 0 && (
         <>
-          <div className="members-section">Admin — {onlineRoles.admin.length}</div>
-          {onlineRoles.admin.map(m => <Row key={m.id} m={m} />)}
+          <div className="members-section">Online — {onlineDefault.length}</div>
+          {onlineDefault.map((m: any) => <Row key={m.id} m={m} />)}
         </>
       )}
-      <div className="members-section">Online — {onlineRoles.maintainer.length + onlineRoles.member.length}</div>
-      {[...onlineRoles.maintainer, ...onlineRoles.member].map(m => <Row key={m.id} m={m} />)}
-      <div className="members-section">Offline — {offline.length}</div>
-      {offline.map(m => <Row key={m.id} m={m} />)}
+      {offline.length > 0 && (
+        <>
+          <div className="members-section">Offline — {offline.length}</div>
+          {offline.map((m: any) => <Row key={m.id} m={m} />)}
+        </>
+      )}
     </aside>
   );
 }
 
 // ───────────── root ─────────────
 function ChatApp({ theme, opts = {}, rich = false, controller }) {
-  const data = window.MOCK_DATA;
+  // Live shell data via context. Replaces the old `window.SHELL_DATA`
+  // global read so re-renders are React-driven and tests can inject a
+  // provider without monkey-patching window. Handlers below close over
+  // this binding instead of re-reading the global.
+  const data = (useShellDataContext() as any) || MOCK_DATA;
   // Live store selectors used by the outbound write paths (send/edit/delete).
   // activeTeamId routes WS messages to the right per-team socket; derivedKey
   // is required by tryEncrypt for channel-message E2E encryption.
   const activeTeamId = useTeamStore((s) => s.activeTeamId);
   const derivedKey = useAuthStore((s) => s.derivedKey);
   // Pick sensible defaults from the bridged data instead of hardcoded
-  // handoff ids ('berralitos' / 'design'). Prefer the active selection
-  // surfaced by useShellData (data.activeServerId / activeChannelId);
-  // fall back to first server / first text channel; ultimate fallback
-  // is the handoff strings so the standalone preview keeps working.
-  const initialServer = data.activeServerId || data.SERVERS?.[0]?.id || 'berralitos';
+  // Prefer the active selection surfaced by useShellData; otherwise the
+  // first real server / channel. NO mock-id fallback — falling through
+  // to `'berralitos'` / `'design'` was the source of every "mock content
+  // visible on /app" regression.
+  const initialServer = data.activeServerId || data.SERVERS?.[0]?.id || '';
   const initialChannel =
     data.activeChannelId ||
     data.CHANNELS?.find((c) => c.type === 'text')?.id ||
     data.CHANNELS?.[0]?.id ||
-    'design';
+    '';
   const [activeServer, setActiveServer] = useState(initialServer);
   const [tab, setTab] = useState('kanals');
   const [activeChannel, setActiveChannel] = useState(initialChannel);
   const [activeDM, setActiveDM] = useState(null);
   const [activeView, setActiveView] = useState({ kind: 'channel', id: initialChannel });
+  // Keep useTeamStore/useDMStore active-id in lockstep with whichever
+  // view is currently showing, AND clear that conversation's unread pill
+  // every time the view changes. The global message listeners use the
+  // store ids to (a) suppress the unread bump for the live view and
+  // (b) roll the read watermark forward when a new message arrives
+  // in-view; this effect handles the third case — landing on a chat
+  // that *already had* a pill from earlier, regardless of how we got
+  // there (tab switch, onPickDM, onPickChannel, redirect). Without this,
+  // tab-switching to a DM with a stale count required an explicit click
+  // on the DM row to clear.
+  React.useEffect(() => {
+    if (!activeView.id) return;
+    const teamId = useTeamStore.getState().activeTeamId;
+    if (activeView.kind === 'channel') {
+      useTeamStore.getState().setActiveChannel(activeView.id);
+      useDMStore.getState().setActiveDM(null);
+      useUnreadStore.getState().markRead(activeView.id);
+      if (teamId && !isMockSession()) {
+        const msgs = data?.MESSAGES?.[activeView.id] ?? [];
+        const lastId = msgs.length > 0 ? msgs[msgs.length - 1].id : '';
+        if (lastId) { try { ws.markChannelRead(teamId, activeView.id, lastId); } catch { /* ignore */ } }
+      }
+    } else if (activeView.kind === 'dm') {
+      useDMStore.getState().setActiveDM(activeView.id);
+      // Clear the channel id so a channel echo doesn't think it's "live"
+      // while a DM is on screen.
+      useTeamStore.getState().setActiveChannel('');
+      useUnreadStore.getState().markRead(activeView.id);
+      if (teamId && !isMockSession()) {
+        const msgs = data?.DM_MESSAGES?.[activeView.id] ?? [];
+        const lastId = msgs.length > 0 ? msgs[msgs.length - 1].id : '';
+        if (lastId) { try { ws.markChannelRead(teamId, activeView.id, lastId); } catch { /* ignore */ } }
+      }
+    }
+  }, [activeView.kind, activeView.id]);
   const [messages, setMessages] = useState(data.MESSAGES);
   const [dmMessages, setDmMessages] = useState(data.DM_MESSAGES);
   // Keep local message state in sync with the live store-derived bridge
@@ -2628,6 +3269,18 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   // arrives, then are reconciled (same id = no glitch).
   useEffect(() => { setMessages(data.MESSAGES); }, [data.MESSAGES]);
   useEffect(() => { setDmMessages(data.DM_MESSAGES); }, [data.DM_MESSAGES]);
+
+  // Poll WS feed: route into the shared pollStore so the data survives
+  // listener-mount races (eager-load may have stashed entries before this
+  // component subscribed). useShellData merges store entries into MESSAGES.
+  useEffect(() => {
+    const upsertPoll = (payload: any) => {
+      usePollStore.getState().upsert(normalizePoll(payload));
+    };
+    const unsubNew = ws.on('poll:new', upsertPoll);
+    const unsubUpd = ws.on('poll:update', upsertPoll);
+    return () => { unsubNew(); unsubUpd(); };
+  }, []);
   const [drafts, setDrafts] = useState({});
   // Voice state is owned by the voice store (driven by useVoiceConnection
   // and WebRTC events). voiceConnection is a derived view (channelId +
@@ -2648,8 +3301,55 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     const target = typeof next === 'function' ? next(voice.deafened) : next;
     if (target !== voice.deafened) voice.toggleDeafen();
   };
-  const [cam, setCam] = useState(false);
-  const [screen, setScreen] = useState(false);
+  // Wrap the local cam/screen booleans with side effects that actually
+  // publish/stop media via webrtcService. Previously these were just
+  // useState pairs — the toggle buttons flipped a boolean but no
+  // getUserMedia/getDisplayMedia call ever happened, which is why the
+  // UI showed CamTile/ScreenTile placeholders forever.
+  const [cam, setCamRaw] = useState(false);
+  const [screen, setScreenRaw] = useState(false);
+  // Reset cam/screen when voice disconnects so the user-panel icons go
+  // back to off — leaveChannel already stops the media tracks in the
+  // store, but the local toggle flags live here so the user-panel
+  // button doesn't have a state source to sync against otherwise.
+  useEffect(() => {
+    if (!voice.connected) {
+      setCamRaw(false);
+      setScreenRaw(false);
+    }
+  }, [voice.connected]);
+  const setCam = (next: boolean | ((v: boolean) => boolean)) => {
+    const target = typeof next === 'function' ? next(cam) : next;
+    if (target === cam) return;
+    // Optimistic flip so the button reacts instantly; if the media
+    // request rejects (permission denied, no camera, etc.) we rewind.
+    setCamRaw(target);
+    (async () => {
+      try {
+        const { webrtcService } = await import('../services/webrtc');
+        if (target) await webrtcService.startWebcam();
+        else await webrtcService.stopWebcam();
+      } catch (err) {
+        console.warn('[Voice] webcam toggle failed', err);
+        setCamRaw(!target);
+      }
+    })();
+  };
+  const setScreen = (next: boolean | ((v: boolean) => boolean)) => {
+    const target = typeof next === 'function' ? next(screen) : next;
+    if (target === screen) return;
+    setScreenRaw(target);
+    (async () => {
+      try {
+        const { webrtcService } = await import('../services/webrtc');
+        if (target) await webrtcService.startScreenShare();
+        else await webrtcService.stopScreenShare();
+      } catch (err) {
+        console.warn('[Voice] screen toggle failed', err);
+        setScreenRaw(!target);
+      }
+    })();
+  };
   const [typing, setTyping] = useState([]);
   const [dmTyping, setDmTyping] = useState({}); // channelId -> [names]
   const [settings, setSettings] = useState({ open: false, mode: 'user', tab: null });
@@ -2660,6 +3360,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   const [replyTo, setReplyTo] = useState({}); // channelId -> msgId
   const [newChanOpen, setNewChanOpen] = useState(false);
   const [chanSettings, setChanSettings] = useState(null); // {id, name, topic} or null
+  const [chanAccess, setChanAccess] = useState(null); // {id, name, accessRoleIds, hidden_if_restricted} or null
   const [newServerOpen, setNewServerOpen] = useState(false);
   // Generic context menu: { x, y, items: [{ label, icon, danger, onClick }] }
   const [menuPop, setMenuPop] = useState(null);
@@ -2698,8 +3399,13 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     }
     function onChannelSettings(e) {
       const id = e.detail;
-      const ch = (window.MOCK_DATA?.CHANNELS ?? []).find((c: any) => c.id === id);
+      const ch = (data?.CHANNELS ?? []).find((c: any) => c.id === id);
       if (ch) setChanSettings(ch);
+    }
+    function onChannelAccess(e) {
+      const id = e.detail;
+      const ch = (data?.CHANNELS ?? []).find((c: any) => c.id === id);
+      if (ch) setChanAccess(ch);
     }
     function onCloseDm(e) {
       const dmId = e.detail;
@@ -2755,6 +3461,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     window.addEventListener('dilla:close-dm', onCloseDm);
     window.addEventListener('dilla:insert-mention', onInsertMention);
     window.addEventListener('dilla:open-channel-settings', onChannelSettings);
+    window.addEventListener('dilla:open-channel-access', onChannelAccess);
     function onKey(e) {
       const inField = e.target.matches && e.target.matches('input, textarea, [contenteditable="true"]');
       if (inField) return;
@@ -2780,6 +3487,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
       window.removeEventListener('dilla:close-dm', onCloseDm);
       window.removeEventListener('dilla:insert-mention', onInsertMention);
       window.removeEventListener('dilla:open-channel-settings', onChannelSettings);
+      window.removeEventListener('dilla:open-channel-access', onChannelAccess);
       window.removeEventListener('dilla:open-menu', onMenu);
       window.removeEventListener('keydown', onKey);
     };
@@ -2825,26 +3533,28 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   }
 
   function voteOnPoll(channelId, msgId, optIdx) {
-    const isDM = channelId.startsWith('dm-');
-    const setter = isDM ? setDmMessages : setMessages;
-    setter(prev => ({
-      ...prev,
-      [channelId]: (prev[channelId] || []).map(m => {
-        if (m.id !== msgId || m.kind !== 'poll') return m;
-        return {
-          ...m,
-          options: m.options.map((o, i) => {
-            if (i === optIdx) {
-              return o.mine
-                ? { ...o, votes: Math.max(0, (o.votes || 0) - 1), mine: false }
-                : { ...o, votes: (o.votes || 0) + 1, mine: true };
-            }
-            // Single-choice poll: clear other mine flags
-            return o.mine ? { ...o, votes: Math.max(0, (o.votes || 0) - 1), mine: false } : o;
-          })
-        };
-      })
-    }));
+    if (channelId.startsWith('dm-')) return; // polls only in team channels
+    if (!activeTeamId) return;
+    const me = currentUserId();
+    // Optimistic store mutation so the bar fills before the WS echo lands.
+    const state = usePollStore.getState();
+    const list = state.polls.get(channelId) ?? [];
+    const current = list.find((p) => p.id === msgId);
+    if (!current) return;
+    const alreadyMine = (current.voters[optIdx] || []).includes(me);
+    const nextVoters = current.voters.map((arr, i) => {
+      if (i === optIdx) return alreadyMine ? arr.filter((u) => u !== me) : Array.from(new Set([...arr, me]));
+      return arr.filter((u) => u !== me); // single-choice
+    });
+    state.upsert({
+      ...current,
+      tallies: nextVoters.map((arr) => arr.length),
+      voters: nextVoters,
+    });
+    const promise = alreadyMine
+      ? api.unvotePoll(activeTeamId, msgId)
+      : api.votePoll(activeTeamId, msgId, optIdx);
+    promise.catch((err) => console.warn('[poll] vote failed', err));
   }
 
   useEffect(() => {
@@ -2900,6 +3610,58 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   const channel = viewChannel;
 
   function processSlash(text) {
+    // Side-effect commands. Return null to signal "handled — don't send a
+    // message". Use dilla:notify for status feedback so the caller doesn't
+    // get a silent failure.
+    function notify(msg, kind = 'system') {
+      window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: kind, author: 'system', text: msg, duration: 3200 } }));
+    }
+    function lookupMember(query) {
+      const q = query.replace(/^@/, '').toLowerCase().trim();
+      if (!q) return null;
+      const list = (data?.MEMBERS || []) as any[];
+      return list.find((m) => m.name?.toLowerCase() === q || m.id === q)
+        || list.find((m) => m.name?.toLowerCase().startsWith(q))
+        || null;
+    }
+    // Post a real text message to the current channel/DM. Used by
+    // slash commands that need to dispatch the message asynchronously
+    // (e.g. /giphy waits for a fetch round-trip first). Mirrors the
+    // send() body but without going through processSlash again.
+    async function sendRawText(body: string) {
+      const targetChannel = channel;
+      const ts = new Date();
+      const optimistic = { id: 'new-' + Date.now(), author: currentUserId(), at: ts, kind: 'text', text: body, replyTo: null };
+      if (targetChannel?.type === 'dm') {
+        setDmMessages(prev => ({ ...prev, [targetChannel.id]: [...(prev[targetChannel.id] || []), optimistic] }));
+        if (activeTeamId) {
+          api.sendDMMessage(activeTeamId, targetChannel.id, body).catch((err) => console.warn('[slash] DM send failed', err));
+        }
+      } else {
+        setMessages(prev => ({ ...prev, [activeChannel]: [...(prev[activeChannel] || []), optimistic] }));
+        if (activeTeamId && !isMockSession()) {
+          try {
+            const encrypted = await tryEncrypt(body, activeChannel, derivedKey);
+            ws.sendMessage(activeTeamId, activeChannel, encrypted);
+          } catch (err) {
+            console.warn('[slash] channel send failed', err);
+          }
+        }
+      }
+    }
+    function setLocked(locked: boolean) {
+      if (!activeTeamId || !channel || channel.type === 'dm') {
+        notify('Use /lock or /unlock inside a team channel.');
+        return;
+      }
+      api.updateChannel(activeTeamId, channel.id, { locked }).then(() =>
+        notify((locked ? 'Locked ' : 'Unlocked ') + '#' + channel.name + '.'),
+      ).catch((err: unknown) => {
+        console.warn('[slash] lock failed', err);
+        notify('Lock failed — manage-channels permission required.');
+      });
+    }
+
     if (text.startsWith('/me ')) return { kind: 'action', text: text.slice(4) };
     if (text === '/me') return { kind: 'text', text };
     if (text.startsWith('/shrug')) {
@@ -2908,12 +3670,111 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     }
     if (text.startsWith('/poll ')) {
       const args = text.slice(6).split('|').map(s => s.trim()).filter(Boolean);
-      return { kind: 'poll', question: args[0] || '?', options: args.slice(1).map(o => ({ label: o, votes: 0 })) };
+      if (args.length < 2) {
+        notify('Poll needs at least one option — /poll <question> | <opt1> | <opt2>');
+        return null;
+      }
+      const question = args[0];
+      const opts = args.slice(1);
+      if (!activeTeamId) { notify('Sign in first.'); return null; }
+      // Server-backed: createPoll persists the poll + broadcasts poll:new
+      // to every client in the channel; the WS listener below merges it
+      // into the timeline as a kind:'poll' message.
+      (async () => {
+        try {
+          const created: any = await api.createPoll(activeTeamId, activeChannel, { question, options: opts });
+          // Seed the local store immediately — the WS broadcast is the
+          // canonical source for everyone else, but seeding for the sender
+          // avoids any visible round-trip lag.
+          usePollStore.getState().upsert(normalizePoll(created));
+        } catch (err) {
+          console.warn('[slash] poll create failed', err);
+          notify('Poll create failed.');
+        }
+      })();
+      return null;
     }
-    if (text.startsWith('/giphy ')) return { kind: 'giphy', query: text.slice(7).trim() };
+    if (text.startsWith('/giphy ')) {
+      const q = text.slice(7).trim();
+      if (!q) { notify('Usage: /giphy <search>'); return null; }
+      // Async pattern: kick off the fetch + send in the background. The
+      // composer clears immediately so the user doesn't think it stalled,
+      // and the message lands when the network call resolves.
+      (async () => {
+        try {
+          // Giphy's public beta API key is documented as widely available
+          // for unsigned demos. Translate endpoint returns one best match
+          // and exposes the direct .gif URL we want to embed.
+          const r = await fetch('https://api.giphy.com/v1/gifs/translate?api_key=dc6zaTOxFJmzC&s=' + encodeURIComponent(q));
+          if (!r.ok) throw new Error('giphy ' + r.status);
+          const j = await r.json();
+          const url = j?.data?.images?.original?.url || j?.data?.images?.downsized?.url || j?.data?.url;
+          if (!url) throw new Error('no gif in giphy response');
+          await sendRawText(url);
+        } catch (err) {
+          console.warn('[slash] giphy failed', err);
+          // Fall back to a search-link so the user still gets something
+          // useful when the public API is rate-limited or blocked.
+          await sendRawText('https://giphy.com/search/' + encodeURIComponent(q));
+        }
+      })();
+      return null;
+    }
     if (text.startsWith('/code')) {
       const lang = text.slice(5).trim();
       return { kind: 'text', text: '```' + lang + '\n' + (lang ? '// type your code here\n' : 'type your code here\n') + '```' };
+    }
+
+    if (text === '/help' || text.startsWith('/help ')) {
+      window.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'user', tab: 'keys' } }));
+      return null;
+    }
+    if (text.startsWith('/w ')) {
+      const m = lookupMember(text.slice(3));
+      if (!m) { notify('No member matches that name.'); return null; }
+      if (m.id === currentUserId()) { notify('You cannot DM yourself.'); return null; }
+      window.dispatchEvent(new CustomEvent('dilla:open-dm', { detail: m.id }));
+      return null;
+    }
+    if (text.startsWith('/invite ')) {
+      const target = text.slice(8).trim();
+      window.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'team', tab: 'invites' } }));
+      notify(target ? `Open Invites to create a link for ${target}.` : 'Open Invites to create a link.');
+      return null;
+    }
+    if (text.startsWith('/topic')) {
+      const topic = text.slice(6).trim();
+      if (!activeTeamId || !channel || channel.type === 'dm') {
+        notify('Use /topic inside a team channel.');
+        return null;
+      }
+      api.updateChannel(activeTeamId, channel.id, { topic }).then(() =>
+        notify('Updated topic for #' + channel.name + '.'),
+      ).catch((err: unknown) => {
+        console.warn('[slash] topic failed', err);
+        notify('Topic update failed — manage-channels permission required.');
+      });
+      return null;
+    }
+    if (text === '/lock' || text === '/unlock') { setLocked(text === '/lock'); return null; }
+    if (text.startsWith('/nick ')) {
+      const nick = text.slice(6).trim();
+      if (!activeTeamId) { notify('Sign in first.'); return null; }
+      api.updateMember(activeTeamId, currentUserId(), { nickname: nick }).then(() =>
+        notify(nick ? 'Nickname set to ' + nick + '.' : 'Nickname cleared.'),
+      ).catch((err: unknown) => {
+        console.warn('[slash] nick failed', err);
+        notify('Nickname update failed.');
+      });
+      return null;
+    }
+    if (text === '/remind' || text.startsWith('/remind ')) {
+      notify('Reminders are not implemented yet.');
+      return null;
+    }
+    if (text.startsWith('/')) {
+      notify('Unknown command: ' + text.split(' ')[0] + ' — try /help.');
+      return null;
     }
     return { kind: 'text', text };
   }
@@ -2942,7 +3803,12 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
       if (!draft || !draft.trim()) return;
       const text = draft.trim();
       const processed = processSlash(text);
-      const m = { id: 'new-' + Date.now(), author: window.MOCK_DATA?.currentUserId || 'thim', at: new Date(), ...processed, replyTo: replyTo[channel.id] || null };
+      if (processed === null) {
+        // Side-effect slash command handled it — clear the draft, don't send.
+        setDrafts(prev => ({ ...prev, [channel.id]: '' }));
+        return;
+      }
+      const m = { id: 'new-' + Date.now(), author: currentUserId(), at: new Date(), ...processed, replyTo: replyTo[channel.id] || null };
       setDmMessages(prev => ({ ...prev, [channel.id]: [...(prev[channel.id] || []), m] }));
       setDrafts(prev => ({ ...prev, [channel.id]: '' }));
       setReplyTo(prev => ({ ...prev, [channel.id]: null }));
@@ -2959,9 +3825,13 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     if (!draft || !draft.trim()) return;
     const text = draft.trim();
     const processed = processSlash(text);
+    if (processed === null) {
+      setDrafts(prev => ({ ...prev, [activeChannel]: '' }));
+      return;
+    }
     const m = {
       id: 'new-' + Date.now(),
-      author: window.MOCK_DATA?.currentUserId || 'thim',
+      author: currentUserId(),
       at: new Date(),
       ...processed,
       replyTo: replyTo[activeChannel] || null,
@@ -3045,16 +3915,75 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
       <ServerRail servers={data.SERVERS} activeServer={activeServer} onPick={setActiveServer} />
       <ChannelSidebar
         team={team}
-        tab={tab} onTab={setTab}
+        tab={tab}
+        onTab={(next) => {
+          setTab(next);
+          // When switching tabs, refocus the main view to match the
+          // sidebar context — otherwise you'd see Kanals selected while
+          // the chat pane still shows a DM (or vice versa). Falls back
+          // to the first item in the target list if nothing was last
+          // active.
+          if (next === 'pms') {
+            const target = activeDM || (data.DMS[0]?.id ?? null);
+            if (target) {
+              setActiveDM(target);
+              setActiveView({ kind: 'dm', id: target });
+            }
+          } else if (next === 'kanals') {
+            const target = activeChannel || (channelsForServer.find((c) => c.type === 'text')?.id ?? null);
+            if (target) {
+              setActiveChannel(target);
+              setActiveView({ kind: 'channel', id: target });
+              useTeamStore.getState().setActiveChannel(target);
+              useDMStore.getState().setActiveDM(null);
+            }
+          }
+        }}
         channels={channelsForServer}
         activeChannel={activeChannel}
-        onPickChannel={(id) => { setActiveChannel(id); setActiveView({ kind: 'channel', id }); }}
+        onPickChannel={(id) => {
+          setActiveChannel(id);
+          setActiveView({ kind: 'channel', id });
+          // Mirror local activeChannel into useTeamStore so the global
+          // message:new listener can suppress the unread bump for the
+          // channel you're actually viewing (otherwise every echoed
+          // message increments the pill).
+          useTeamStore.getState().setActiveChannel(id);
+          // useDMStore.activeDMId mirrors ChatApp's local activeDM so that
+          // the global useDMEvents listener can tell whether a DM is open
+          // and skip the unread bump for messages arriving on it.
+          useDMStore.getState().setActiveDM(null);
+          // Clear the unread pill locally and tell the server about the new
+          // read watermark so a reload reconciles to the same state.
+          useUnreadStore.getState().markRead(id);
+          const teamId = useTeamStore.getState().activeTeamId;
+          if (teamId && !isMockSession()) {
+            const msgs = data?.MESSAGES?.[id] ?? [];
+            const lastId = msgs.length > 0 ? msgs[msgs.length - 1].id : '';
+            if (lastId) { try { ws.markChannelRead(teamId, id, lastId); } catch { /* ignore */ } }
+          }
+        }}
         members={data}
         dms={data.DMS}
         activeDM={activeView.kind === 'dm' ? activeView.id : null}
-        onPickDM={(id) => { setActiveDM(id); setActiveView({ kind: 'dm', id }); }}
+        onPickDM={(id) => {
+          setActiveDM(id);
+          setActiveView({ kind: 'dm', id });
+          useDMStore.getState().setActiveDM(id);
+          useUnreadStore.getState().markRead(id);
+          const teamId = useTeamStore.getState().activeTeamId;
+          if (teamId && !isMockSession()) {
+            const msgs = data?.DM_MESSAGES?.[id] ?? [];
+            const lastId = msgs.length > 0 ? msgs[msgs.length - 1].id : '';
+            if (lastId) { try { ws.markChannelRead(teamId, id, lastId); } catch { /* ignore */ } }
+          }
+        }}
         voiceConnection={voiceConnection}
         onLeaveVoice={() => voice.leave()}
+        onJoinVoice={(channelId) => {
+          const teamId = useTeamStore.getState().activeTeamId;
+          if (teamId) voice.join(teamId, channelId);
+        }}
         mute={mute} setMute={setMute}
         deaf={deaf} setDeaf={setDeaf}
         cam={cam} setCam={setCam}
@@ -3108,7 +4037,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
             const previewUrl = isImage ? URL.createObjectURL(file) : '';
             const m = {
               id: localId,
-              author: window.MOCK_DATA?.currentUserId || 'thim',
+              author: currentUserId(),
               at: new Date(),
               kind: isImage ? 'image' : 'file',
               text: '',
@@ -3193,13 +4122,16 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
             {menuPop.items.map((it, i) => it.sep ? (
               <div key={i} className="ctx-sep" />
             ) : (
-              <button key={i} className={it.danger ? 'danger' : ''} onClick={() => { it.onClick && it.onClick(); setMenuPop(null); }}>
+              <button key={i} className={it.danger ? 'danger' : ''} disabled={!!it.disabled} onClick={() => { if (it.disabled) return; it.onClick && it.onClick(); setMenuPop(null); }}>
                 {it.icon}
                 {it.label}
               </button>
             ))}
           </div>
         </div>
+      )}
+      {chanAccess && (
+        <ChannelAccessModal channel={chanAccess} onClose={() => setChanAccess(null)} />
       )}
       {chanSettings && (
         <ChannelSettingsModal channel={chanSettings} onClose={() => setChanSettings(null)} />

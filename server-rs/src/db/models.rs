@@ -69,6 +69,12 @@ pub struct Channel {
     pub created_by: String,
     pub created_at: String,
     pub updated_at: String,
+    #[serde(default)]
+    pub locked: bool,
+    /// When true and the user can't access the channel, omit it entirely
+    /// from their channel list instead of showing a locked indicator.
+    #[serde(default)]
+    pub hidden_if_restricted: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -145,6 +151,11 @@ pub struct PrekeyBundle {
     pub id: String,
     pub user_id: String,
     pub identity_key: Vec<u8>,
+    /// X25519 public DH key. Used in X3DH's DH2 step
+    /// (ephemeral × identity_dh). The Ed25519 `identity_key` above is
+    /// for signed-prekey signature verification only — it's NOT
+    /// suitable for raw X25519 DH operations.
+    pub identity_dh_key: Vec<u8>,
     pub signed_prekey: Vec<u8>,
     pub signed_prekey_signature: Vec<u8>,
     pub one_time_prekeys: Vec<u8>,

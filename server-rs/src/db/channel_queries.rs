@@ -4,8 +4,8 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 pub fn create_channel(conn: &Connection, ch: &Channel) -> Result<(), rusqlite::Error> {
     conn.execute(
-        "INSERT INTO channels (id, team_id, name, topic, type, position, category, created_by, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        "INSERT INTO channels (id, team_id, name, topic, type, position, category, created_by, created_at, updated_at, locked, hidden_if_restricted)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         params![
             ch.id,
             ch.team_id,
@@ -17,6 +17,8 @@ pub fn create_channel(conn: &Connection, ch: &Channel) -> Result<(), rusqlite::E
             ch.created_by,
             ch.created_at,
             ch.updated_at,
+            ch.locked as i32,
+            ch.hidden_if_restricted as i32,
         ],
     )?;
     Ok(())
@@ -27,9 +29,12 @@ pub fn get_channels_by_team(
     team_id: &str,
 ) -> Result<Vec<Channel>, rusqlite::Error> {
     let mut stmt = conn.prepare(
-        "SELECT id, team_id, name, topic, type, position, category, created_by, created_at, updated_at
+        "SELECT id, team_id, name, topic, type, position, category, created_by, created_at, updated_at, locked, hidden_if_restricted
          FROM channels WHERE team_id = ?1 ORDER BY position ASC, created_at ASC",
     )?;
+    // Each call site below uses the same row_to_channel shape; new
+    // hidden_if_restricted column is appended at the end of the SELECT lists
+    // (see modifications further down).
     let rows = stmt.query_map([team_id], row_to_channel)?;
     rows.collect()
 }
@@ -39,7 +44,7 @@ pub fn get_channel_by_id(
     id: &str,
 ) -> Result<Option<Channel>, rusqlite::Error> {
     conn.query_row(
-        "SELECT id, team_id, name, topic, type, position, category, created_by, created_at, updated_at FROM channels WHERE id = ?1",
+        "SELECT id, team_id, name, topic, type, position, category, created_by, created_at, updated_at, locked, hidden_if_restricted FROM channels WHERE id = ?1",
         [id],
         row_to_channel,
     )
@@ -48,8 +53,8 @@ pub fn get_channel_by_id(
 
 pub fn update_channel(conn: &Connection, ch: &Channel) -> Result<(), rusqlite::Error> {
     conn.execute(
-        "UPDATE channels SET name = ?1, topic = ?2, position = ?3, category = ?4, updated_at = ?5 WHERE id = ?6",
-        params![ch.name, ch.topic, ch.position, ch.category, now_str(), ch.id],
+        "UPDATE channels SET name = ?1, topic = ?2, position = ?3, category = ?4, locked = ?5, hidden_if_restricted = ?6, updated_at = ?7 WHERE id = ?8",
+        params![ch.name, ch.topic, ch.position, ch.category, ch.locked as i32, ch.hidden_if_restricted as i32, now_str(), ch.id],
     )?;
     Ok(())
 }
@@ -71,6 +76,8 @@ fn row_to_channel(row: &rusqlite::Row) -> Result<Channel, rusqlite::Error> {
         created_by: row.get::<_, Option<String>>(7)?.unwrap_or_default(),
         created_at: row.get(8)?,
         updated_at: row.get(9)?,
+        locked: row.get::<_, i32>(10).unwrap_or(0) != 0,
+        hidden_if_restricted: row.get::<_, i32>(11).unwrap_or(0) != 0,
     })
 }
 

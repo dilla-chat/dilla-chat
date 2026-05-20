@@ -204,6 +204,7 @@ pub async fn bootstrap(
     let bootstrap_token = body.bootstrap_token.clone();
     let pk = pk_bytes;
     let team_name = resolve_team_name(&body.team_name, &state.config.team_name);
+    let seed_demo = state.config.seed_demo;
 
     let (user, team_id) = spawn_db(state.db.clone(), move |conn| {
         // Wrap in transaction so partial failures roll back cleanly.
@@ -227,7 +228,7 @@ pub async fn bootstrap(
         };
         db::create_member(&tx, &member)?;
 
-        create_bootstrap_defaults(&tx, &team_id, &user.id)?;
+        create_bootstrap_defaults(&tx, &team_id, &user.id, seed_demo)?;
 
         tx.commit()?;
         Ok((user, team_id))
@@ -400,38 +401,88 @@ fn create_bootstrap_team(
 }
 
 /// Create the default role and #general channel for a bootstrap team.
+/// When `seed_demo` is true, also pre-create #design, #dev, #random
+/// text channels and a voice-lounge so the operator gets a populated
+/// team via the normal auth flow. This is the server-side replacement
+/// for the legacy client-side /mesh mock data — start the server with
+/// `DILLA_SEED_DEMO=true` and the very first bootstrap lands in a
+/// ready-to-explore workspace.
 fn create_bootstrap_defaults(
     conn: &rusqlite::Connection,
     team_id: &str,
     user_id: &str,
+    seed_demo: bool,
 ) -> Result<(), rusqlite::Error> {
     let now = db::now_str();
-    let role = db::Role {
-        id: db::new_id(),
-        team_id: team_id.to_string(),
-        name: "everyone".into(),
-        color: "#99AAB5".into(),
-        position: 0,
-        permissions: db::PERM_SEND_MESSAGES | db::PERM_CREATE_INVITES,
-        is_default: true,
-        created_at: now.clone(),
-        updated_at: String::new(),
-    };
-    db::create_role(conn, &role)?;
 
-    let channel = db::Channel {
-        id: db::new_id(),
-        team_id: team_id.to_string(),
-        name: "general".into(),
-        topic: "General discussion".into(),
-        channel_type: "text".into(),
-        position: 0,
-        category: String::new(),
-        created_by: user_id.to_string(),
-        created_at: now.clone(),
-        updated_at: now,
-    };
-    db::create_channel(conn, &channel)?;
+    // Bootstrap only Admin + everyone — keeps the team-creator with full
+    // perms and a fallback default. Any further role ladder is user-defined.
+    let mut admin_role_id: Option<String> = None;
+    for (name, color, position, permissions, is_default) in [
+        ("Admin", "#5eebab", 1, db::PERM_ADMIN, false),
+        (
+            "everyone",
+            "#99AAB5",
+            0,
+            db::PERM_SEND_MESSAGES | db::PERM_CREATE_INVITES,
+            true,
+        ),
+    ] {
+        let role = db::Role {
+            id: db::new_id(),
+            team_id: team_id.to_string(),
+            name: name.into(),
+            color: color.into(),
+            position,
+            permissions,
+            is_default,
+            created_at: now.clone(),
+            updated_at: String::new(),
+        };
+        db::create_role(conn, &role)?;
+        if name == "Admin" {
+            admin_role_id = Some(role.id.clone());
+        }
+    }
+
+    // Give the bootstrap user the Admin role.
+    if let Some(rid) = admin_role_id {
+        if let Some(m) = db::get_member_by_user_and_team(conn, user_id, team_id)? {
+            db::assign_role_to_member(conn, &m.id, &rid)?;
+        }
+    }
+
+    // Base: #general always exists.
+    let mut channels: Vec<(&'static str, &'static str, &'static str)> = vec![
+        ("general", "General discussion", "text"),
+    ];
+    if seed_demo {
+        // Same layout the legacy /mesh sandbox used. Names + topics are
+        // intentionally generic so they fit any workspace; the operator
+        // can rename them after first login.
+        channels.extend([
+            ("design",        "Design crits and figma links",       "text"),
+            ("dev",           "Dev chat — PRs, deploys, debugging", "text"),
+            ("random",        "Off-topic",                          "text"),
+            ("voice-lounge",  "",                                    "voice"),
+        ]);
+    }
+    for (i, (name, topic, kind)) in channels.iter().enumerate() {
+        let channel = db::Channel {
+            id: db::new_id(),
+            team_id: team_id.to_string(),
+            name: (*name).into(),
+            topic: (*topic).into(),
+            channel_type: (*kind).into(),
+            position: i as i32,
+            category: String::new(),
+            created_by: user_id.to_string(),
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            locked: false, hidden_if_restricted: false,
+        };
+        db::create_channel(conn, &channel)?;
+    }
     Ok(())
 }
 
@@ -865,7 +916,7 @@ mod tests {
                 updated_at: now.clone(),
             })?;
             let team_id = create_bootstrap_team(conn, "Server", "u1")?;
-            create_bootstrap_defaults(conn, &team_id, "u1")?;
+            create_bootstrap_defaults(conn, &team_id, "u1", false)?;
 
             let roles = db::get_roles_by_team(conn, &team_id)?;
             assert!(!roles.is_empty());
@@ -876,7 +927,44 @@ mod tests {
             let channels = db::get_channels_by_team(conn, &team_id)?;
             assert!(!channels.is_empty());
             assert_eq!(channels[0].name, "general");
+            // seed_demo=false should give us only #general, no extras.
+            assert_eq!(channels.len(), 1);
 
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn create_bootstrap_defaults_with_seed_demo_creates_extra_channels() {
+        let (db, _tmp) = test_db();
+        let now = db::now_str();
+        db.with_conn(|conn| {
+            db::create_user(conn, &db::User {
+                id: "u1".into(),
+                username: "alice".into(),
+                display_name: "Alice".into(),
+                public_key: vec![1u8; 32],
+                avatar_url: String::new(),
+                status_text: String::new(),
+                status_type: "online".into(),
+                is_admin: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+            })?;
+            let team_id = create_bootstrap_team(conn, "Demo", "u1")?;
+            create_bootstrap_defaults(conn, &team_id, "u1", true)?;
+
+            let channels = db::get_channels_by_team(conn, &team_id)?;
+            let names: Vec<_> = channels.iter().map(|c| c.name.as_str()).collect();
+            assert!(names.contains(&"general"));
+            assert!(names.contains(&"design"));
+            assert!(names.contains(&"dev"));
+            assert!(names.contains(&"random"));
+            assert!(names.contains(&"voice-lounge"));
+            // Verify voice-lounge is actually a voice channel, not a text one.
+            let vl = channels.iter().find(|c| c.name == "voice-lounge").unwrap();
+            assert_eq!(vl.channel_type, "voice");
             Ok(())
         })
         .unwrap();

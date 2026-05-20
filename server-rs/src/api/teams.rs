@@ -31,6 +31,7 @@ pub struct UpdateTeamRequest {
 #[derive(Deserialize)]
 pub struct UpdateMemberRequest {
     pub nickname: Option<String>,
+    pub role_ids: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -98,19 +99,42 @@ pub async fn create(
         };
         db::create_member(conn, &member)?;
 
-        // Create default role.
-        let role = db::Role {
-            id: db::new_id(),
-            team_id: team_id.clone(),
-            name: "everyone".into(),
-            color: "#99AAB5".into(),
-            position: 0,
-            permissions: db::PERM_SEND_MESSAGES | db::PERM_CREATE_INVITES,
-            is_default: true,
-            created_at: now.clone(),
-            updated_at: String::new(),
-        };
-        db::create_role(conn, &role)?;
+        // Bootstrap only the minimum: an Admin role so the creator has full
+        // perms, and `everyone` as the implicit default. Any further ladder
+        // (Maintainer, Member, etc.) is user-defined via the role editor.
+        let mut admin_role_id: Option<String> = None;
+        for (name, color, position, permissions, is_default) in [
+            ("Admin", "#5eebab", 1, db::PERM_ADMIN, false),
+            (
+                "everyone",
+                "#99AAB5",
+                0,
+                db::PERM_SEND_MESSAGES | db::PERM_CREATE_INVITES,
+                true,
+            ),
+        ] {
+            let role = db::Role {
+                id: db::new_id(),
+                team_id: team_id.clone(),
+                name: name.into(),
+                color: color.into(),
+                position,
+                permissions,
+                is_default,
+                created_at: now.clone(),
+                updated_at: String::new(),
+            };
+            db::create_role(conn, &role)?;
+            if name == "Admin" {
+                admin_role_id = Some(role.id.clone());
+            }
+        }
+
+        // Give the team creator the Admin role so role-based perms work
+        // without leaning on the old global is_admin shortcut.
+        if let Some(rid) = admin_role_id {
+            db::assign_role_to_member(conn, &member.id, &rid)?;
+        }
 
         // Create #general channel.
         let channel = db::Channel {
@@ -124,6 +148,7 @@ pub async fn create(
             created_by: user_id.clone(),
             created_at: now.clone(),
             updated_at: now.clone(),
+            locked: false, hidden_if_restricted: false,
         };
         db::create_channel(conn, &channel)?;
 
@@ -229,6 +254,12 @@ pub async fn update_member(
             require_permission(conn, &user_id, &team_id, db::PERM_MANAGE_MEMBERS)?;
         }
 
+        // Role assignment always needs manage-members regardless of self vs
+        // other — otherwise any member could self-promote.
+        if body.role_ids.is_some() {
+            require_permission(conn, &user_id, &team_id, db::PERM_MANAGE_MEMBERS)?;
+        }
+
         let mut member = db::get_member_by_user_and_team(conn, &target_user_id, &team_id)?
             .ok_or(rusqlite::Error::QueryReturnedNoRows)?;
 
@@ -237,6 +268,40 @@ pub async fn update_member(
         }
 
         db::update_member(conn, &member)?;
+
+        if let Some(ref role_ids) = body.role_ids {
+            // Validate every role belongs to this team before touching the
+            // member_roles table, so a partial failure can't half-apply.
+            for rid in role_ids {
+                let role = db::get_role_by_id(conn, rid)?
+                    .ok_or_else(|| rusqlite::Error::InvalidParameterName(format!("role {rid} not found")))?;
+                if role.team_id != team_id {
+                    return Err(rusqlite::Error::InvalidParameterName(
+                        "role does not belong to this team".into(),
+                    ));
+                }
+            }
+
+            // Replace the full assignment set: drop existing, then re-add.
+            let existing = db::get_member_roles(conn, &member.id)?;
+            for r in existing {
+                db::remove_role_from_member(conn, &member.id, &r.id)?;
+            }
+            for rid in role_ids {
+                db::assign_role_to_member(conn, &member.id, rid)?;
+            }
+
+            let _ = db::insert_audit_event(
+                conn,
+                &team_id,
+                Some(&user_id),
+                "member.roles.update",
+                Some("user"),
+                Some(&target_user_id),
+                Some(&serde_json::json!({ "role_ids": role_ids })),
+            );
+        }
+
         Ok(member)
     })
     .await
@@ -271,6 +336,15 @@ pub async fn kick_member(
             db::clear_member_roles(conn, &m.id)?;
         }
         db::delete_member(conn, &tuid, &tid)?;
+        let _ = db::insert_audit_event(
+            conn,
+            &tid,
+            Some(&user_id),
+            "member.kick",
+            Some("user"),
+            Some(&tuid),
+            None,
+        );
         Ok(())
     })
     .await
@@ -320,6 +394,16 @@ pub async fn ban_member(
             db::clear_member_roles(conn, &m.id)?;
         }
         db::delete_member(conn, &tuid, &tid)?;
+
+        let _ = db::insert_audit_event(
+            conn,
+            &tid,
+            Some(&user_id),
+            "member.ban",
+            Some("user"),
+            Some(&tuid),
+            Some(&serde_json::json!({ "reason": body.reason })),
+        );
 
         Ok(ban)
     })

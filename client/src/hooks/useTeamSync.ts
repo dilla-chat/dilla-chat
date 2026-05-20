@@ -18,15 +18,25 @@ function normalizeMembers(data: Record<string, unknown>[]) {
     // Unwrap nested { member, user } format from sync:init
     const mem = (raw.member ?? raw) as Record<string, unknown>;
     const usr = (raw.user ?? raw) as Record<string, unknown>;
+    const roleIds = (raw.role_ids ?? raw.roleIds ?? mem.role_ids ?? mem.roleIds ?? []) as string[];
     return {
       id: (mem.id ?? raw.id) as string,
       userId: (mem.user_id ?? mem.userId ?? usr.id ?? raw.user_id ?? raw.userId) as string,
       username: (usr.username ?? raw.username ?? '') as string,
       displayName: (usr.display_name ?? usr.displayName ?? raw.display_name ?? raw.displayName ?? '') as string,
       nickname: (mem.nickname ?? raw.nickname ?? '') as string,
+      roleIds,
+      // Roles will be populated later once both members and roles are in the
+      // store (see resolveMemberRoles below). Kept here as an empty fallback
+      // to satisfy the existing Member type.
       roles: (mem.roles ?? raw.roles ?? []) as Role[],
       statusType: (usr.status_type ?? usr.statusType ?? raw.status_type ?? raw.statusType ?? '') as string,
-      isAdmin: Boolean(usr.is_admin ?? usr.isAdmin ?? raw.is_admin ?? raw.isAdmin),
+      // isAdmin is now derived from role permissions, not a global flag.
+      isAdmin: false,
+      // Member.publicKeyHex is required by the store type (safety-number
+      // compare uses it). Fall back to empty string until the server
+      // surfaces it on the sync/REST payload.
+      publicKeyHex: (mem.public_key_hex ?? usr.public_key_hex ?? raw.public_key_hex ?? '') as string,
     };
   });
 }
@@ -71,12 +81,37 @@ function applySyncData(teamId: string, data: any, setters: SyncStoreSetters) {
     const channels = (data.channels as Record<string, unknown>[]).map((ch) => ({
       ...ch,
       teamId: ch.teamId ?? ch.team_id ?? teamId,
+      accessRoleIds: (ch.access_role_ids ?? ch.accessRoleIds ?? []) as string[],
     })) as Channel[];
     setters.setChannels(teamId, channels);
   }
   if (data.team) setters.setTeam(data.team as Team);
-  if (data.members) setters.setMembers(teamId, normalizeMembers(data.members as Record<string, unknown>[]));
-  if (data.roles) setters.setRoles(teamId, data.roles as Role[]);
+  const normalizedMembers = data.members
+    ? normalizeMembers(data.members as Record<string, unknown>[])
+    : null;
+  const normalizedRoles = data.roles
+    ? ((data.roles as Record<string, unknown>[]).map((r) => ({
+        id: r.id as string,
+        name: r.name as string,
+        color: (r.color as string) ?? '',
+        position: (r.position as number) ?? 0,
+        permissions: (r.permissions as number) ?? 0,
+        isDefault: Boolean(r.isDefault ?? r.is_default),
+      })) as Role[])
+    : null;
+  if (normalizedRoles) setters.setRoles(teamId, normalizedRoles);
+  if (normalizedMembers) {
+    const rolesById = new Map((normalizedRoles ?? []).map((r) => [r.id, r]));
+    const PERM_ADMIN = 1 << 0;
+    const resolved = normalizedMembers.map((m) => {
+      const roles = (m.roleIds ?? [])
+        .map((id) => rolesById.get(id))
+        .filter((r): r is Role => !!r);
+      const isAdmin = roles.some((r) => (r.permissions & PERM_ADMIN) !== 0);
+      return { ...m, roles, isAdmin };
+    });
+    setters.setMembers(teamId, resolved);
+  }
   if (data.presences) {
     applyPresences(teamId, data.presences, setters);
   }
@@ -110,6 +145,7 @@ function loadDataViaREST(teamId: string, setters: SyncStoreSetters) {
     const channels = (data as Record<string, unknown>[]).map((ch) => ({
       ...ch,
       teamId: ch.teamId ?? ch.team_id ?? teamId,
+      accessRoleIds: (ch.access_role_ids ?? ch.accessRoleIds ?? []) as string[],
     })) as Channel[];
     setters.setChannels(teamId, channels);
   }).catch((err) => console.error('Failed to fetch channels:', err));
@@ -313,9 +349,43 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
       useUnreadStore.getState().markRead(payload.channel_id);
     });
 
+    // Refresh sidebar entries when a channel mutates (rename, topic, lock).
+    const unsubChannelUpdated = ws.on('channel:updated', (payload: Record<string, unknown>) => {
+      if (!payload?.id) return;
+      const teamIdFromPayload = (payload.team_id ?? payload.teamId) as string | undefined;
+      if (!teamIdFromPayload) return;
+      const teamStore = useTeamStore.getState();
+      const list = teamStore.channels.get(teamIdFromPayload) ?? [];
+      const idx = list.findIndex((c) => c.id === payload.id);
+      const updated: Channel = {
+        ...(idx >= 0 ? list[idx] : ({} as Channel)),
+        ...payload,
+        teamId: teamIdFromPayload,
+        accessRoleIds: (payload.access_role_ids ?? payload.accessRoleIds ?? (idx >= 0 ? list[idx].accessRoleIds : [])) as string[],
+      } as Channel;
+      const next = idx >= 0 ? list.map((c, i) => (i === idx ? updated : c)) : [...list, updated];
+      teamStore.setChannels(teamIdFromPayload, next);
+    });
+
+    // Partial update from PUT /channels/:cid/access — only role_ids changed.
+    const unsubAccess = ws.on('channel:access-update', (payload: { channel_id?: string; role_ids?: string[] }) => {
+      if (!payload?.channel_id) return;
+      const teamStore = useTeamStore.getState();
+      for (const [tid, list] of teamStore.channels.entries()) {
+        const idx = list.findIndex((c) => c.id === payload.channel_id);
+        if (idx < 0) continue;
+        const updated: Channel = { ...list[idx], accessRoleIds: payload.role_ids ?? [] };
+        const next = list.map((c, i) => (i === idx ? updated : c));
+        teamStore.setChannels(tid, next);
+        break;
+      }
+    });
+
     return () => {
       unsubMsgNew();
       unsubChannelRead();
+      unsubChannelUpdated();
+      unsubAccess();
     };
   }, [activeTeamId]);
 

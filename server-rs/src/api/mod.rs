@@ -15,6 +15,9 @@ pub mod voice;
 pub mod federation;
 pub mod helpers;
 pub mod theme;
+pub mod debug;
+pub mod audit;
+pub mod polls;
 
 use crate::auth::{self, AuthService};
 use crate::config::Config;
@@ -117,7 +120,11 @@ pub fn create_router(state: AppState) -> Router {
         .route(
             "/api/v1/teams/{team_id}/attachments/{attachment_id}",
             get(uploads::download),
-        );
+        )
+        // Browser-log relay. Public so the client can ship logs before
+        // the user signs in. The handler itself no-ops (204) when the
+        // feature is disabled in config, so it's safe to leave wired.
+        .route("/api/v1/debug/browser-log", post(debug::ingest));
 
     // Protected routes (auth required).
     let protected = Router::new()
@@ -189,6 +196,22 @@ pub fn create_router(state: AppState) -> Router {
         .route(
             "/api/v1/teams/{team_id}/roles/{role_id}",
             patch(roles::update).delete(roles::delete_role),
+        )
+        .route(
+            "/api/v1/teams/{team_id}/audit",
+            get(audit::list),
+        )
+        .route(
+            "/api/v1/teams/{team_id}/channels/{channel_id}/polls",
+            get(polls::list_for_channel).post(polls::create),
+        )
+        .route(
+            "/api/v1/teams/{team_id}/channels/{channel_id}/access",
+            get(channels::get_access).put(channels::set_access),
+        )
+        .route(
+            "/api/v1/teams/{team_id}/polls/{poll_id}/votes",
+            post(polls::vote).delete(polls::unvote),
         )
         // Invites
         .route(

@@ -17,6 +17,13 @@ export interface Channel {
   type: 'text' | 'voice';
   position: number;
   category: string;
+  /** Legacy flag — kept readable for older clients but ignored by access
+   *  enforcement. `accessRoleIds` is the source of truth. */
+  locked?: boolean;
+  /** Role IDs that gate access to this channel. Inclusion of the team's
+   *  default ("everyone") role means it's open to all members. Missing
+   *  / empty list means open (back-compat with pre-access channels). */
+  accessRoleIds?: string[];
 }
 
 export interface Member {
@@ -25,12 +32,17 @@ export interface Member {
   username: string;
   displayName: string;
   nickname: string;
+  /** Role IDs assigned to this member; resolved against the team's roles
+   *  list to populate `roles` and derive `isAdmin`. */
+  roleIds?: string[];
   roles: Role[];
   statusType: string;
-  /** User-level admin flag from the server (the bootstrap user gets
-   *  is_admin: true even when no role row is assigned). Falls back to
-   *  false when the field is missing in legacy responses. */
+  /** True when this member has any assigned role whose permissions include
+   *  the PERM_ADMIN bit. Derived in sync; not a server field. */
   isAdmin: boolean;
+  /** Hex-encoded ed25519 public key, used by the safety-number compare
+   *  flow. Empty string when the server didn't include it. */
+  publicKeyHex: string;
 }
 
 export interface Role {
