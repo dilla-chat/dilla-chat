@@ -754,8 +754,16 @@ function UserVoice() {
     return pttKey.replace(/([a-z])([A-Z])/g, '$1 $2');
   })();
 
-  const [camera, setCamera] = useStateS('FaceTime HD');
-  const [mirror, setMirror] = useStateS(true);
+  // Camera + mirror persist via audioSettingsStore (now a media-
+  // settings store) so the choices survive reloads and any future
+  // WebRTC sender code can read them off a single source of truth.
+  const camera = useAudioSettingsStore((s) => s.videoDeviceId);
+  const setCamera = useAudioSettingsStore((s) => s.setVideoDeviceId);
+  const mirror = useAudioSettingsStore((s) => s.mirrorPreview);
+  const setMirror = useAudioSettingsStore((s) => s.setMirrorPreview);
+  const [videoDevs, setVideoDevs] = useStateS<Array<{ id: string; label: string }>>([
+    { id: 'default', label: 'Default' },
+  ]);
 
   // Real device enumeration. `enumerateDevices()` only returns labels
   // after the user has granted mic permission once — we request that
@@ -786,8 +794,21 @@ function UserVoice() {
         const outs = devs
           .filter((d) => d.kind === 'audiooutput')
           .map((d) => ({ id: d.deviceId || 'default', label: d.label || 'Speakers' }));
+        // Video devices come back from the same enumerateDevices call.
+        // Labels still require a permission grant; we only ask for
+        // audio above (video would surface an extra prompt the user
+        // hasn't consented to from this panel), so the labels will be
+        // empty if camera permission has never been granted — fall
+        // back to a generic "Camera N" string in that case.
+        const cams = devs
+          .filter((d) => d.kind === 'videoinput')
+          .map((d, i) => ({
+            id: d.deviceId || 'default',
+            label: d.label || `Camera ${i + 1}`,
+          }));
         setInputDevs(ins.length ? [{ id: 'default', label: 'Default' }, ...ins] : [{ id: 'default', label: 'Default' }]);
         setOutputDevs(outs.length ? [{ id: 'default', label: 'Default' }, ...outs] : [{ id: 'default', label: 'Default' }]);
+        setVideoDevs(cams.length ? [{ id: 'default', label: 'Default' }, ...cams] : [{ id: 'default', label: 'Default' }]);
         setPermError(null);
       } catch (err) {
         const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
@@ -908,7 +929,18 @@ function UserVoice() {
       </Group>
       <Group title="Video">
         <Row label="Camera">
-          <Select value={camera} onChange={setCamera} options={['FaceTime HD', 'External Webcam']} />
+          {/* The dropdown stores the deviceId but shows the friendly
+              label — using the device's own id as the value keeps the
+              wire shape stable for getUserMedia({ video: { deviceId } }). */}
+          <select
+            className="set-input"
+            value={camera}
+            onChange={(e) => setCamera(e.target.value)}
+          >
+            {videoDevs.map((d) => (
+              <option key={d.id} value={d.id}>{d.label}</option>
+            ))}
+          </select>
         </Row>
         <Row label="Mirror preview"><Toggle value={mirror} onChange={setMirror} /></Row>
       </Group>
