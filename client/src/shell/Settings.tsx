@@ -898,21 +898,12 @@ function TeamInvites() {
           <div key={r.code} className={'set-tr' + (r.stale ? ' stale' : '')}>
             <span className="set-link-cell" title={r.code}>
               <code className="set-link-code">{r.code}</code>
-              <button
-                className="set-link-copy"
-                title="Copy link"
-                onClick={() => {
-                  navigator.clipboard?.writeText(r.code);
-                  window.dispatchEvent(new CustomEvent('dilla:notify', {
-                    detail: { channel: 'system', author: 'team', text: 'Invite link copied.', duration: 2000 },
-                  }));
-                }}
-              >
-                <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-                  <rect x="5" y="3" width="8" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.3"/>
-                  <path d="M3 5v8h8" stroke="currentColor" strokeWidth="1.3"/>
-                </svg>
-              </button>
+              <Btn onClick={() => {
+                navigator.clipboard?.writeText(r.code);
+                window.dispatchEvent(new CustomEvent('dilla:notify', {
+                  detail: { channel: 'system', author: 'team', text: 'Invite link copied.', duration: 2000 },
+                }));
+              }}>Copy</Btn>
             </span>
             <span>{r.uses}</span>
             <span>{r.expires}</span>
