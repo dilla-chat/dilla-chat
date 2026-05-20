@@ -18,6 +18,25 @@
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 
+/* Plus Jakarta Sans — italic faces (full Unicode, no subset).
+   Markdown chat needs *italic* and ***bold-italic***; without a real
+   italic face the browser synthesises a slanted upright, which doesn't
+   match the geometric letterforms. */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./plus-jakarta-sans-italic-400.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./plus-jakarta-sans-italic-700.ttf') format('truetype');
+}
+
 /* JetBrains Mono */
 @font-face {
   font-family: 'JetBrains Mono';
@@ -34,4 +53,28 @@
   font-display: swap;
   src: url('./jetbrains-mono-latin-ext.woff2') format('woff2');
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* JetBrains Mono — bold + italic faces for syntax highlighting
+   (keywords/strings often italic, punctuation bold). The base face
+   only covers weight 400–500 so bold tokens had to be synthesised. */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./jetbrains-mono-700.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./jetbrains-mono-italic-400.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./jetbrains-mono-italic-700.ttf') format('truetype');
 }

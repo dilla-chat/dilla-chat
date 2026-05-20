@@ -9,10 +9,10 @@
   color: var(--text-normal);
   background-color: var(--bg-tertiary);
 
-  /* Our self-hosted fonts ship upright-only (no italic file, JetBrains
-     Mono tops out at 500), so synthesised faces are the only thing
-     making `*italic*` and `**bold**` visually distinct in chat. */
-  font-synthesis: weight style;
+  /* Real italic + bold faces ship with the app now (see fonts.css);
+     turn synthesis off again so the browser uses the actual glyphs
+     instead of slanting/thickening the upright. */
+  font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
