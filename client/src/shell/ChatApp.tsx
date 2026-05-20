@@ -3162,7 +3162,8 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                   }
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
-                    if (draft.trim()) onSend();
+                    // Either text or a staged attachment is enough to send.
+                    if (draft.trim() || (pendingAttachments?.length ?? 0) > 0) onSend();
                   }
                   // Empty-draft ArrowUp loads the most recent message you
                   // sent in this channel for editing — matches the Slack /
@@ -3196,7 +3197,10 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
             </div>
             <button
               className="send-btn"
-              disabled={!draft.trim() || !!slowModeLock}
+              disabled={
+                (!draft.trim() && (pendingAttachments?.length ?? 0) === 0) ||
+                !!slowModeLock
+              }
               onClick={onSend}
               title={slowModeLock ? `Slow mode — ${slowModeLock.secondsLeft}s remaining` : 'Send (↵)'}
             >
