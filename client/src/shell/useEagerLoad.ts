@@ -137,7 +137,11 @@ export function useEagerLoad(activeTeamId: string | null, cryptoReady: boolean =
             }),
           );
           msgStore.prependMessages(ch.id, msgs);
-          msgStore.setHasMore(ch.id, false);
+          // hasMore stays true when the eager fetch returned a full
+          // page — there may be older messages waiting for lazy-load.
+          // A short page means we already have everything; flip it
+          // off so the scroll handler stops asking.
+          msgStore.setHasMore(ch.id, raw.length >= 50);
         } catch { /* mock won't reject; ignore */ }
       });
 
