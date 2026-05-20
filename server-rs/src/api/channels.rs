@@ -693,23 +693,25 @@ pub async fn delete_channel(
     State(state): State<AppState>,
     Path((team_id, channel_id)): Path<(String, String)>,
 ) -> Result<Json<Value>, AppError> {
-    spawn_db(state.db.clone(), move |conn| {
-        require_permission(conn, &user_id, &team_id, db::PERM_MANAGE_CHANNELS)?;
+    let team_id_clone = team_id.clone();
+    let channel_id_clone = channel_id.clone();
+    let deleted_name = spawn_db(state.db.clone(), move |conn| {
+        require_permission(conn, &user_id, &team_id_clone, db::PERM_MANAGE_CHANNELS)?;
 
-        let channel = db::get_channel_by_id(conn, &channel_id)?;
+        let channel = db::get_channel_by_id(conn, &channel_id_clone)?;
         match channel {
-            Some(ch) if ch.team_id == team_id => {
-                db::delete_channel(conn, &channel_id)?;
+            Some(ch) if ch.team_id == team_id_clone => {
+                db::delete_channel(conn, &channel_id_clone)?;
                 let _ = db::insert_audit_event(
                     conn,
-                    &team_id,
+                    &team_id_clone,
                     Some(&user_id),
                     "channel.delete",
                     Some("channel"),
-                    Some(&channel_id),
+                    Some(&channel_id_clone),
                     Some(&serde_json::json!({ "name": ch.name })),
                 );
-                Ok(())
+                Ok(ch.name)
             }
             Some(_) => Err(rusqlite::Error::InvalidParameterName(
                 "channel does not belong to this team".into(),
@@ -722,6 +724,22 @@ pub async fn delete_channel(
         AppError::NotFound(_) => AppError::NotFound("channel not found".into()),
         other => other,
     })?;
+
+    // Tell every connected client so sidebars pop the channel out and any
+    // open chat view for it can fall back to a safe channel. Empty channel
+    // subscribers list by this point — broadcast_to_all is the right hammer.
+    if let Ok(evt) = crate::ws::events::Event::new(
+        crate::ws::events::EVENT_CHANNEL_DELETED,
+        serde_json::json!({
+            "channel_id": channel_id,
+            "team_id": team_id,
+            "name": deleted_name,
+        }),
+    ) {
+        if let Ok(bytes) = evt.to_bytes() {
+            state.hub.broadcast_to_all(bytes).await;
+        }
+    }
 
     json_ok_true()
 }

@@ -669,6 +669,7 @@ function ChannelSettingsModal({ channel, onClose }) {
   const [group, setGroup] = useState(channel?.category ?? '');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const existingGroups = useMemo(() => {
     const seen = new Set<string>();
     for (const c of (data?.CHANNELS ?? []) as Array<{ category?: string }>) {
@@ -700,6 +701,30 @@ function ChannelSettingsModal({ channel, onClose }) {
       setBusy(false);
     }
   }
+  async function remove() {
+    setErr('');
+    const teamId = useTeamStore.getState().activeTeamId;
+    if (!teamId || !channel?.id) { onClose(); return; }
+    setBusy(true);
+    try {
+      if (!isMockSession()) await api.deleteChannel(teamId, channel.id);
+      // Local removal mirrors the server cascade. The team-wide
+      // channel:deleted broadcast (if/when added) would do the same,
+      // but patching here means the sidebar advances even on /mesh.
+      const ts = useTeamStore.getState();
+      ts.removeChannel(teamId, channel.id);
+      // If the user was sitting on the deleted channel, send them
+      // somewhere safe — first remaining channel, otherwise nowhere.
+      if (ts.activeChannelId === channel.id) {
+        const list = ts.channels.get(teamId) ?? [];
+        ts.setActiveChannel(list[0]?.id ?? '');
+      }
+      onClose();
+    } catch (e) {
+      setErr((e as Error).message || 'Delete failed — manage-channels permission required.');
+      setBusy(false);
+    }
+  }
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card" onClick={e => e.stopPropagation()}>
@@ -723,6 +748,20 @@ function ChannelSettingsModal({ channel, onClose }) {
             <input value={slow} onChange={e => setSlow(e.target.value.replace(/[^0-9]/g, ''))} placeholder="0" />
             <div className="modal-hint">Minimum interval between messages per member. 0 disables.</div>
           </div>
+          {confirmDelete ? (
+            <div className="modal-row" style={{ border: '1px solid var(--danger)', padding: '0.75rem', borderRadius: 'var(--r-sm)' }}>
+              <label style={{ color: 'var(--danger)' }}>Delete kanal</label>
+              <div className="modal-hint">Permanently removes <strong>#{channel?.name}</strong> and every message in it. This can't be undone.</div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <button className="sc-btn" onClick={() => setConfirmDelete(false)}>Cancel</button>
+                <button className="sc-btn danger" disabled={busy} onClick={remove}>{busy ? 'Deleting…' : 'Delete kanal'}</button>
+              </div>
+            </div>
+          ) : (
+            <div className="modal-row">
+              <button className="sc-btn danger" onClick={() => setConfirmDelete(true)}>Delete kanal…</button>
+            </div>
+          )}
           {err && <div className="modal-hint" style={{ color: 'var(--danger)' }}>{err}</div>}
         </div>
         <footer className="modal-foot">

@@ -367,6 +367,21 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
       useUnreadStore.getState().markRead(payload.channel_id);
     });
 
+    // Pop deleted channels out of the sidebar without a reload. Server
+    // emits this after DELETE /channels/:cid; broadcasts team-wide so every
+    // connected client patches its store. If the user was sitting on the
+    // deleted channel, send them to the first remaining one so the chat
+    // view doesn't render against a missing record.
+    const unsubChannelDeleted = ws.on('channel:deleted', (payload: { channel_id?: string; team_id?: string }) => {
+      if (!payload?.channel_id || !payload?.team_id) return;
+      const ts = useTeamStore.getState();
+      ts.removeChannel(payload.team_id, payload.channel_id);
+      if (ts.activeChannelId === payload.channel_id) {
+        const list = ts.channels.get(payload.team_id) ?? [];
+        ts.setActiveChannel(list[0]?.id ?? '');
+      }
+    });
+
     // Refresh sidebar entries when a channel mutates (rename, topic, lock).
     const unsubChannelUpdated = ws.on('channel:updated', (payload: Record<string, unknown>) => {
       if (!payload?.id) return;
@@ -515,6 +530,7 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
       unsubMsgNew();
       unsubChannelRead();
       unsubChannelUpdated();
+      unsubChannelDeleted();
       unsubAccess();
       unsubMute();
       unsubMemberRoles();
