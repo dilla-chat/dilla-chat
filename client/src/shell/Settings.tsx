@@ -1144,7 +1144,7 @@ function RoleEditor({ teamId, role, onClose, onSaved }: { teamId: string; role: 
         </div>
         <footer className="set-modal-foot">
           <button className="sc-btn" onClick={onClose}>Cancel</button>
-          <button className="set-btn" onClick={save} disabled={saving} style={{ background: 'var(--accent)', color: 'var(--accent-ink)', borderColor: 'var(--accent)' }}>
+          <button className="sc-btn primary" onClick={save} disabled={saving}>
             {saving ? 'Saving…' : 'Save role'}
           </button>
         </footer>
