@@ -13,6 +13,9 @@ pub struct UpdateMeRequest {
     pub avatar_url: Option<String>,
     pub status_text: Option<String>,
     pub status_type: Option<String>,
+    pub quiet_hours_enabled: Option<bool>,
+    pub quiet_hours_from: Option<String>,
+    pub quiet_hours_to: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -74,6 +77,27 @@ pub async fn update_me(
             if let Some(ref st) = body.status_type {
                 user.status_type = st.clone();
             }
+            if let Some(en) = body.quiet_hours_enabled {
+                user.quiet_hours_enabled = en;
+            }
+            if let Some(ref from) = body.quiet_hours_from {
+                // Cheap HH:MM validation — rejects empty + obviously off-shape
+                // values without pulling in a full chrono parse.
+                if !is_valid_hh_mm(from) {
+                    return Err(rusqlite::Error::InvalidParameterName(
+                        "quiet_hours_from must be HH:MM".into(),
+                    ));
+                }
+                user.quiet_hours_from = from.clone();
+            }
+            if let Some(ref to) = body.quiet_hours_to {
+                if !is_valid_hh_mm(to) {
+                    return Err(rusqlite::Error::InvalidParameterName(
+                        "quiet_hours_to must be HH:MM".into(),
+                    ));
+                }
+                user.quiet_hours_to = to.clone();
+            }
 
             db::update_user(conn, &user)?;
             Ok(user)
@@ -123,6 +147,16 @@ pub async fn delete_me(
         Err(rusqlite::Error::InvalidParameterName(msg)) => Err(AppError::BadRequest(msg)),
         Err(e) => Err(AppError::Internal(format!("db: {}", e))),
     }
+}
+
+/// Cheap "HH:MM" check — accepts 00:00..23:59, no whitespace, exact width.
+/// Avoids pulling chrono just to validate two two-digit fields.
+fn is_valid_hh_mm(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    if bytes.len() != 5 || bytes[2] != b':' { return false; }
+    let h: u8 = match s[0..2].parse() { Ok(n) => n, Err(_) => return false };
+    let m: u8 = match s[3..5].parse() { Ok(n) => n, Err(_) => return false };
+    h < 24 && m < 60
 }
 
 pub async fn put_identity_blob(

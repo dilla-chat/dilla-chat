@@ -2,10 +2,12 @@ use super::models::*;
 use super::now_str;
 use rusqlite::{params, Connection, OptionalExtension};
 
+const USER_COLS: &str = "id, username, display_name, public_key, avatar_url, status_text, status_type, is_admin, created_at, updated_at, quiet_hours_enabled, quiet_hours_from, quiet_hours_to";
+
 pub fn create_user(conn: &Connection, user: &User) -> Result<(), rusqlite::Error> {
     conn.execute(
-        "INSERT INTO users (id, username, display_name, public_key, avatar_url, status_text, status_type, is_admin, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        "INSERT INTO users (id, username, display_name, public_key, avatar_url, status_text, status_type, is_admin, created_at, updated_at, quiet_hours_enabled, quiet_hours_from, quiet_hours_to)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         params![
             user.id,
             user.username,
@@ -17,52 +19,46 @@ pub fn create_user(conn: &Connection, user: &User) -> Result<(), rusqlite::Error
             user.is_admin as i32,
             user.created_at,
             user.updated_at,
+            user.quiet_hours_enabled as i32,
+            if user.quiet_hours_from.is_empty() { "22:00" } else { &user.quiet_hours_from },
+            if user.quiet_hours_to.is_empty() { "07:30" } else { &user.quiet_hours_to },
         ],
     )?;
     Ok(())
 }
 
 pub fn get_user_by_id(conn: &Connection, id: &str) -> Result<Option<User>, rusqlite::Error> {
-    conn.query_row(
-        "SELECT id, username, display_name, public_key, avatar_url, status_text, status_type, is_admin, created_at, updated_at FROM users WHERE id = ?1",
-        [id],
-        row_to_user,
-    )
-    .optional()
+    let sql = format!("SELECT {} FROM users WHERE id = ?1", USER_COLS);
+    conn.query_row(&sql, [id], row_to_user).optional()
 }
 
 pub fn get_user_by_username(
     conn: &Connection,
     username: &str,
 ) -> Result<Option<User>, rusqlite::Error> {
-    conn.query_row(
-        "SELECT id, username, display_name, public_key, avatar_url, status_text, status_type, is_admin, created_at, updated_at FROM users WHERE username = ?1",
-        [username],
-        row_to_user,
-    )
-    .optional()
+    let sql = format!("SELECT {} FROM users WHERE username = ?1", USER_COLS);
+    conn.query_row(&sql, [username], row_to_user).optional()
 }
 
 pub fn get_user_by_public_key(
     conn: &Connection,
     public_key: &[u8],
 ) -> Result<Option<User>, rusqlite::Error> {
-    conn.query_row(
-        "SELECT id, username, display_name, public_key, avatar_url, status_text, status_type, is_admin, created_at, updated_at FROM users WHERE public_key = ?1",
-        [public_key],
-        row_to_user,
-    )
-    .optional()
+    let sql = format!("SELECT {} FROM users WHERE public_key = ?1", USER_COLS);
+    conn.query_row(&sql, [public_key], row_to_user).optional()
 }
 
 pub fn update_user(conn: &Connection, user: &User) -> Result<(), rusqlite::Error> {
     conn.execute(
-        "UPDATE users SET display_name = ?1, avatar_url = ?2, status_text = ?3, status_type = ?4, updated_at = ?5 WHERE id = ?6",
+        "UPDATE users SET display_name = ?1, avatar_url = ?2, status_text = ?3, status_type = ?4, quiet_hours_enabled = ?5, quiet_hours_from = ?6, quiet_hours_to = ?7, updated_at = ?8 WHERE id = ?9",
         params![
             user.display_name,
             user.avatar_url,
             user.status_text,
             user.status_type,
+            user.quiet_hours_enabled as i32,
+            user.quiet_hours_from,
+            user.quiet_hours_to,
             now_str(),
             user.id,
         ],
@@ -164,6 +160,9 @@ fn row_to_user(row: &rusqlite::Row) -> Result<User, rusqlite::Error> {
         is_admin: row.get::<_, i32>(7)? != 0,
         created_at: row.get(8)?,
         updated_at: row.get(9)?,
+        quiet_hours_enabled: row.get::<_, i32>(10).unwrap_or(0) != 0,
+        quiet_hours_from: row.get::<_, Option<String>>(11).unwrap_or_default().unwrap_or_else(|| "22:00".into()),
+        quiet_hours_to: row.get::<_, Option<String>>(12).unwrap_or_default().unwrap_or_else(|| "07:30".into()),
     })
 }
 

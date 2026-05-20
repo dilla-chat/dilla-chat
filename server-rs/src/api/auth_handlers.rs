@@ -337,6 +337,9 @@ fn create_user_and_member(
         is_admin,
         created_at: now.clone(),
         updated_at: now.clone(),
+        quiet_hours_enabled: false,
+        quiet_hours_from: "22:00".into(),
+        quiet_hours_to: "07:30".into(),
     };
     let member = db::Member {
         id: db::new_id(),

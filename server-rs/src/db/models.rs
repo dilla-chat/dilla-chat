@@ -13,6 +13,15 @@ pub struct User {
     pub is_admin: bool,
     pub created_at: String,
     pub updated_at: String,
+    /// Per-user quiet-hours window for desktop notifications. Times are
+    /// stored as "HH:MM" strings in local time and the client decides
+    /// when "now" falls inside the window (server is timezone-agnostic).
+    #[serde(default)]
+    pub quiet_hours_enabled: bool,
+    #[serde(default)]
+    pub quiet_hours_from: String,
+    #[serde(default)]
+    pub quiet_hours_to: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

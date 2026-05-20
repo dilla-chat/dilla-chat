@@ -532,8 +532,7 @@ function UserNotif() {
   // Notify mode is derived from desktopNotifications + a per-channel filter
   // we don't track yet. For now: desktop on = all, desktop off + sound on =
   // mentions, both off = nothing. Editing the segment toggles the booleans
-  // to match. Quiet hours / sound are persisted directly to
-  // useUserSettingsStore.
+  // to match.
   const desktopNotifications = useUserSettingsStore((s) => s.desktopNotifications);
   const soundNotifications = useUserSettingsStore((s) => s.soundNotifications);
   const setDesktop = useUserSettingsStore((s) => s.setDesktopNotifications);
@@ -551,12 +550,38 @@ function UserNotif() {
       setSound(false);
     }
   };
-  // Quiet hours: lives only in client-side prefs for now (no backend), local
-  // useStateS is fine here but we'll keep it across re-mounts via the store
-  // once the schema gets a quietHours field.
-  const [quiet, setQuiet] = useStateS(false);
-  const [quietFrom, setQuietFrom] = useStateS('22:00');
-  const [quietTo, setQuietTo] = useStateS('07:30');
+  // Quiet hours are server-backed via PATCH /users/me so the window follows
+  // the identity across devices. Optimistic local update + debounced PATCH;
+  // the store value is the source of truth for the form. Hydration from
+  // /me happens in useUserMeSync (mounts at AppShell) so the form already
+  // shows the saved window when the modal opens.
+  const auth = useActiveTeamAuth();
+  const quiet = useUserSettingsStore((s) => s.quietHoursEnabled);
+  const quietFrom = useUserSettingsStore((s) => s.quietHoursFrom);
+  const quietTo = useUserSettingsStore((s) => s.quietHoursTo);
+  const setQuietHours = useUserSettingsStore((s) => s.setQuietHours);
+  const persistQuiet = useDebouncedSave((next: { enabled?: boolean; from?: string; to?: string }) => {
+    if (!auth) return;
+    const body: Record<string, unknown> = {};
+    if (next.enabled !== undefined) body.quiet_hours_enabled = next.enabled;
+    if (next.from !== undefined) body.quiet_hours_from = next.from;
+    if (next.to !== undefined) body.quiet_hours_to = next.to;
+    api
+      .updateMe(auth.baseUrl, auth.token, body as Parameters<typeof api.updateMe>[2])
+      .catch((err) => console.warn('[Settings] quiet hours update failed', err));
+  });
+  const setQuiet = (enabled: boolean) => {
+    setQuietHours({ enabled });
+    persistQuiet({ enabled });
+  };
+  const setQuietFrom = (from: string) => {
+    setQuietHours({ from });
+    persistQuiet({ from });
+  };
+  const setQuietTo = (to: string) => {
+    setQuietHours({ to });
+    persistQuiet({ to });
+  };
   return (
     <>
       <Group title="Default behaviour">

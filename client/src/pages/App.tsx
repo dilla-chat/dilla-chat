@@ -11,8 +11,10 @@ import { useEagerLoad } from '../shell/useEagerLoad';
 import { useTeamStore } from '../stores/teamStore';
 import { useAuthStore } from '../stores/authStore';
 import { useTeamSync } from '../hooks/useTeamSync';
+import { useUserMeSync } from '../hooks/useUserMeSync';
 import { useCryptoRestore } from '../hooks/useCryptoRestore';
 import { useIdentityBackup } from '../hooks/useIdentityBackup';
+import { usePrekeyBackfill } from '../hooks/usePrekeyBackfill';
 import { usePresenceEvents } from '../hooks/usePresenceEvents';
 import { useCustomTheme } from '../hooks/useCustomTheme';
 import { useShellSync } from '../hooks/useShellSync';
@@ -31,12 +33,14 @@ export default function App() {
   useShellSync();
   const { cryptoReady } = useCryptoRestore();
   const { authChecked, dataLoaded } = useTeamSync(activeTeamId);
+  useUserMeSync(activeTeamId);
   useIdentityBackup(activeTeamId, dataLoaded);
+  usePrekeyBackfill(activeTeamId, dataLoaded, cryptoReady);
   usePresenceEvents(activeTeamId);
-  useChannelEvents(activeTeamId);
-  useDMEvents(activeTeamId);
+  useChannelEvents(activeTeamId, cryptoReady);
+  useDMEvents(activeTeamId, cryptoReady);
   useThreadEvents(activeTeamId);
-  const { ready: eagerReady } = useEagerLoad(activeTeamId);
+  const { ready: eagerReady } = useEagerLoad(activeTeamId, cryptoReady);
 
   // Redirect to join/setup if no teams — wait until auth is validated so we
   // don't redirect during the brief window before persisted state is confirmed.

@@ -29,7 +29,8 @@ pub fn get_members_by_team(
 ) -> Result<Vec<(Member, User)>, rusqlite::Error> {
     let mut stmt = conn.prepare(
         "SELECT m.id, m.team_id, m.user_id, m.nickname, m.joined_at, m.invited_by, m.updated_at,
-                u.id, u.username, u.display_name, u.public_key, u.avatar_url, u.status_text, u.status_type, u.is_admin, u.created_at, u.updated_at
+                u.id, u.username, u.display_name, u.public_key, u.avatar_url, u.status_text, u.status_type, u.is_admin, u.created_at, u.updated_at,
+                u.quiet_hours_enabled, u.quiet_hours_from, u.quiet_hours_to
          FROM members m
          JOIN users u ON u.id = m.user_id
          WHERE m.team_id = ?1",
@@ -55,6 +56,9 @@ pub fn get_members_by_team(
             is_admin: row.get::<_, i32>(14)? != 0,
             created_at: row.get(15)?,
             updated_at: row.get(16)?,
+            quiet_hours_enabled: row.get::<_, i32>(17).unwrap_or(0) != 0,
+            quiet_hours_from: row.get::<_, Option<String>>(18).unwrap_or_default().unwrap_or_else(|| "22:00".into()),
+            quiet_hours_to: row.get::<_, Option<String>>(19).unwrap_or_default().unwrap_or_else(|| "07:30".into()),
         };
         Ok((member, user))
     })?;

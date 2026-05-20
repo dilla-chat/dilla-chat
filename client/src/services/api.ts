@@ -222,7 +222,15 @@ class ApiService {
   async updateMe(
     baseUrl: string,
     token: string,
-    updates: { display_name?: string; avatar_url?: string; status_text?: string; status_type?: string },
+    updates: {
+      display_name?: string;
+      avatar_url?: string;
+      status_text?: string;
+      status_type?: string;
+      quiet_hours_enabled?: boolean;
+      quiet_hours_from?: string;
+      quiet_hours_to?: string;
+    },
   ): Promise<unknown> {
     const data = await this.request(
       baseUrl,

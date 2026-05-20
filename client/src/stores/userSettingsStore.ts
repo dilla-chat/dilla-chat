@@ -11,6 +11,11 @@ interface UserSettingsStore {
   soundNotifications: boolean;
   theme: 'dark' | 'light' | 'minimal' | 'mesh';
   density: 'compact' | 'regular' | 'cozy';
+  /** Quiet hours are server-backed (PATCH /users/me) so they follow the
+   *  identity across devices. We mirror them here so reads are sync. */
+  quietHoursEnabled: boolean;
+  quietHoursFrom: string;
+  quietHoursTo: string;
 
   setSelectedInputDevice: (v: string) => void;
   setSelectedOutputDevice: (v: string) => void;
@@ -21,6 +26,7 @@ interface UserSettingsStore {
   setSoundNotifications: (v: boolean) => void;
   setTheme: (v: 'dark' | 'light' | 'minimal' | 'mesh') => void;
   setDensity: (v: 'compact' | 'regular' | 'cozy') => void;
+  setQuietHours: (next: { enabled?: boolean; from?: string; to?: string }) => void;
 }
 
 export const useUserSettingsStore = create<UserSettingsStore>()(
@@ -35,6 +41,9 @@ export const useUserSettingsStore = create<UserSettingsStore>()(
       soundNotifications: true,
       theme: 'mesh',
       density: 'regular',
+      quietHoursEnabled: false,
+      quietHoursFrom: '22:00',
+      quietHoursTo: '07:30',
 
       setSelectedInputDevice: (v) => set({ selectedInputDevice: v }),
       setSelectedOutputDevice: (v) => set({ selectedOutputDevice: v }),
@@ -45,10 +54,16 @@ export const useUserSettingsStore = create<UserSettingsStore>()(
       setSoundNotifications: (v) => set({ soundNotifications: v }),
       setTheme: (v) => set({ theme: v }),
       setDensity: (v) => set({ density: v }),
+      setQuietHours: (next) =>
+        set((state) => ({
+          quietHoursEnabled: next.enabled ?? state.quietHoursEnabled,
+          quietHoursFrom: next.from ?? state.quietHoursFrom,
+          quietHoursTo: next.to ?? state.quietHoursTo,
+        })),
     }),
     {
       name: 'dilla-user-settings',
-      version: 2,
+      version: 3,
       migrate: (persistedState, version) => {
         let state = (persistedState ?? {}) as Partial<UserSettingsStore>;
         if (version < 1) {
@@ -61,6 +76,17 @@ export const useUserSettingsStore = create<UserSettingsStore>()(
           state = {
             ...state,
             theme: state.theme === 'dark' ? 'mesh' : (state.theme ?? 'mesh'),
+          };
+        }
+        if (version < 3) {
+          // Quiet hours moved server-side. Local persist starts at the same
+          // defaults the server uses; useUserMeSync overwrites them with
+          // whatever the user actually saved on first auth.
+          state = {
+            ...state,
+            quietHoursEnabled: state.quietHoursEnabled ?? false,
+            quietHoursFrom: state.quietHoursFrom ?? '22:00',
+            quietHoursTo: state.quietHoursTo ?? '07:30',
           };
         }
         return state;
