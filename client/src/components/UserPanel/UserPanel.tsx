@@ -155,7 +155,7 @@ export default function UserPanel({
           {deafened ? <IconHeadphonesOff size={20} stroke={1.75} /> : <IconHeadphones size={20} stroke={1.75} />}
         </button>
         <button
-          className="user-panel-btn clickable"
+          className="btn btn--ghost"
           onClick={onSettingsClick}
           title={t('settings.general')}
         >

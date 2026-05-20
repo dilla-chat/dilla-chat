@@ -1,13 +1,21 @@
 /* Canonical button system. One base class + composable modifiers.
  *
- *   .btn              — outline secondary, default
+ *   .btn              — outline secondary, default (1.75rem)
  *   .btn--primary     — filled accent CTA
  *   .btn--danger      — destructive (red text, red border on hover)
+ *   .btn--ghost       — transparent surface, no border, hover-surface
  *   .btn--block       — flex:1 (paired buttons share a row evenly)
- *   .btn--icon        — square icon-only (2.25rem)
+ *   .btn--icon        — square icon-only (matches the row height)
+ *   .btn--sm          — smaller (1.5rem) for tight chrome
+ *   .btn--pill        — fully rounded corners (var(--r-pill))
+ *   .btn--mono        — uppercase mono label (terminal-style chips)
  *
  * Compose: `<button class="btn btn--primary btn--block">` is a
- * primary CTA that fills its row. */
+ * primary CTA that fills its row.
+ * `<button class="btn btn--ghost btn--icon btn--sm">` is a tight
+ * borderless square icon button.
+ * `<button class="btn btn--primary btn--pill btn--mono">` is the
+ * jump-to-latest pill. */
 
 .btn {
   display: inline-flex;
@@ -71,4 +79,45 @@
   height: 2.25rem;
   padding: 0;
   flex: 0 0 auto;
+}
+
+/* Ghost — borderless transparent button that resolves to a
+ * hover-surface on interact. Used for icon-in-chrome glyphs
+ * (toolbar squares, modal close X, sidebar gears). */
+.btn--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--fg-2);
+}
+.btn--ghost:hover {
+  background: var(--surface-hi);
+  border-color: transparent;
+  color: var(--fg);
+}
+
+/* Smaller variant for tight chrome (sidebar action buttons,
+ * inline cancel chips, etc.). Pair with --icon for a 1.5rem
+ * square. */
+.btn--sm {
+  height: 1.5rem;
+  padding: 0 0.5rem;
+  font-size: 0.6875rem;
+}
+.btn--sm.btn--icon {
+  width: 1.5rem;
+  padding: 0;
+}
+
+/* Fully-rounded corners — e.g. the floating jump-to-latest pill. */
+.btn--pill {
+  border-radius: var(--r-pill);
+}
+
+/* Terminal-style label — uppercase + mono. Pair with --primary
+ * for the jump-to-latest pill. */
+.btn--mono {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
 }

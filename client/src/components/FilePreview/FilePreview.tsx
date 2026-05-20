@@ -33,7 +33,7 @@ function ImagePreview({ attachment }: Readonly<{ attachment: Attachment }>) {
   return (
     <>
       <div className="file-preview-image-container">
-        <button className="file-preview-image-btn" onClick={() => setExpanded(true)} type="button" title={t('upload.preview', 'Preview')}>
+        <button className="btn btn--ghost btn--icon" onClick={() => setExpanded(true)} type="button" title={t('upload.preview', 'Preview')}>
           <img
             src={attachment.url}
             alt={attachment.filename}

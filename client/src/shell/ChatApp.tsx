@@ -1074,7 +1074,7 @@ function EmojiPicker({ open, onClose, onPick, anchorRect }) {
       </div>
       <div className="ep-grid">
         {EMOJIS.map(e => (
-          <button key={e} className="ep-btn" onClick={() => onPick(e)}>{e}</button>
+          <button key={e} className="btn btn--ghost btn--icon btn--sm" onClick={() => onPick(e)}>{e}</button>
         ))}
       </div>
     </div>
@@ -2133,7 +2133,7 @@ function UserPanel({ member }) {
             <div className="sp-custom-label">Custom message</div>
             <div className="sp-custom-row">
               <input value={draftCustom} onChange={(e) => setDraftCustom(e.target.value)} placeholder="pushing pixels" maxLength={42} />
-              <button className="sp-btn" onClick={() => {
+              <button className="btn" onClick={() => {
                 setCustom(draftCustom);
                 setPickerOpen(false);
                 persistPresence(status, draftCustom);
@@ -3039,7 +3039,7 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
 
       <div className="composer-wrap">
         {showJump && (
-          <button className="jump-btn" onClick={scrollToBottom} title="Jump to latest">
+          <button className="btn btn--primary btn--pill btn--mono" onClick={scrollToBottom} title="Jump to latest">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
               <path d="M8 2v10M3 8l5 5 5-5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
@@ -3699,7 +3699,7 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
   return (
     <div className="main">
       <div className="main-head">
-        <button className="chat-menu-btn" title="Open menu" onClick={() => window.dispatchEvent(new CustomEvent('dilla:toggle-drawer'))}>
+        <button className="btn btn--ghost btn--icon btn--sm" title="Open menu" onClick={() => window.dispatchEvent(new CustomEvent('dilla:toggle-drawer'))}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
             <path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
           </svg>

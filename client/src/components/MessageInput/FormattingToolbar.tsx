@@ -30,21 +30,21 @@ export default function FormattingToolbar({ textareaRef, setValue }: Readonly<Fo
   return (
     <>
       <button
-        className="toolbar-btn clickable"
+        className="btn btn--ghost btn--icon btn--sm clickable"
         title={t('format.bold', 'Bold (Ctrl+B)')}
         onClick={() => handleFormat('bold')}
       >
         <BoldIcon />
       </button>
       <button
-        className="toolbar-btn clickable"
+        className="btn btn--ghost btn--icon btn--sm clickable"
         title={t('format.italic', 'Italic (Ctrl+I)')}
         onClick={() => handleFormat('italic')}
       >
         <ItalicIcon />
       </button>
       <button
-        className="toolbar-btn clickable"
+        className="btn btn--ghost btn--icon btn--sm clickable"
         title={t('format.strikethrough', 'Strikethrough (Ctrl+Shift+X)')}
         onClick={() => handleFormat('strikethrough')}
       >
@@ -52,21 +52,21 @@ export default function FormattingToolbar({ textareaRef, setValue }: Readonly<Fo
       </button>
       <div className="toolbar-divider" />
       <button
-        className="toolbar-btn clickable"
+        className="btn btn--ghost btn--icon btn--sm clickable"
         title={t('format.link', 'Link')}
         onClick={() => handleFormat('link')}
       >
         <IconLink size={18} stroke={1.75} />
       </button>
       <button
-        className="toolbar-btn clickable"
+        className="btn btn--ghost btn--icon btn--sm clickable"
         title={t('format.orderedList', 'Ordered List')}
         onClick={() => handleFormat('ordered-list')}
       >
         <OrderedListIcon />
       </button>
       <button
-        className="toolbar-btn clickable"
+        className="btn btn--ghost btn--icon btn--sm clickable"
         title={t('format.unorderedList', 'Bulleted List')}
         onClick={() => handleFormat('unordered-list')}
       >
@@ -74,21 +74,21 @@ export default function FormattingToolbar({ textareaRef, setValue }: Readonly<Fo
       </button>
       <div className="toolbar-divider" />
       <button
-        className="toolbar-btn clickable"
+        className="btn btn--ghost btn--icon btn--sm clickable"
         title={t('format.blockquote', 'Blockquote')}
         onClick={() => handleFormat('blockquote')}
       >
         <BlockquoteIcon />
       </button>
       <button
-        className="toolbar-btn clickable"
+        className="btn btn--ghost btn--icon btn--sm clickable"
         title={t('format.code', 'Code (Ctrl+E)')}
         onClick={() => handleFormat('code')}
       >
         <CodeIcon />
       </button>
       <button
-        className="toolbar-btn clickable"
+        className="btn btn--ghost btn--icon btn--sm clickable"
         title={t('format.codeBlock', 'Code Block')}
         onClick={() => handleFormat('code-block')}
       >

@@ -56,7 +56,7 @@ export default function Reactions({ reactions, currentUserId, onToggleReaction, 
       <div className="reaction-add-wrapper">
         <button
           ref={addBtnRef}
-          className="reaction-add-btn clickable"
+          className="btn btn--ghost btn--icon btn--sm"
           onClick={() => setShowPicker(!showPicker)}
           title={t('reactions.addReaction', 'Add Reaction')}
         >

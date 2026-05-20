@@ -366,7 +366,7 @@ export default function AppLayout() {
           <div className="content-header-actions">
             <button
               type="button"
-              className="header-action-btn"
+              className="btn btn--ghost btn--icon btn--sm"
               onClick={() => window.dispatchEvent(new CustomEvent('mesh:open-saved'))}
               title={t('header.saved', 'Saved messages')}
             >
@@ -383,7 +383,7 @@ export default function AppLayout() {
             )}
             <button
               type="button"
-              className="header-action-btn"
+              className="btn btn--ghost btn--icon btn--sm"
               onClick={() =>
                 window.dispatchEvent(new CustomEvent('mesh:open-search'))
               }
@@ -416,7 +416,7 @@ export default function AppLayout() {
           <div className="content-header-actions">
             <button
               type="button"
-              className="header-action-btn"
+              className="btn btn--ghost btn--icon btn--sm"
               onClick={() => window.dispatchEvent(new CustomEvent('mesh:open-threads'))}
               title={t('header.threads', 'Threads')}
             >
@@ -424,7 +424,7 @@ export default function AppLayout() {
             </button>
             <button
               type="button"
-              className="header-action-btn"
+              className="btn btn--ghost btn--icon btn--sm"
               onClick={() => window.dispatchEvent(new CustomEvent('mesh:open-saved'))}
               title={t('header.saved', 'Saved messages')}
             >
@@ -432,7 +432,7 @@ export default function AppLayout() {
             </button>
             <button
               type="button"
-              className="header-action-btn"
+              className="btn btn--ghost btn--icon btn--sm"
               onClick={() => window.dispatchEvent(new CustomEvent('mesh:open-pinned'))}
               title={t('header.pinned', 'Pinned messages')}
             >
@@ -447,7 +447,7 @@ export default function AppLayout() {
             </button>
             <button
               type="button"
-              className="header-action-btn"
+              className="btn btn--ghost btn--icon btn--sm"
               onClick={() =>
                 window.dispatchEvent(new CustomEvent('mesh:open-search'))
               }
@@ -628,7 +628,7 @@ export default function AppLayout() {
             {isDMMode ? t('dm.title', 'Direct Messages') : (activeTeamId && teamMap.get(activeTeamId)?.name) || t('app.name')}
           </span>
           <button
-            className="sidebar-settings-btn"
+            className="btn btn--ghost btn--icon btn--sm"
             onClick={() => navigate('/app/settings')}
             title={t('teams.settings', 'Team Settings')}
             style={isDMMode ? { visibility: 'hidden' } : undefined}
