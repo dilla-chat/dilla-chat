@@ -577,6 +577,36 @@ class ApiService {
     );
   }
 
+  /** User-id list of everyone the caller has blocked. */
+  async listBlocks(teamId: string): Promise<string[]> {
+    const conn = this.getConnection(teamId);
+    const data = await this.request(
+      conn.baseUrl,
+      `/api/v1/users/me/blocks`,
+      { method: 'GET' },
+      conn.token,
+    ) as { user_ids?: string[] };
+    return Array.isArray(data?.user_ids) ? data.user_ids : [];
+  }
+  async blockUser(teamId: string, blockedId: string): Promise<void> {
+    const conn = this.getConnection(teamId);
+    await this.request(
+      conn.baseUrl,
+      `/api/v1/users/me/blocks/${blockedId}`,
+      { method: 'POST' },
+      conn.token,
+    );
+  }
+  async unblockUser(teamId: string, blockedId: string): Promise<void> {
+    const conn = this.getConnection(teamId);
+    await this.request(
+      conn.baseUrl,
+      `/api/v1/users/me/blocks/${blockedId}`,
+      { method: 'DELETE' },
+      conn.token,
+    );
+  }
+
   /** Pinned-message ids for a channel, newest pin first. */
   async listPins(teamId: string, channelId: string): Promise<string[]> {
     const conn = this.getConnection(teamId);

@@ -19,6 +19,7 @@ import { ws } from '../services/websocket';
 import { usePollStore, normalizePoll } from '../stores/pollStore';
 import { useChannelMuteStore } from '../stores/channelMuteStore';
 import { usePinStore } from '../stores/pinStore';
+import { useBlockStore } from '../stores/blockStore';
 import { api } from '../services/api';
 import { tryEncrypt } from '../hooks/useMessageDecryption';
 import { isMockSession } from '../services/mockSession';
@@ -3694,6 +3695,24 @@ function MemberList({ members, voiceConnection, rich, federated }) {
                { label: 'View profile', icon: <Icon.People size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-profile', { detail: { memberId: m.id, x: 200, y: 200 } })) },
                { label: 'Verify safety number', icon: <Icon.Shield size={12} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:verify-safety', { detail: m.id })) },
                { sep: true },
+               useBlockStore.getState().isBlocked(m.id)
+                 ? { label: 'Unblock', icon: <Icon.Shield size={12} />, onClick: async () => {
+                     const teamId = useTeamStore.getState().activeTeamId;
+                     useBlockStore.getState().unblock(m.id);
+                     if (teamId && !isMockSession()) {
+                       try { await api.unblockUser(teamId, m.id); }
+                       catch { useBlockStore.getState().block(m.id); }
+                     }
+                   } }
+                 : { label: 'Block', danger: true, icon: <Icon.Shield size={12} />, onClick: async () => {
+                     if (!confirm('Block ' + m.name + '? You won\'t see their messages or DMs.')) return;
+                     const teamId = useTeamStore.getState().activeTeamId;
+                     useBlockStore.getState().block(m.id);
+                     if (teamId && !isMockSession()) {
+                       try { await api.blockUser(teamId, m.id); }
+                       catch { useBlockStore.getState().unblock(m.id); }
+                     }
+                   } },
                { label: 'Mute', icon: <Icon.Mic size={13} off />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'system', text: m.name + ' muted in voice channels.', duration: 2200 } })) },
                { label: 'Kick from team', danger: true, icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M10 4V2H3v12h7v-2M6 8h9M12 5l3 3-3 3M9 3v0" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>, onClick: () => {
                  if (!confirm('Kick ' + m.name + ' from this team? Requires admin role on the server.')) return;

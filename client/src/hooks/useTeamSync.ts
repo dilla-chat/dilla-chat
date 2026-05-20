@@ -7,6 +7,7 @@ import { useVoiceStore } from '../stores/voiceStore';
 import { useUnreadStore } from '../stores/unreadStore';
 import { useChannelMuteStore } from '../stores/channelMuteStore';
 import { usePinStore } from '../stores/pinStore';
+import { useBlockStore } from '../stores/blockStore';
 import { api, type VoicePeer } from '../services/api';
 import { ws } from '../services/websocket';
 import { telemetryClient } from '../services/telemetryClient';
@@ -145,6 +146,9 @@ function applySyncData(teamId: string, data: any, setters: SyncStoreSetters) {
     usePinStore.getState().setAll(
       data.pins as Array<{ channel_id: string; message_id: string }>,
     );
+  }
+  if (Array.isArray(data.blocked_user_ids)) {
+    useBlockStore.getState().setAll(data.blocked_user_ids as string[]);
   }
   console.log(`[AppLayout] sync:init applied for team ${teamId}`);
 

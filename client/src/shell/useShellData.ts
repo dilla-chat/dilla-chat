@@ -13,6 +13,7 @@ import { usePresenceStore } from '../stores/presenceStore';
 import { useMessageStore } from '../stores/messageStore';
 import { useDMStore } from '../stores/dmStore';
 import { usePollStore } from '../stores/pollStore';
+import { useBlockStore } from '../stores/blockStore';
 import { useThreadStore } from '../stores/threadStore';
 import { useVoiceStore } from '../stores/voiceStore';
 import { useUnreadStore } from '../stores/unreadStore';
@@ -261,6 +262,7 @@ export function useShellData() {
   const dmChannels = useDMStore((s) => s.dmChannels);
   const dmMessages = useDMStore((s) => s.dmMessages);
   const channelPollsBy = usePollStore((s) => s.polls);
+  const blockedSet = useBlockStore((s) => s.blocked);
   const threads = useThreadStore((s) => s.threads);
   const threadMessages = useThreadStore((s) => s.threadMessages);
   const voiceOccupants = useVoiceStore((s) => s.voiceOccupants);
@@ -328,10 +330,13 @@ export function useShellData() {
     // returns them with deleted=1 and empty content, but the UI treats
     // them as gone (renders no placeholder for now).
     const MESSAGES = {};
+    // Server filters new traffic from blocked authors before broadcast,
+    // but messages already in our local cache (loaded by eager-load on
+    // mount or arrived before a block landed) need to be filtered here.
     for (const ch of teamChannels) {
       const list = messages.get(ch.id) ?? [];
       const mapped = list
-        .filter((m) => !m.deleted)
+        .filter((m) => !m.deleted && !blockedSet.has(m.authorId))
         .map((m) => {
           const mm = mapMessage(m, myId, activeTeamId);
           if (threadByParent[m.id]) mm.thread = threadByParent[m.id];
@@ -405,7 +410,7 @@ export function useShellData() {
       activeChannelId,
       currentUserId: myId,
     };
-  }, [teams, channels, members, presences, activeTeamId, authTeams, messages, dmChannels, dmMessages, threads, threadMessages, voiceOccupants, unreadCounts, isMesh, channelPollsBy]);
+  }, [teams, channels, members, presences, activeTeamId, authTeams, messages, dmChannels, dmMessages, threads, threadMessages, voiceOccupants, unreadCounts, isMesh, channelPollsBy, blockedSet]);
 }
 
 // Re-export for callers that want to hand the produced data directly to

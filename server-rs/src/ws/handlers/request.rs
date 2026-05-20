@@ -118,6 +118,7 @@ pub(in crate::ws) async fn handle_request(hub: &Hub, user_id: &str, team_id: &st
                         })
                     })
                     .collect();
+                let blocked_user_ids = db::list_blocked(conn, &uid2).unwrap_or_default();
                 let pins_json: Vec<serde_json::Value> = db::get_pins_by_team(conn, &tid2)
                     .unwrap_or_default()
                     .into_iter()
@@ -135,6 +136,7 @@ pub(in crate::ws) async fn handle_request(hub: &Hub, user_id: &str, team_id: &st
                     "roles": roles,
                     "groups": groups,
                     "pins": pins_json,
+                    "blocked_user_ids": blocked_user_ids,
                     "unread_counts": unread_counts,
                     "muted_channels": db::get_muted_channels(conn, &uid2)
                         .unwrap_or_default()

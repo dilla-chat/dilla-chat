@@ -23,6 +23,7 @@ pub mod channel_groups;
 pub mod gif;
 pub mod integrations;
 pub mod pins;
+pub mod blocks;
 
 use crate::auth::{self, AuthService};
 use crate::config::Config;
@@ -241,6 +242,14 @@ pub fn create_router(state: AppState) -> Router {
         .route(
             "/api/v1/teams/{team_id}/groups/{group_id}/access",
             get(channel_groups::get_access).put(channel_groups::set_access),
+        )
+        // Per-user block list. Block / unblock / list endpoints scoped
+        // to the caller; WS hub honors the list to drop message:new
+        // broadcasts from blocked authors before they reach the wire.
+        .route("/api/v1/users/me/blocks", get(blocks::list))
+        .route(
+            "/api/v1/users/me/blocks/{blocked_id}",
+            post(blocks::block).delete(blocks::unblock),
         )
         // Pinned messages — admins pin/unpin via POST/DELETE; everyone
         // can list. message:pin-update broadcasts on every mutation so

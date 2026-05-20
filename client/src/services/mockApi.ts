@@ -396,6 +396,18 @@ export class MockApiService {
     };
   }
 
+  // Block list — in-memory Set so /mesh can demo the unblock flow.
+  private blocks: Set<string> = new Set();
+  async listBlocks(_teamId: string): Promise<string[]> {
+    return [...this.blocks];
+  }
+  async blockUser(_teamId: string, blockedId: string): Promise<void> {
+    this.blocks.add(blockedId);
+  }
+  async unblockUser(_teamId: string, blockedId: string): Promise<void> {
+    this.blocks.delete(blockedId);
+  }
+
   // Pinned messages — { [channelId]: messageId[] } so /mesh can demo
   // the pin/unpin flow against the same store the real api hits.
   private pins: Map<string, string[]> = new Map();

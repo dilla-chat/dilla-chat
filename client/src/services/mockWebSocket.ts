@@ -242,5 +242,6 @@ function buildSyncInitPayload() {
     // Pins start empty in the demo; the user can pin via the message
     // context menu and the mock api keeps state in-memory.
     pins: [] as Array<{ channel_id: string; message_id: string }>,
+    blocked_user_ids: [] as string[],
   };
 }

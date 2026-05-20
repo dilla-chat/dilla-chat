@@ -10,6 +10,7 @@ import { Icon } from './icons';
 import { useAuthStore } from '../stores/authStore';
 import { useTeamStore } from '../stores/teamStore';
 import { useUserSettingsStore } from '../stores/userSettingsStore';
+import { useBlockStore } from '../stores/blockStore';
 import { api } from '../services/api';
 import { isMockSession } from '../services/mockSession';
 import { exportIdentityBlob } from '../services/keyStore';
@@ -948,14 +949,89 @@ function UserPrivacy() {
           </Row>
         ))}
       </Group>
-      <Group title="Block list">
-        <Row label="Search blocked users"><TextField value="" onChange={() => {}} placeholder="filter…" /></Row>
-        <div className="set-empty">no blocked users</div>
-        <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
-          <Btn onClick={() => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'preferences', text: 'Pick a user from members or a DM to block them.', duration: 3000 } }))}>+ Block someone</Btn>
-        </div>
-      </Group>
+      <BlockListGroup />
     </>
+  );
+}
+
+// Block list panel. sync:init seeds useBlockStore; this component shows
+// the current list with an Unblock action per row. Adding to the list
+// is done from the member context menu (Block @user) — surfacing a
+// user picker here would duplicate that flow and asks the user to
+// type a name they already see in a list elsewhere.
+function BlockListGroup() {
+  const data = useShellDataContext() as any;
+  const blocked = useBlockStore((s) => s.blocked);
+  const setAll = useBlockStore((s) => s.setAll);
+  const removeBlock = useBlockStore((s) => s.unblock);
+  const teamId = useTeamStore((s) => s.activeTeamId);
+  const [filter, setFilter] = useStateS('');
+  const [busy, setBusy] = useStateS<string | null>(null);
+  const [err, setErr] = useStateS<string | null>(null);
+
+  // Hydrate once on mount in case sync:init landed before this panel
+  // was rendered (the store is global, but on fresh open we double-check).
+  useEffectS(() => {
+    if (!teamId) return;
+    let cancelled = false;
+    api
+      .listBlocks(teamId)
+      .then((ids) => { if (!cancelled) setAll(ids); })
+      .catch(() => { /* silent — store already has whatever sync:init delivered */ });
+    return () => { cancelled = true; };
+  }, [teamId, setAll]);
+
+  async function unblock(userId: string) {
+    if (!teamId) return;
+    setBusy(userId);
+    setErr(null);
+    try {
+      if (!isMockSession()) await api.unblockUser(teamId, userId);
+      removeBlock(userId);
+    } catch (e) {
+      setErr((e as Error).message || 'Unblock failed.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const ids = [...blocked];
+  const rows = ids
+    .map((id) => ({ id, member: data?.byId?.[id] as { name?: string; initials?: string; color?: string; avatarUrl?: string } | undefined }))
+    .filter(({ id, member }) => {
+      if (!filter) return true;
+      const q = filter.toLowerCase();
+      return (member?.name?.toLowerCase().includes(q) ?? false) || id.toLowerCase().includes(q);
+    });
+
+  return (
+    <Group title="Block list" hint="Blocked users can't see that you blocked them. You won't see their messages or DMs.">
+      <Row label="Filter">
+        <TextField value={filter} onChange={setFilter} placeholder="search by name or id…" />
+      </Row>
+      {rows.length === 0 ? (
+        <div className="set-empty">
+          {ids.length === 0 ? 'no blocked users' : 'no matches'}
+        </div>
+      ) : (
+        rows.map(({ id, member }) => (
+          <Row key={id} label={
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <span
+                className={'set-avatar' + (member?.avatarUrl ? ' has-image' : '')}
+                style={member?.avatarUrl
+                  ? { backgroundImage: `url(${member.avatarUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', width: 22, height: 22, fontSize: 10, color: 'transparent' }
+                  : { backgroundColor: member?.color || 'var(--muted)', width: 22, height: 22, fontSize: 10 }}
+              >{!member?.avatarUrl && (member?.initials ?? '?')}</span>
+              {member?.name || id.slice(0, 8) + '…'}
+            </span>
+          }>
+            <Btn onClick={() => unblock(id)}>{busy === id ? 'Unblocking…' : 'Unblock'}</Btn>
+          </Row>
+        ))
+      )}
+      {err && <div className="set-empty" style={{ color: 'var(--danger)' }}>{err}</div>}
+    </Group>
   );
 }
 function UserKeys() {
