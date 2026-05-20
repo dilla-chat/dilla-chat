@@ -3256,7 +3256,7 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                 <Icon.Lock size={10} /> Slow mode — {slowModeLock.secondsLeft}s before you can post again
               </span>
             ) : typing.length > 0 ? (
-              <>{typing.join(', ')} {typing.length === 1 ? 'is' : 'are'} typing<span className="dot">.</span><span className="dot">.</span><span className="dot">.</span></>
+              <>{typing.join(', ')} {typing.length === 1 ? 'is' : 'are'} typing{' '}<span className="dot">.</span><span className="dot">.</span><span className="dot">.</span></>
             ) : (
               <span style={{ opacity: 0.6 }}>
                 <Icon.Shield size={10} /> messages are end-to-end encrypted with Signal Protocol
