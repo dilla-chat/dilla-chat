@@ -26,6 +26,7 @@ import { resolvePermissions, PERM_MANAGE_CHANNELS, PERM_MANAGE_MEMBERS, PERM_MAN
 import { api } from '../services/api';
 import { tryEncrypt } from '../hooks/useMessageDecryption';
 import { useChannelLazyLoad } from '../hooks/useChannelLazyLoad';
+import { useMessageStore } from '../stores/messageStore';
 import { isMockSession } from '../services/mockSession';
 
 const { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } = React;
@@ -4389,7 +4390,44 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
       }
     })();
   };
-  const [typing, setTyping] = useState([]);
+  // Channel typing indicator: read straight from useMessageStore which
+  // useChannelEvents populates on every typing:indicator WS event. We
+  // filter ourselves out, drop entries older than 5s (typing decay),
+  // and project to a list of usernames so TextChannel's existing
+  // render path (which expects string[]) works unchanged.
+  const TYPING_EXPIRY_MS = 5000;
+  const myUserId = currentUserId();
+  const typingUsersForActive = useMessageStore((s) => s.typing.get(activeChannel));
+  const clearTyping = useMessageStore((s) => s.clearTyping);
+  // Tick every second whenever there's at least one typing user so the
+  // useMemo below re-runs and stale entries fade out without waiting
+  // for the next typing:indicator broadcast.
+  const [typingTick, setTypingTick] = useState(0);
+  useEffect(() => {
+    if (!typingUsersForActive || typingUsersForActive.length === 0) return;
+    const id = setInterval(() => setTypingTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [typingUsersForActive]);
+  // Side-effect: drop stale entries from the store so they don't linger.
+  useEffect(() => {
+    if (!typingUsersForActive) return;
+    const now = Date.now();
+    for (const u of typingUsersForActive) {
+      if (now - u.timestamp > TYPING_EXPIRY_MS) {
+        clearTyping(activeChannel, u.userId);
+      }
+    }
+  }, [typingUsersForActive, typingTick, activeChannel, clearTyping]);
+  const typing = useMemo(() => {
+    const now = Date.now();
+    return (typingUsersForActive ?? [])
+      .filter((u) => u.userId !== myUserId)
+      .filter((u) => now - u.timestamp < TYPING_EXPIRY_MS)
+      .map((u) => u.username);
+    // typingTick is intentionally a dep so the filter re-evaluates each
+    // second as entries cross the expiry threshold.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typingUsersForActive, myUserId, typingTick]);
   const [dmTyping, setDmTyping] = useState({}); // channelId -> [names]
   const [settings, setSettings] = useState({ open: false, mode: 'user', tab: null });
   const [membersOpen, setMembersOpen] = useState(true);
