@@ -6,6 +6,7 @@ import { usePresenceStore, type UserPresence } from '../stores/presenceStore';
 import { useVoiceStore } from '../stores/voiceStore';
 import { useUnreadStore } from '../stores/unreadStore';
 import { useChannelMuteStore } from '../stores/channelMuteStore';
+import { usePinStore } from '../stores/pinStore';
 import { api, type VoicePeer } from '../services/api';
 import { ws } from '../services/websocket';
 import { telemetryClient } from '../services/telemetryClient';
@@ -138,6 +139,11 @@ function applySyncData(teamId: string, data: any, setters: SyncStoreSetters) {
   }
   if (Array.isArray(data.muted_channels)) {
     useChannelMuteStore.getState().setAll(data.muted_channels as Array<{ channel_id: string; muted_until: string | null }>);
+  }
+  if (Array.isArray(data.pins)) {
+    usePinStore.getState().setAll(
+      data.pins as Array<{ channel_id: string; message_id: string }>,
+    );
   }
   console.log(`[AppLayout] sync:init applied for team ${teamId}`);
 
@@ -450,6 +456,15 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
       },
     );
 
+    // Pin / unpin a message — broadcast to every channel subscriber so
+    // the pin pop in the channel header updates without a re-fetch.
+    const unsubPin = ws.on('message:pin-update', (payload: { channel_id?: string; message_id?: string; pinned?: boolean }) => {
+      if (!payload?.channel_id || !payload?.message_id) return;
+      const ps = usePinStore.getState();
+      if (payload.pinned) ps.pin(payload.channel_id, payload.message_id);
+      else ps.unpin(payload.channel_id, payload.message_id);
+    });
+
     // Per-user channel mute updates (multi-device sync) — server sends
     // this to every device on the same user_id.
     const unsubMute = ws.on('channel:mute-update', (payload: { channel_id?: string; muted?: boolean; muted_until?: string | null }) => {
@@ -533,6 +548,7 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
       unsubChannelDeleted();
       unsubAccess();
       unsubMute();
+      unsubPin();
       unsubMemberRoles();
       unsubGroupCreated();
       unsubGroupUpdated();

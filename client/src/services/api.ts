@@ -569,6 +569,36 @@ class ApiService {
     );
   }
 
+  /** Pinned-message ids for a channel, newest pin first. */
+  async listPins(teamId: string, channelId: string): Promise<string[]> {
+    const conn = this.getConnection(teamId);
+    const data = await this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/channels/${channelId}/pins`,
+      { method: 'GET' },
+      conn.token,
+    ) as { message_ids?: string[] };
+    return Array.isArray(data?.message_ids) ? data.message_ids : [];
+  }
+  async pinMessage(teamId: string, channelId: string, messageId: string): Promise<void> {
+    const conn = this.getConnection(teamId);
+    await this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/channels/${channelId}/messages/${messageId}/pin`,
+      { method: 'POST' },
+      conn.token,
+    );
+  }
+  async unpinMessage(teamId: string, channelId: string, messageId: string): Promise<void> {
+    const conn = this.getConnection(teamId);
+    await this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/channels/${channelId}/messages/${messageId}/pin`,
+      { method: 'DELETE' },
+      conn.token,
+    );
+  }
+
   /** Resolve a gif URL via the server-side `/giphy` proxy. The server holds
    *  the Giphy API key (DILLA_GIPHY_API_KEY) so it never reaches the bundle.
    *  Returns `{ url, query }` on success. Throws when the key is unset

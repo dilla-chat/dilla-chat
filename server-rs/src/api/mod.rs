@@ -22,6 +22,7 @@ pub mod channel_mutes;
 pub mod channel_groups;
 pub mod gif;
 pub mod integrations;
+pub mod pins;
 
 use crate::auth::{self, AuthService};
 use crate::config::Config;
@@ -240,6 +241,17 @@ pub fn create_router(state: AppState) -> Router {
         .route(
             "/api/v1/teams/{team_id}/groups/{group_id}/access",
             get(channel_groups::get_access).put(channel_groups::set_access),
+        )
+        // Pinned messages — admins pin/unpin via POST/DELETE; everyone
+        // can list. message:pin-update broadcasts on every mutation so
+        // the pin-popover stays live without a re-fetch.
+        .route(
+            "/api/v1/teams/{team_id}/channels/{channel_id}/pins",
+            get(pins::list_for_channel),
+        )
+        .route(
+            "/api/v1/teams/{team_id}/channels/{channel_id}/messages/{message_id}/pin",
+            post(pins::pin).delete(pins::unpin),
         )
         // Gif search proxy for the /giphy slash command. Team-scoped:
         // the key lives in settings (team:<tid>:giphy_api_key) and is

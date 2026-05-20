@@ -23,6 +23,7 @@ mod poll_queries;
 mod channel_access_queries;
 mod channel_group_queries;
 mod channel_mute_queries;
+mod pin_queries;
 
 use rusqlite::Connection;
 use std::path::Path;
@@ -52,6 +53,7 @@ pub use poll_queries::*;
 pub use channel_access_queries::*;
 pub use channel_group_queries::*;
 pub use channel_mute_queries::*;
+pub use pin_queries::*;
 
 const MIGRATIONS: &[(&str, &str)] = &[
     ("001_initial.sql", include_str!("../../migrations/001_initial.sql")),
@@ -75,6 +77,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
     ("019_channel_name_unique.sql", include_str!("../../migrations/019_channel_name_unique.sql")),
     ("020_channel_groups.sql", include_str!("../../migrations/020_channel_groups.sql")),
     ("021_channel_groups_hidden.sql", include_str!("../../migrations/021_channel_groups_hidden.sql")),
+    ("022_pinned_messages.sql", include_str!("../../migrations/022_pinned_messages.sql")),
 ];
 
 /// Default number of read connections in the pool.

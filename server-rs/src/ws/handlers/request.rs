@@ -118,12 +118,23 @@ pub(in crate::ws) async fn handle_request(hub: &Hub, user_id: &str, team_id: &st
                         })
                     })
                     .collect();
+                let pins_json: Vec<serde_json::Value> = db::get_pins_by_team(conn, &tid2)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|p| serde_json::json!({
+                        "message_id": p.message_id,
+                        "channel_id": p.channel_id,
+                        "pinned_by": p.pinned_by,
+                        "pinned_at": p.pinned_at,
+                    }))
+                    .collect();
                 Ok(serde_json::json!({
                     "team": team,
                     "channels": channels,
                     "members": members_json,
                     "roles": roles,
                     "groups": groups,
+                    "pins": pins_json,
                     "unread_counts": unread_counts,
                     "muted_channels": db::get_muted_channels(conn, &uid2)
                         .unwrap_or_default()

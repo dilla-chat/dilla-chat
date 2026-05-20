@@ -396,6 +396,23 @@ export class MockApiService {
     };
   }
 
+  // Pinned messages — { [channelId]: messageId[] } so /mesh can demo
+  // the pin/unpin flow against the same store the real api hits.
+  private pins: Map<string, string[]> = new Map();
+  async listPins(_teamId: string, channelId: string): Promise<string[]> {
+    return [...(this.pins.get(channelId) ?? [])];
+  }
+  async pinMessage(_teamId: string, channelId: string, messageId: string): Promise<void> {
+    const list = this.pins.get(channelId) ?? [];
+    if (!list.includes(messageId)) {
+      this.pins.set(channelId, [messageId, ...list]);
+    }
+  }
+  async unpinMessage(_teamId: string, channelId: string, messageId: string): Promise<void> {
+    const list = this.pins.get(channelId) ?? [];
+    this.pins.set(channelId, list.filter((id) => id !== messageId));
+  }
+
   // Integrations — Giphy key flag, mirrored locally so /mesh can demo
   // the admin flow without a real backend.
   private giphyConfigured = false;

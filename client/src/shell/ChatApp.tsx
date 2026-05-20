@@ -18,6 +18,7 @@ import { useVoiceConnection } from '../hooks/useVoiceConnection';
 import { ws } from '../services/websocket';
 import { usePollStore, normalizePoll } from '../stores/pollStore';
 import { useChannelMuteStore } from '../stores/channelMuteStore';
+import { usePinStore } from '../stores/pinStore';
 import { api } from '../services/api';
 import { tryEncrypt } from '../hooks/useMessageDecryption';
 import { isMockSession } from '../services/mockSession';
@@ -2070,11 +2071,17 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
   const [savedOpen, setSavedOpen] = useState(false);
   const [showJump, setShowJump] = useState(false);
 
-  // Mock-pinned message IDs per channel
-  const PINNED_BY_CHANNEL = { design: ['m7', 'm12'], dev: ['d1'], general: [], mesh: [], random: [], 'dm-ada': [] };
-  const pinnedMsgs = (PINNED_BY_CHANNEL[channel.id] || [])
-    .map(id => messages.find(m => m.id === id))
-    .filter(Boolean);
+  // Pinned message ids come from pinStore now — sync:init seeds it and
+  // message:pin-update keeps it live across clients. Resolve to actual
+  // message records the renderer expects, dropping ids we don't have
+  // locally (the message hasn't paged in yet) instead of crashing.
+  const pinnedSet = usePinStore((s) => s.pinned.get(channel.id));
+  const pinnedMsgs = useMemo(() => {
+    if (!pinnedSet || pinnedSet.size === 0) return [];
+    return [...pinnedSet]
+      .map((id) => messages.find((m) => m.id === id))
+      .filter(Boolean);
+  }, [pinnedSet, messages]);
   function saveEdit() {
     if (onEdit && editingId) onEdit(editingId, editDraft.trim());
     setEditingId(null);
@@ -2923,9 +2930,33 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
               Forward to…
             </button>
             <div className="ctx-sep" />
-            <button>
+            <button onClick={() => {
+              const teamId = useTeamStore.getState().activeTeamId;
+              const ps = usePinStore.getState();
+              const already = ps.isPinned(channel.id, contextMenu.msgId);
+              // Optimistic flip so the icon updates instantly; rollback
+              // on failure. The server echoes message:pin-update which
+              // converges every other client.
+              if (already) ps.unpin(channel.id, contextMenu.msgId); else ps.pin(channel.id, contextMenu.msgId);
+              if (teamId && !isMockSession()) {
+                const call = already
+                  ? api.unpinMessage(teamId, channel.id, contextMenu.msgId)
+                  : api.pinMessage(teamId, channel.id, contextMenu.msgId);
+                call.catch((err) => {
+                  if (already) ps.pin(channel.id, contextMenu.msgId); else ps.unpin(channel.id, contextMenu.msgId);
+                  window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'pins', text: (err as Error).message || 'Pin failed — manage-messages permission required.', duration: 3500 } }));
+                });
+              } else if (isMockSession() && teamId) {
+                // Keep mockApi store in sync with the UI store on /mesh.
+                (already
+                  ? api.unpinMessage(teamId, channel.id, contextMenu.msgId)
+                  : api.pinMessage(teamId, channel.id, contextMenu.msgId)
+                ).catch(() => {});
+              }
+              setContextMenu(null);
+            }}>
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 2v12l5-3 5 3V2z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/></svg>
-              Pin to channel
+              {usePinStore.getState().isPinned(channel.id, contextMenu.msgId) ? 'Unpin from channel' : 'Pin to channel'}
             </button>
             <button onClick={() => {
               setUnreadAt(contextMenu.msgId);
