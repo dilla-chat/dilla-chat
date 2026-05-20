@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { Icon } from './icons';
+import MessageMarkdown from '../components/MessageMarkdown/MessageMarkdown';
 import { MOCK_DATA } from './data';
 import { THEMES } from './themes';
 import { useShellDataContext } from './ShellDataContext';
@@ -3274,80 +3275,17 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
   );
 }
 
-function renderText(text, members) {
+function renderText(text, _members) {
   if (!text) return null;
-  // Split by triple-backtick code fences first.
-  const fenceRe = /```([a-z]*)\n?([\s\S]*?)```/g;
-  const blocks = [];
-  let lastIdx = 0;
-  let fm;
-  while ((fm = fenceRe.exec(text)) !== null) {
-    if (fm.index > lastIdx) blocks.push({ type: 'inline', text: text.slice(lastIdx, fm.index) });
-    blocks.push({ type: 'code', lang: fm[1], text: fm[2] });
-    lastIdx = fm.index + fm[0].length;
-  }
-  if (lastIdx < text.length) blocks.push({ type: 'inline', text: text.slice(lastIdx) });
-
-  return blocks.map((b, bi) => {
-    if (b.type === 'code') {
-      return (
-        <pre key={bi} className="code-block">
-          {b.lang && <span className="cb-lang">{b.lang}</span>}
-          <code>{b.text}</code>
-        </pre>
-      );
-    }
-    // Inline pass: @mentions, `code`, **bold**, URLs
-    const parts = [];
-    let i = 0;
-    const re = /(@\w+|`[^`]+`|\*\*[^*]+\*\*|https?:\/\/[^\s)]+)/g;
-    let m;
-    while ((m = re.exec(b.text)) !== null) {
-      if (m.index > i) parts.push(b.text.slice(i, m.index));
-      const t = m[0];
-      if (t.startsWith('@')) {
-        // Strip the leading '@' and resolve against the current user's
-        // record. Previously this hardcoded `'@thim'` from the handoff.
-        // `renderText` is a free function called from JSX render paths and
-        // doesn't have the shell-data context in scope; read it via the
-        // window binding that AppShell keeps in sync. Same exception as
-        // `currentUserId()` above — both will go away once renderText is
-        // either componentized or takes `data` as an arg.
-        const handle = t.slice(1);
-        const me = (window as any).SHELL_DATA?.byId?.[currentUserId()];
-        const mine = !!me && (handle === me.name || handle === me.username);
-        const broad = t === '@everyone' || t === '@here';
-        parts.push(
-          <span key={bi + '-' + parts.length}
-                className={'ic ic-mention' + (mine ? ' ic-mention-mine' : '') + (broad ? ' ic-mention-broad' : '')}
-                style={{ color: 'var(--mention)', background: broad ? 'color-mix(in oklab, var(--mention) 28%, transparent)' : 'color-mix(in oklab, var(--mention) 15%, transparent)' }}>
-            {t}
-          </span>
-        );
-      }
-      else if (t.startsWith('`'))  parts.push(<code key={bi + '-' + parts.length}>{t.slice(1,-1)}</code>);
-      else if (t.startsWith('**')) parts.push(<strong key={bi + '-' + parts.length}>{t.slice(2,-2)}</strong>);
-      else if (t.startsWith('http')) {
-        // Render direct image URLs inline (gif / png / jpg / webp). Strips
-        // query strings before extension check so Giphy CDN URLs match.
-        const cleanUrl = t.split('?')[0].toLowerCase();
-        if (/\.(gif|png|jpe?g|webp|avif)$/.test(cleanUrl)) {
-          parts.push(
-            <a key={bi + '-' + parts.length} href={t} target="_blank" rel="noopener noreferrer">
-              <img src={t} alt={t} style={{ display: 'block', maxWidth: 360, maxHeight: 280, borderRadius: 4, marginTop: 4 }} />
-            </a>
-          );
-        } else {
-          parts.push(
-            <a key={bi + '-' + parts.length} href={t} target="_blank" rel="noopener noreferrer" className="ic-link">{t}</a>
-          );
-        }
-      }
-      i = m.index + t.length;
-    }
-    if (i < b.text.length) parts.push(b.text.slice(i));
-    return <span key={bi}>{parts}</span>;
-  });
+  // Delegate to react-markdown via MessageMarkdown — gives us bold,
+  // italic, strikethrough, lists, blockquotes, code fences, tables,
+  // links and inline images, plus the @mention chip that renderText
+  // used to hand-roll. Headings are disallowed (chat-bubble context).
+  const me = (window as { SHELL_DATA?: { byId?: Record<string, { name?: string; username?: string }>; currentUserId?: string } }).SHELL_DATA;
+  const myId = me?.currentUserId ?? null;
+  const myRec = myId ? me?.byId?.[myId] : null;
+  const myHandle = myRec?.username || myRec?.name || null;
+  return <MessageMarkdown text={text} currentUserId={myId} currentUserHandle={myHandle} />;
 }
 
 // Mock unfurl content keyed by hostname — Dilla repo + a couple of others.
