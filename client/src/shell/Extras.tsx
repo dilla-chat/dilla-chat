@@ -161,10 +161,13 @@ function IncomingCall({ call, onAccept, onDecline }) {
         <div className="ring-eyebrow">
           <span className="ring-dot" /> incoming · voice
         </div>
-        <div className="ring-avatar" style={{ background: m.color }}>
+        <div
+          className={'ring-avatar' + (m.avatarUrl ? ' has-image' : '')}
+          style={m.avatarUrl ? { backgroundImage: `url(${m.avatarUrl})` } : { background: m.color }}
+        >
           <span className="ring-pulse" />
           <span className="ring-pulse ring-pulse-2" />
-          {m.initials}
+          {!m.avatarUrl && m.initials}
         </div>
         <div className="ring-name">{m.name}</div>
         <div className="ring-sub">{call.kind === 'video' ? 'wants to start a video call' : 'is calling you'} · SRTP · opus</div>
@@ -239,7 +242,10 @@ function SafetyCompare({ contactId, onClose }) {
           </div>
           <div className="sc-side">
             <div className="sc-side-head">
-              <div className="sc-side-avatar" style={{ background: m.color }}>{m.initials}</div>
+              <div
+                className={'sc-side-avatar' + (m.avatarUrl ? ' has-image' : '')}
+                style={m.avatarUrl ? { backgroundImage: `url(${m.avatarUrl})` } : { background: m.color }}
+              >{!m.avatarUrl && m.initials}</div>
               <span>{m.name}</span>
             </div>
             <div className="sc-number">

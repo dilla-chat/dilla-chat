@@ -413,8 +413,15 @@
 }
 /* When member.avatarUrl is set the component drops the initials and lets
    the inline backgroundImage fill the tile. cover + center keeps the
-   composition regardless of source aspect ratio. */
-.avatar.has-image {
+   composition regardless of source aspect ratio. Applied to every avatar
+   variant so the user's profile picture reads the same everywhere. */
+.avatar.has-image,
+.ndm-av.has-image,
+.vp-avatar.has-image,
+.mention-av.has-image,
+.pp-avatar.has-image,
+.sc-side-avatar.has-image,
+.ring-avatar.has-image {
   background-size: cover;
   background-position: center;
   color: transparent;

@@ -101,14 +101,29 @@ function groupMessages(msgs) {
 }
 
 // ───────────── small bits ─────────────
+// Single source of truth for rendering an avatar tile (image OR initials).
+// Used by Avatar/PlainAvatar below AND by the half-dozen custom avatar
+// sites (mention picker, voice peer, new-DM picker, etc.) so a profile
+// picture set in User Settings shows up everywhere immediately.
+export function memberAvatarStyle(member: { color?: string; avatarUrl?: string }, size?: number): React.CSSProperties {
+  const style: React.CSSProperties = { background: member.color || 'var(--muted)' };
+  if (size) {
+    style.width = size;
+    style.height = size;
+    style.fontSize = size * 0.4;
+  }
+  if (member.avatarUrl) style.backgroundImage = `url(${member.avatarUrl})`;
+  return style;
+}
+export function memberAvatarClass(member: { avatarUrl?: string }, base: string): string {
+  return member.avatarUrl ? base + ' has-image' : base;
+}
+
 function Avatar({ member, size }) {
   // Render the uploaded image when present; otherwise the username-coloured
   // initials tile. Either way the presence dot lives on top.
-  const sty: Record<string, unknown> = { background: member.color };
-  if (size) Object.assign(sty, { width: size, height: size, fontSize: size * 0.4 });
-  if (member.avatarUrl) sty.backgroundImage = `url(${member.avatarUrl})`;
   return (
-    <div className={'avatar' + (member.avatarUrl ? ' has-image' : '')} style={sty}>
+    <div className={memberAvatarClass(member, 'avatar')} style={memberAvatarStyle(member, size)}>
       {!member.avatarUrl && member.initials}
       {member.status && <span className={`presence ${member.status}`}></span>}
     </div>
@@ -116,11 +131,8 @@ function Avatar({ member, size }) {
 }
 
 function PlainAvatar({ member, size }) {
-  const sty: Record<string, unknown> = { background: member.color };
-  if (size) Object.assign(sty, { width: size, height: size, fontSize: size * 0.4 });
-  if (member.avatarUrl) sty.backgroundImage = `url(${member.avatarUrl})`;
   return (
-    <div className={'avatar' + (member.avatarUrl ? ' has-image' : '')} style={sty}>
+    <div className={memberAvatarClass(member, 'avatar')} style={memberAvatarStyle(member, size)}>
       {!member.avatarUrl && member.initials}
     </div>
   );
@@ -218,7 +230,7 @@ function NewDmModal({ members, onClose, onPick }) {
           <div className="ndm-list">
             {list.map(m => (
               <button key={m.id} className="ndm-row" onClick={() => onPick(m.id)}>
-                <div className="ndm-av" style={{ background: m.color }}>{m.initials}<span className={'presence ' + m.status}></span></div>
+                <div className={memberAvatarClass(m, 'ndm-av')} style={memberAvatarStyle(m)}>{!m.avatarUrl && m.initials}<span className={'presence ' + m.status}></span></div>
                 <div>
                   <div className="ndm-name">{m.name}</div>
                   <div className="ndm-sub">{m.custom || m.status}</div>
@@ -923,8 +935,8 @@ function ProfilePopover({ pop, onClose, onDM, federated }) {
     <div className="pop-profile" ref={ref} style={{ position: 'fixed', left: x, top: y, width: W }}>
       <div className="pp-banner" style={{ background: m.color }} />
       <div className="pp-body">
-        <div className="pp-avatar" style={{ background: m.color }}>
-          {m.initials}
+        <div className={memberAvatarClass(m, 'pp-avatar')} style={memberAvatarStyle(m)}>
+          {!m.avatarUrl && m.initials}
           <span className={`presence ${m.status}`}></span>
         </div>
         <div className="pp-name">{m.name}</div>
@@ -1719,7 +1731,7 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
                                  { label: 'Disconnect from voice', danger: true, icon: null, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'admin', text: 'Disconnect ' + m.name + ' from #voice-lounge (admin only).', duration: 3000 } })) },
                                ] } }));
                              }}>
-                          <div className="vp-avatar" style={{ background: m.color }}>{m.initials}</div>
+                          <div className={memberAvatarClass(m, 'vp-avatar')} style={memberAvatarStyle(m)}>{!m.avatarUrl && m.initials}</div>
                           <span className="vp-name">{m.name}</span>
                           <div className="vp-state">
                             {camOn && <span className="vp-icon screen" title="camera on"><Icon.Video size={11} /></span>}
@@ -2664,7 +2676,7 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                           <div className="thread-stack">
                             {m.thread.participants.map(pid => {
                               const p = members.byId[pid];
-                              return <div key={pid} className="avatar" style={{ background: p.color }}>{p.initials}</div>;
+                              return <div key={pid} className={memberAvatarClass(p, 'avatar')} style={memberAvatarStyle(p)}>{!p.avatarUrl && p.initials}</div>;
                             })}
                           </div>
                           <span style={{ fontWeight: 600 }}>{m.thread.count} replies</span>
@@ -2788,7 +2800,7 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
                          className={'mention-row' + (i === mentionIdx ? ' selected' : '')}
                          onMouseEnter={() => setMentionIdx(i)}
                          onMouseDown={(e) => { e.preventDefault(); applyMention(m.name); }}>
-                      <div className="mention-av" style={{ background: m.color }}>{m.initials}</div>
+                      <div className={memberAvatarClass(m, 'mention-av')} style={memberAvatarStyle(m)}>{!m.avatarUrl && m.initials}</div>
                       <div className="mention-name">{m.name}</div>
                       {m.custom && <div className="mention-status">{m.custom}</div>}
                       <div className="mention-presence"><span className={'presence ' + m.status}></span></div>

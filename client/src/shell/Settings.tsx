@@ -201,11 +201,149 @@ function Btn({ children, danger, onClick }) {
 }
 
 // ───────── USER tabs ─────────
-// Avatar upload widget. Real upload pipeline: file picker → api.uploadFile
-// → api.getAttachmentUrl → api.updateMe({ avatar_url }). Updates the local
-// member record so the rest of the UI (sidebar tile, message author, member
-// list) flips immediately without waiting for a re-sync. Mock sessions
-// keep the file as an object URL so /mesh demos the same flow.
+// Square crop tool that runs between file pick and upload. The user sees
+// the source image with a draggable + corner-resizable square overlay,
+// and on Save we render the selection into a fixed 256x256 canvas and
+// return a JPEG Blob. Kept self-contained — no third-party crop libs.
+function CropModal({
+  file,
+  onCancel,
+  onConfirm,
+}: Readonly<{ file: File; onCancel: () => void; onConfirm: (blob: Blob) => void }>) {
+  // Preview-space coords are pixel offsets relative to the rendered <img>;
+  // we scale them back to natural-image coords when drawing the canvas so
+  // the output uses full source resolution.
+  const [imgUrl, setImgUrl] = useStateS<string | null>(null);
+  const [imgSize, setImgSize] = useStateS<{ w: number; h: number } | null>(null);
+  const [crop, setCrop] = useStateS<{ x: number; y: number; size: number } | null>(null);
+  const imgRef = useRefS<HTMLImageElement | null>(null);
+  const dragRef = useRefS<{ mode: 'move' | 'nw' | 'ne' | 'sw' | 'se'; startX: number; startY: number; orig: { x: number; y: number; size: number } } | null>(null);
+
+  useEffectS(() => {
+    const url = URL.createObjectURL(file);
+    setImgUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  useEffectS(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onCancel(); }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onCancel]);
+
+  function onImgLoad(e: React.SyntheticEvent<HTMLImageElement>) {
+    const w = e.currentTarget.clientWidth;
+    const h = e.currentTarget.clientHeight;
+    const size = Math.min(w, h);
+    setImgSize({ w, h });
+    setCrop({ x: (w - size) / 2, y: (h - size) / 2, size });
+  }
+
+  function clamp(next: { x: number; y: number; size: number }, w: number, h: number) {
+    const size = Math.max(40, Math.min(next.size, w, h));
+    const x = Math.max(0, Math.min(next.x, w - size));
+    const y = Math.max(0, Math.min(next.y, h - size));
+    return { x, y, size };
+  }
+
+  function startDrag(e: React.MouseEvent, mode: 'move' | 'nw' | 'ne' | 'sw' | 'se') {
+    e.preventDefault();
+    if (!crop) return;
+    dragRef.current = { mode, startX: e.clientX, startY: e.clientY, orig: { ...crop } };
+    document.addEventListener('mousemove', onDragMove);
+    document.addEventListener('mouseup', stopDrag);
+  }
+  function onDragMove(e: MouseEvent) {
+    const d = dragRef.current;
+    if (!d || !crop || !imgSize) return;
+    const dx = e.clientX - d.startX;
+    const dy = e.clientY - d.startY;
+    let next = { ...d.orig };
+    if (d.mode === 'move') {
+      next = { ...d.orig, x: d.orig.x + dx, y: d.orig.y + dy };
+    } else {
+      // Corner resize: keep crop square by averaging dx/dy along the corner's
+      // outward direction, and reposition so the opposite corner stays put.
+      const right = d.mode.endsWith('e');
+      const bottom = d.mode.startsWith('s');
+      const horizGrowth = right ? dx : -dx;
+      const vertGrowth = bottom ? dy : -dy;
+      const delta = (horizGrowth + vertGrowth) / 2;
+      const size = d.orig.size + delta;
+      const x = right ? d.orig.x : d.orig.x + (d.orig.size - size);
+      const y = bottom ? d.orig.y : d.orig.y + (d.orig.size - size);
+      next = { x, y, size };
+    }
+    setCrop(clamp(next, imgSize.w, imgSize.h));
+  }
+  function stopDrag() {
+    dragRef.current = null;
+    document.removeEventListener('mousemove', onDragMove);
+    document.removeEventListener('mouseup', stopDrag);
+  }
+
+  async function save() {
+    const img = imgRef.current;
+    if (!img || !crop || !imgSize) return;
+    // Map preview-space crop back to natural pixels.
+    const scaleX = img.naturalWidth / imgSize.w;
+    const scaleY = img.naturalHeight / imgSize.h;
+    const sx = crop.x * scaleX;
+    const sy = crop.y * scaleY;
+    const sSize = Math.min(crop.size * scaleX, img.naturalWidth - sx);
+    const out = 256;
+    const canvas = document.createElement('canvas');
+    canvas.width = out; canvas.height = out;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(img, sx, sy, sSize, crop.size * scaleY, 0, 0, out, out);
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.9),
+    );
+    if (blob) onConfirm(blob);
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onCancel}>
+      <div className="modal-card crop-card" onClick={(e) => e.stopPropagation()}>
+        <header className="modal-head">
+          <h2>Crop avatar</h2>
+          <button className="modal-x" onClick={onCancel}>×</button>
+        </header>
+        <div className="modal-body">
+          <div className="crop-stage">
+            {imgUrl && (
+              <img ref={imgRef} src={imgUrl} onLoad={onImgLoad} className="crop-img" alt="" draggable={false} />
+            )}
+            {crop && (
+              <div
+                className="crop-box"
+                onMouseDown={(e) => startDrag(e, 'move')}
+                style={{ left: crop.x, top: crop.y, width: crop.size, height: crop.size }}
+              >
+                <span className="crop-handle nw" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'nw'); }} />
+                <span className="crop-handle ne" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'ne'); }} />
+                <span className="crop-handle sw" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'sw'); }} />
+                <span className="crop-handle se" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'se'); }} />
+              </div>
+            )}
+          </div>
+          <p className="modal-hint">Drag to reposition, corners to resize. Output is a 256×256 square.</p>
+        </div>
+        <footer className="modal-foot">
+          <button className="sc-btn" onClick={onCancel}>Cancel</button>
+          <button className="sc-btn primary" onClick={save}>Save</button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+// Avatar upload widget. Real upload pipeline: file picker → crop tool →
+// api.uploadFile → api.getAttachmentUrl → api.updateMe({ avatar_url }).
+// Updates the local member record so the rest of the UI flips immediately
+// without waiting for a re-sync. Mock sessions keep the cropped blob as
+// an object URL so /mesh demos the same flow.
 function AvatarUploader() {
   const data = useShellDataContext() as any;
   const meId = data?.currentUserId;
@@ -214,8 +352,11 @@ function AvatarUploader() {
   const inputRef = useRefS<HTMLInputElement | null>(null);
   const [busy, setBusy] = useStateS(false);
   const [err, setErr] = useStateS<string | null>(null);
+  // Source file held between pick and the user confirming a crop. While
+  // this is set the CropModal is open.
+  const [pendingFile, setPendingFile] = useStateS<File | null>(null);
 
-  async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+  function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = ''; // reset so picking the same file twice re-fires
     if (!file) return;
@@ -228,17 +369,22 @@ function AvatarUploader() {
       return;
     }
     setErr(null);
+    setPendingFile(file);
+  }
+
+  async function onCropped(blob: Blob) {
+    setPendingFile(null);
     setBusy(true);
     try {
+      // Repackage the blob as a File so api.uploadFile + the server's
+      // multipart handler still see a proper filename + content-type.
+      const cropped = new File([blob], 'avatar.jpg', { type: 'image/jpeg' });
       if (!auth || isMockSession()) {
-        // /mesh — no server, so just preview locally via object URL. The
-        // member's row updates because we write straight to the team
-        // store; reload clears it (intended for the demo path).
-        const url = URL.createObjectURL(file);
+        const url = URL.createObjectURL(cropped);
         applyAvatarUrl(url, meId);
         return;
       }
-      const att = await api.uploadFile(auth.teamId, file);
+      const att = await api.uploadFile(auth.teamId, cropped);
       const url = api.getAttachmentUrl(auth.teamId, att.id);
       await api.updateMe(auth.baseUrl, auth.token, { avatar_url: url });
       applyAvatarUrl(url, meId);
@@ -296,6 +442,13 @@ function AvatarUploader() {
       <Btn onClick={() => inputRef.current?.click()}>{busy ? 'Uploading…' : 'Upload…'}</Btn>
       {hasImage && <Btn danger onClick={clear}>Remove</Btn>}
       {err && <span style={{ color: 'var(--danger)', fontSize: 11, marginLeft: 8 }}>{err}</span>}
+      {pendingFile && (
+        <CropModal
+          file={pendingFile}
+          onCancel={() => setPendingFile(null)}
+          onConfirm={onCropped}
+        />
+      )}
     </div>
   );
 }
@@ -717,7 +870,10 @@ function UserPrivacy() {
         ) : others.map((m: any) => (
           <Row key={m.id} label={
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              <span className="set-avatar" style={{ background: m.color, width: 22, height: 22, fontSize: 10 }}>{m.initials}</span>
+              <span
+                className={'set-avatar' + (m.avatarUrl ? ' has-image' : '')}
+                style={{ ...(m.avatarUrl ? { backgroundImage: `url(${m.avatarUrl})` } : { background: m.color }), width: 22, height: 22, fontSize: 10 }}
+              >{!m.avatarUrl && m.initials}</span>
               {m.name}
             </span>
           }>

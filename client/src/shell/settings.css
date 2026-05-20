@@ -310,6 +310,46 @@ select.set-input {
   color: transparent;
 }
 
+/* Avatar crop modal — a square selection rectangle the user drags / sizes
+   over the picked image. Selection is restricted to a square; the canvas
+   in save() handles the actual resampling to 256×256. */
+.crop-card { max-width: 26rem; }
+.crop-stage {
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  min-height: 12rem;
+  margin-bottom: 0.5rem;
+}
+.crop-img {
+  display: block;
+  max-width: 100%;
+  max-height: 22rem;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.crop-box {
+  position: absolute;
+  border: 0.125rem solid var(--accent);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55);
+  cursor: move;
+  box-sizing: border-box;
+}
+.crop-handle {
+  position: absolute;
+  width: 0.75rem; height: 0.75rem;
+  background: var(--accent);
+  border: 0.125rem solid var(--surface);
+  border-radius: 50%;
+}
+.crop-handle.nw { top: -0.375rem; left: -0.375rem; cursor: nwse-resize; }
+.crop-handle.ne { top: -0.375rem; right: -0.375rem; cursor: nesw-resize; }
+.crop-handle.sw { bottom: -0.375rem; left: -0.375rem; cursor: nesw-resize; }
+.crop-handle.se { bottom: -0.375rem; right: -0.375rem; cursor: nwse-resize; }
+
 .set-stat {
   color: var(--fg-2);
   font-size: 12.5px;
