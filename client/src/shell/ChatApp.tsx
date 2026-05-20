@@ -475,10 +475,11 @@ function ChannelAccessModal({ channel, onClose }) {
 // but persists via api.setGroupAccess and the WS broadcasts a
 // group:access-update event that every channel in the group reads through
 // its inherited resolveAccessRoles — one change ripples to N channels.
-function GroupAccessModal({ group, onClose }: { group: { id: string; name: string; accessRoleIds: string[] }; onClose: () => void }) {
+function GroupAccessModal({ group, onClose }: { group: { id: string; name: string; accessRoleIds: string[]; hiddenIfRestricted: boolean }; onClose: () => void }) {
   const teamId = useTeamStore((s) => s.activeTeamId) as string | null;
   const roles = useTeamStore((s) => (teamId ? s.roles.get(teamId) ?? [] : []));
   const [selected, setSelected] = useState<Set<string>>(new Set(group.accessRoleIds ?? []));
+  const [hidden, setHidden] = useState<boolean>(!!group.hiddenIfRestricted);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   useEffect(() => {
@@ -502,15 +503,19 @@ function GroupAccessModal({ group, onClose }: { group: { id: string; name: strin
       // /mesh: skip the API and patch the store directly so the demo
       // shows the change. The real path below does both.
       const next = Array.from(selected);
-      useTeamStore.getState().upsertGroup(teamId, { ...group, accessRoleIds: next });
+      useTeamStore.getState().upsertGroup(teamId, { ...group, accessRoleIds: next, hiddenIfRestricted: hidden });
       onClose();
       return;
     }
     setBusy(true);
     const next = Array.from(selected);
     try {
-      await api.setGroupAccess(teamId, group.id, next);
-      useTeamStore.getState().upsertGroup(teamId, { ...group, accessRoleIds: next });
+      // setGroupAccess now accepts hidden_if_restricted in the same body
+      // so the access list + visibility flag move together. The server
+      // echoes both in group:access-update; our optimistic patch keeps
+      // the sidebar in sync if the modal closes before the broadcast.
+      await api.setGroupAccess(teamId, group.id, next, hidden);
+      useTeamStore.getState().upsertGroup(teamId, { ...group, accessRoleIds: next, hiddenIfRestricted: hidden });
       onClose();
     } catch (e) {
       setErr((e as Error).message || 'Failed — manage-channels permission required.');
@@ -545,6 +550,13 @@ function GroupAccessModal({ group, onClose }: { group: { id: string; name: strin
               ))}
             </div>
             <div className="modal-hint">Every channel in <strong>{group.name}</strong> inherits this list. Include the default role to keep them open; remove it to restrict.</div>
+          </div>
+          <div className="modal-row">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+              <input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} />
+              <span>Hide channels from members who can't access</span>
+            </label>
+            <div className="modal-hint">When on, restricted members won't see any channel in <strong>{group.name}</strong> instead of a padlock.</div>
           </div>
           {err && <div className="modal-hint" style={{ color: 'var(--danger)' }}>{err}</div>}
         </div>
@@ -1426,7 +1438,7 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
   const teamRoles = useTeamStore((s) => (sidebarTeamId ? s.roles.get(sidebarTeamId) ?? [] : [])) as any[];
   const teamMembers = useTeamStore((s) => (sidebarTeamId ? s.members.get(sidebarTeamId) ?? [] : [])) as any[];
   const teamGroups = useTeamStore((s) => (sidebarTeamId ? s.groups.get(sidebarTeamId) : undefined)) ?? EMPTY_LIST;
-  const groupsById = useMemo(() => new Map<string, { name: string; accessRoleIds: string[] }>(teamGroups.map((g) => [g.id, g])), [teamGroups]);
+  const groupsById = useMemo(() => new Map<string, { name: string; accessRoleIds: string[]; hiddenIfRestricted: boolean }>(teamGroups.map((g) => [g.id, g])), [teamGroups]);
   const everyoneRoleId = teamRoles.find((r) => r.isDefault)?.id;
   const myRoleIds = (teamMembers.find((m) => m.userId === currentUserId())?.roleIds ?? []) as string[];
   // Pure-inheritance access: when a channel sits in a group, the group's
@@ -1524,8 +1536,13 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
   // same rule at sync time, but channels can become restricted live (via
   // channel:access-update / channel:updated) without a re-sync, so we
   // need to re-check on every render too.
-  const hiddenForMe = (c: { accessRoleIds?: string[]; hiddenIfRestricted?: boolean; hidden_if_restricted?: boolean }) => {
-    const hidden = !!(c.hiddenIfRestricted ?? c.hidden_if_restricted);
+  const hiddenForMe = (c: { accessRoleIds?: string[]; hiddenIfRestricted?: boolean; hidden_if_restricted?: boolean; groupId?: string | null }) => {
+    // Group inherits hidden_if_restricted to its channels — when set on the
+    // group, the channel's own flag is ignored. Mirrors the server filter.
+    const group = c.groupId ? groupsById.get(c.groupId) : undefined;
+    const hidden = group
+      ? group.hiddenIfRestricted
+      : !!(c.hiddenIfRestricted ?? c.hidden_if_restricted);
     return hidden && !canJoinChannel(c);
   };
   const visibleChannels = channels.filter((c) => !hiddenForMe(c));
@@ -3864,7 +3881,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   const [newChanOpen, setNewChanOpen] = useState(false);
   const [chanSettings, setChanSettings] = useState(null); // {id, name, topic} or null
   const [chanAccess, setChanAccess] = useState(null); // {id, name, accessRoleIds, hidden_if_restricted} or null
-  const [groupAccess, setGroupAccess] = useState<{ id: string; name: string; accessRoleIds: string[] } | null>(null);
+  const [groupAccess, setGroupAccess] = useState<{ id: string; name: string; accessRoleIds: string[]; hiddenIfRestricted: boolean } | null>(null);
   const [groupSettings, setGroupSettings] = useState<{ id: string; name: string } | null>(null);
   const [newServerOpen, setNewServerOpen] = useState(false);
   // Generic context menu: { x, y, items: [{ label, icon, danger, onClick }] }
@@ -3953,7 +3970,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
       const g = tid
         ? (useTeamStore.getState().groups.get(tid) ?? []).find((x) => x.id === id)
         : undefined;
-      if (g) setGroupAccess({ id: g.id, name: g.name, accessRoleIds: g.accessRoleIds });
+      if (g) setGroupAccess({ id: g.id, name: g.name, accessRoleIds: g.accessRoleIds, hiddenIfRestricted: g.hiddenIfRestricted });
     }
     function onGroupSettings(e) {
       const id = e.detail;

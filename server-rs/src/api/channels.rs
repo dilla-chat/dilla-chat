@@ -50,7 +50,13 @@ pub async fn list(
         let mut out: Vec<serde_json::Value> = Vec::new();
         for ch in all {
             let access = db::get_channel_access_roles(conn, &ch.id).unwrap_or_default();
-            if ch.hidden_if_restricted {
+            // Group inherits hidden_if_restricted to the channel; same
+            // resolution rule as get_channel_access_roles.
+            let group_hidden = ch.group_id.as_deref().and_then(|gid| {
+                db::get_group_by_id(conn, gid).ok().flatten().map(|g| g.hidden_if_restricted)
+            });
+            let hidden = group_hidden.unwrap_or(ch.hidden_if_restricted);
+            if hidden {
                 let allowed = db::user_can_access_channel(conn, &user_id, &team_id, &ch.id).unwrap_or(false);
                 if !allowed { continue; }
             }

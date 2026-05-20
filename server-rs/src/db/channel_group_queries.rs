@@ -15,9 +15,11 @@ pub struct ChannelGroup {
     pub position: i32,
     pub created_at: String,
     pub updated_at: String,
+    #[serde(default)]
+    pub hidden_if_restricted: bool,
 }
 
-const GROUP_COLS: &str = "id, team_id, name, position, created_at, updated_at";
+const GROUP_COLS: &str = "id, team_id, name, position, created_at, updated_at, hidden_if_restricted";
 
 fn row_to_group(row: &rusqlite::Row) -> Result<ChannelGroup, rusqlite::Error> {
     Ok(ChannelGroup {
@@ -27,6 +29,7 @@ fn row_to_group(row: &rusqlite::Row) -> Result<ChannelGroup, rusqlite::Error> {
         position: row.get(3)?,
         created_at: row.get(4)?,
         updated_at: row.get(5)?,
+        hidden_if_restricted: row.get::<_, i32>(6).unwrap_or(0) != 0,
     })
 }
 
@@ -53,17 +56,17 @@ pub fn get_group_by_id(
 
 pub fn create_group(conn: &Connection, g: &ChannelGroup) -> Result<(), rusqlite::Error> {
     conn.execute(
-        "INSERT INTO channel_groups (id, team_id, name, position, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        params![g.id, g.team_id, g.name, g.position, g.created_at, g.updated_at],
+        "INSERT INTO channel_groups (id, team_id, name, position, created_at, updated_at, hidden_if_restricted)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![g.id, g.team_id, g.name, g.position, g.created_at, g.updated_at, g.hidden_if_restricted as i32],
     )?;
     Ok(())
 }
 
 pub fn update_group(conn: &Connection, g: &ChannelGroup) -> Result<(), rusqlite::Error> {
     conn.execute(
-        "UPDATE channel_groups SET name = ?1, position = ?2, updated_at = ?3 WHERE id = ?4",
-        params![g.name, g.position, g.updated_at, g.id],
+        "UPDATE channel_groups SET name = ?1, position = ?2, hidden_if_restricted = ?3, updated_at = ?4 WHERE id = ?5",
+        params![g.name, g.position, g.hidden_if_restricted as i32, g.updated_at, g.id],
     )?;
     Ok(())
 }

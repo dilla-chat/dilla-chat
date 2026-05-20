@@ -96,6 +96,7 @@ function applySyncData(teamId: string, data: any, setters: SyncStoreSetters) {
       name: (g.name as string) ?? '',
       position: (g.position as number) ?? 0,
       accessRoleIds: (g.access_role_ids ?? g.accessRoleIds ?? []) as string[],
+      hiddenIfRestricted: Boolean(g.hidden_if_restricted ?? g.hiddenIfRestricted),
     }));
     useTeamStore.getState().setGroups(teamId, groups);
   }
@@ -455,6 +456,7 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
       name: (raw.name as string) ?? '',
       position: (raw.position as number) ?? 0,
       accessRoleIds: (raw.access_role_ids ?? raw.accessRoleIds ?? []) as string[],
+      hiddenIfRestricted: Boolean(raw.hidden_if_restricted ?? raw.hiddenIfRestricted),
     });
     const unsubGroupCreated = ws.on('group:created', (payload: { team_id?: string; group?: Record<string, unknown> }) => {
       if (!payload?.team_id || !payload?.group) return;
@@ -483,12 +485,16 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
         ts.setChannels(payload.team_id, next);
       }
     });
-    const unsubGroupAccess = ws.on('group:access-update', (payload: { team_id?: string; group_id?: string; role_ids?: string[] }) => {
+    const unsubGroupAccess = ws.on('group:access-update', (payload: { team_id?: string; group_id?: string; role_ids?: string[]; hidden_if_restricted?: boolean }) => {
       if (!payload?.team_id || !payload?.group_id) return;
       const ts = useTeamStore.getState();
       const existing = (ts.groups.get(payload.team_id) ?? []).find((g) => g.id === payload.group_id);
       if (!existing) return;
-      ts.upsertGroup(payload.team_id, { ...existing, accessRoleIds: payload.role_ids ?? [] });
+      ts.upsertGroup(payload.team_id, {
+        ...existing,
+        accessRoleIds: payload.role_ids ?? [],
+        hiddenIfRestricted: payload.hidden_if_restricted ?? existing.hiddenIfRestricted,
+      });
     });
 
     // Partial update from PUT /channels/:cid/access — only role_ids changed.

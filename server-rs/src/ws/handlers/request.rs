@@ -62,7 +62,15 @@ pub(in crate::ws) async fn handle_request(hub: &Hub, user_id: &str, team_id: &st
                     .iter()
                     .filter_map(|ch| {
                         let access = db::get_channel_access_roles(conn, &ch.id).unwrap_or_default();
-                        if ch.hidden_if_restricted {
+                        // Hidden semantics now come from whichever entity
+                        // owns the access list: when the channel is in a
+                        // group, the group's hidden_if_restricted wins;
+                        // otherwise the channel's own flag still applies.
+                        let group_hidden = ch.group_id.as_deref().and_then(|gid| {
+                            db::get_group_by_id(conn, gid).ok().flatten().map(|g| g.hidden_if_restricted)
+                        });
+                        let hidden = group_hidden.unwrap_or(ch.hidden_if_restricted);
+                        if hidden {
                             let allowed = db::user_can_access_channel(conn, &uid2, &tid2, &ch.id).unwrap_or(false);
                             if !allowed {
                                 return None;

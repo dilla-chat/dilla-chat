@@ -234,7 +234,7 @@ function buildSyncInitPayload() {
     roles: MOCK_ROLES,
     groups: MOCK_GROUPS.map((g) => ({
       id: g.id, team_id: g.teamId, name: g.name, position: g.position,
-      access_role_ids: g.accessRoleIds,
+      access_role_ids: g.accessRoleIds, hidden_if_restricted: g.hiddenIfRestricted,
     })),
     presences: MOCK_PRESENCES,
     voice_states: MOCK_VOICE_STATES,

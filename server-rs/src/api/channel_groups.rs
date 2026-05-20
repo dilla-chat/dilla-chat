@@ -32,11 +32,14 @@ pub struct CreateGroupRequest {
 pub struct UpdateGroupRequest {
     pub name: Option<String>,
     pub position: Option<i32>,
+    pub hidden_if_restricted: Option<bool>,
 }
 
 #[derive(Deserialize)]
 pub struct SetAccessRequest {
     pub role_ids: Vec<String>,
+    #[serde(default)]
+    pub hidden_if_restricted: Option<bool>,
 }
 
 pub async fn list(
@@ -99,6 +102,7 @@ pub async fn create(
             position: max_pos + 1,
             created_at: now.clone(),
             updated_at: now,
+            hidden_if_restricted: false,
         };
         db::create_group(conn, &group)?;
         let _ = db::insert_audit_event(
@@ -154,6 +158,9 @@ pub async fn update(
         }
         if let Some(pos) = body.position {
             g.position = pos;
+        }
+        if let Some(hidden) = body.hidden_if_restricted {
+            g.hidden_if_restricted = hidden;
         }
         g.updated_at = db::now_str();
         db::update_group(conn, &g)?;
@@ -257,12 +264,17 @@ pub async fn set_access(
     let group_id_clone = group_id.clone();
     let (group, role_ids, affected_channels) = spawn_db(state.db.clone(), move |conn| {
         require_permission(conn, &user_id, &team_id_clone, db::PERM_MANAGE_CHANNELS)?;
-        let g = db::get_group_by_id(conn, &group_id_clone)?
+        let mut g = db::get_group_by_id(conn, &group_id_clone)?
             .ok_or(rusqlite::Error::QueryReturnedNoRows)?;
         if g.team_id != team_id_clone {
             return Err(rusqlite::Error::QueryReturnedNoRows);
         }
         db::set_group_access_roles(conn, &group_id_clone, &body.role_ids)?;
+        if let Some(hidden) = body.hidden_if_restricted {
+            g.hidden_if_restricted = hidden;
+            g.updated_at = db::now_str();
+            db::update_group(conn, &g)?;
+        }
         let mut stmt = conn.prepare(
             "SELECT id FROM channels WHERE group_id = ?1",
         )?;
@@ -295,6 +307,7 @@ pub async fn set_access(
         "team_id": group.team_id,
         "name": group.name,
         "role_ids": role_ids,
+        "hidden_if_restricted": group.hidden_if_restricted,
         "channel_ids": affected_channels,
     });
     if let Ok(evt) = Event::new("group:access-update", payload.clone()) {

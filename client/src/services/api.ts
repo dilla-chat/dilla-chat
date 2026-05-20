@@ -405,14 +405,16 @@ class ApiService {
       conn.token,
     )) as { role_ids: string[] };
   }
-  async setGroupAccess(teamId: string, groupId: string, roleIds: string[]): Promise<{ role_ids: string[] }> {
+  async setGroupAccess(teamId: string, groupId: string, roleIds: string[], hiddenIfRestricted?: boolean): Promise<{ role_ids: string[]; hidden_if_restricted: boolean }> {
     const conn = this.getConnection(teamId);
+    const body: Record<string, unknown> = { role_ids: roleIds };
+    if (hiddenIfRestricted !== undefined) body.hidden_if_restricted = hiddenIfRestricted;
     return (await this.request(
       conn.baseUrl,
       `/api/v1/teams/${teamId}/groups/${groupId}/access`,
-      { method: 'PUT', body: JSON.stringify({ role_ids: roleIds }) },
+      { method: 'PUT', body: JSON.stringify(body) },
       conn.token,
-    )) as { role_ids: string[] };
+    )) as { role_ids: string[]; hidden_if_restricted: boolean };
   }
 
   async deleteChannel(teamId: string, channelId: string): Promise<void> {

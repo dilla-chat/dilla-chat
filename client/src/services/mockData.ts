@@ -50,9 +50,9 @@ export const MOCK_ROLES: Role[] = [
 // by groupId; access lists default to empty (open). Matches the real
 // schema in migration 020 so /mesh exercises the same code paths as /app.
 export const MOCK_GROUPS = [
-  { id: 'grp-general', teamId: DEMO_TEAM_ID, name: 'General', position: 0, accessRoleIds: [] as string[] },
-  { id: 'grp-development', teamId: DEMO_TEAM_ID, name: 'Development', position: 1, accessRoleIds: [] as string[] },
-  { id: 'grp-offtopic', teamId: DEMO_TEAM_ID, name: 'Off-Topic', position: 2, accessRoleIds: [] as string[] },
+  { id: 'grp-general', teamId: DEMO_TEAM_ID, name: 'General', position: 0, accessRoleIds: [] as string[], hiddenIfRestricted: false },
+  { id: 'grp-development', teamId: DEMO_TEAM_ID, name: 'Development', position: 1, accessRoleIds: [] as string[], hiddenIfRestricted: false },
+  { id: 'grp-offtopic', teamId: DEMO_TEAM_ID, name: 'Off-Topic', position: 2, accessRoleIds: [] as string[], hiddenIfRestricted: false },
 ];
 
 export const MOCK_CHANNELS: Channel[] = [

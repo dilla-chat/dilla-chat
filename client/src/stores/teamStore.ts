@@ -70,6 +70,9 @@ export interface ChannelGroup {
   position: number;
   /** Role IDs that gate access to channels in this group. */
   accessRoleIds: string[];
+  /** When true and the group's roles exclude the caller, every channel
+   *  in the group is omitted from listings entirely (no padlock). */
+  hiddenIfRestricted: boolean;
 }
 
 interface TeamState {
