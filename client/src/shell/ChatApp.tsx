@@ -1242,6 +1242,7 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
                           : { label: joinAllowed ? 'Join voice' : 'Locked', disabled: !joinAllowed, icon: joinAllowed ? <Icon.Speaker size={13} /> : <Icon.Lock size={13} />, onClick: () => { if (joinAllowed) onJoinVoice?.(c.id); } },
                         { label: 'Copy link', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6 10l4-4M6 6l4 4" stroke="currentColor" strokeWidth="1.4"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/></svg>, onClick: () => { navigator.clipboard?.writeText(('dilla://' + nodeHost + '/k/') + c.id); window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Voice kanal link copied.', duration: 2000 } })); } },
                         { sep: true },
+                        { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-channel-access', { detail: c.id })) },
                         { label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-channel-settings', { detail: c.id })) },
                       ] } }));
                     }}>
@@ -3292,6 +3293,36 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   // arrives, then are reconciled (same id = no glitch).
   useEffect(() => { setMessages(data.MESSAGES); }, [data.MESSAGES]);
   useEffect(() => { setDmMessages(data.DM_MESSAGES); }, [data.DM_MESSAGES]);
+
+  // Server-side rejections (slow mode, future quota/perm gates) — roll
+  // back the optimistic message and restore its text to the composer so
+  // the user can retry after the cooldown.
+  useEffect(() => {
+    const me = currentUserId();
+    const unsub = ws.on('message:rejected', (payload: any) => {
+      const channelId = payload?.channel_id;
+      if (!channelId) return;
+      setMessages(prev => {
+        const list = (prev[channelId] || []) as any[];
+        // Most recent optimistic message authored by me in this channel.
+        let removedText: string | null = null;
+        const next = [...list];
+        for (let i = next.length - 1; i >= 0; i--) {
+          const m = next[i];
+          if (m.author === me && typeof m.id === 'string' && m.id.startsWith('new-')) {
+            removedText = m.text ?? null;
+            next.splice(i, 1);
+            break;
+          }
+        }
+        if (removedText) {
+          setDrafts(d => ({ ...d, [channelId]: removedText! }));
+        }
+        return { ...prev, [channelId]: next };
+      });
+    });
+    return () => { unsub(); };
+  }, []);
 
   // Poll WS feed: route into the shared pollStore so the data survives
   // listener-mount races (eager-load may have stashed entries before this
