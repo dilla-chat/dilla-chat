@@ -153,6 +153,17 @@ dialog[open], .modal-enter {
   }
 }
 
+/* In-app override of motion preference. Settings > Appearance >
+   "Reduce motion" sets data-reduce-motion on <html>; the rule below
+   collapses animations + transitions the same way the OS media
+   query does. */
+html[data-reduce-motion='true'] *,
+html[data-reduce-motion='true'] *::before,
+html[data-reduce-motion='true'] *::after {
+  animation-duration: 0.01ms !important;
+  transition-duration: 0.01ms !important;
+}
+
 /* ====================================================================
    Mesh design — relocated from mesh-overrides.css. Global form-element
    baseline applied unconditionally; theming flows through CSS tokens.

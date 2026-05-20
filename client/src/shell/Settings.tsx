@@ -956,8 +956,10 @@ function UserAppear() {
   const density = useUserSettingsStore((s) => s.density);
   const setDensity = useUserSettingsStore((s) => s.setDensity);
 
-  const [motion, setMotion] = useStateS(false);
-  const [size, setSize] = useStateS(14);
+  const motion = useUserSettingsStore((s) => s.reduceMotion);
+  const setMotion = useUserSettingsStore((s) => s.setReduceMotion);
+  const size = useUserSettingsStore((s) => s.baseFontPx);
+  const setSize = useUserSettingsStore((s) => s.setBaseFontPx);
 
   return (
     <>
@@ -978,11 +980,11 @@ function UserAppear() {
         </Row>
       </Group>
       <Group title="Type & spacing">
-        <Row label="Base font size">
+        <Row label="Base font size" hint="Scales the whole UI proportionally — affects every rem-sized element.">
           <div className="set-stepper">
-            <button onClick={() => setSize(s => Math.max(11, s - 1))}>−</button>
+            <button onClick={() => setSize(size - 1)} disabled={size <= 11}>−</button>
             <span>{size}px</span>
-            <button onClick={() => setSize(s => Math.min(20, s + 1))}>+</button>
+            <button onClick={() => setSize(size + 1)} disabled={size >= 20}>+</button>
           </div>
         </Row>
         <Row label="Reduce motion" hint="Disable speaking pulses, typing-dot animations, and decorative transitions.">

@@ -17,6 +17,7 @@ import { useIdentityBackup } from '../hooks/useIdentityBackup';
 import { usePrekeyBackfill } from '../hooks/usePrekeyBackfill';
 import { usePresenceEvents } from '../hooks/usePresenceEvents';
 import { useCustomTheme } from '../hooks/useCustomTheme';
+import { useApplyUIPreferences } from '../hooks/useApplyUIPreferences';
 import { useShellSync } from '../hooks/useShellSync';
 import { useChannelEvents } from '../hooks/useChannelEvents';
 import { useDMEvents } from '../hooks/useDMEvents';
@@ -30,6 +31,7 @@ export default function App() {
   const authTeams = useAuthStore((s) => s.teams);
 
   useCustomTheme();
+  useApplyUIPreferences();
   useShellSync();
   const { cryptoReady } = useCryptoRestore();
   const { authChecked, dataLoaded } = useTeamSync(activeTeamId);
