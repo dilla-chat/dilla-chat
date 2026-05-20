@@ -2747,20 +2747,29 @@ img.attach-img {
   display: flex; gap: 6px;
   margin-top: 12px;
 }
+/* Matches the .set-btn look so the secondary outline button is the
+   same component family across panels (profile popover, settings,
+   etc.). The only deviation is `flex: 1` so paired buttons in the
+   popover stretch evenly across the row. */
 .pp-btn {
   flex: 1;
-  height: 30px;
+  height: 1.75rem;
+  padding: 0 0.75rem;
   border-radius: var(--r-sm);
   border: 1px solid var(--hairline-2);
-  background: var(--bg);
+  background: var(--surface-2);
   color: var(--fg);
   font: inherit;
-  font-size: 12px;
+  font-size: 0.75rem;
   white-space: nowrap;
   cursor: pointer;
-  transition: background .12s, border-color .12s;
+  transition: background .12s, border-color .12s, color .12s;
 }
-.pp-btn:hover { border-color: var(--accent); color: var(--accent); }
+.pp-btn:hover {
+  background: var(--surface-hi);
+  border-color: var(--accent);
+  color: var(--accent);
+}
 .pp-btn.primary {
   background: var(--accent);
   color: var(--accent-ink);
