@@ -19,6 +19,7 @@ pub mod debug;
 pub mod audit;
 pub mod polls;
 pub mod channel_mutes;
+pub mod channel_groups;
 pub mod gif;
 
 use crate::auth::{self, AuthService};
@@ -222,6 +223,22 @@ pub fn create_router(state: AppState) -> Router {
         .route(
             "/api/v1/teams/{team_id}/polls/{poll_id}/votes",
             post(polls::vote).delete(polls::unvote),
+        )
+        // Channel groups — first-class containers for channels that own
+        // role-based access (pure inheritance: channels in a group use
+        // the group's roles, channels without a group fall back to
+        // channel_role_access).
+        .route(
+            "/api/v1/teams/{team_id}/groups",
+            get(channel_groups::list).post(channel_groups::create),
+        )
+        .route(
+            "/api/v1/teams/{team_id}/groups/{group_id}",
+            put(channel_groups::update).delete(channel_groups::delete),
+        )
+        .route(
+            "/api/v1/teams/{team_id}/groups/{group_id}/access",
+            get(channel_groups::get_access).put(channel_groups::set_access),
         )
         // Gif search proxy for the /giphy slash command. Server-side so
         // the Giphy API key (DILLA_GIPHY_API_KEY) stays out of the bundle.

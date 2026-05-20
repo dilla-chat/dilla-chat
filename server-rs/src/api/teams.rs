@@ -148,7 +148,7 @@ pub async fn create(
             created_by: user_id.clone(),
             created_at: now.clone(),
             updated_at: now.clone(),
-            locked: false, hidden_if_restricted: false, slow_mode_seconds: 0,
+            locked: false, hidden_if_restricted: false, slow_mode_seconds: 0, group_id: None,
         };
         db::create_channel(conn, &channel)?;
 

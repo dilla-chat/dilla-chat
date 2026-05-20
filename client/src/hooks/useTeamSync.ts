@@ -82,11 +82,22 @@ function applySyncData(teamId: string, data: any, setters: SyncStoreSetters) {
     const channels = (data.channels as Record<string, unknown>[]).map((ch) => ({
       ...ch,
       teamId: ch.teamId ?? ch.team_id ?? teamId,
+      groupId: (ch.group_id ?? ch.groupId ?? null) as string | null,
       accessRoleIds: (ch.access_role_ids ?? ch.accessRoleIds ?? []) as string[],
       slowModeSeconds: (ch.slow_mode_seconds ?? ch.slowModeSeconds ?? 0) as number,
       hiddenIfRestricted: Boolean(ch.hidden_if_restricted ?? ch.hiddenIfRestricted),
     })) as Channel[];
     setters.setChannels(teamId, channels);
+  }
+  if (Array.isArray(data.groups)) {
+    const groups = (data.groups as Record<string, unknown>[]).map((g) => ({
+      id: g.id as string,
+      teamId: (g.team_id ?? g.teamId ?? teamId) as string,
+      name: (g.name as string) ?? '',
+      position: (g.position as number) ?? 0,
+      accessRoleIds: (g.access_role_ids ?? g.accessRoleIds ?? []) as string[],
+    }));
+    useTeamStore.getState().setGroups(teamId, groups);
   }
   if (data.team) setters.setTeam(data.team as Team);
   const normalizedMembers = data.members
@@ -434,6 +445,52 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
       }
     });
 
+    // Channel-group mutation events. Groups own access lists; channels in
+    // them inherit. Sidebar restriction state, access modals, and the
+    // hidden_if_restricted recompute all read through the store, so a
+    // local patch here is enough — no re-sync needed.
+    const normalizeGroup = (raw: Record<string, unknown>, tid: string) => ({
+      id: raw.id as string,
+      teamId: (raw.team_id ?? raw.teamId ?? tid) as string,
+      name: (raw.name as string) ?? '',
+      position: (raw.position as number) ?? 0,
+      accessRoleIds: (raw.access_role_ids ?? raw.accessRoleIds ?? []) as string[],
+    });
+    const unsubGroupCreated = ws.on('group:created', (payload: { team_id?: string; group?: Record<string, unknown> }) => {
+      if (!payload?.team_id || !payload?.group) return;
+      useTeamStore.getState().upsertGroup(payload.team_id, normalizeGroup(payload.group, payload.team_id));
+    });
+    const unsubGroupUpdated = ws.on('group:updated', (payload: { team_id?: string; group?: Record<string, unknown> }) => {
+      if (!payload?.team_id || !payload?.group) return;
+      // Preserve the access list — group:updated only mutates name/position;
+      // a separate group:access-update event carries role changes.
+      const next = normalizeGroup(payload.group, payload.team_id);
+      const existing = (useTeamStore.getState().groups.get(payload.team_id) ?? []).find((g) => g.id === next.id);
+      if (existing) next.accessRoleIds = existing.accessRoleIds;
+      useTeamStore.getState().upsertGroup(payload.team_id, next);
+    });
+    const unsubGroupDeleted = ws.on('group:deleted', (payload: { team_id?: string; group?: { id?: string }; channel_ids?: string[] }) => {
+      if (!payload?.team_id || !payload?.group?.id) return;
+      useTeamStore.getState().removeGroup(payload.team_id, payload.group.id);
+      // Affected channels lost their group_id server-side; mirror locally
+      // so the sidebar pops them out of the group section immediately.
+      if (Array.isArray(payload.channel_ids) && payload.channel_ids.length > 0) {
+        const ts = useTeamStore.getState();
+        const list = ts.channels.get(payload.team_id) ?? [];
+        const next = list.map((c) =>
+          payload.channel_ids!.includes(c.id) ? { ...c, groupId: null } : c,
+        );
+        ts.setChannels(payload.team_id, next);
+      }
+    });
+    const unsubGroupAccess = ws.on('group:access-update', (payload: { team_id?: string; group_id?: string; role_ids?: string[] }) => {
+      if (!payload?.team_id || !payload?.group_id) return;
+      const ts = useTeamStore.getState();
+      const existing = (ts.groups.get(payload.team_id) ?? []).find((g) => g.id === payload.group_id);
+      if (!existing) return;
+      ts.upsertGroup(payload.team_id, { ...existing, accessRoleIds: payload.role_ids ?? [] });
+    });
+
     // Partial update from PUT /channels/:cid/access — only role_ids changed.
     const unsubAccess = ws.on('channel:access-update', (payload: { channel_id?: string; role_ids?: string[] }) => {
       if (!payload?.channel_id) return;
@@ -455,6 +512,10 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
       unsubAccess();
       unsubMute();
       unsubMemberRoles();
+      unsubGroupCreated();
+      unsubGroupUpdated();
+      unsubGroupDeleted();
+      unsubGroupAccess();
     };
   }, [activeTeamId]);
 

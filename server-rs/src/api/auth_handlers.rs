@@ -479,7 +479,7 @@ fn create_bootstrap_defaults(
             created_by: user_id.to_string(),
             created_at: now.clone(),
             updated_at: now.clone(),
-            locked: false, hidden_if_restricted: false, slow_mode_seconds: 0,
+            locked: false, hidden_if_restricted: false, slow_mode_seconds: 0, group_id: None,
         };
         db::create_channel(conn, &channel)?;
     }

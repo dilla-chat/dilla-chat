@@ -21,6 +21,7 @@ mod read_queries;
 mod audit_queries;
 mod poll_queries;
 mod channel_access_queries;
+mod channel_group_queries;
 mod channel_mute_queries;
 
 use rusqlite::Connection;
@@ -49,6 +50,7 @@ pub use read_queries::*;
 pub use audit_queries::*;
 pub use poll_queries::*;
 pub use channel_access_queries::*;
+pub use channel_group_queries::*;
 pub use channel_mute_queries::*;
 
 const MIGRATIONS: &[(&str, &str)] = &[
@@ -71,6 +73,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
     ("017_channel_slow_mode.sql", include_str!("../../migrations/017_channel_slow_mode.sql")),
     ("018_channel_mutes.sql", include_str!("../../migrations/018_channel_mutes.sql")),
     ("019_channel_name_unique.sql", include_str!("../../migrations/019_channel_name_unique.sql")),
+    ("020_channel_groups.sql", include_str!("../../migrations/020_channel_groups.sql")),
 ];
 
 /// Default number of read connections in the pool.

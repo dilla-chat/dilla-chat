@@ -72,6 +72,7 @@ function mapChannel(ch, occupants, unreadCounts) {
     type: ch.type,
     topic: ch.topic ?? '',
     category: ch.category ?? '',
+    groupId: (ch.groupId ?? ch.group_id ?? null) as string | null,
     encrypted: true,
     unread,
     locked: !!ch.locked,

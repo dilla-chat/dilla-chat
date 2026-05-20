@@ -43,6 +43,12 @@ function currentUserId(): string {
   return (window as any).SHELL_DATA?.currentUserId || '';
 }
 
+// Stable empty array reference for zustand selectors that may fall back
+// to "no entries" — using a fresh `[]` from the selector triggers a new
+// reference on every render and creates a feedback loop with the
+// component's own state updates.
+const EMPTY_LIST: any[] = [];
+
 // ───────────── helpers ─────────────
 // Convert a server-side poll payload to the local kind:'poll' message
 // shape that the timeline renderer expects. Uses the poll's id as the
@@ -1240,19 +1246,34 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
   const sidebarTeamId = useTeamStore((s) => s.activeTeamId);
   const teamRoles = useTeamStore((s) => (sidebarTeamId ? s.roles.get(sidebarTeamId) ?? [] : [])) as any[];
   const teamMembers = useTeamStore((s) => (sidebarTeamId ? s.members.get(sidebarTeamId) ?? [] : [])) as any[];
+  const teamGroups = useTeamStore((s) => (sidebarTeamId ? s.groups.get(sidebarTeamId) : undefined)) ?? EMPTY_LIST;
+  const groupsById = useMemo(() => new Map<string, { name: string; accessRoleIds: string[] }>(teamGroups.map((g) => [g.id, g])), [teamGroups]);
   const everyoneRoleId = teamRoles.find((r) => r.isDefault)?.id;
   const myRoleIds = (teamMembers.find((m) => m.userId === currentUserId())?.roleIds ?? []) as string[];
-  const canJoinChannel = (c: { accessRoleIds?: string[] }) => {
+  // Pure-inheritance access: when a channel sits in a group, the group's
+  // role list is the source of truth and the channel's own list is
+  // ignored. resolveAccessRoles centralizes that so isRestricted /
+  // canJoinChannel can stay in sync with the server's resolver.
+  const resolveAccessRoles = (c: { groupId?: string | null; accessRoleIds?: string[] }): string[] => {
+    if (c.groupId) {
+      const g = groupsById.get(c.groupId);
+      return g?.accessRoleIds ?? [];
+    }
+    return c.accessRoleIds ?? [];
+  };
+  const canJoinChannel = (c: { groupId?: string | null; accessRoleIds?: string[] }) => {
     if (isAdminHere) return true;
-    const access = c.accessRoleIds ?? [];
+    const access = resolveAccessRoles(c);
     if (access.length === 0) return true; // back-compat: no access list = open
     if (everyoneRoleId && access.includes(everyoneRoleId)) return true;
     return access.some((rid) => myRoleIds.includes(rid));
   };
   // Channel is "restricted" (padlock icon) whenever its access list is
-  // non-empty AND doesn't include the everyone role.
-  const isRestricted = (c: { accessRoleIds?: string[] }) => {
-    const access = c.accessRoleIds ?? [];
+  // non-empty AND doesn't include the everyone role. Inherited from the
+  // channel's group when applicable, so a single group-level restriction
+  // surfaces the lock on every channel inside it.
+  const isRestricted = (c: { groupId?: string | null; accessRoleIds?: string[] }) => {
+    const access = resolveAccessRoles(c);
     return access.length > 0 && everyoneRoleId !== undefined && !access.includes(everyoneRoleId);
   };
   // Sidebar groups are stored as a Set of collapsed-category names in
@@ -1286,24 +1307,33 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
       return next;
     });
   };
-  // Group a flat channel list into [{label, key, channels}] preserving
-  // input order within each group. The empty-string category collapses
-  // to a "default" bucket whose label is supplied by the caller (Kanals
-  // for text, Voice for voice).
+  // Group a flat channel list by its owning group (preferred) or, for
+  // ungrouped channels, by the legacy `category` string. Empty bucket
+  // collapses to a default labeled by the caller (Kanals for text,
+  // Voice for voice). Group lookups use teamGroups so renames flow
+  // through without a re-sync; the legacy fallback covers any channel
+  // created before migration 020 (none should exist on a clean db).
   const groupByCategory = (
-    chs: Array<{ id: string; category?: string }>,
+    chs: Array<{ id: string; category?: string; groupId?: string | null }>,
     defaultLabel: string,
   ): Array<{ key: string; label: string; channels: typeof chs }> => {
     const map = new Map<string, { key: string; label: string; channels: typeof chs }>();
     for (const c of chs) {
-      const raw = (c.category ?? '').trim();
-      const key = raw;
-      if (!map.has(key)) {
-        map.set(key, { key, label: raw || defaultLabel, channels: [] });
+      let key = '';
+      let label = defaultLabel;
+      if (c.groupId) {
+        const g = groupsById.get(c.groupId);
+        key = 'g:' + c.groupId;
+        label = g?.name ?? defaultLabel;
+      } else if ((c.category ?? '').trim()) {
+        const raw = (c.category as string).trim();
+        key = 'c:' + raw;
+        label = raw;
       }
+      if (!map.has(key)) map.set(key, { key, label, channels: [] });
       map.get(key)!.channels.push(c);
     }
-    // Default bucket first, then user-defined categories in insertion order
+    // Default bucket first, then user-defined groups in insertion order
     // (which mirrors the channel position order from the server).
     const out: Array<{ key: string; label: string; channels: typeof chs }> = [];
     if (map.has('')) out.push(map.get('')!);

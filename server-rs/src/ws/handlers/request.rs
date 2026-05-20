@@ -77,6 +77,18 @@ pub(in crate::ws) async fn handle_request(hub: &Hub, user_id: &str, team_id: &st
                     .collect();
                 let members = db::get_members_by_team(conn, &tid2)?;
                 let roles = db::get_roles_by_team(conn, &tid2)?;
+                let groups_raw = db::get_groups_by_team(conn, &tid2).unwrap_or_default();
+                let groups: Vec<serde_json::Value> = groups_raw
+                    .iter()
+                    .map(|g| {
+                        let access = db::get_group_access_roles(conn, &g.id).unwrap_or_default();
+                        let mut v = serde_json::to_value(g).unwrap_or(serde_json::Value::Null);
+                        if let serde_json::Value::Object(ref mut m) = v {
+                            m.insert("access_role_ids".to_string(), serde_json::json!(access));
+                        }
+                        v
+                    })
+                    .collect();
                 let team = db::get_team(conn, &tid2)?;
                 let unread_pairs = db::get_unread_counts_for_team(conn, &uid2, &tid2)?;
                 let unread_counts: serde_json::Map<String, serde_json::Value> = unread_pairs
@@ -103,6 +115,7 @@ pub(in crate::ws) async fn handle_request(hub: &Hub, user_id: &str, team_id: &st
                     "channels": channels,
                     "members": members_json,
                     "roles": roles,
+                    "groups": groups,
                     "unread_counts": unread_counts,
                     "muted_channels": db::get_muted_channels(conn, &uid2)
                         .unwrap_or_default()

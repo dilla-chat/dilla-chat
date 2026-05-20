@@ -79,6 +79,11 @@ pub struct Channel {
     /// 0 disables slow mode. Enforced by message:send.
     #[serde(default)]
     pub slow_mode_seconds: i32,
+    /// Owning channel-group id; None means the channel sits in the default
+    /// bucket. Pure-inheritance access: channels with a group_id resolve
+    /// access via the group's role list, not their own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

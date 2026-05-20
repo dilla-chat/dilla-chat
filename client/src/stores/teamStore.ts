@@ -17,6 +17,9 @@ export interface Channel {
   type: 'text' | 'voice';
   position: number;
   category: string;
+  /** Owning group id (or null). When set, the channel inherits its access
+   *  list from the group; the channel's own accessRoleIds is ignored. */
+  groupId?: string | null;
   /** Legacy flag — kept readable for older clients but ignored by access
    *  enforcement. `accessRoleIds` is the source of truth. */
   locked?: boolean;
@@ -58,11 +61,23 @@ export interface Role {
   isDefault: boolean;
 }
 
+/** Channel group — owns a name + role-based access list. Channels inherit
+ *  the access list via channel.groupId (pure-inheritance model). */
+export interface ChannelGroup {
+  id: string;
+  teamId: string;
+  name: string;
+  position: number;
+  /** Role IDs that gate access to channels in this group. */
+  accessRoleIds: string[];
+}
+
 interface TeamState {
   teams: Map<string, Team>;
   channels: Map<string, Channel[]>;
   members: Map<string, Member[]>;
   roles: Map<string, Role[]>;
+  groups: Map<string, ChannelGroup[]>;
   activeTeamId: string | null;
   activeChannelId: string | null;
 
@@ -73,6 +88,9 @@ interface TeamState {
   setMembers: (teamId: string, members: Member[]) => void;
   addMember: (teamId: string, member: Member) => void;
   setRoles: (teamId: string, roles: Role[]) => void;
+  setGroups: (teamId: string, groups: ChannelGroup[]) => void;
+  upsertGroup: (teamId: string, group: ChannelGroup) => void;
+  removeGroup: (teamId: string, groupId: string) => void;
   addChannel: (teamId: string, channel: Channel) => void;
   removeChannel: (teamId: string, channelId: string) => void;
   updateChannel: (teamId: string, channel: Channel) => void;
@@ -83,6 +101,7 @@ export const useTeamStore = create<TeamState>((set) => ({
   channels: new Map(),
   members: new Map(),
   roles: new Map(),
+  groups: new Map(),
   activeTeamId: null,
   activeChannelId: null,
 
@@ -125,6 +144,33 @@ export const useTeamStore = create<TeamState>((set) => ({
       const map = new Map(state.roles);
       map.set(teamId, roles);
       return { roles: map };
+    }),
+
+  setGroups: (teamId: string, groups: ChannelGroup[]) =>
+    set((state) => {
+      const map = new Map(state.groups);
+      map.set(teamId, groups);
+      return { groups: map };
+    }),
+
+  upsertGroup: (teamId: string, group: ChannelGroup) =>
+    set((state) => {
+      const map = new Map(state.groups);
+      const existing = map.get(teamId) ?? [];
+      const idx = existing.findIndex((g) => g.id === group.id);
+      const next = idx >= 0
+        ? existing.map((g, i) => (i === idx ? group : g))
+        : [...existing, group];
+      map.set(teamId, next);
+      return { groups: map };
+    }),
+
+  removeGroup: (teamId: string, groupId: string) =>
+    set((state) => {
+      const map = new Map(state.groups);
+      const existing = map.get(teamId) ?? [];
+      map.set(teamId, existing.filter((g) => g.id !== groupId));
+      return { groups: map };
     }),
 
   addChannel: (teamId: string, channel: Channel) =>
