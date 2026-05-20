@@ -5,6 +5,7 @@
 // the user-panel cog opens User preferences.
 
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Icon } from './icons';
 import { useAuthStore } from '../stores/authStore';
 import { useTeamStore } from '../stores/teamStore';
@@ -12,6 +13,9 @@ import { useUserSettingsStore } from '../stores/userSettingsStore';
 import { api } from '../services/api';
 import { isMockSession } from '../services/mockSession';
 import { exportIdentityBlob } from '../services/keyStore';
+import { useShellDataContext } from './ShellDataContext';
+import { startMicTest, stopMicTest, type MicTestSession } from '../services/micTest';
+import { useAudioSettingsStore } from '../stores/audioSettingsStore';
 
 const { useState: useStateS, useEffect: useEffectS, useRef: useRefS } = React;
 
@@ -46,6 +50,7 @@ const USER_TABS = [
 const TEAM_TABS = [
   { id: 'team',       name: 'Team info' },
   { id: 'invites',    name: 'Invites' },
+  { id: 'members',    name: 'Members' },
   { id: 'roles',      name: 'Roles & permissions' },
   { id: 'federation', name: 'Federation' },
   { id: 'audit',      name: 'Audit log' },
@@ -54,6 +59,7 @@ const TEAM_TABS = [
 function Settings({ open, mode, defaultTab, onClose }) {
   const tabs = mode === 'team' ? TEAM_TABS : USER_TABS;
   const [active, setActive] = useStateS(defaultTab || tabs[0].id);
+  const navigate = useNavigate();
   useEffectS(() => { if (open) setActive(defaultTab || tabs[0].id); }, [open, mode, defaultTab]);
   useEffectS(() => {
     if (!open) return;
@@ -65,13 +71,13 @@ function Settings({ open, mode, defaultTab, onClose }) {
   if (!open) return null;
 
   // Derive the heading label from real stores when available, falling back
-  // to the handoff fixture for the standalone preview.
-  const data = (window as any).MOCK_DATA;
-  const me = data?.byId?.thim;
+  const data = useShellDataContext() as any;
+  const meId = data?.currentUserId;
+  const me = meId ? data?.byId?.[meId] : null;
   const team = data?.SERVERS?.[0];
   const subLabel = mode === 'team'
-    ? (team?.name?.toUpperCase() || 'BERRALITOS')
-    : (me?.name || 'thim');
+    ? (team?.name?.toUpperCase() || '')
+    : (me?.name || '');
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -89,7 +95,25 @@ function Settings({ open, mode, defaultTab, onClose }) {
             </button>
           ))}
           <div className="set-nav-foot">
-            <button className="set-nav-item danger">{mode === 'team' ? 'Leave team' : 'Sign out'}</button>
+            <button
+              className="set-nav-item danger"
+              onClick={() => {
+                if (mode === 'team') {
+                  // Leave-team isn't wired yet (server-side endpoint TODO);
+                  // surface that explicitly rather than silently no-op.
+                  window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'system', text: 'Leaving a team isn\'t implemented yet.', duration: 2500 } }));
+                  return;
+                }
+                // Sign out: clear all auth/derivedKey/passphrase from
+                // storage, reset crypto manager, disconnect every WS, and
+                // bounce to /login.
+                onClose();
+                try { useAuthStore.getState().logout(); } catch { /* ignore */ }
+                navigate('/login');
+              }}
+            >
+              {mode === 'team' ? 'Leave team' : 'Sign out'}
+            </button>
           </div>
         </aside>
         <main className="set-pane">
@@ -106,6 +130,7 @@ function Settings({ open, mode, defaultTab, onClose }) {
             {mode === 'user'  && active === 'keys'      && <UserKeys />}
             {mode === 'team'  && active === 'team'      && <TeamInfo />}
             {mode === 'team'  && active === 'invites'   && <TeamInvites />}
+            {mode === 'team'  && active === 'members'   && <TeamMembers />}
             {mode === 'team'  && active === 'roles'     && <TeamRoles />}
             {mode === 'team'  && active === 'federation'&& <TeamFederation />}
             {mode === 'team'  && active === 'audit'     && <TeamAudit />}
@@ -115,7 +140,7 @@ function Settings({ open, mode, defaultTab, onClose }) {
             <div className="set-foot-actions">
               <button className="sc-btn" onClick={onClose}>Cancel · esc</button>
               <button className="sc-btn primary" onClick={() => {
-                window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: mode === 'team' ? 'BERRALITOS' : null, author: 'preferences', text: 'Preferences saved. Synced to 2/2 peers.', duration: 3000 } }));
+                window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: mode === 'team' ? (team?.name?.toUpperCase() || '') : null, author: 'preferences', text: 'Preferences saved.', duration: 3000 } }));
                 onClose();
               }}>Save changes · ⌘↵</button>
             </div>
@@ -172,18 +197,20 @@ function Btn({ children, danger, onClick }) {
 
 // ───────── USER tabs ─────────
 function UserAccount() {
-  // Read the current user from window.MOCK_DATA (set up by useShellData).
-  // Falls back to handoff fixture so the standalone preview keeps rendering.
-  const me = (window as any).MOCK_DATA?.byId?.thim;
+  // Read the current user from window.SHELL_DATA (set up by useShellData).
+  // No hardcoded mock fallback — empty when the data hasn't loaded yet.
+  const data = useShellDataContext() as any;
+  const meId = data?.currentUserId;
+  const me = meId ? data?.byId?.[meId] : null;
   const auth = useActiveTeamAuth();
-  const [name, setName] = useStateS(me?.name || 'thim');
+  const [name, setName] = useStateS(me?.name || '');
   const [status, setStatus] = useStateS(me?.custom || '');
-  const initials = me?.initials || 'TH';
-  const avatarColor = me?.color || '#F39E2B';
+  const initials = me?.initials || '?';
+  const avatarColor = me?.color || 'var(--muted)';
   const publicKey =
     useAuthStore((s) => s.publicKey) ||
-    (window as any).MOCK_DATA?.publicKey ||
-    'ed25519:8e1d3c447a529bf622d14e08af31…';
+    data?.publicKey ||
+    '';
 
   // Debounced persistence: PATCH /api/v1/users/me for display name + status.
   // On /mesh (auth === null) the field is local-only; the value still
@@ -296,41 +323,153 @@ function UserNotif() {
 function UserVoice() {
   // Input/output devices persist via useUserSettingsStore (the voice
   // subsystem reads from the same store when it acquires a media stream).
-  // Other fields (PTT key, processing toggles, camera) are local-only for
-  // now — they'll get their own store fields once voice rig is wired.
   const inputDevice = useUserSettingsStore((s) => s.selectedInputDevice);
   const outputDevice = useUserSettingsStore((s) => s.selectedOutputDevice);
   const setInputDevice = useUserSettingsStore((s) => s.setSelectedInputDevice);
   const setOutputDevice = useUserSettingsStore((s) => s.setSelectedOutputDevice);
+  const inputVolume = useUserSettingsStore((s) => s.inputVolume);
 
-  const [pttKey, setPttKey] = useStateS('⌥ Space');
-  const [ec, setEc] = useStateS(true);
-  const [ns, setNs] = useStateS(true);
+  // Audio processing toggles live in the dedicated audio store so the
+  // voice subsystem and this UI see the same source of truth.
+  const ec = useAudioSettingsStore((s) => s.echoCancellation);
+  const setEc = useAudioSettingsStore((s) => s.setEchoCancellation);
+  const ns = useAudioSettingsStore((s) => s.noiseSuppression);
+  const setNs = useAudioSettingsStore((s) => s.setNoiseSuppression);
+  const pttKey = useAudioSettingsStore((s) => s.pushToTalkKey);
+
   const [camera, setCamera] = useStateS('FaceTime HD');
   const [mirror, setMirror] = useStateS(true);
 
-  // List of input/output devices the user can actually pick on this device.
-  // For now we surface a hardcoded set + the currently-selected value so
-  // the dropdown isn't empty; a future pass calls
-  // navigator.mediaDevices.enumerateDevices() to populate dynamically.
-  const inputs = [...new Set([inputDevice, 'Default · MacBook Pro Microphone', 'AirPods Pro', 'USB Audio CODEC'])].filter(Boolean);
-  const outputs = [...new Set([outputDevice, 'Default · MacBook Pro Speakers', 'AirPods Pro', 'External Display'])].filter(Boolean);
+  // Real device enumeration. `enumerateDevices()` only returns labels
+  // after the user has granted mic permission once — we request that
+  // explicitly the first time the panel opens. If permission is
+  // denied, fall back to a single "Default" entry so the dropdown
+  // isn't empty.
+  const [inputDevs, setInputDevs] = useStateS<Array<{ id: string; label: string }>>([
+    { id: 'default', label: 'Default' },
+  ]);
+  const [outputDevs, setOutputDevs] = useStateS<Array<{ id: string; label: string }>>([
+    { id: 'default', label: 'Default' },
+  ]);
+  const [permError, setPermError] = useStateS<string | null>(null);
+
+  useEffectS(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        // Triggers the permission prompt; without this enumerateDevices
+        // returns blank labels.
+        const probe = await navigator.mediaDevices.getUserMedia({ audio: true });
+        probe.getTracks().forEach((t) => t.stop());
+        const devs = await navigator.mediaDevices.enumerateDevices();
+        if (cancelled) return;
+        const ins = devs
+          .filter((d) => d.kind === 'audioinput')
+          .map((d) => ({ id: d.deviceId || 'default', label: d.label || 'Microphone' }));
+        const outs = devs
+          .filter((d) => d.kind === 'audiooutput')
+          .map((d) => ({ id: d.deviceId || 'default', label: d.label || 'Speakers' }));
+        setInputDevs(ins.length ? [{ id: 'default', label: 'Default' }, ...ins] : [{ id: 'default', label: 'Default' }]);
+        setOutputDevs(outs.length ? [{ id: 'default', label: 'Default' }, ...outs] : [{ id: 'default', label: 'Default' }]);
+        setPermError(null);
+      } catch (err) {
+        const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+        console.error('[Settings] device enumeration failed:', msg);
+        if (!cancelled) setPermError(msg);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Live input-level meter. Acquires the mic, plumbs through the same
+  // gain node the voice subsystem uses, samples RMS in
+  // requestAnimationFrame. The session is torn down when the user
+  // clicks Stop or navigates away from the panel.
+  const [testing, setTesting] = useStateS(false);
+  const [level, setLevel] = useStateS(0);
+  const sessionRef = useRefS<MicTestSession | null>(null);
+  const [testError, setTestError] = useStateS<string | null>(null);
+
+  useEffectS(() => () => {
+    stopMicTest(sessionRef.current);
+    sessionRef.current = null;
+  }, []);
+
+  // Keep gain in sync if the user moves a volume slider while testing.
+  useEffectS(() => {
+    if (sessionRef.current) sessionRef.current.gainNode.gain.value = inputVolume;
+  }, [inputVolume]);
+
+  const startTest = async () => {
+    setTestError(null);
+    try {
+      const constraints = useAudioSettingsStore.getState().getAudioConstraints(inputDevice);
+      console.log('[MicTest] starting with constraints', constraints, 'deviceId=', inputDevice);
+      const session = await startMicTest({
+        audioConstraints: constraints,
+        inputVolume,
+        onLevelUpdate: setLevel,
+      });
+      sessionRef.current = session;
+      setTesting(true);
+    } catch (err) {
+      const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+      console.error('[MicTest] start failed:', msg);
+      setTestError(msg);
+    }
+  };
+
+  const stopTest = () => {
+    stopMicTest(sessionRef.current);
+    sessionRef.current = null;
+    setLevel(0);
+    setTesting(false);
+  };
+
+  // Map the 0..1 RMS level to the 22-cell meter. Cells light up
+  // proportionally; the last few stay dimmed unless the signal
+  // genuinely clips.
+  const litCells = Math.round(level * 22);
 
   return (
     <>
       <Group title="Devices">
         <Row label="Input">
-          <Select value={inputDevice} onChange={setInputDevice} options={inputs} />
+          <Select
+            value={inputDevs.find((d) => d.id === inputDevice)?.label ?? inputDevice}
+            onChange={(label) => {
+              const dev = inputDevs.find((d) => d.label === label);
+              setInputDevice(dev?.id ?? 'default');
+            }}
+            options={inputDevs.map((d) => d.label)}
+          />
         </Row>
         <Row label="Output">
-          <Select value={outputDevice} onChange={setOutputDevice} options={outputs} />
+          <Select
+            value={outputDevs.find((d) => d.id === outputDevice)?.label ?? outputDevice}
+            onChange={(label) => {
+              const dev = outputDevs.find((d) => d.label === label);
+              setOutputDevice(dev?.id ?? 'default');
+            }}
+            options={outputDevs.map((d) => d.label)}
+          />
         </Row>
-        <Row label="Input level" hint="Speak normally to verify levels.">
-          <div className="set-meter">
-            {Array.from({ length: 22 }).map((_, i) => (
-              <span key={i} style={{ background: i < 11 ? 'var(--accent)' : i < 17 ? 'var(--warn)' : 'var(--danger)',
-                                     opacity: i < 13 ? 1 : 0.25 }} />
-            ))}
+        <Row label="Input level" hint={testError ? `Mic error: ${testError}` : permError ? `Permission: ${permError}` : 'Speak normally to verify levels.'}>
+          <div className="set-meter-row">
+            <div className="set-meter">
+              {Array.from({ length: 22 }).map((_, i) => (
+                <span
+                  key={i}
+                  style={{
+                    background: i < 11 ? 'var(--accent)' : i < 17 ? 'var(--warn)' : 'var(--danger)',
+                    opacity: i < litCells ? 1 : 0.18,
+                  }}
+                />
+              ))}
+            </div>
+            <Btn onClick={testing ? stopTest : startTest}>
+              {testing ? 'Stop test' : 'Test mic'}
+            </Btn>
           </div>
         </Row>
       </Group>
@@ -339,7 +478,7 @@ function UserVoice() {
         <Row label="Noise suppression"><Toggle value={ns} onChange={setNs} /></Row>
         <Row label="Push to talk" hint="Hold a key to transmit; release to mute.">
           <div className="set-kbd-row">
-            <TextField mono value={pttKey} onChange={setPttKey} />
+            <TextField mono value={pttKey} onChange={() => { /* TODO: capture key */ }} />
             <Btn>Record</Btn>
           </div>
         </Row>
@@ -399,8 +538,8 @@ function UserAppear() {
   );
 }
 function UserPrivacy() {
-  const data = (window as any).MOCK_DATA;
-  const me = data?.byId?.thim;
+  const data = useShellDataContext() as any;
+  const meId = data?.currentUserId; const me = meId ? data?.byId?.[meId] : null;
   const meName = me?.name || 'me';
   // Pull a safety-number-like 24-hex grouping from the public key when
   // available; fall back to the handoff placeholder grouping otherwise.
@@ -412,7 +551,6 @@ function UserPrivacy() {
   const block1 = fp(0).map(s => s || '— — — —');
   const block2 = fp(24).map(s => s || '— — — —');
   // Verify contacts: iterate over real team members (excluding current user).
-  const meId = data?.currentUserId;
   const others = (data?.MEMBERS ?? []).filter((m: any) => m.id !== meId);
   return (
     <>
@@ -525,13 +663,13 @@ function UserKeys() {
 
 // ───────── TEAM tabs ─────────
 function TeamInfo() {
-  const data = (window as any).MOCK_DATA;
+  const data = useShellDataContext() as any;
   const team = data?.SERVERS?.[0];
   const channels = data?.CHANNELS ?? [];
   const channelNames = channels
     .filter((c: any) => c.type === 'text')
     .map((c: any) => `#${c.name}`);
-  const me = data?.byId?.thim;
+  const meId = data?.currentUserId; const me = meId ? data?.byId?.[meId] : null;
   const created = data?.teamCreatedAt
     ? `${data.teamCreatedAt} · by ${me?.name ?? 'admin'}`
     : `today · by ${me?.name ?? 'admin'}`;
@@ -613,7 +751,9 @@ function TeamInfo() {
   );
 }
 function TeamInvites() {
-  const me = (window as any).MOCK_DATA?.byId?.thim;
+  const data = useShellDataContext() as any;
+  const meId = data?.currentUserId;
+  const me = meId ? data?.byId?.[meId] : null;
   const myLabel = me ? `${me.name} · ${me.role || 'admin'}` : 'admin';
   const auth = useActiveTeamAuth();
   const [rows, setRows] = useStateS<any[]>([]);
@@ -749,32 +889,362 @@ function TeamInvites() {
     </Group>
   );
 }
+const PERM_FLAGS = [
+  { bit: 1 << 0, key: 'admin',            label: 'Admin (all permissions)' },
+  { bit: 1 << 1, key: 'manage_channels',  label: 'Manage channels' },
+  { bit: 1 << 2, key: 'manage_members',   label: 'Manage members (kick / ban)' },
+  { bit: 1 << 3, key: 'manage_roles',     label: 'Manage roles' },
+  { bit: 1 << 4, key: 'send_messages',    label: 'Send messages' },
+  { bit: 1 << 5, key: 'manage_messages',  label: 'Manage messages (delete / pin)' },
+  { bit: 1 << 6, key: 'create_invites',   label: 'Create invites' },
+  { bit: 1 << 7, key: 'manage_team',      label: 'Manage team settings' },
+  { bit: 1 << 8, key: 'bypass_slow_mode', label: 'Bypass slow mode' },
+] as const;
+
+function permsSummary(permissions: number): string {
+  if ((permissions & (1 << 0)) !== 0) return 'all permissions';
+  const labels = PERM_FLAGS.filter((f) => f.bit !== (1 << 0) && (permissions & f.bit) !== 0)
+    .map((f) => f.label.toLowerCase().split(' (')[0]);
+  return labels.length ? labels.join(' · ') : 'no permissions';
+}
+
 function TeamRoles() {
-  // Count members per role from the live MEMBERS array. Falls back to the
-  // handoff 1/1/4 counts if no data is bridged yet (standalone preview).
-  const members = (window as any).MOCK_DATA?.MEMBERS ?? [];
-  const counts = { Admin: 0, Maintainer: 0, Member: 0 };
-  for (const m of members) {
-    const r = (m.role || '').toLowerCase();
-    if (r === 'admin') counts.Admin += 1;
-    else if (r === 'maintainer') counts.Maintainer += 1;
-    else counts.Member += 1;
+  const auth = useActiveTeamAuth();
+  const teamId = auth?.teamId;
+  const storeRoles = useTeamStore((s) => (teamId ? s.roles.get(teamId) ?? [] : []));
+  const members = useTeamStore((s) => (teamId ? s.members.get(teamId) ?? [] : []));
+  const setRoles = useTeamStore((s) => s.setRoles);
+  const [editing, setEditing] = useStateS<{ id: string } | null>(null);
+  const [saving, setSaving] = useStateS(false);
+  const [dragId, setDragId] = useStateS<string | null>(null);
+
+  // Custom (non-default) roles are draggable; sorted high → low. The
+  // default role (`everyone`) is pinned at the bottom as its own block.
+  const customRoles = [...storeRoles]
+    .filter((r) => !r.isDefault)
+    .sort((a, b) => (b.position ?? 0) - (a.position ?? 0));
+  const defaultRole = storeRoles.find((r) => r.isDefault);
+
+  const countForRole = (roleId: string) =>
+    members.filter((m) => (m.roles ?? []).some((r) => r.id === roleId)).length;
+
+  async function refresh() {
+    if (!teamId) return;
+    try {
+      const fresh = (await api.getRoles(teamId)) as any[];
+      // Normalize snake_case → camelCase so isDefault works after refresh.
+      const normalized = fresh.map((r) => ({
+        id: r.id,
+        name: r.name,
+        color: r.color ?? '',
+        position: r.position ?? 0,
+        permissions: r.permissions ?? 0,
+        isDefault: Boolean(r.isDefault ?? r.is_default),
+      }));
+      setRoles(teamId, normalized as any);
+    } catch (err) {
+      console.warn('[Settings] getRoles failed', err);
+    }
   }
-  const roles = [
-    { name: 'Admin', count: counts.Admin || 1, perms: 'all 12 permissions', color: 'var(--accent)' },
-    { name: 'Maintainer', count: counts.Maintainer || 1, perms: 'manage channels · kick · ban · pin · manage threads', color: 'var(--warn)' },
-    { name: 'Member', count: counts.Member || 4, perms: 'send messages · react · upload · join voice', color: 'var(--fg-2)' },
-  ];
+
+  async function createRole() {
+    if (!teamId || saving) return;
+    setSaving(true);
+    try {
+      const created = (await api.createRole(teamId, {
+        name: 'New role',
+        color: '#7a9aa7',
+        permissions: 1 << 4, // send_messages
+      })) as { id?: string };
+      await refresh();
+      if (created?.id) setEditing({ id: created.id });
+    } catch (err) {
+      console.warn('[Settings] createRole failed', err);
+      window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'roles', text: 'Create failed — manage-roles permission required.', duration: 3500 } }));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function persistOrder(orderedHighFirst: any[]) {
+    if (!teamId) return;
+    // Server assigns position = index, so pass the array LOW → HIGH.
+    // Our local list is high → low, plus the default role pinned at the
+    // very bottom (position 0) regardless.
+    const lowFirst: string[] = orderedHighFirst.slice().reverse().map((r) => r.id);
+    if (defaultRole) lowFirst.unshift(defaultRole.id);
+    try {
+      await api.reorderRoles(teamId, lowFirst);
+      await refresh();
+    } catch (err) {
+      console.warn('[Settings] reorderRoles failed', err);
+      window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'roles', text: 'Reorder failed — manage-roles permission required.', duration: 3500 } }));
+      await refresh();
+    }
+  }
+
+  function handleDrop(targetId: string) {
+    if (!dragId || dragId === targetId) { setDragId(null); return; }
+    const src = customRoles.findIndex((r) => r.id === dragId);
+    const dst = customRoles.findIndex((r) => r.id === targetId);
+    if (src < 0 || dst < 0) { setDragId(null); return; }
+    const next = customRoles.slice();
+    const [moved] = next.splice(src, 1);
+    next.splice(dst, 0, moved);
+    setDragId(null);
+    persistOrder(next);
+  }
+
+  async function deleteRole(roleId: string) {
+    if (!teamId) return;
+    if (!window.confirm('Delete this role? Members keep their other roles.')) return;
+    try {
+      await api.deleteRole(teamId, roleId);
+      await refresh();
+    } catch (err) {
+      console.warn('[Settings] deleteRole failed', err);
+      window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'roles', text: 'Delete failed — admin role required.', duration: 3500 } }));
+    }
+  }
+
+  if (!auth) {
+    return (
+      <Group title="Roles" hint="Sign in to a real team to manage roles.">
+        <div className="set-empty">Roles editor is disabled in mock sessions.</div>
+      </Group>
+    );
+  }
+
   return (
-    <Group title="Roles" hint="12-bit permission system. Drag to reorder; higher rows win conflicts.">
+    <>
+      <Group title="Roles" hint="Drag rows to reorder. Higher rows win permission conflicts and become the group label on the member list.">
+        <div className="set-table">
+          {customRoles.length === 0 && !defaultRole && (
+            <div className="set-empty">No roles defined yet.</div>
+          )}
+          {customRoles.map((r) => {
+            const count = countForRole(r.id);
+            const isDragging = dragId === r.id;
+            return (
+              <div
+                key={r.id}
+                className={'set-tr role' + (isDragging ? ' dragging' : '')}
+                draggable
+                onDragStart={(e) => { setDragId(r.id); e.dataTransfer.effectAllowed = 'move'; }}
+                onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+                onDrop={() => handleDrop(r.id)}
+                onDragEnd={() => setDragId(null)}
+                style={{ opacity: isDragging ? 0.5 : 1, cursor: 'grab' }}
+              >
+                <span className="set-role-dot" style={{ background: r.color || 'var(--fg-2)' }} />
+                <span style={{ fontWeight: 600 }}>{r.name}</span>
+                <span>{count} member{count === 1 ? '' : 's'}</span>
+                <span style={{ color: 'var(--fg-3)', fontSize: 11 }}>{permsSummary(r.permissions)}</span>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <Btn onClick={() => setEditing({ id: r.id })}>Edit</Btn>
+                  <Btn danger onClick={() => deleteRole(r.id)}>Delete</Btn>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {defaultRole && (
+          <>
+            <div style={{ color: 'var(--fg-3)', fontSize: 11, margin: '14px 0 6px' }}>DEFAULT — applies to every member</div>
+            <div className="set-table">
+              <div className="set-tr role" style={{ opacity: 0.85 }}>
+                <span className="set-role-dot" style={{ background: defaultRole.color || 'var(--fg-2)' }} />
+                <span style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  {defaultRole.name}
+                  <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--fg-3)', border: '1px solid var(--hairline)', padding: '1px 5px', borderRadius: 3 }}>default</span>
+                </span>
+                <span>{members.length} member{members.length === 1 ? '' : 's'}</span>
+                <span style={{ color: 'var(--fg-3)', fontSize: 11 }}>{permsSummary(defaultRole.permissions)}</span>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <Btn onClick={() => setEditing({ id: defaultRole.id })}>Edit</Btn>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        <div style={{ marginTop: 12 }}>
+          <Btn onClick={createRole}>+ New role</Btn>
+        </div>
+      </Group>
+      {editing && (
+        <RoleEditor
+          teamId={teamId!}
+          role={roles.find((r) => r.id === editing.id)}
+          onClose={() => setEditing(null)}
+          onSaved={async () => {
+            await refresh();
+            setEditing(null);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+function RoleEditor({ teamId, role, onClose, onSaved }: { teamId: string; role: any; onClose: () => void; onSaved: () => void }) {
+  const [name, setName] = useStateS(role?.name ?? '');
+  const [color, setColor] = useStateS(role?.color ?? '#7a9aa7');
+  const [perms, setPerms] = useStateS<number>(role?.permissions ?? 0);
+  const [saving, setSaving] = useStateS(false);
+
+  if (!role) return null;
+
+  function togglePerm(bit: number) {
+    setPerms((prev: number) => (prev & bit ? prev & ~bit : prev | bit));
+  }
+
+  async function save() {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await api.updateRole(teamId, role.id, { name: name.trim() || role.name, color, permissions: perms });
+      onSaved();
+    } catch (err) {
+      console.warn('[Settings] updateRole failed', err);
+      window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'roles', text: 'Save failed — admin role required.', duration: 3500 } }));
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="set-modal-overlay" onClick={onClose}>
+      <div className="set-modal" onClick={(e) => e.stopPropagation()}>
+        <header className="set-modal-head">
+          <h3>Edit role</h3>
+          <button className="set-x" onClick={onClose}>×</button>
+        </header>
+        <div className="set-modal-body">
+          <Row label="Name">
+            <TextField value={name} onChange={setName} />
+          </Row>
+          <Row label="Color">
+            <input
+              type="color"
+              value={color}
+              onChange={(e) => setColor(e.target.value)}
+              style={{ width: 48, height: 28, border: '1px solid var(--hairline)', borderRadius: 4, background: 'transparent', cursor: 'pointer' }}
+            />
+          </Row>
+          <div style={{ height: 8 }} />
+          <div style={{ color: 'var(--fg-3)', fontSize: 11, marginBottom: 6 }}>PERMISSIONS</div>
+          {PERM_FLAGS.map((f) => (
+            <label key={f.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', cursor: 'pointer' }}>
+              <input type="checkbox" checked={(perms & f.bit) !== 0} onChange={() => togglePerm(f.bit)} />
+              <span>{f.label}</span>
+            </label>
+          ))}
+          <div style={{ color: 'var(--fg-3)', fontSize: 11, marginTop: 14 }}>Assign this role to members from the <strong>Members</strong> tab.</div>
+        </div>
+        <footer className="set-modal-foot">
+          <button className="sc-btn" onClick={onClose}>Cancel</button>
+          <button className="set-btn" onClick={save} disabled={saving} style={{ background: 'var(--accent)', color: 'var(--accent-ink)', borderColor: 'var(--accent)' }}>
+            {saving ? 'Saving…' : 'Save role'}
+          </button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+function TeamMembers() {
+  const auth = useActiveTeamAuth();
+  const teamId = auth?.teamId;
+  const members = useTeamStore((s) => (teamId ? s.members.get(teamId) ?? [] : []));
+  const roles = useTeamStore((s) => (teamId ? s.roles.get(teamId) ?? [] : []));
+  const setMembers = useTeamStore((s) => s.setMembers);
+  const [busyId, setBusyId] = useStateS<string | null>(null);
+
+  // Non-default roles are the ones admins explicitly assign. `everyone` is
+  // applied implicitly to every member so we hide it from the toggles.
+  const assignableRoles = roles
+    .filter((r) => !r.isDefault)
+    .sort((a, b) => (b.position ?? 0) - (a.position ?? 0));
+
+  async function toggleRole(member: any, roleId: string) {
+    if (!teamId || busyId) return;
+    setBusyId(member.userId);
+    try {
+      const has = (member.roleIds ?? []).includes(roleId);
+      const nextIds = has
+        ? (member.roleIds ?? []).filter((id: string) => id !== roleId)
+        : [...(member.roleIds ?? []), roleId];
+      await api.updateMember(teamId, member.userId, { role_ids: nextIds });
+
+      // Optimistically update the local store so the row reflects the new
+      // assignment without waiting for a re-sync.
+      const rolesById = new Map(roles.map((r) => [r.id, r]));
+      const PERM_ADMIN = 1 << 0;
+      const nextRoles = nextIds.map((id: string) => rolesById.get(id)).filter(Boolean);
+      const isAdmin = nextRoles.some((r: any) => (r.permissions & PERM_ADMIN) !== 0);
+      const updated = members.map((m) =>
+        m.userId === member.userId ? { ...m, roleIds: nextIds, roles: nextRoles, isAdmin } : m,
+      );
+      setMembers(teamId, updated as any);
+    } catch (err) {
+      console.warn('[Settings] toggleRole failed', err);
+      window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'members', text: 'Update failed — manage-members permission required.', duration: 3500 } }));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  if (!auth) {
+    return (
+      <Group title="Members" hint="Sign in to a real team to manage members.">
+        <div className="set-empty">Members editor is disabled in mock sessions.</div>
+      </Group>
+    );
+  }
+
+  return (
+    <Group title="Members" hint="Toggle a role to promote or demote a member. The default role applies to everyone automatically.">
       <div className="set-table">
-        {roles.map(r => (
-          <div key={r.name} className="set-tr role">
-            <span className="set-role-dot" style={{ background: r.color }} />
-            <span style={{ fontWeight: 600 }}>{r.name}</span>
-            <span>{r.count} member{r.count === 1 ? '' : 's'}</span>
-            <span style={{ color: 'var(--fg-3)', fontSize: 11 }}>{r.perms}</span>
-            <Btn onClick={() => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'roles', text: r.name + ' role editor — drag permissions, save to apply across the mesh.', duration: 4000 } }))}>Edit</Btn>
+        {members.length === 0 && <div className="set-empty">No members yet.</div>}
+        {members.map((m) => (
+          <div key={m.userId} className="set-tr" style={{ display: 'grid', gridTemplateColumns: '1.4fr 2fr', gap: 12, alignItems: 'center' }}>
+            <div>
+              <div style={{ fontWeight: 600 }}>{m.displayName || m.username}</div>
+              <div style={{ color: 'var(--fg-3)', fontSize: 11 }}>{m.username}</div>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {assignableRoles.length === 0 && (
+                <span style={{ color: 'var(--fg-3)', fontSize: 11 }}>No roles to assign — create one in Roles & permissions.</span>
+              )}
+              {assignableRoles.map((r) => {
+                const has = (m.roleIds ?? []).includes(r.id);
+                return (
+                  <button
+                    key={r.id}
+                    onClick={() => toggleRole(m, r.id)}
+                    disabled={busyId === m.userId}
+                    title={has ? `Remove ${r.name}` : `Grant ${r.name}`}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '3px 9px',
+                      border: '1px solid ' + (has ? r.color : 'var(--hairline)'),
+                      background: has ? r.color + '22' : 'transparent',
+                      color: has ? 'var(--fg)' : 'var(--fg-2)',
+                      borderRadius: 999,
+                      cursor: busyId === m.userId ? 'wait' : 'pointer',
+                      fontSize: 11,
+                      fontFamily: 'var(--font-mono)',
+                    }}
+                  >
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: r.color }} />
+                    {r.name}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         ))}
       </div>
@@ -782,11 +1252,12 @@ function TeamRoles() {
   );
 }
 function TeamFederation() {
-  // Use real node identity from authStore (surfaced through MOCK_DATA's
-  // SERVERS[].node). Peers list stays empty until we wire a real peer
-  // status feed; the +/Add peer wizard is still available.
-  const team = (window as any).MOCK_DATA?.SERVERS?.[0];
-  const nodeHost = team?.node === 'local' ? 'local' : `${team?.node || 'local'}.dilla.local`;
+  // Use real node identity surfaced through SHELL_DATA.SERVERS[].node.
+  // Peers list stays empty until we wire a real peer status feed; the
+  // Add-peer wizard is still available.
+  const data = useShellDataContext() as any;
+  const team = data?.SERVERS?.[0];
+  const nodeHost = team?.node || 'local';
   return (
     <>
       <Group title="Mesh" hint="Peer nodes that replicate this team. Voice stays on the origin node, but messages, channels and presence sync across all peers.">
@@ -813,12 +1284,89 @@ function TeamFederation() {
   );
 }
 function TeamAudit() {
-  // Real audit-log events would stream from the server. Until that's wired,
-  // show an empty state instead of the handoff thim/ada/ola fixture.
+  const auth = useActiveTeamAuth();
+  const teamId = auth?.teamId;
+  const members = useTeamStore((s) => (teamId ? s.members.get(teamId) ?? [] : []));
+  const [events, setEvents] = useStateS<any[] | null>(null);
+  const [error, setError] = useStateS<string | null>(null);
+
+  const membersById = new Map(members.map((m) => [m.userId, m]));
+
+  useEffectS(() => {
+    if (!teamId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = (await api.getAuditEvents(teamId, 200)) as any[];
+        if (!cancelled) setEvents(list);
+      } catch (err: any) {
+        if (!cancelled) setError(err?.message || 'failed to load audit log');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [teamId]);
+
+  if (!auth) {
+    return (
+      <Group title="Recent activity" hint="Sign in to a real team to view the audit log.">
+        <div className="set-empty">Audit log is disabled in mock sessions.</div>
+      </Group>
+    );
+  }
+  if (error) {
+    return (
+      <Group title="Recent activity" hint="Server-stored log of admin actions for this team.">
+        <div className="set-empty">{error}</div>
+      </Group>
+    );
+  }
+  if (events === null) {
+    return (
+      <Group title="Recent activity" hint="Server-stored log of admin actions for this team.">
+        <div className="set-empty">Loading…</div>
+      </Group>
+    );
+  }
+
+  function describe(e: any) {
+    let detail: any = null;
+    if (e.details) {
+      try { detail = JSON.parse(e.details); } catch { /* leave null */ }
+    }
+    const targetUser = e.target_type === 'user' && e.target_id ? membersById.get(e.target_id)?.username : null;
+    const name = (detail && (detail.name || detail.reason)) || '';
+    switch (e.action) {
+      case 'role.create':   return `created role ${name || '—'}`;
+      case 'role.update':   return `updated role ${name || '—'}`;
+      case 'role.delete':   return `deleted role ${name || '—'}`;
+      case 'role.reorder':  return `reordered roles`;
+      case 'channel.lock':   return `locked channel #${name || '—'}`;
+      case 'channel.unlock': return `unlocked channel #${name || '—'}`;
+      case 'channel.update': return `updated channel #${name || '—'}`;
+      case 'member.roles.update': return `changed roles for @${targetUser || e.target_id}`;
+      case 'member.kick':    return `kicked @${targetUser || e.target_id}`;
+      case 'member.ban':     return `banned @${targetUser || e.target_id}${detail?.reason ? ` — ${detail.reason}` : ''}`;
+      default: return e.action;
+    }
+  }
+
   return (
-    <Group title="Recent activity" hint="Local audit log. Federated events are tagged with the peer they came from.">
+    <Group title="Recent activity" hint="Server-stored log of admin actions for this team.">
       <div className="set-audit">
-        <div className="set-empty">No audit events yet — admin actions (invites, channel changes, role updates, key rotations) will appear here.</div>
+        {events.length === 0 && (
+          <div className="set-empty">No audit events yet — admin actions (role changes, channel locks, kicks/bans) will appear here.</div>
+        )}
+        {events.map((e: any) => {
+          const actor = e.actor_user_id ? membersById.get(e.actor_user_id) : null;
+          const actorName = actor?.username || (e.actor_user_id ? e.actor_user_id.slice(0, 8) : 'system');
+          return (
+            <div key={e.id} style={{ display: 'grid', gridTemplateColumns: '110px 110px 1fr', gap: 12, padding: '8px 0', borderBottom: '1px solid var(--hairline)' }}>
+              <span style={{ color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>{e.created_at}</span>
+              <span style={{ fontWeight: 600 }}>@{actorName}</span>
+              <span>{describe(e)}</span>
+            </div>
+          );
+        })}
       </div>
     </Group>
   );

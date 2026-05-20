@@ -230,6 +230,10 @@ pub const PERM_SEND_MESSAGES: i64 = 1 << 4;
 pub const PERM_MANAGE_MESSAGES: i64 = 1 << 5;
 pub const PERM_CREATE_INVITES: i64 = 1 << 6;
 pub const PERM_MANAGE_TEAM: i64 = 1 << 7;
+/// Roles with this permission bypass per-channel slow mode. The default
+/// "everyone" role does NOT have it (so regular members are rate-limited);
+/// the Admin role gets it implicitly via PERM_ADMIN.
+pub const PERM_BYPASS_SLOW_MODE: i64 = 1 << 8;
 
 mod base64_bytes {
     use base64::Engine;

@@ -52,11 +52,14 @@ pub(in crate::ws) async fn handle_message_send(
 
     // Slow-mode gate: when channel.slow_mode_seconds > 0, look up the
     // user's most recent message in this channel and reject if the delta
-    // is shorter than the configured minimum. Server-only — clients can't
-    // bypass by editing their own slow_mode_seconds value.
+    // is shorter than the configured minimum. Users in a role with
+    // PERM_BYPASS_SLOW_MODE (Admin gets it implicitly via PERM_ADMIN)
+    // skip the check entirely; the default "everyone" role is rate-
+    // limited by absence of that perm.
     let db_sm = hub.db.clone();
     let cid_sm = p.channel_id.clone();
     let uid_sm = user_id.to_string();
+    let tid_sm = team_id.to_string();
     let slow_mode_block: Option<i64> = tokio::task::spawn_blocking(move || -> Option<i64> {
         db_sm.with_read(|conn| {
             let secs: i32 = conn
@@ -67,6 +70,10 @@ pub(in crate::ws) async fn handle_message_send(
                 )
                 .unwrap_or(0);
             if secs <= 0 { return Ok::<_, rusqlite::Error>(None); }
+            // Bypass-permission shortcut.
+            let bypass = db::user_has_permission(conn, &uid_sm, &tid_sm, db::PERM_BYPASS_SLOW_MODE)
+                .unwrap_or(false);
+            if bypass { return Ok::<_, rusqlite::Error>(None); }
             // strftime('%s', ...) gives unix seconds for the stored UTC text.
             let last_ts: Option<i64> = conn
                 .query_row(
