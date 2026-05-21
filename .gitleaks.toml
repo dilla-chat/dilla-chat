@@ -1,0 +1,113 @@
+# Dilla — gitleaks configuration
+#
+# Companion to .github/workflows/secret-scan.yml. Inherits the default
+# gitleaks rule set (Stripe, AWS, GitHub PATs, JWTs, generic API keys,
+# etc.) and layers Dilla-specific allowlists on top so test fixtures
+# and documentation strings don't break the build.
+#
+# The `useDefault = true` flag pulls in upstream's `gitleaks.toml`
+# verbatim; everything below is *allowlisting only*. Adding new
+# detection rules is intentionally off-limits — keep the surface
+# small and predictable.
+
+[extend]
+useDefault = true
+
+# ── Global allowlist ────────────────────────────────────────────────
+#
+# Order of operations: gitleaks runs every default rule across every
+# file, then drops any finding that matches an entry below. We pin
+# allowlists to specific (path, regex) pairs so a real secret with the
+# same shape as a fixture would still be flagged.
+
+[[allowlists]]
+description = "Lockfiles, binary assets, vendored artefacts — gitleaks default coverage but reasserted defensively"
+paths = [
+  '''(?i).*\.(jpg|jpeg|png|gif|webp|woff|woff2|ttf|otf|ico|svg)$''',
+  '''(?i).*\.(min\.js|min\.css)$''',
+  '''Cargo\.lock$''',
+  '''package-lock\.json$''',
+  '''pnpm-lock\.yaml$''',
+  '''yarn\.lock$''',
+]
+
+[[allowlists]]
+description = "Security-hardening reports + secrets playbook reference example tokens by design"
+paths = [
+  '''\.security-hardening/.*\.md$''',
+  '''deploy/secrets/.*\.md$''',
+  '''deploy/.*/README\.md$''',
+  '''\.env\.example$''',
+]
+
+# ── Per-file allowlists for known test fixtures ─────────────────────
+#
+# Step 1 vulnerability scan confirmed these literals are all
+# `#[cfg(test)]` / test fixtures / documentation placeholders. Match by
+# (file, regex) pair, never globally, so a real leak with one of the
+# values would still need investigation.
+
+[[allowlists]]
+description = "server-rs/src/auth.rs — JWT test fixtures (DILLA_JWT_SECRET set inside #[test] fns)"
+paths = ['''server-rs/src/auth\.rs$''']
+regexes = [
+  '''my-explicit-jwt-secret''',
+  '''stable-secret-value''',
+  '''test-jwt-secret-for-tokens''',
+  '''shared-env-secret''',
+  '''"explicit-secret"''',
+]
+
+[[allowlists]]
+description = "server-rs/src/observability/mod.rs — secret_token fixture for the path-redaction unit test"
+paths = ['''server-rs/src/observability/mod\.rs$''']
+regexes = [
+  # observability/mod.rs lines 652, 703 — used to verify the
+  # http_middleware redacts hex token segments from /api/v1/invites/<token>/info.
+  '''9b4a8f2e1c6d5703a8f1e2b3c4d5e6f7''',
+]
+
+[[allowlists]]
+description = "server-rs/src/federation/transport.rs — example.com peer URLs in build_peer_url tests"
+paths = ['''server-rs/src/federation/transport\.rs$''']
+regexes = [
+  '''example\.com:808\d''',
+  '''wss?://example\.com''',
+]
+
+[[allowlists]]
+description = "server-rs/src/main.rs — cf_turn_api_token = \"test-token\" fixture inside #[cfg(test)] mod tests"
+paths = ['''server-rs/src/main\.rs$''']
+regexes = [
+  '''"test-token"''',
+]
+
+[[allowlists]]
+description = "client/src/services/browserLogs.test.ts — JWT-shaped scrubber test input"
+paths = ['''client/src/services/browserLogs\.test\.ts$''']
+regexes = [
+  # Test asserts scrubLogLine() redacts JWT-shaped strings. The
+  # literal is required for the assertion to mean anything.
+  '''eyJhbGciOiJIUzI1NiJ9\.eyJzdWIiOiJhbGljZSJ9\.s5cv-mock-signature-blob''',
+]
+
+[[allowlists]]
+description = "client/src/pages/Onboarding/Onboarding.tsx — `passphrase` is the React state-variable name, not a secret"
+paths = ['''client/src/pages/Onboarding/Onboarding\.tsx$''']
+regexes = [
+  '''unlockWithPassphrase\(passphrase\)''',
+]
+
+[[allowlists]]
+description = ".github/CLAUDE_TRACKING.md — example curl commands with placeholder tokens (YOUR_TOKEN)"
+paths = ['''\.github/CLAUDE_TRACKING\.md$''']
+regexes = [
+  '''Authorization:\s*token\s+YOUR_TOKEN''',
+]
+
+[[allowlists]]
+description = "Root README.md — first-run setup banner showing the bootstrap-token output format"
+paths = ['''^README\.md$''']
+regexes = [
+  '''\*\*\*\s+First-time setup\s+\*\*\*''',
+]
