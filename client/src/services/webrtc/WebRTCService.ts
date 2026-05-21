@@ -458,17 +458,26 @@ class WebRTCService {
           key_id: number;
           encrypted_keys: Record<string, string>;
         }) => {
-          if (!this.encryption.e2eEnabled || !this.localUserId) return;
-          const myKey = payload.encrypted_keys[this.localUserId];
-          if (myKey) {
-            await this.encryption.handleReceivedVoiceKey(
-              payload.sender_id,
-              payload.key_id,
-              myKey,
-              this.teamId,
-              this.channelId,
-            );
+          console.log('[Voice] voice:key-distribute received from', payload.sender_id,
+            'e2eEnabled=', this.encryption.e2eEnabled,
+            'localUserId=', this.localUserId,
+            'recipients=', Object.keys(payload.encrypted_keys ?? {}));
+          if (!this.encryption.e2eEnabled || !this.localUserId) {
+            console.warn('[Voice] dropping voice key — e2eEnabled or localUserId missing');
+            return;
           }
+          const myKey = payload.encrypted_keys[this.localUserId];
+          if (!myKey) {
+            console.warn('[Voice] voice key payload has no entry for me', this.localUserId, 'available=', Object.keys(payload.encrypted_keys ?? {}));
+            return;
+          }
+          await this.encryption.handleReceivedVoiceKey(
+            payload.sender_id,
+            payload.key_id,
+            myKey,
+            this.teamId,
+            this.channelId,
+          );
         },
       ),
       ws.on(
