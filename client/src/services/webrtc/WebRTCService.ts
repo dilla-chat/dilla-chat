@@ -890,12 +890,19 @@ class WebRTCService {
         },
       ),
       ws.on('voice:screen-update', (payload: { user_id: string; sharing: boolean }) => {
-        store().updatePeer(payload.user_id, { screen_sharing: payload.sharing });
+        const s = store();
+        s.updatePeer(payload.user_id, { screen_sharing: payload.sharing });
         if (payload.sharing) {
-          store().setScreenSharingUserId(payload.user_id);
-        } else {
-          store().setRemoteScreenStream(null);
-          store().setScreenSharingUserId(null);
+          s.setScreenSharingUserId(payload.user_id);
+        } else if (s.screenSharingUserId === payload.user_id) {
+          // Only clear the global slot when the user who stopped IS
+          // the one currently sitting in it. Without this guard, our
+          // own client receives its own voice:screen-update echo and
+          // wipes the remote peer's stream + sharer id — symptom was
+          // 'I pressed stop and the OTHER peer's screen-share
+          // disappeared from my UI'.
+          s.setRemoteScreenStream(null);
+          s.setScreenSharingUserId(null);
         }
       }),
       ws.on('voice:webcam-update', (payload: { user_id: string; sharing: boolean }) => {
