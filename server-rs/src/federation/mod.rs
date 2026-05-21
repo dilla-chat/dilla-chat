@@ -83,6 +83,9 @@ pub struct MeshConfig {
     pub tls_cert: String,
     pub tls_key: String,
     pub join_secret: String,
+    /// VULN-014 / H7: when true, accept plain ws:// peer URLs and the
+    /// "empty join secret = accept anyone" fallback. Defaults to false.
+    pub insecure: bool,
 }
 
 // ── MeshNode ───────────────────────────────────────────────────────────────
@@ -109,7 +112,10 @@ pub struct MeshNode {
 impl MeshNode {
     /// Create a new MeshNode with the given configuration, database, and hub references.
     pub fn new(config: MeshConfig, db: Database, hub: Arc<Hub>) -> Self {
-        let transport = Arc::new(Transport::with_join_secret(config.join_secret.clone()));
+        let transport = Arc::new(Transport::with_settings(
+            config.join_secret.clone(),
+            config.insecure,
+        ));
         let sync_mgr = Arc::new(SyncManager::new(
             db.clone(),
             Arc::clone(&transport),

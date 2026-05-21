@@ -579,7 +579,20 @@ async fn init_federation_mesh(
         tls_cert: cfg.tls_cert.clone(),
         tls_key: cfg.tls_key.clone(),
         join_secret: cfg.join_secret.clone(),
+        insecure: cfg.insecure,
     };
+
+    // VULN-021 final / H7: warn loudly every startup when the
+    // federation HMAC key is the random ephemeral fallback (empty
+    // configured join_secret). The Phase-1 fix already panics on
+    // !insecure; this warning catches the insecure=true path so the
+    // operator sees it on every restart.
+    if cfg.join_secret.is_empty() && !cfg.peers.is_empty() {
+        tracing::warn!(
+            "FEDERATION: DILLA_JOIN_SECRET is empty — the in-process join HMAC key is a random ephemeral fallback. \
+             Outstanding join JWTs become invalid on every restart, and (when DILLA_INSECURE=true) any peer can claim membership (VULN-021)."
+        );
+    }
 
     let mesh_node = Arc::new(federation::MeshNode::new(
         mesh_config,

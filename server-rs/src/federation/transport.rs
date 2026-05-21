@@ -93,6 +93,9 @@ pub struct Transport {
     peers: Arc<RwLock<Vec<String>>>,
     on_event: Arc<RwLock<Option<OnEventFn>>>,
     join_secret: String,
+    /// VULN-014 / H7: when false, refuse to connect to plain ws:// peer
+    /// URLs and disable the "any peer accepted" empty-secret fallback.
+    insecure: bool,
     stop_tx: tokio::sync::watch::Sender<bool>,
     stop_rx: tokio::sync::watch::Receiver<bool>,
 }
@@ -101,11 +104,28 @@ pub struct Transport {
 ///
 /// If the address already contains `://`, it is used as-is (with a warning for
 /// unencrypted `ws://`). Otherwise, defaults to `wss://{address}/federation`.
+#[cfg(test)]
 fn build_peer_url(address: &str) -> String {
+    build_peer_url_with_insecure(address, false)
+}
+
+/// VULN-014 / H7: insecure-aware variant. When `insecure=false` we
+/// refuse a plain `ws://` peer URL by returning an empty string —
+/// callers convert that into a "refusing to connect" error. When
+/// `insecure=true` we still accept ws:// for the dev pattern but log
+/// loudly. Bare hostnames continue to default to wss://.
+fn build_peer_url_with_insecure(address: &str, insecure: bool) -> String {
     if address.contains("://") {
         if address.starts_with("ws://") {
+            if !insecure {
+                tracing::error!(
+                    "Federation peer {} uses unencrypted ws:// and DILLA_INSECURE=false — refusing to connect (VULN-014)",
+                    address
+                );
+                return String::new();
+            }
             tracing::warn!(
-                "Federation peer {} uses unencrypted ws:// — consider using wss://",
+                "Federation peer {} uses unencrypted ws:// — accepted because DILLA_INSECURE=true (do not use in production)",
                 address
             );
         }
@@ -122,12 +142,17 @@ impl Transport {
     }
 
     pub fn with_join_secret(join_secret: String) -> Self {
+        Self::with_settings(join_secret, false)
+    }
+
+    pub fn with_settings(join_secret: String, insecure: bool) -> Self {
         let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
         Transport {
             conns: Arc::new(RwLock::new(HashMap::new())),
             peers: Arc::new(RwLock::new(Vec::new())),
             on_event: Arc::new(RwLock::new(None)),
             join_secret,
+            insecure,
             stop_tx,
             stop_rx,
         }
@@ -151,7 +176,13 @@ impl Transport {
             }
         }
 
-        let url = build_peer_url(address);
+        let url = build_peer_url_with_insecure(address, self.insecure);
+        if url.is_empty() {
+            return Err(format!(
+                "refusing to connect to plain ws:// peer {} (set DILLA_INSECURE=true to allow)",
+                address
+            ));
+        }
 
         let (ws_stream, _) = connect_async(&url)
             .await
@@ -463,9 +494,16 @@ mod tests {
     }
 
     #[test]
-    fn test_build_peer_url_ws_passthrough() {
+    fn test_build_peer_url_ws_refused_by_default() {
+        // VULN-014 / H7: default-deny on plain ws://.
+        assert_eq!(build_peer_url("ws://example.com:8081/federation"), "");
+    }
+
+    #[test]
+    fn test_build_peer_url_ws_allowed_when_insecure() {
+        // VULN-014 / H7: explicit opt-in keeps the dev pattern working.
         assert_eq!(
-            build_peer_url("ws://example.com:8081/federation"),
+            build_peer_url_with_insecure("ws://example.com:8081/federation", true),
             "ws://example.com:8081/federation"
         );
     }
