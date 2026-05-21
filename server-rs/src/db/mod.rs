@@ -83,6 +83,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
     ("023_user_quiet_hours.sql", include_str!("../../migrations/023_user_quiet_hours.sql")),
     ("024_user_blocks.sql", include_str!("../../migrations/024_user_blocks.sql")),
     ("025_message_reply_to.sql", include_str!("../../migrations/025_message_reply_to.sql")),
+    ("026_bootstrap_token_expiry.sql", include_str!("../../migrations/026_bootstrap_token_expiry.sql")),
 ];
 
 /// Default number of read connections in the pool.

@@ -15,6 +15,7 @@ use auth::AuthService;
 use config::Config;
 use db::Database;
 use presence::PresenceManager;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::signal;
 
@@ -44,7 +45,7 @@ async fn main() {
 
     let database = init_database(&cfg);
     let auth_svc = Arc::new(AuthService::new(database.clone(), &cfg.db_passphrase));
-    check_first_start(&database, &auth_svc, cfg.port);
+    check_first_start(&database, &auth_svc, &cfg);
 
     let sfu = Arc::new(voice::SFU::new());
     configure_turn_provider(&sfu, &cfg).await;
@@ -202,16 +203,41 @@ fn init_database(cfg: &Config) -> Database {
     database
 }
 
-fn check_first_start(database: &Database, auth_svc: &AuthService, port: u16) {
+fn check_first_start(database: &Database, auth_svc: &AuthService, cfg: &Config) {
     match database.has_users() {
         Ok(false) => {
             match auth_svc.generate_bootstrap_token() {
                 Ok(token) => {
-                    eprintln!();
-                    eprintln!("  *** First-time setup ***");
-                    eprintln!("  Open http://<your-host>:{}/setup in a browser", port);
-                    eprintln!("  Bootstrap token: {}", token);
-                    eprintln!();
+                    let path = PathBuf::from(&cfg.data_dir).join("BOOTSTRAP_TOKEN");
+                    match write_bootstrap_token_file(&path, &token) {
+                        Ok(()) => {
+                            // VULN-009: never print the token itself.
+                            // Tell the operator where to find it and
+                            // that it self-destructs after 15 minutes.
+                            eprintln!();
+                            eprintln!("  *** First-time setup ***");
+                            eprintln!("  Open http://<your-host>:{}/setup in a browser", cfg.port);
+                            eprintln!("  Bootstrap token has been written to:");
+                            eprintln!("    {} (mode 0600, expires in 15 minutes)", path.display());
+                            eprintln!();
+                        }
+                        Err(e) => {
+                            // Fall back to stderr so the operator
+                            // isn't locked out — but loudly flag that
+                            // they should restart with a writable
+                            // DATA_DIR to get the safer behavior.
+                            tracing::error!(
+                                error = %e,
+                                "failed to write bootstrap token file — falling back to stderr (VULN-009 unmitigated until DATA_DIR is writable)"
+                            );
+                            eprintln!();
+                            eprintln!("  *** First-time setup ***");
+                            eprintln!("  Open http://<your-host>:{}/setup in a browser", cfg.port);
+                            eprintln!("  Bootstrap token: {}", token);
+                            eprintln!("  (could not write {} — fix permissions to suppress this banner)", path.display());
+                            eprintln!();
+                        }
+                    }
                 }
                 Err(e) => {
                     tracing::error!("failed to generate bootstrap token: {}", e);
@@ -225,6 +251,51 @@ fn check_first_start(database: &Database, auth_svc: &AuthService, port: u16) {
         }
         _ => {}
     }
+}
+
+/// Write the bootstrap token to a 0600 file under DATA_DIR.
+///
+/// Uses `create_new(true)` so an existing token-file (left over from a
+/// crash before the operator picked it up) is preserved rather than
+/// silently overwritten. The 0600 mode keeps the token out of group /
+/// other readers — the previous design that streamed it to stderr was
+/// captured by every journald instance on the box (CWE-532).
+#[cfg(unix)]
+fn write_bootstrap_token_file(path: &std::path::Path, token: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+
+    // If a stale token file exists from a previous unsuccessful
+    // bootstrap, remove it first — the prior token is also stored in
+    // the DB and will expire on its own, but the file should reflect
+    // the newest token only.
+    if path.exists() {
+        std::fs::remove_file(path)?;
+    }
+    let mut f = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(path)?;
+    f.write_all(token.as_bytes())?;
+    f.write_all(b"\n")?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn write_bootstrap_token_file(path: &std::path::Path, token: &str) -> std::io::Result<()> {
+    // Non-unix targets can't enforce mode bits — best-effort write.
+    use std::io::Write;
+    if path.exists() {
+        std::fs::remove_file(path)?;
+    }
+    let mut f = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)?;
+    f.write_all(token.as_bytes())?;
+    f.write_all(b"\n")?;
+    Ok(())
 }
 
 async fn configure_turn_provider(sfu: &voice::SFU, cfg: &Config) {

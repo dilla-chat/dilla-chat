@@ -98,10 +98,27 @@ fn row_to_invite(row: &rusqlite::Row) -> Result<Invite, rusqlite::Error> {
 
 // ── Bootstrap token queries ─────────────────────────────────────────────────
 
+/// Default lifetime of a bootstrap token before consume_bootstrap_token
+/// will refuse it. VULN-009 was that the previous schema had no expiry
+/// at all — printed once to stderr at first start, then valid forever.
+pub const BOOTSTRAP_TOKEN_TTL_SECS: i64 = 15 * 60;
+
 pub fn create_bootstrap_token(conn: &Connection, token: &str) -> Result<(), rusqlite::Error> {
+    create_bootstrap_token_with_ttl(conn, token, BOOTSTRAP_TOKEN_TTL_SECS)
+}
+
+pub fn create_bootstrap_token_with_ttl(
+    conn: &Connection,
+    token: &str,
+    ttl_secs: i64,
+) -> Result<(), rusqlite::Error> {
+    let now = chrono::Utc::now();
+    let expires = now + chrono::Duration::seconds(ttl_secs);
+    let created_at = now.format("%Y-%m-%d %H:%M:%S").to_string();
+    let expires_at = expires.format("%Y-%m-%d %H:%M:%S").to_string();
     conn.execute(
-        "INSERT INTO bootstrap_tokens (token, used, created_at) VALUES (?1, 0, ?2)",
-        params![token, now_str()],
+        "INSERT INTO bootstrap_tokens (token, used, created_at, expires_at) VALUES (?1, 0, ?2, ?3)",
+        params![token, created_at, expires_at],
     )?;
     Ok(())
 }
@@ -111,13 +128,14 @@ pub fn get_bootstrap_token(
     token: &str,
 ) -> Result<Option<BootstrapToken>, rusqlite::Error> {
     conn.query_row(
-        "SELECT token, used, created_at FROM bootstrap_tokens WHERE token = ?1",
+        "SELECT token, used, created_at, expires_at FROM bootstrap_tokens WHERE token = ?1",
         [token],
         |row| {
             Ok(BootstrapToken {
                 token: row.get(0)?,
                 used: row.get::<_, i32>(1)? != 0,
                 created_at: row.get(2)?,
+                expires_at: row.get(3)?,
             })
         },
     )

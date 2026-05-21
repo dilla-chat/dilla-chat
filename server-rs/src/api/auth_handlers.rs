@@ -354,6 +354,10 @@ fn create_user_and_member(
 }
 
 /// Validate and consume a bootstrap token.
+///
+/// Rejects tokens that are missing, already used, or past `expires_at`.
+/// VULN-009: previously the token had no expiry and could be replayed
+/// indefinitely once it leaked into stderr / journald.
 fn validate_bootstrap_token(
     conn: &rusqlite::Connection,
     token: &str,
@@ -363,6 +367,19 @@ fn validate_bootstrap_token(
 
     if bt.used {
         return Err(rusqlite::Error::InvalidParameterName("bootstrap token already used".into()));
+    }
+
+    if !bt.expires_at.is_empty() {
+        let parsed = chrono::NaiveDateTime::parse_from_str(&bt.expires_at, "%Y-%m-%d %H:%M:%S")
+            .map(|n| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(n, chrono::Utc))
+            .ok();
+        if let Some(exp) = parsed {
+            if chrono::Utc::now() > exp {
+                return Err(rusqlite::Error::InvalidParameterName(
+                    "bootstrap token expired".into(),
+                ));
+            }
+        }
     }
 
     db::use_bootstrap_token(conn, token)

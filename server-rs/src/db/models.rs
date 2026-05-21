@@ -190,6 +190,10 @@ pub struct BootstrapToken {
     pub token: String,
     pub used: bool,
     pub created_at: String,
+    /// UTC "%Y-%m-%d %H:%M:%S" string after which the token must be
+    /// rejected even if still unused. See VULN-009 — bootstrap tokens
+    /// used to live forever.
+    pub expires_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
