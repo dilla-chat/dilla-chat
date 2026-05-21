@@ -2306,6 +2306,16 @@ img.attach-img {
   min-height: 0;
   overflow-y: auto;
 }
+/* Relatively-positioned wrapper around the participant grid so that
+   .voice-focus can absolute-overlay it on top of the cards, instead
+   of replacing them. */
+.voice-stage-wrap {
+  position: relative;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.voice-stage-wrap > .voice-stage { flex: 1; min-height: 0; }
 .chat[data-style="mesh"] .voice-view { background: var(--bg); }
 .voice-stage {
   display: grid;
@@ -2622,16 +2632,21 @@ img.attach-img {
 .pip-edge.pip-sw { bottom: -3px; left: -3px;  width: 10px; height: 10px; cursor: nesw-resize; }
 .pip-edge.pip-se { bottom: -3px; right: -3px; width: 10px; height: 10px; cursor: nwse-resize; }
 
-/* Voice focus mode */
+/* Voice focus mode — overlays the .voice-stage grid so the cards stay
+   visible underneath; the focused cam/screen sits on top while
+   sharing is active. Positioned absolutely over the voice-view's
+   content area so it doesn't push the controls bar down. */
 .voice-focus {
-  position: relative;
-  flex: 1;
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: stretch;
   justify-content: center;
   min-height: 0;
-  margin-bottom: 12px;
+  z-index: 10;
+  pointer-events: none;
 }
+.voice-focus > * { pointer-events: auto; }
 /* Tab fullscreen: cover the whole client viewport (everything inside
    the browser tab — sidebar, top bar, member list all overlaid). Use
    fixed positioning so it doesn't get scoped by an ancestor's

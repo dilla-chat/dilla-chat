@@ -4425,16 +4425,39 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
             );
           }
 
-          if (effectiveFocused && focusedMember) {
-            // Does the focused participant have BOTH streams? If so, show
-            // a toggle so they can swap focus without backing out first.
-            const fm = focusedMember as any;
-            const isSelf = fm.id === currentUserId();
-            const hasCam = isSelf ? cam : false; // peer streams TODO via voiceOccupants flags
-            const hasScreen = isSelf ? screen : false;
-            const showSwap = (effectiveFocused.kind === 'cam' && hasScreen) || (effectiveFocused.kind === 'screen' && hasCam);
-            return (
-              <>
+          // Always render the participant grid in .voice-stage. When
+          // someone is sharing (cam or screen) we additionally render
+          // .voice-focus on top of it as an overlay — so the cards
+          // never disappear when the focused stream appears or goes
+          // away, they're just covered by the focus stage.
+          const fm = focusedMember as any;
+          const isSelf = effectiveFocused && fm?.id === currentUserId();
+          const hasCam = isSelf ? cam : false;
+          const hasScreen = isSelf ? screen : false;
+          const showSwap = effectiveFocused && (
+            (effectiveFocused.kind === 'cam' && hasScreen) ||
+            (effectiveFocused.kind === 'screen' && hasCam)
+          );
+          return (
+            <div className="voice-stage-wrap">
+              <div className="voice-stage">
+                {participants.length === 0 && (
+                  <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: 40, color: 'var(--fg-3)' }}>
+                    <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, color: 'var(--fg-2)', marginBottom: 8 }}>
+                      {lockedForMe ? 'Locked channel' : 'Quiet here'}
+                    </div>
+                    <div>
+                      {lockedForMe ? (
+                        <>Only members with manage-channels can join <strong>#{channel.name}</strong>.</>
+                      ) : (
+                        <>Click <em>Join</em> to be the first in <strong>#{channel.name}</strong>.</>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {participants.map(p => cardFor(p, false))}
+              </div>
+              {effectiveFocused && focusedMember && (
                 <div className={'voice-focus' + (tabFs ? ' is-tab-fs' : '')} ref={focusRef}>
                   <div className="voice-focus-actions">
                     {showSwap && (
@@ -4485,38 +4508,8 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                   </div>
                   {cardFor(focusedMember, false, effectiveFocused.kind)}
                 </div>
-                <div className="voice-strip">
-                  {others.map(p => cardFor(p, true))}
-                </div>
-              </>
-            );
-          }
-          return (
-            <>
-              {participants.length === 0 ? (
-                <div className="voice-stage">
-                  <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: 40, color: 'var(--fg-3)' }}>
-                    <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, color: 'var(--fg-2)', marginBottom: 8 }}>
-                      {lockedForMe ? 'Locked channel' : 'Quiet here'}
-                    </div>
-                    <div>
-                      {lockedForMe ? (
-                        <>Only members with manage-channels can join <strong>#{channel.name}</strong>.</>
-                      ) : (
-                        <>Click <em>Join</em> to be the first in <strong>#{channel.name}</strong>.</>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                // Always render participants as a strip — same layout the
-                // focus mode uses for non-focused peers. The stage above
-                // remains empty when nothing is being shared.
-                <div className="voice-mini-strip">
-                  {participants.map(p => cardFor(p, true))}
-                </div>
               )}
-            </>
+            </div>
           );
         })()}
 
