@@ -4120,9 +4120,6 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                   </div>
                   {cardFor(focusedMember, false, focused.kind)}
                 </div>
-                <div className="voice-strip">
-                  {others.map(p => cardFor(p, true))}
-                </div>
               </>
             );
           }
