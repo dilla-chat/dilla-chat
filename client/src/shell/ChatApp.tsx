@@ -4439,24 +4439,7 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
             (effectiveFocused.kind === 'screen' && hasCam)
           );
           return (
-            <div className="voice-stage-wrap">
-              <div className="voice-stage">
-                {participants.length === 0 && (
-                  <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: 40, color: 'var(--fg-3)' }}>
-                    <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, color: 'var(--fg-2)', marginBottom: 8 }}>
-                      {lockedForMe ? 'Locked channel' : 'Quiet here'}
-                    </div>
-                    <div>
-                      {lockedForMe ? (
-                        <>Only members with manage-channels can join <strong>#{channel.name}</strong>.</>
-                      ) : (
-                        <>Click <em>Join</em> to be the first in <strong>#{channel.name}</strong>.</>
-                      )}
-                    </div>
-                  </div>
-                )}
-                {participants.map(p => cardFor(p, false))}
-              </div>
+            <div className={'voice-stage-wrap' + (effectiveFocused && focusedMember ? ' has-focus' : '')}>
               {effectiveFocused && focusedMember && (
                 <div className={'voice-focus' + (tabFs ? ' is-tab-fs' : '')} ref={focusRef}>
                   <div className="voice-focus-actions">
@@ -4509,6 +4492,23 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                   {cardFor(focusedMember, false, effectiveFocused.kind)}
                 </div>
               )}
+              <div className="voice-stage">
+                {participants.length === 0 && (
+                  <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: 40, color: 'var(--fg-3)' }}>
+                    <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, color: 'var(--fg-2)', marginBottom: 8 }}>
+                      {lockedForMe ? 'Locked channel' : 'Quiet here'}
+                    </div>
+                    <div>
+                      {lockedForMe ? (
+                        <>Only members with manage-channels can join <strong>#{channel.name}</strong>.</>
+                      ) : (
+                        <>Click <em>Join</em> to be the first in <strong>#{channel.name}</strong>.</>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {participants.map(p => cardFor(p, false))}
+              </div>
             </div>
           );
         })()}
