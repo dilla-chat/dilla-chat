@@ -3801,6 +3801,22 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
     return () => window.removeEventListener('keydown', onKey);
   }, [focused]);
 
+  // Auto-flip into focus mode for every viewer the moment someone in
+  // the channel starts screen sharing — screen content is the point of
+  // the call once it's on, so showing it as a thumbnail amongst peers
+  // is worse than just making it the stage. Clear focus when the
+  // sharer stops (only if the focus was pointing at the screen — don't
+  // stomp on a manual webcam-focus the viewer set themselves).
+  const channelSharerId = useVoiceStore((s) => s.screenSharingUserId);
+  useEffect(() => {
+    if (!isConnected) return;
+    if (channelSharerId) {
+      setFocused({ id: channelSharerId, kind: 'screen' });
+    } else {
+      setFocused((f) => (f?.kind === 'screen' ? null : f));
+    }
+  }, [channelSharerId, isConnected]);
+
   // Fullscreen the focused stage. Uses the browser Fullscreen API and
   // bails silently if the user denies the request or fullscreen isn't
   // available (e.g. iOS Safari which is restrictive on non-video els).
@@ -3920,11 +3936,13 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
             const node = (nodes[p.id] || '').split('.')[0] || 'local';
             const focusable = showScreen || showCam;
             // In focus mode, render JUST the requested stream. Outside
-            // focus, show screen (with PIP webcam) when both are on,
-            // otherwise whichever single stream is active.
+            // focus, show webcam when on, otherwise the avatar — we
+            // never render a screen share as a thumbnail because the
+            // auto-focus effect promotes it to the main stage for
+            // every viewer the moment someone starts sharing.
             const renderKind: 'screen' | 'cam' | 'avatar' = focusKind
               ? focusKind
-              : (showScreen ? 'screen' : showCam ? 'cam' : 'avatar');
+              : (showCam ? 'cam' : 'avatar');
             return (
               <div key={p.id}
                    className={'voice-card'
