@@ -188,6 +188,63 @@ function MiniMeter() {
   );
 }
 
+// Voice-dock latency sparkline. Subscribes to useVoiceStore for the
+// rolling RTT window (populated by WebRTCService.startStatsPoller) and
+// renders 28 bars left-to-right (oldest → newest). Empty slots render
+// as min-height placeholders so the chart shows from the first sample.
+const LATENCY_BARS = 28;
+function VoiceDockLatency() {
+  const samples = useVoiceStore((s) => s.latencySamples);
+  const current = samples.length ? samples[samples.length - 1] : null;
+  const max = Math.max(...samples, 30);
+  // Pad with empty slots so even an empty window renders the chart
+  // frame.
+  const display: Array<number | null> = [];
+  for (let i = 0; i < LATENCY_BARS - samples.length; i++) display.push(null);
+  for (const s of samples) display.push(s);
+  return (
+    <div
+      className="vd-latency"
+      title={current != null ? `live latency · current ${current}ms` : 'measuring latency…'}
+    >
+      <div className="vd-lat-head">
+        <span className="vd-k">latency</span>
+        <span className="vd-lat-cur">
+          {current != null ? current : '—'}<span className="vd-u">ms</span>
+        </span>
+      </div>
+      <div className="vd-lat-graph">
+        {display.map((v, i) => {
+          const tone = v == null ? 'idle' : v < 20 ? 'ok' : v < 35 ? 'warn' : 'bad';
+          const pct = v == null ? 0 : (v / max) * 100;
+          return (
+            <span
+              key={i}
+              className={'vd-lat-bar vd-lat-' + tone}
+              style={{ height: pct ? `${pct}%` : undefined }}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// Voice-dock bitrate card. Reads the most recent outbound audio
+// kbps from voiceStore (also written by the WebRTCService stats
+// poller).
+function VoiceDockBitrate() {
+  const kbps = useVoiceStore((s) => s.bitrateKbps);
+  return (
+    <div className="vd-bitrate">
+      <span className="vd-k">bitrate</span>
+      <span className="vd-v">
+        {kbps > 0 ? kbps : '—'}<span className="vd-u">kbps</span>
+      </span>
+    </div>
+  );
+}
+
 // Modal: forward a message to another channel or DM
 function ForwardModal({ sourceMsg, members, onClose, onForward }) {
   const data = (useShellDataContext() as any) || MOCK_DATA;
@@ -2036,6 +2093,10 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
           <div className="voice-dock-top">
             <div className="voice-dock-status">Voice</div>
             <div className="voice-dock-name">{voiceConnection.channel} · {team.name}</div>
+          </div>
+          <div className="voice-dock-stats">
+            <VoiceDockBitrate />
+            <VoiceDockLatency />
           </div>
           <div className="voice-dock-controls">
             <button className={'vctrl' + (mute ? ' active' : '')} title={mute ? "Unmute" : "Mute"} onClick={() => setMute(!mute)}>

@@ -28,6 +28,15 @@ interface VoiceStore {
   peerConnection: RTCPeerConnection | null;
   localStream: MediaStream | null;
 
+  /** Rolling window of recent round-trip latencies (ms) to the SFU,
+   *  sampled by WebRTCService.startStatsPoller() every ~600ms. Cap
+   *  matches the sparkline bar count so the UI can render the
+   *  whole window directly. */
+  latencySamples: number[];
+  /** Most-recent outbound audio bitrate (kbps), updated by the same
+   *  poller. */
+  bitrateKbps: number;
+
   setE2eVoice(enabled: boolean): void;
   joinChannel(teamId: string, channelId: string): Promise<void>;
   leaveChannel(): void;
@@ -55,8 +64,13 @@ interface VoiceStore {
   addVoiceOccupant(channelId: string, peer: VoicePeer): void;
   removeVoiceOccupant(channelId: string, userId: string): void;
   updateVoiceOccupant(channelId: string, userId: string, patch: Partial<VoicePeer>): void;
+  pushLatencySample(ms: number): void;
+  setBitrateKbps(kbps: number): void;
+  resetLatencyWindow(): void;
   cleanup(): void;
 }
+
+const LATENCY_WINDOW_SIZE = 28;
 
 export const useVoiceStore = create<VoiceStore>((set, get) => ({
   currentChannelId: null,
@@ -78,6 +92,8 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
   e2eVoice: false,
   peerConnection: null,
   localStream: null,
+  latencySamples: [],
+  bitrateKbps: 0,
 
   setE2eVoice: (enabled: boolean) => set({ e2eVoice: enabled }),
 
@@ -345,6 +361,19 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
     });
   },
 
+  pushLatencySample: (ms: number) => {
+    set((s) => {
+      const next = s.latencySamples.length >= LATENCY_WINDOW_SIZE
+        ? [...s.latencySamples.slice(s.latencySamples.length - LATENCY_WINDOW_SIZE + 1), ms]
+        : [...s.latencySamples, ms];
+      return { latencySamples: next };
+    });
+  },
+
+  setBitrateKbps: (kbps: number) => set({ bitrateKbps: kbps }),
+
+  resetLatencyWindow: () => set({ latencySamples: [], bitrateKbps: 0 }),
+
   cleanup: () => {
     const state = get();
     if (state.localStream) {
@@ -371,6 +400,8 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
       peers: {},
       peerConnection: null,
       localStream: null,
+      latencySamples: [],
+      bitrateKbps: 0,
     });
   },
 }));

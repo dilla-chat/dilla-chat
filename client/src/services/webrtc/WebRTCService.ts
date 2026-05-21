@@ -46,6 +46,12 @@ class WebRTCService {
   private storeUnsubscribers: Array<() => void> = [];
   private voiceIsolationContext: VoiceIsolationContext | null = null;
   private readonly peerIdByStreamId: Map<string, string> = new Map();
+  // Stats poller — samples currentRoundTripTime from the active
+  // candidate pair every ~600ms and feeds voiceStore so the dock's
+  // latency sparkline can render without spinning its own RAF.
+  private statsPollerId: ReturnType<typeof setInterval> | null = null;
+  private lastBytesSent = 0;
+  private lastBytesSentAt = 0;
 
   // Composed modules
   private readonly vad = new VoiceActivityDetector();
@@ -263,6 +269,9 @@ class WebRTCService {
     // Subscribe to store changes for volume and PTT
     this.setupStoreSubscriptions();
 
+    // Start the stats poller (RTT + bitrate → voiceStore sparkline)
+    this.startStatsPoller();
+
     // Setup push-to-talk if enabled
     this.ptt.setupPTT(this.localStream, this.teamId, this.channelId);
 
@@ -273,6 +282,78 @@ class WebRTCService {
     // Send WS join (server will send voice:state + voice:offer back via WS)
     console.log('[Voice] Sending WS voice:join for channel', channelId);
     ws.voiceJoin(teamId, channelId);
+  }
+
+  /**
+   * Periodically sample RTCStatsReport for round-trip time (active
+   * candidate pair) and outbound audio bitrate, push the values to
+   * voiceStore so the channel-sidebar voice-dock latency sparkline
+   * and bitrate readout can render without each component spinning
+   * its own getStats() interval.
+   */
+  private startStatsPoller(): void {
+    if (this.statsPollerId) return; // already running
+    const store = useVoiceStore.getState();
+    store.resetLatencyWindow();
+    this.lastBytesSent = 0;
+    this.lastBytesSentAt = 0;
+    this.statsPollerId = setInterval(async () => {
+      if (!this.pc) return;
+      try {
+        const report = await this.pc.getStats();
+        let rttMs: number | null = null;
+        let bytesSent: number | null = null;
+        report.forEach((stat) => {
+          // currentRoundTripTime lives on the *succeeded* candidate
+          // pair. nominated is the one actively in use.
+          if (
+            stat.type === 'candidate-pair' &&
+            (stat as { state?: string; nominated?: boolean }).state === 'succeeded' &&
+            (stat as { nominated?: boolean }).nominated &&
+            typeof (stat as { currentRoundTripTime?: number }).currentRoundTripTime === 'number'
+          ) {
+            rttMs = Math.round((stat as { currentRoundTripTime: number }).currentRoundTripTime * 1000);
+          }
+          if (
+            stat.type === 'outbound-rtp' &&
+            (stat as { kind?: string }).kind === 'audio' &&
+            typeof (stat as { bytesSent?: number }).bytesSent === 'number'
+          ) {
+            bytesSent = (stat as { bytesSent: number }).bytesSent;
+          }
+        });
+
+        if (rttMs !== null) {
+          useVoiceStore.getState().pushLatencySample(rttMs);
+        }
+
+        // Bitrate from outbound-rtp byte delta over the poll interval.
+        if (bytesSent !== null) {
+          const now = performance.now();
+          if (this.lastBytesSentAt && bytesSent >= this.lastBytesSent) {
+            const dt = (now - this.lastBytesSentAt) / 1000; // seconds
+            const dBytes = bytesSent - this.lastBytesSent;
+            if (dt > 0) {
+              const kbps = Math.round((dBytes * 8) / 1000 / dt);
+              useVoiceStore.getState().setBitrateKbps(kbps);
+            }
+          }
+          this.lastBytesSent = bytesSent;
+          this.lastBytesSentAt = now;
+        }
+      } catch {
+        /* ignore stats errors; will retry next tick */
+      }
+    }, 600);
+  }
+
+  private stopStatsPoller(): void {
+    if (this.statsPollerId) {
+      clearInterval(this.statsPollerId);
+      this.statsPollerId = null;
+    }
+    this.lastBytesSent = 0;
+    this.lastBytesSentAt = 0;
   }
 
   private setupStoreSubscriptions(): void {
@@ -522,6 +603,8 @@ class WebRTCService {
 
   async disconnect(): Promise<void> {
     this.vad.cleanup();
+    this.stopStatsPoller();
+    useVoiceStore.getState().resetLatencyWindow();
 
     // Clean up PTT listeners
     this.ptt.cleanupPTT();
