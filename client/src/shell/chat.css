@@ -2277,6 +2277,36 @@ img.attach-img {
   gap: 14px;
   align-content: start;
 }
+/* Single-participant layout: the default grid stretches one card to
+   ~full chat width, which combined with .cam-tile's 1:1 aspect ratio
+   makes it taller than the viewport. Switch to a centered, height-
+   bounded layout so the tile fits the available space instead. */
+.voice-stage.is-single {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 0;
+}
+.voice-stage.is-single .voice-card {
+  height: 100%;
+  max-height: 100%;
+  max-width: 100%;
+  width: auto;
+}
+.voice-stage.is-single .voice-card .voice-media {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.voice-stage.is-single .cam-tile,
+.voice-stage.is-single .screen-tile {
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+}
 .voice-card {
   background: var(--surface);
   border-radius: var(--r-lg);
