@@ -3810,16 +3810,36 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
   }, []);
   const [volumes, setVolumes] = useState({}); // memberId -> 0..100
   function vol(id) { return volumes[id] === undefined ? 100 : volumes[id]; }
-  const focusedMember = focused ? participants.find(p => p.id === focused.id) : null;
-  // Strip shows all participants (including the focused one) for context.
-  const others = focused ? participants : [];
-
   // While someone is sharing their screen, exit-focus is disabled —
   // the share IS the call, dismissing it would just leave the viewer
   // staring at avatars. The user can still switch focus between
   // users by clicking another card; they just can't dismiss focus
   // mode entirely until the sharer stops.
   const channelSharerId = useVoiceStore((s) => s.screenSharingUserId);
+  const voicePeers = useVoiceStore((s) => s.peers);
+  // Manual focus + screen-share fallback. Late-joiners landing in a
+  // channel where someone is already sharing should NEVER see the
+  // card grid — derive the focus from the active sharer when no
+  // manual focus is set so the focus branch always wins.
+  const effectiveFocused = focused
+    || (channelSharerId ? { id: channelSharerId, kind: 'screen' as const } : null);
+  // Resolve the focused user. Prefer the shell's member record (full
+  // profile data) but fall back through voiceStore.peers so a late
+  // joiner can render the sharer before channel.participants has
+  // caught up via the WS roster broadcast.
+  const focusedMember = (() => {
+    if (!effectiveFocused) return null;
+    const fromParticipants = participants.find(p => p.id === effectiveFocused.id);
+    if (fromParticipants) return fromParticipants;
+    const fromMembers = members?.byId?.[effectiveFocused.id];
+    if (fromMembers) return fromMembers;
+    const peer = voicePeers?.[effectiveFocused.id];
+    return peer
+      ? { id: peer.user_id, name: peer.username, initials: peer.username.slice(0, 2).toUpperCase() }
+      : null;
+  })();
+  // Strip shows all participants (including the focused one) for context.
+  const others = focused ? participants : [];
   const canExitFocus = !channelSharerId;
 
   useEffect(() => {
@@ -3885,7 +3905,6 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
   // Per-peer sharing flags so we can hide tiles when a peer toggles
   // a track off (the underlying stream is intentionally kept alive
   // in the store across toggles — see voice:webcam-update handler).
-  const voicePeers = useVoiceStore((s) => s.peers);
 
   // Keep the focused stage useful as the underlying streams change:
   //   - both gone → exit focus (nothing to show)
@@ -3990,7 +4009,7 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                      + (speaking ? ' speaking' : '')
                      + (renderKind === 'screen' ? ' has-screen' : renderKind === 'cam' ? ' has-cam' : '')
                      + (isMini ? ' mini' : '')
-                     + (isMini && focused && p.id === focused.id ? ' is-focused' : '')
+                     + (isMini && effectiveFocused && p.id === effectiveFocused.id ? ' is-focused' : '')
                      + (focusable && !isMini ? ' focusable' : '')}
                    data-node={node}
                    {...(peerLatencies[p.id] != null ? { 'data-latency': peerLatencies[p.id] } : {})}
@@ -4027,7 +4046,7 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                    onClick={() => {
                      // Click an already-focused tile → exit focus, unless
                      // a screen share is locking us in focus mode.
-                     if (focused?.id === p.id) {
+                     if (effectiveFocused?.id === p.id) {
                        if (canExitFocus) setFocused(null);
                        return;
                      }
@@ -4120,25 +4139,25 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
             );
           }
 
-          if (focused && focusedMember) {
+          if (effectiveFocused && focusedMember) {
             // Does the focused participant have BOTH streams? If so, show
             // a toggle so they can swap focus without backing out first.
             const fm = focusedMember as any;
             const isSelf = fm.id === currentUserId();
             const hasCam = isSelf ? cam : false; // peer streams TODO via voiceOccupants flags
             const hasScreen = isSelf ? screen : false;
-            const showSwap = (focused.kind === 'cam' && hasScreen) || (focused.kind === 'screen' && hasCam);
+            const showSwap = (effectiveFocused.kind === 'cam' && hasScreen) || (effectiveFocused.kind === 'screen' && hasCam);
             return (
               <>
                 <div className={'voice-focus' + (tabFs ? ' is-tab-fs' : '')} ref={focusRef}>
                   <div className="voice-focus-actions">
                     {showSwap && (
-                      <button className="voice-unfocus" onClick={() => setFocused({ id: focused.id, kind: focused.kind === 'cam' ? 'screen' : 'cam' })} title={focused.kind === 'cam' ? 'Switch to screen' : 'Switch to webcam'}>
-                        {focused.kind === 'cam' ? <Icon.Screen size={14} /> : <Icon.Video size={14} />}
-                        {focused.kind === 'cam' ? 'screen' : 'webcam'}
+                      <button className="voice-unfocus" onClick={() => setFocused({ id: effectiveFocused.id, kind: effectiveFocused.kind === 'cam' ? 'screen' : 'cam' })} title={effectiveFocused.kind === 'cam' ? 'Switch to screen' : 'Switch to webcam'}>
+                        {effectiveFocused.kind === 'cam' ? <Icon.Screen size={14} /> : <Icon.Video size={14} />}
+                        {effectiveFocused.kind === 'cam' ? 'screen' : 'webcam'}
                       </button>
                     )}
-                    {focused.kind === 'screen' && (
+                    {effectiveFocused.kind === 'screen' && (
                       <>
                         <button className="voice-unfocus" onClick={() => setTabFs(v => !v)} title={tabFs ? 'Collapse to grid (esc)' : 'Expand within the tab'}>
                           <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
@@ -4163,7 +4182,7 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                       </button>
                     )}
                   </div>
-                  {cardFor(focusedMember, false, focused.kind)}
+                  {cardFor(focusedMember, false, effectiveFocused.kind)}
                 </div>
                 <div className="voice-strip">
                   {others.map(p => cardFor(p, true))}
