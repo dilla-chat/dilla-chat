@@ -78,24 +78,24 @@ pub async fn verify(
         .decode(&body.signature)
         .map_err(|_| AppError::BadRequest("invalid base64 signature".into()))?;
 
+    // AUTH-ENUM-1 / H3: do the signature verification AND the user
+    // lookup before deciding the response, so the error path doesn't
+    // leak which side failed. Both failure modes return the same
+    // "invalid signature" error.
     let valid = state
         .auth
         .verify_challenge(&body.challenge_id, &pk_bytes, &sig_bytes)?;
 
-    if !valid {
-        return Err(AppError::Unauthorized("invalid signature".into()));
-    }
-
-    // Look up user by public key.
     let pk = pk_bytes.clone();
     let user = spawn_db(state.db.clone(), move |conn| {
         db::get_user_by_public_key(conn, &pk)
     })
     .await?;
 
-    let user = user.ok_or_else(|| {
-        AppError::Unauthorized("no account found for this public key — register first".into())
-    })?;
+    if !valid || user.is_none() {
+        return Err(AppError::Unauthorized("invalid signature".into()));
+    }
+    let user = user.unwrap();
 
     let token = state.auth.generate_jwt(&user.id)?;
     let refresh_token = state.auth.generate_refresh_token(&user.id)?;
