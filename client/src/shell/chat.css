@@ -2329,6 +2329,14 @@ img.attach-img {
   display: flex; gap: 4px;
   z-index: 2;
 }
+/* Inline variant lives in document flow, sitting under .v-name where
+   the old .v-state text was. Used in the normal (non-mini) voice card
+   to give the icons more breathing room than the cramped overlay. */
+.voice-card .v-badges-inline {
+  position: static;
+  margin-top: 2px;
+  z-index: auto;
+}
 .v-badge {
   width: 22px; height: 22px;
   display: inline-flex; align-items: center; justify-content: center;

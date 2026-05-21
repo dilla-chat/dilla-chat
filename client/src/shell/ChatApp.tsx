@@ -4016,27 +4016,19 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                   )}
                 </div>
                 <div className="v-name">{p.name}</div>
-                {!isMini && <div className="v-state">
-                  {mineMuted ? <><Icon.Mic size={10} off /> <span className="v-mic-off">muted</span></> :
-                    speaking ? <><span style={{ color: 'var(--accent)' }}>● speaking</span></> :
-                    <><Icon.Mic size={10} /> connected</>}
-                </div>}
-                <div className="v-badges">
-                  {mineMuted && <span className="v-badge danger" title="muted"><Icon.Mic size={11} off /></span>}
-                  {mineDeaf && <span className="v-badge danger" title="deafened"><Icon.Headphones size={11} off /></span>}
-                  {showCam && <span className="v-badge ok" title="camera on"><Icon.Video size={11} /></span>}
-                  {showScreen && <span className="v-badge ok" title="sharing screen"><Icon.Screen size={11} /></span>}
-                  <span className="v-badge nq" title="network quality">
-                    {[0,1,2,3].map(i => (
-                      // Heights chosen so the tallest bar matches the
-                      // 11px Icon.Video / Icon.Screen glyph the sibling
-                      // .v-badge.ok renders — previously bars topped out
-                      // at 9px which made the nq badge look visibly
-                      // shorter than the rest of the row.
-                      <span key={i} className="nq-bar" style={{ height: 4 + i * 3, opacity: i < 3 ? 1 : 0.4 }} />
-                    ))}
-                  </span>
-                </div>
+                {!isMini && (
+                  <div className="v-badges v-badges-inline">
+                    {mineMuted && <span className="v-badge danger" title="muted"><Icon.Mic size={11} off /></span>}
+                    {mineDeaf && <span className="v-badge danger" title="deafened"><Icon.Headphones size={11} off /></span>}
+                    {showCam && <span className="v-badge ok" title="camera on"><Icon.Video size={11} /></span>}
+                    {showScreen && <span className="v-badge ok" title="sharing screen"><Icon.Screen size={11} /></span>}
+                    <span className="v-badge nq" title="network quality">
+                      {[0,1,2,3].map(i => (
+                        <span key={i} className="nq-bar" style={{ height: 4 + i * 3, opacity: i < 3 ? 1 : 0.4 }} />
+                      ))}
+                    </span>
+                  </div>
+                )}
                 {!isMini && p.id !== currentUserId() && (
                   <div className="v-volume" onClick={(e) => e.stopPropagation()}>
                     <Icon.Headphones size={10} />
