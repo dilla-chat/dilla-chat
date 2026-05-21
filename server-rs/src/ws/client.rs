@@ -33,6 +33,33 @@ pub async fn handle_ws_connection(
 
     hub.register(client).await;
 
+    // Push a voice:rooms-snapshot to the freshly-registered client so
+    // they see who is already in voice on their team — without this,
+    // a new login / reload only learns voice state from incremental
+    // voice:user-joined / voice:user-left deltas going forward and
+    // misses everyone who joined before they connected.
+    if let Some(room_mgr) = &hub.voice_room_manager {
+        let rooms = room_mgr.get_rooms_by_team(&team_id).await;
+        let mut by_channel = serde_json::Map::new();
+        for r in rooms {
+            if let Ok(peers) = serde_json::to_value(&r.peers) {
+                by_channel.insert(r.channel_id.clone(), peers);
+            }
+        }
+        let payload = serde_json::json!({
+            "team_id": team_id,
+            "rooms": serde_json::Value::Object(by_channel),
+        });
+        if let Ok(evt) = crate::ws::events::Event::new(
+            crate::ws::events::EVENT_VOICE_ROOMS_SNAPSHOT,
+            payload,
+        ) {
+            if let Ok(bytes) = evt.to_bytes() {
+                hub.send_to_user(&user_id, bytes).await;
+            }
+        }
+    }
+
     let (mut ws_sender, mut ws_receiver) = socket.split();
 
     // Write pump: drain mpsc receiver and send to WebSocket.
@@ -288,11 +315,29 @@ pub(crate) async fn handle_voice_join_leave(
     hub: &Hub, client_id: &str, user_id: &str, username: &str, team_id: &str,
     event_type: &str, payload: serde_json::Value,
 ) {
-    if let Ok(p) = serde_json::from_value::<VoiceJoinPayload>(payload) {
-        if event_type == EVENT_VOICE_JOIN {
-            handle_voice_join(hub, client_id, user_id, username, team_id, p).await;
-        } else {
-            handle_voice_leave(hub, client_id, user_id, p).await;
+    tracing::info!(
+        "voice dispatch: {} from user={} client={} team={} payload={}",
+        event_type,
+        user_id,
+        client_id,
+        team_id,
+        payload
+    );
+    match serde_json::from_value::<VoiceJoinPayload>(payload.clone()) {
+        Ok(p) => {
+            if event_type == EVENT_VOICE_JOIN {
+                handle_voice_join(hub, client_id, user_id, username, team_id, p).await;
+            } else {
+                handle_voice_leave(hub, client_id, user_id, p).await;
+            }
+        }
+        Err(e) => {
+            tracing::warn!(
+                "voice dispatch: failed to parse {} payload: {} (raw={})",
+                event_type,
+                e,
+                payload
+            );
         }
     }
 }
@@ -320,14 +365,29 @@ pub(crate) async fn handle_voice_media(hub: &Hub, user_id: &str, event_type: &st
 }
 
 pub(crate) async fn handle_voice_key_distribute(hub: &Hub, client_id: &str, user_id: &str, payload: serde_json::Value) {
-    if let Ok(mut p) = serde_json::from_value::<VoiceKeyDistributePayload>(payload) {
-        p.sender_id = user_id.to_string();
-        let evt = Event::new(EVENT_VOICE_KEY_DISTRIBUTE, &p);
-        if let Ok(evt) = evt {
-            if let Ok(data) = evt.to_bytes() {
-                hub.broadcast_to_channel(&p.channel_id, data, Some(client_id.to_string()))
-                    .await;
+    match serde_json::from_value::<VoiceKeyDistributePayload>(payload.clone()) {
+        Ok(mut p) => {
+            p.sender_id = user_id.to_string();
+            let recipients: Vec<&str> = p.encrypted_keys.keys().map(|s| s.as_str()).collect();
+            tracing::info!(
+                target: "dilla_server::voice",
+                "voice:key-distribute from user={user_id} client={client_id} channel={} key_id={} recipients={:?}",
+                p.channel_id, p.key_id, recipients,
+            );
+            let evt = Event::new(EVENT_VOICE_KEY_DISTRIBUTE, &p);
+            if let Ok(evt) = evt {
+                if let Ok(data) = evt.to_bytes() {
+                    hub.broadcast_to_channel(&p.channel_id, data, Some(client_id.to_string()))
+                        .await;
+                }
             }
+        }
+        Err(err) => {
+            tracing::warn!(
+                target: "dilla_server::voice",
+                "voice:key-distribute parse failed: {err} payload={}",
+                payload,
+            );
         }
     }
 }
