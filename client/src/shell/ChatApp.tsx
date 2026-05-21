@@ -4291,44 +4291,39 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                      if (nextKind) setFocused({ id: p.id, kind: nextKind });
                    }}>
                 <div className="voice-media">
-                  {/* Wrap the focused tile + floating PIP in a relative-
-                      positioned shell sized to the tile, so FloatingPip's
-                      offsetParent is the actual video bounds — not the
-                      whole card. Without this the swap PIP could be
-                      dragged over the name/badges rows. */}
-                  <div className="voice-tile-wrap">
-                    {renderKind === 'screen' ? (
-                      // Outside focus mode, render a non-interactive PIP via
-                      // ScreenTile's `pip` prop when both streams exist. In
-                      // focus mode we render our own clickable PIP overlay
-                      // below so the user can swap to the other stream by
-                      // clicking it.
-                      <ScreenTile member={p} pip={showCam && !focusKind ? p : null} />
-                    ) : renderKind === 'cam' ? (
-                      <CamTile member={p} />
-                    ) : (
-                      <Avatar member={p} size={isMini ? 32 : 64} />
-                    )}
-                    {/* Clickable swap PIP — only shown in focus mode when
-                        the participant has BOTH streams. Click the PIP to
-                        swap focus to the other stream. The pip shows the
-                        OPPOSITE kind of what's currently focused: if you're
-                        focused on the screen, the pip is the webcam (and
-                        vice versa). */}
-                    {focusKind && !isMini && showCam && showScreen && (
-                      <FloatingPip
-                        className="voice-pip-swap"
-                        minW={120}
-                        minH={72}
-                        title={focusKind === 'screen' ? 'Switch to webcam' : 'Switch to screen'}
-                        onClick={() => setFocused({ id: p.id, kind: focusKind === 'screen' ? 'cam' : 'screen' })}
-                      >
-                        {focusKind === 'screen'
-                          ? <CamTile member={p} mini />
-                          : <ScreenTile member={p} pip={null} />}
-                      </FloatingPip>
-                    )}
-                  </div>
+                  {renderKind === 'screen' ? (
+                    // Outside focus mode, render a non-interactive PIP via
+                    // ScreenTile's `pip` prop when both streams exist. In
+                    // focus mode we render our own clickable PIP overlay
+                    // below so the user can swap to the other stream by
+                    // clicking it.
+                    <ScreenTile member={p} pip={showCam && !focusKind ? p : null} />
+                  ) : renderKind === 'cam' ? (
+                    <CamTile member={p} />
+                  ) : (
+                    <Avatar member={p} size={isMini ? 32 : 64} />
+                  )}
+                  {/* Clickable swap PIP — only shown in focus mode when
+                      the participant has BOTH streams. Click the PIP to
+                      swap focus to the other stream. The pip shows the
+                      OPPOSITE kind of what's currently focused: if you're
+                      focused on the screen, the pip is the webcam (and
+                      vice versa). voice-media is now position: relative
+                      so the FloatingPip clamps to it (= the tile in
+                      normal mode, the full stage in tab-fs). */}
+                  {focusKind && !isMini && showCam && showScreen && (
+                    <FloatingPip
+                      className="voice-pip-swap"
+                      minW={120}
+                      minH={72}
+                      title={focusKind === 'screen' ? 'Switch to webcam' : 'Switch to screen'}
+                      onClick={() => setFocused({ id: p.id, kind: focusKind === 'screen' ? 'cam' : 'screen' })}
+                    >
+                      {focusKind === 'screen'
+                        ? <CamTile member={p} mini />
+                        : <ScreenTile member={p} pip={null} />}
+                    </FloatingPip>
+                  )}
                 </div>
                 <div className="v-name">{p.name}</div>
                 {!isMini && (
