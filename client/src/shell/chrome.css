@@ -467,7 +467,7 @@
   top: 8px; left: 10px;
 }
 .chat[data-style="mesh"] .voice-card::after {
-  content: attr(data-bitrate);
+  content: 'LATENCY: ' attr(data-latency) 'ms';
   bottom: 8px; right: 10px;
 }
 .chat[data-style="mesh"] .voice-card.speaking::before { color: var(--accent); }

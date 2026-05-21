@@ -3777,6 +3777,10 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
   const vcTeamId = useTeamStore((s) => s.activeTeamId) as string | null;
   const vcTeamMembers = useTeamStore((s) => (vcTeamId ? s.members.get(vcTeamId) ?? [] : [])) as any[];
   const vcPerms = useMemo(() => resolvePermissions(vcTeamMembers, currentUserId()), [vcTeamMembers]);
+  // Live RTT to the SFU — same value powers the voice-dock sparkline.
+  // Rendered into each card's data-latency attribute so the bottom-
+  // right LATENCY badge stays in sync.
+  const latencyMs = useVoiceStore((s) => s.latencySamples.length ? s.latencySamples[s.latencySamples.length - 1] : null);
   // Focused stream: a tuple of (participant_id, 'cam' | 'screen'). Tracking
   // the kind separately lets you focus the webcam alone, the screen alone,
   // or swap between them — previously a participant with both shared their
@@ -3929,7 +3933,7 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                      + (isMini && focused && p.id === focused.id ? ' is-focused' : '')
                      + (focusable && !isMini ? ' focusable' : '')}
                    data-node={node}
-                   data-bitrate="96 kbps · opus"
+                   data-latency={latencyMs != null ? latencyMs : '—'}
                    onContextMenu={(e) => {
                      e.preventDefault();
                      window.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
