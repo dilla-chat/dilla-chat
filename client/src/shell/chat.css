@@ -2369,14 +2369,16 @@ img.attach-img {
   display: flex; align-items: center; justify-content: center;
   margin-bottom: 4px;
 }
-/* The cam/avatar tiles inside .voice-media should fill the remaining
-   space — drop `aspect-ratio:1` so they shrink/grow with the parent
-   instead of demanding their own square. */
+/* The cam/avatar tiles inside .voice-media stay square — but bounded
+   to the AVAILABLE space (the card's media area, not the full card
+   width). Without the height cap they claim card-width as height and
+   push the card past its square footprint. */
 .voice-card .voice-media .cam-tile,
 .voice-card .voice-media .avatar-tile {
-  width: 100%;
+  width: auto;
   height: 100%;
-  aspect-ratio: auto;
+  max-width: 100%;
+  aspect-ratio: 1;
 }
 .voice-card.has-screen { grid-column: span 2; padding: 10px; }
 .voice-card.has-cam .voice-media,
