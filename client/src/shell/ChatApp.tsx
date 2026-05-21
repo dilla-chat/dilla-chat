@@ -4001,7 +4001,7 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
             );
           }
           return (
-            <div className={'voice-stage' + (participants.length === 1 ? ' is-single' : '')}>
+            <div className="voice-stage">
               {participants.length === 0 && (
                 <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: 40, color: 'var(--fg-3)' }}>
                   <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, color: 'var(--fg-2)', marginBottom: 8 }}>

@@ -2277,24 +2277,16 @@ img.attach-img {
      their natural 13.75rem — every card looks identical regardless of
      how many participants are in the channel. */
   grid-template-columns: repeat(auto-fit, 13.75rem);
-  justify-content: center;
+  place-content: center;
   gap: 14px;
-  align-content: start;
+  height: 100%;
+  min-height: 0;
 }
 .voice-stage .voice-card {
   width: 13.75rem;
   aspect-ratio: 1;
   justify-content: center;
 }
-/* Single-participant: same card, just middle-middle in the stage. */
-.voice-stage.is-single {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100%;
-  min-height: 0;
-}
-.voice-stage.is-single .voice-card { flex: 0 0 auto; }
 .voice-card {
   background: var(--surface);
   border-radius: var(--r-lg);
