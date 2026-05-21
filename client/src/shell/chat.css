@@ -2341,6 +2341,15 @@ img.attach-img {
   display: flex; align-items: center; justify-content: center;
   margin-bottom: 4px;
 }
+/* Positioning context for the focused tile + its floating PIP. Sized
+   to the inner tile via inline-flex + max-width so the PIP's
+   offsetParent is the actual video bounds — not the whole card. */
+.voice-card .voice-tile-wrap {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+  max-height: 100%;
+}
 .voice-card.has-screen { grid-column: span 2; padding: 10px; }
 .voice-card.has-cam .voice-media,
 .voice-card.has-screen .voice-media { margin-bottom: 6px; }
