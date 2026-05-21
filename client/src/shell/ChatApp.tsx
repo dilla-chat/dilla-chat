@@ -4480,14 +4480,6 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                         </button>
                       </div>
                     )}
-                    {canExitFocus && (
-                      <button className="voice-unfocus" onClick={() => setFocused(null)} title="Exit focus (esc)">
-                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                          <path d="M2 2h5v5M7 2L2 7M14 9v5h-5M14 14l-5-5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                        exit focus
-                      </button>
-                    )}
                   </div>
                   {cardFor(focusedMember, false, effectiveFocused.kind)}
                 </div>
