@@ -1483,6 +1483,99 @@ function VideoTile({ stream, fit = 'cover', mirror }: { stream: MediaStream; fit
   );
 }
 
+// Floating, draggable + resizable picture-in-picture wrapper.
+// Manipulates left/top/width/height directly on the underlying ref so
+// drag and resize don't trigger React re-renders — buttery interaction
+// even when the inner <video> is rendering. Resize handles cover all
+// 4 corners and 4 edges; drag is the body itself. A click without
+// meaningful movement still fires `onClick` so the pip-swap focus-
+// toggle behavior keeps working.
+type DragHandle = 'move' | 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
+function FloatingPip({
+  className,
+  children,
+  onClick,
+  title,
+  minW = 80,
+  minH = 60,
+}: {
+  className: string;
+  children: React.ReactNode;
+  onClick?: () => void;
+  title?: string;
+  minW?: number;
+  minH?: number;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const start = useCallback((handle: DragHandle, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const el = ref.current;
+    if (!el) return;
+    const parent = (el.offsetParent as HTMLElement) || document.body;
+    const rect = el.getBoundingClientRect();
+    const parentRect = parent.getBoundingClientRect();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startL = rect.left - parentRect.left;
+    const startT = rect.top - parentRect.top;
+    const startW = rect.width;
+    const startH = rect.height;
+    let moved = false;
+    const onMove = (ev: MouseEvent) => {
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      if (!moved && Math.abs(dx) + Math.abs(dy) < 4) return;
+      moved = true;
+      let l = startL, t = startT, w = startW, h = startH;
+      if (handle === 'move') { l += dx; t += dy; }
+      if (handle.includes('n')) { t += dy; h -= dy; }
+      if (handle.includes('s')) { h += dy; }
+      if (handle.includes('w')) { l += dx; w -= dx; }
+      if (handle.includes('e')) { w += dx; }
+      if (w < minW) {
+        if (handle.includes('w')) l -= minW - w;
+        w = minW;
+      }
+      if (h < minH) {
+        if (handle.includes('n')) t -= minH - h;
+        h = minH;
+      }
+      el.style.left = `${l}px`;
+      el.style.top = `${t}px`;
+      el.style.right = 'auto';
+      el.style.bottom = 'auto';
+      el.style.width = `${w}px`;
+      el.style.height = `${h}px`;
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      if (handle === 'move' && !moved && onClick) onClick();
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [onClick, minW, minH]);
+  return (
+    <div
+      ref={ref}
+      className={className}
+      title={title}
+      onMouseDown={(e) => start('move', e)}
+    >
+      {children}
+      <span className="pip-edge pip-n"  onMouseDown={(e) => start('n', e)} />
+      <span className="pip-edge pip-s"  onMouseDown={(e) => start('s', e)} />
+      <span className="pip-edge pip-e"  onMouseDown={(e) => start('e', e)} />
+      <span className="pip-edge pip-w"  onMouseDown={(e) => start('w', e)} />
+      <span className="pip-edge pip-nw" onMouseDown={(e) => start('nw', e)} />
+      <span className="pip-edge pip-ne" onMouseDown={(e) => start('ne', e)} />
+      <span className="pip-edge pip-se" onMouseDown={(e) => start('se', e)} />
+      <span className="pip-edge pip-sw" onMouseDown={(e) => start('sw', e)} />
+    </div>
+  );
+}
+
 function CamTile({ member, mini }) {
   // Pick the real webcam stream if available — local user reads from
   // useVoiceStore.localWebcamStream, peers from remoteWebcamStreams[user_id].
@@ -1529,9 +1622,9 @@ function ScreenTile({ member, pip }) {
             the purpose of sharing it. Black letterbox bars are fine. */}
         <VideoTile stream={stream} fit="contain" />
         {pip && (
-          <div className="screen-pip">
+          <FloatingPip className="screen-pip" minW={64} minH={48}>
             <CamTile member={pip} mini />
-          </div>
+          </FloatingPip>
         )}
       </div>
     );
@@ -4118,30 +4211,17 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                       focused on the screen, the pip is the webcam (and
                       vice versa). */}
                   {focusKind && !isMini && showCam && showScreen && (
-                    // div+role rather than <button> because <video>
-                    // inside a <button> is invalid HTML — some browsers
-                    // refuse to play it and render the PIP black.
-                    <div
+                    <FloatingPip
                       className="voice-pip-swap"
-                      role="button"
-                      tabIndex={0}
+                      minW={120}
+                      minH={72}
                       title={focusKind === 'screen' ? 'Switch to webcam' : 'Switch to screen'}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setFocused({ id: p.id, kind: focusKind === 'screen' ? 'cam' : 'screen' });
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setFocused({ id: p.id, kind: focusKind === 'screen' ? 'cam' : 'screen' });
-                        }
-                      }}
+                      onClick={() => setFocused({ id: p.id, kind: focusKind === 'screen' ? 'cam' : 'screen' })}
                     >
                       {focusKind === 'screen'
                         ? <CamTile member={p} mini />
                         : <ScreenTile member={p} pip={null} />}
-                    </div>
+                    </FloatingPip>
                   )}
                 </div>
                 <div className="v-name">{p.name}</div>

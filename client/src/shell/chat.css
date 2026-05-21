@@ -2569,11 +2569,7 @@ img.attach-img {
   overflow: hidden;
   border: 1.5px solid var(--accent);
   box-shadow: 0 4px 10px rgba(0,0,0,0.4);
-  /* Drag the bottom-right corner to resize. The video child uses
-     width/height: 100% so it follows. */
-  resize: both;
-  min-width: 4rem; min-height: 4rem;
-  max-width: 30rem; max-height: 22rem;
+  cursor: move;
 }
 
 /* Clickable PIP shown in focus mode — appears over the focused stream
@@ -2587,22 +2583,17 @@ img.attach-img {
   border: 2px solid var(--accent);
   box-shadow: 0 6px 16px rgba(0,0,0,0.5);
   background: rgba(0,0,0,0.6);
-  cursor: pointer;
+  cursor: move;
   padding: 0;
-  transition: transform 120ms ease, border-color 120ms ease;
-  /* Resizable via the bottom-right corner. Avoids the transform
-     hover lift while resizing so the drag handle stays under the
-     cursor. */
-  resize: both;
-  min-width: 7.5rem; min-height: 4.5rem;
-  max-width: 50rem; max-height: 30rem;
+  transition: border-color 120ms ease;
 }
-.voice-pip-swap:active { transform: none; }
 .voice-pip-swap:hover {
-  transform: translateY(-2px);
   border-color: color-mix(in oklab, var(--accent) 130%, white);
 }
-.voice-pip-swap > * {
+.voice-pip-swap > :not(.pip-edge) {
+  width: 100%; height: 100%;
+}
+.screen-pip > :not(.pip-edge) {
   width: 100%; height: 100%;
 }
 /* Hide the screen-share chrome (titlebar) inside the swap PIP — the
@@ -2610,6 +2601,23 @@ img.attach-img {
 .voice-pip-swap .screen-titlebar {
   display: none;
 }
+
+/* Eight resize handles around a draggable PIP. Edges are thin (4px)
+   tracks pinned to each side; corners are 10px squares pinned to
+   each corner. They sit ABOVE the video via z-index so mousedown
+   lands on the handle, not the video below. */
+.pip-edge {
+  position: absolute;
+  z-index: 2;
+}
+.pip-edge.pip-n  { top: -2px;    left: 6px;   right: 6px;  height: 5px;  cursor: ns-resize; }
+.pip-edge.pip-s  { bottom: -2px; left: 6px;   right: 6px;  height: 5px;  cursor: ns-resize; }
+.pip-edge.pip-e  { top: 6px;     bottom: 6px; right: -2px; width: 5px;   cursor: ew-resize; }
+.pip-edge.pip-w  { top: 6px;     bottom: 6px; left: -2px;  width: 5px;   cursor: ew-resize; }
+.pip-edge.pip-nw { top: -3px;    left: -3px;  width: 10px; height: 10px; cursor: nwse-resize; }
+.pip-edge.pip-ne { top: -3px;    right: -3px; width: 10px; height: 10px; cursor: nesw-resize; }
+.pip-edge.pip-sw { bottom: -3px; left: -3px;  width: 10px; height: 10px; cursor: nesw-resize; }
+.pip-edge.pip-se { bottom: -3px; right: -3px; width: 10px; height: 10px; cursor: nwse-resize; }
 
 /* Voice focus mode */
 .voice-focus {
