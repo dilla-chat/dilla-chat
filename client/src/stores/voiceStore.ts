@@ -37,6 +37,10 @@ interface VoiceStore {
    *  cadence and cap as latencySamples — drives the matching
    *  voice-dock sparkline. */
   bitrateSamples: number[];
+  /** Per-peer most-recent RTT in ms. Each peer publishes its own
+   *  measurement via the voice:latency WS event; this map is the
+   *  fan-out cache so any card can read latency for any user. */
+  peerLatencies: Record<string, number>;
 
   setE2eVoice(enabled: boolean): void;
   joinChannel(teamId: string, channelId: string): Promise<void>;
@@ -67,6 +71,7 @@ interface VoiceStore {
   updateVoiceOccupant(channelId: string, userId: string, patch: Partial<VoicePeer>): void;
   pushLatencySample(ms: number): void;
   pushBitrateSample(kbps: number): void;
+  setPeerLatency(userId: string, ms: number): void;
   resetStatsWindow(): void;
   cleanup(): void;
 }
@@ -95,6 +100,7 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
   localStream: null,
   latencySamples: [],
   bitrateSamples: [],
+  peerLatencies: {},
 
   setE2eVoice: (enabled: boolean) => set({ e2eVoice: enabled }),
 
@@ -392,7 +398,11 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
     });
   },
 
-  resetStatsWindow: () => set({ latencySamples: [], bitrateSamples: [] }),
+  setPeerLatency: (userId: string, ms: number) => {
+    set((s) => ({ peerLatencies: { ...s.peerLatencies, [userId]: ms } }));
+  },
+
+  resetStatsWindow: () => set({ latencySamples: [], bitrateSamples: [], peerLatencies: {} }),
 
   cleanup: () => {
     const state = get();
@@ -422,6 +432,7 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
       localStream: null,
       latencySamples: [],
       bitrateSamples: [],
+      peerLatencies: {},
     });
   },
 }));

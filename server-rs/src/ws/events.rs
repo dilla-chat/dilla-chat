@@ -23,6 +23,8 @@ pub const EVENT_VOICE_MUTE: &str = "voice:mute";
 pub const EVENT_VOICE_DEAFEN: &str = "voice:deafen";
 pub const EVENT_VOICE_FORCE_MUTE: &str = "voice:force-mute";
 pub const EVENT_VOICE_FORCE_DISCONNECT: &str = "voice:force-disconnect";
+pub const EVENT_VOICE_LATENCY: &str = "voice:latency";
+pub const EVENT_VOICE_LATENCY_UPDATE: &str = "voice:latency-update";
 pub const EVENT_VOICE_SCREEN_START: &str = "voice:screen-start";
 pub const EVENT_VOICE_SCREEN_STOP: &str = "voice:screen-stop";
 pub const EVENT_VOICE_WEBCAM_START: &str = "voice:webcam-start";
@@ -290,6 +292,24 @@ pub struct VoiceForceMutePayload {
 pub struct VoiceForceDisconnectPayload {
     pub channel_id: String,
     pub target_user_id: String,
+}
+
+/// Client → server: I am publishing my current RTT to the SFU so peers
+/// can render real per-user latency. Tiny payload (~30 bytes) so the
+/// poll cadence (~1 Hz) costs nothing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceLatencyPayload {
+    pub channel_id: String,
+    pub latency_ms: u32,
+}
+
+/// Server → all: peer published a new latency sample. Receivers cache
+/// it keyed by user_id and use it to drive their own UI.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceLatencyUpdatePayload {
+    pub channel_id: String,
+    pub user_id: String,
+    pub latency_ms: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

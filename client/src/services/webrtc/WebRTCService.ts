@@ -324,7 +324,18 @@ class WebRTCService {
         });
 
         if (rttMs !== null) {
-          useVoiceStore.getState().pushLatencySample(rttMs);
+          const s = useVoiceStore.getState();
+          s.pushLatencySample(rttMs);
+          // Mirror into peerLatencies under our own user id so the
+          // self card reads the same map as the remote cards do —
+          // single source of truth for per-user RTT.
+          if (this.localUserId) s.setPeerLatency(this.localUserId, rttMs);
+          // Tell other clients about our latency so their cards can
+          // render real per-user RTT (not just their own). The
+          // server rebroadcasts with our user_id stamped in.
+          if (this.teamId && this.channelId) {
+            ws.voiceLatency(this.teamId, this.channelId, rttMs);
+          }
         }
 
         // Bitrate from outbound-rtp byte delta over the poll interval.
@@ -618,6 +629,11 @@ class WebRTCService {
         if (!payload.sharing) {
           store().setRemoteWebcamStream(payload.user_id, null);
         }
+      }),
+      ws.on('voice:latency-update', (payload: { user_id: string; latency_ms: number }) => {
+        // Server is just forwarding what a peer published. Each peer
+        // is the source of truth for its own RTT to the SFU.
+        store().setPeerLatency(payload.user_id, payload.latency_ms);
       }),
     );
   }

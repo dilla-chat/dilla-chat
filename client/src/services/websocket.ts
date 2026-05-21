@@ -503,6 +503,16 @@ export class WebSocketService {
     });
   }
 
+  /** Publish own SFU RTT so other peers can render real per-user
+   *  latency on their voice cards. No permission gate — server just
+   *  echoes it back keyed by sender. */
+  voiceLatency(teamId: string, channelId: string, latencyMs: number): void {
+    this.send(teamId, {
+      type: 'voice:latency',
+      payload: { channel_id: channelId, latency_ms: latencyMs },
+    });
+  }
+
   voiceScreenStart(teamId: string, channelId: string): void {
     this.send(teamId, {
       type: 'voice:screen-start',

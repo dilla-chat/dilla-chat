@@ -548,6 +548,30 @@ pub(in crate::ws) async fn handle_voice_force_disconnect(
     .await;
 }
 
+/// Rebroadcast a peer's self-published RTT measurement so other
+/// clients can render per-user latency. No permission check —
+/// publishing your own metric is harmless and the value is naturally
+/// rate-limited by the publishing client (one sample every ~600ms).
+pub(in crate::ws) async fn handle_voice_latency(
+    hub: &Hub,
+    user_id: &str,
+    p: VoiceLatencyPayload,
+) {
+    let evt = Event::new(
+        EVENT_VOICE_LATENCY_UPDATE,
+        VoiceLatencyUpdatePayload {
+            channel_id: p.channel_id,
+            user_id: user_id.to_string(),
+            latency_ms: p.latency_ms,
+        },
+    );
+    if let Ok(evt) = evt {
+        if let Ok(data) = evt.to_bytes() {
+            hub.broadcast_to_all(data).await;
+        }
+    }
+}
+
 pub(in crate::ws) async fn handle_voice_screen_start(hub: &Hub, user_id: &str, p: VoiceScreenPayload) {
     if let Some(room_mgr) = &hub.voice_room_manager {
         room_mgr

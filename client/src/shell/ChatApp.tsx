@@ -3777,10 +3777,11 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
   const vcTeamId = useTeamStore((s) => s.activeTeamId) as string | null;
   const vcTeamMembers = useTeamStore((s) => (vcTeamId ? s.members.get(vcTeamId) ?? [] : [])) as any[];
   const vcPerms = useMemo(() => resolvePermissions(vcTeamMembers, currentUserId()), [vcTeamMembers]);
-  // Live RTT to the SFU — same value powers the voice-dock sparkline.
-  // Rendered into each card's data-latency attribute so the bottom-
-  // right LATENCY badge stays in sync.
-  const latencyMs = useVoiceStore((s) => s.latencySamples.length ? s.latencySamples[s.latencySamples.length - 1] : null);
+  // Per-user RTT cache. Each peer publishes their own RTT via the
+  // voice:latency WS event; the server fans out as voice:latency-
+  // update, and WebRTCService writes the map. Cards look up by
+  // member id so every tile shows the right user's number.
+  const peerLatencies = useVoiceStore((s) => s.peerLatencies);
   // Focused stream: a tuple of (participant_id, 'cam' | 'screen'). Tracking
   // the kind separately lets you focus the webcam alone, the screen alone,
   // or swap between them — previously a participant with both shared their
@@ -3933,7 +3934,7 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                      + (isMini && focused && p.id === focused.id ? ' is-focused' : '')
                      + (focusable && !isMini ? ' focusable' : '')}
                    data-node={node}
-                   {...(p.id === currentUserId() ? { 'data-latency': latencyMs != null ? latencyMs : '—' } : {})}
+                   {...(peerLatencies[p.id] != null ? { 'data-latency': peerLatencies[p.id] } : {})}
                    onContextMenu={(e) => {
                      e.preventDefault();
                      window.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
