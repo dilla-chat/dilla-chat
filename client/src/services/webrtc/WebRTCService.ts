@@ -62,6 +62,33 @@ class WebRTCService {
     this.channelId = channelId;
     this.teamId = teamId;
 
+    // Defensive: if a previous session left media tracks alive
+    // (server crashed mid-share, page didn't reload, etc.), kill
+    // them now so we don't end up with the browser sharing-banner
+    // pinned to a track no one is using. The store flags are reset
+    // either way so the UI starts fresh.
+    if (this.screenStream) {
+      this.screenStream.getTracks().forEach((t) => t.stop());
+      this.screenStream = null;
+      this.screenSender = null;
+    }
+    if (this.webcamStream) {
+      this.webcamStream.getTracks().forEach((t) => t.stop());
+      this.webcamStream = null;
+      this.webcamSender = null;
+    }
+    const vs = useVoiceStore.getState();
+    if (vs.localScreenStream) {
+      vs.localScreenStream.getTracks().forEach((t) => t.stop());
+      vs.setLocalScreenStream(null);
+      vs.setScreenSharing(false);
+    }
+    if (vs.localWebcamStream) {
+      vs.localWebcamStream.getTracks().forEach((t) => t.stop());
+      vs.setLocalWebcamStream(null);
+      vs.setWebcamSharing(false);
+    }
+
     // Get local user ID
     const authEntry = useAuthStore.getState().teams.get(teamId);
     this.localUserId = authEntry?.user?.id ?? null;
@@ -401,6 +428,31 @@ class WebRTCService {
     const store = useVoiceStore.getState;
 
     this.unsubscribers.push(
+      ws.on('ws:disconnected', ({ teamId }: { teamId: string }) => {
+        // Voice WS for our team just dropped. Reconnect logic will
+        // retry, but during the gap our screen-share / webcam tracks
+        // would otherwise keep capturing — and on reconnect the
+        // server has no idea we were sharing, so the OS-level banner
+        // ends up orphaned. Stop the media tracks immediately; the
+        // user can re-enable them after reconnect.
+        if (teamId !== this.teamId) return;
+        if (this.screenStream) {
+          this.screenStream.getTracks().forEach((t) => t.stop());
+          this.screenStream = null;
+          this.screenSender = null;
+          const vs = useVoiceStore.getState();
+          vs.setLocalScreenStream(null);
+          vs.setScreenSharing(false);
+        }
+        if (this.webcamStream) {
+          this.webcamStream.getTracks().forEach((t) => t.stop());
+          this.webcamStream = null;
+          this.webcamSender = null;
+          const vs = useVoiceStore.getState();
+          vs.setLocalWebcamStream(null);
+          vs.setWebcamSharing(false);
+        }
+      }),
       ws.on('voice:offer', (payload: { sdp: string; channel_id?: string }) => {
         // Chain onto the offer queue so two close-together offers
         // can't interleave their await points. Each offer waits for
