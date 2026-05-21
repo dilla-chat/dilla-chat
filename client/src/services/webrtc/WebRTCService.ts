@@ -61,6 +61,15 @@ class WebRTCService {
   // (single-slot version did, and cam never got bound).
   private pendingCamTrack: MediaStreamTrack | null = null;
   private pendingScreenTrack: MediaStreamTrack | null = null;
+  // Per-kind operation generation. Incremented on every start AND
+  // stop. Inside start, we snapshot at entry; after any await we
+  // compare — a mismatch means a newer start or a stop has happened
+  // since, so the in-flight start aborts. Without this guard, a
+  // rapid ON → OFF sequence let the ON's slow getUserMedia /
+  // getDisplayMedia complete after the OFF and re-enable the
+  // sender (user clicked OFF but we kept sending).
+  private camOpGen = 0;
+  private screenOpGen = 0;
 
   // Composed modules
   private readonly vad = new VoiceActivityDetector();
@@ -1171,8 +1180,17 @@ class WebRTCService {
       throw new Error('Screen sharing is not supported in this environment');
     }
 
+    // Bump the generation counter. Anything else that bumps it (a
+    // stop, or another start) invalidates us. Snapshot on entry and
+    // check after each await — if it's moved, abort and drop the
+    // resources we acquired so we don't re-enable a share the user
+    // already turned off.
+    const myGen = ++this.screenOpGen;
+    const stale = () => this.screenOpGen !== myGen;
+
+    let acquiredStream: MediaStream;
     try {
-      this.screenStream = await navigator.mediaDevices.getDisplayMedia({
+      acquiredStream = await navigator.mediaDevices.getDisplayMedia({
         video: {
           frameRate: { ideal: 60 },
         },
@@ -1182,6 +1200,12 @@ class WebRTCService {
       console.error('[Voice] getDisplayMedia failed:', err);
       throw new Error('Screen sharing cancelled or denied');
     }
+    if (stale()) {
+      console.log('[Voice/diag] startScreenShare: superseded after getDisplayMedia, dropping');
+      acquiredStream.getTracks().forEach((t) => t.stop());
+      return;
+    }
+    this.screenStream = acquiredStream;
 
     const videoTrack = this.screenStream.getVideoTracks()[0];
     if (!videoTrack) {
@@ -1208,6 +1232,12 @@ class WebRTCService {
     this.pendingScreenTrack = videoTrack;
     ws.voiceScreenStart(this.teamId, this.channelId);
     await this.waitForSignalingStable(3000);
+    if (stale()) {
+      console.log('[Voice/diag] startScreenShare: superseded after signaling stable, dropping');
+      // The stop that bumped the gen already cleared local state and
+      // told the server; don't fight it.
+      return;
+    }
     this.diagSnapshot('startScreenShare: after signaling stable');
 
     if (this.screenSender) {
@@ -1287,6 +1317,9 @@ class WebRTCService {
 
   async stopScreenShare(): Promise<void> {
     console.log('[Voice/diag] stopScreenShare — track', this.screenStream?.getTracks()[0]?.id ?? 'none', 'sender', !!this.screenSender);
+    // Bump the generation — any in-flight startScreenShare snapshots
+    // a smaller value and will abort on its next stale() check.
+    this.screenOpGen++;
     // Drop any queued pending track from a start that didn't bind yet
     // — otherwise a quick start→stop leaves a stale entry that would
     // get bound on the next unrelated offer.
@@ -1339,8 +1372,14 @@ class WebRTCService {
       throw new Error('Not connected to a voice channel');
     }
 
+    // See startScreenShare for the rationale — generation guard
+    // protects against a rapid OFF coming in mid-getUserMedia.
+    const myGen = ++this.camOpGen;
+    const stale = () => this.camOpGen !== myGen;
+
+    let acquiredStream: MediaStream;
     try {
-      this.webcamStream = await navigator.mediaDevices.getUserMedia({
+      acquiredStream = await navigator.mediaDevices.getUserMedia({
         video: {
           aspectRatio: 16 / 9,
           width: { ideal: 1280 },
@@ -1353,6 +1392,12 @@ class WebRTCService {
       console.error('[Voice] getUserMedia (webcam) failed:', err);
       throw new Error('Webcam access denied');
     }
+    if (stale()) {
+      console.log('[Voice/diag] startWebcam: superseded after getUserMedia, dropping');
+      acquiredStream.getTracks().forEach((t) => t.stop());
+      return;
+    }
+    this.webcamStream = acquiredStream;
 
     const videoTrack = this.webcamStream.getVideoTracks()[0];
     if (!videoTrack) {
@@ -1373,6 +1418,10 @@ class WebRTCService {
     this.pendingCamTrack = videoTrack;
     ws.voiceWebcamStart(this.teamId, this.channelId);
     await this.waitForSignalingStable(3000);
+    if (stale()) {
+      console.log('[Voice/diag] startWebcam: superseded after signaling stable, dropping');
+      return;
+    }
     this.diagSnapshot('startWebcam: after signaling stable');
 
     if (this.webcamSender) {
@@ -1416,6 +1465,9 @@ class WebRTCService {
 
   async stopWebcam(): Promise<void> {
     console.log('[Voice/diag] stopWebcam — track', this.webcamStream?.getTracks()[0]?.id ?? 'none', 'sender', !!this.webcamSender);
+    // Bump the generation — any in-flight startWebcam aborts on
+    // its next stale() check (see startWebcam).
+    this.camOpGen++;
     // Drop any queued pending track from a start that didn't bind yet.
     this.pendingCamTrack = null;
     if (this.webcamStream) {
