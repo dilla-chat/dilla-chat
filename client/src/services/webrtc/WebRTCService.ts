@@ -558,6 +558,14 @@ class WebRTCService {
           if (this.pc.signalingState === 'closed') return;
           try {
             console.log('[Voice/diag] offer SDP m-lines:', this.summariseSdp(payload.sdp));
+            // Snapshot existing transceiver mids BEFORE applying the
+            // remote offer so pre-bind below can identify which
+            // transceivers the server JUST added vs. the pile of
+            // pre-existing recvonly slots from previous peers /
+            // renegotiations.
+            const knownMidsBefore = new Set(
+              this.pc.getTransceivers().map((t) => t.mid).filter((m): m is string => !!m),
+            );
             const desc: RTCSessionDescriptionInit = { type: 'offer', sdp: payload.sdp };
             await this.pc.setRemoteDescription(new RTCSessionDescription(desc));
             this.diagSnapshot('after setRemoteDescription(offer)');
@@ -606,10 +614,19 @@ class WebRTCService {
             // encoder produces nothing.
             if (this.pendingVideoTrack) {
               const pending = this.pendingVideoTrack;
+              // Must be a video transceiver that DIDN'T exist before
+              // this offer arrived. Without the mid-diff a busy room
+              // (14+ accumulated recvonly m-lines for other peers'
+              // tracks) makes find() pick whichever video slot comes
+              // first instead of the one the server just appended
+              // for us — we'd attach our cam to a peer-receive slot,
+              // the real new slot stays inactive in the answer, and
+              // 'pre-bind never landed' fires.
               const target = this.pc.getTransceivers().find((tx) => {
                 if (tx.currentDirection === 'stopped') return false;
-                if (tx.sender.track) return false;                  // already in use
-                if (tx.receiver.track?.kind !== 'video') return false; // must be video
+                if (tx.sender.track) return false;
+                if (tx.receiver.track?.kind !== 'video') return false;
+                if (!tx.mid || knownMidsBefore.has(tx.mid)) return false;
                 return true;
               });
               if (target) {
@@ -620,7 +637,7 @@ class WebRTCService {
                 console.log('[Voice/diag] pre-bind:', pending.kind, '→ transceiver', { mid: target.mid, dir: target.direction });
                 this.pendingVideoTrack = null;
               } else {
-                console.warn('[Voice/diag] pre-bind:', pending.kind, '— no eligible new transceiver found');
+                console.warn('[Voice/diag] pre-bind:', pending.kind, '— no NEW video transceiver in this offer');
               }
             }
 
