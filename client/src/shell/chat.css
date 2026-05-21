@@ -2531,15 +2531,6 @@ img.attach-img {
   background: linear-gradient(90deg, rgba(124,255,142,0.32) 0%, rgba(180,200,255,0.18) 50%, rgba(255,180,100,0.18) 100%);
   border-radius: 1px;
 }
-.screen-foot {
-  padding: 5px 10px;
-  background: rgba(0,0,0,0.3);
-  font-family: var(--font-mono);
-  font-size: 9px;
-  color: rgba(255,255,255,0.4);
-  letter-spacing: 0.02em;
-  border-top: 1px solid rgba(255,255,255,0.04);
-}
 .screen-pip {
   position: absolute;
   bottom: 30px; right: 10px;
@@ -2572,10 +2563,9 @@ img.attach-img {
 .voice-pip-swap > * {
   width: 100%; height: 100%;
 }
-/* Hide the screen-share chrome (titlebar, footer) inside the swap PIP
-   — the small thumbnail should be just the video frame. */
-.voice-pip-swap .screen-titlebar,
-.voice-pip-swap .screen-foot {
+/* Hide the screen-share chrome (titlebar) inside the swap PIP — the
+   small thumbnail should be just the video frame. */
+.voice-pip-swap .screen-titlebar {
   display: none;
 }
 

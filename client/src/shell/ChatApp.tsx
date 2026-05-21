@@ -1528,9 +1528,6 @@ function ScreenTile({ member, pip }) {
             (top/bottom of a long window, or sides of a wide one) defeats
             the purpose of sharing it. Black letterbox bars are fine. */}
         <VideoTile stream={stream} fit="contain" />
-        <div className="screen-foot">
-          <span>{member.name}'s screen</span>
-        </div>
         {pip && (
           <div className="screen-pip">
             <CamTile member={pip} mini />
@@ -1566,9 +1563,6 @@ function ScreenTile({ member, pip }) {
             </div>
           ))}
         </div>
-      </div>
-      <div className="screen-foot">
-        <span>{member.name}'s screen · 1920×1080 · 8fps</span>
       </div>
       {pip && (
         <div className="screen-pip">
