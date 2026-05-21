@@ -425,6 +425,18 @@ impl SFU {
             .get_mut(user_id)
             .ok_or_else(|| format!("no peer state for user {}", user_id))?;
 
+        // If the user is already sharing screen, tear down the
+        // previous track on every subscriber first — otherwise
+        // restarting screen-share leaves orphan tracks on peers'
+        // PCs and they stall trying to decode the dead stream.
+        if let Some(prev) = ps.screen_track.take() {
+            let prev_id = prev.id().to_string();
+            remove_track_from_other_peers(room, user_id, &prev_id, "stale screen").await;
+        }
+        let ps = room
+            .get_mut(user_id)
+            .ok_or_else(|| format!("no peer state for user {}", user_id))?;
+
         // Create a VP8 video track for screen sharing.
         let screen_track = Arc::new(TrackLocalStaticRTP::new(
             RTCRtpCodecCapability {
@@ -520,6 +532,23 @@ impl SFU {
         let room = rooms
             .get_mut(channel_id)
             .ok_or_else(|| format!("no room for channel {}", channel_id))?;
+        let ps = room
+            .get_mut(user_id)
+            .ok_or_else(|| format!("no peer state for user {}", user_id))?;
+
+        // If the user is already publishing webcam (e.g. they
+        // toggled off then on again), tear down the previous track
+        // on every subscriber's PC FIRST. Without this, each
+        // start_webcam adds a fresh track without removing the dead
+        // one — receivers see multiple "webcam-stream-<uid>" tracks,
+        // can't tell which one carries live frames, and stall on
+        // the orphans. Same pattern as remove_webcam_track.
+        if let Some(prev) = ps.webcam_track.take() {
+            let prev_id = prev.id().to_string();
+            remove_track_from_other_peers(room, user_id, &prev_id, "stale webcam").await;
+            // re-acquire the mutable ref after the helper since it
+            // borrowed the room immutably.
+        }
         let ps = room
             .get_mut(user_id)
             .ok_or_else(|| format!("no peer state for user {}", user_id))?;
