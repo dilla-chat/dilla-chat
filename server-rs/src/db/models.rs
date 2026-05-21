@@ -253,6 +253,10 @@ pub const PERM_MANAGE_TEAM: i64 = 1 << 7;
 /// "everyone" role does NOT have it (so regular members are rate-limited);
 /// the Admin role gets it implicitly via PERM_ADMIN.
 pub const PERM_BYPASS_SLOW_MODE: i64 = 1 << 8;
+/// Force-mute another participant in a voice channel. The server enforces
+/// the mute by broadcasting voice:mute-update; the target client kills
+/// its mic locally on receipt. Server-side action is audit-logged.
+pub const PERM_MUTE_VOICE: i64 = 1 << 9;
 
 mod base64_bytes {
     use base64::Engine;

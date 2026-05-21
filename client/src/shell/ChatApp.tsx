@@ -22,7 +22,7 @@ import { useChannelMuteStore } from '../stores/channelMuteStore';
 import { usePinStore } from '../stores/pinStore';
 import { useBlockStore } from '../stores/blockStore';
 import { dillaConfirm } from '../stores/confirmStore';
-import { resolvePermissions, PERM_MANAGE_CHANNELS, PERM_MANAGE_MEMBERS, PERM_MANAGE_MESSAGES, PERM_CREATE_INVITES, PERM_MANAGE_TEAM } from '../hooks/usePermissions';
+import { resolvePermissions, PERM_MANAGE_CHANNELS, PERM_MANAGE_MEMBERS, PERM_MANAGE_MESSAGES, PERM_CREATE_INVITES, PERM_MANAGE_TEAM, PERM_MUTE_VOICE } from '../hooks/usePermissions';
 import { api } from '../services/api';
 import { tryEncrypt } from '../hooks/useMessageDecryption';
 import { useChannelLazyLoad } from '../hooks/useChannelLazyLoad';
@@ -1936,7 +1936,16 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
                                  { label: 'View profile', icon: <Icon.People size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-profile', { detail: { memberId: pid, x: 200, y: 200 } })) },
                                  { sep: true },
                                  { label: 'Mute for me only', icon: <Icon.Mic size={13} off />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'mixer', text: 'Muted ' + m.name + ' for this session only.', duration: 2500 } })) },
-                                 { label: 'Server-mute (admin)', danger: true, icon: <Icon.Mic size={13} off />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'admin', text: 'Server-mute requires admin role. Propagates across the mesh.', duration: 3500 } })) },
+                                 ...(perms.has(PERM_MUTE_VOICE) && pid !== currentUserId() ? [{
+                                   label: muted ? 'Lift server-mute' : 'Server-mute',
+                                   danger: !muted,
+                                   icon: <Icon.Mic size={13} off />,
+                                   onClick: () => {
+                                     if (!sidebarTeamId) return;
+                                     ws.voiceForceMute(sidebarTeamId, c.id, pid, !muted);
+                                     window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'admin', text: (muted ? 'Lifted server-mute on ' : 'Server-muted ') + m.name + '.', duration: 2500 } }));
+                                   },
+                                 }] : []),
                                  { label: 'Disconnect from voice', danger: true, icon: null, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'admin', text: 'Disconnect ' + m.name + ' from #voice-lounge (admin only).', duration: 3000 } })) },
                                ] } }));
                              }}>
@@ -3753,6 +3762,12 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
   const isConnected = voiceConnection && voiceConnection.channelId === channel.id;
   const meIsAdmin = !!members?.byId?.[currentUserId()]?.isAdmin;
   const lockedForMe = !!channel.locked && !meIsAdmin;
+  // Resolve viewer perms so the right-click context menu can include
+  // moderation actions (e.g. Server-mute) only for users who actually
+  // hold PERM_MUTE_VOICE — matches the server-side gate.
+  const vcTeamId = useTeamStore((s) => s.activeTeamId) as string | null;
+  const vcTeamMembers = useTeamStore((s) => (vcTeamId ? s.members.get(vcTeamId) ?? [] : [])) as any[];
+  const vcPerms = useMemo(() => resolvePermissions(vcTeamMembers, currentUserId()), [vcTeamMembers]);
   // Focused stream: a tuple of (participant_id, 'cam' | 'screen'). Tracking
   // the kind separately lets you focus the webcam alone, the screen alone,
   // or swap between them — previously a participant with both shared their
@@ -3914,7 +3929,16 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                        ...(showCam ? [{ label: focused?.id === p.id && focused.kind === 'cam' ? 'Exit webcam focus' : 'Focus webcam', icon: <Icon.Video size={13} />, onClick: () => setFocused(focused?.id === p.id && focused.kind === 'cam' ? null : { id: p.id, kind: 'cam' as const }) }] : []),
                        { sep: true },
                        { label: 'Mute for me only', icon: <Icon.Mic size={13} off />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'mixer', text: 'Muted ' + p.name + ' for this session only.', duration: 2500 } })) },
-                       { label: 'Server-mute (admin)', danger: true, icon: <Icon.Mic size={13} off />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'admin', text: 'Server-mute requires admin role. Propagates across the mesh.', duration: 3500 } })) },
+                       ...(vcPerms.has(PERM_MUTE_VOICE) && p.id !== currentUserId() ? [{
+                         label: mineMuted ? 'Lift server-mute' : 'Server-mute',
+                         danger: !mineMuted,
+                         icon: <Icon.Mic size={13} off />,
+                         onClick: () => {
+                           if (!vcTeamId) return;
+                           ws.voiceForceMute(vcTeamId, channel.id, p.id, !mineMuted);
+                           window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'admin', text: (mineMuted ? 'Lifted server-mute on ' : 'Server-muted ') + p.name + '.', duration: 2500 } }));
+                         },
+                       }] : []),
                        { label: 'Disconnect from voice', danger: true, icon: null, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'admin', text: 'Disconnect ' + p.name + ' (admin only).', duration: 3000 } })) },
                      ] } }));
                    }}

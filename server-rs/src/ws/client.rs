@@ -174,6 +174,7 @@ pub(crate) async fn handle_event(
         }
         EVENT_VOICE_JOIN | EVENT_VOICE_LEAVE | EVENT_VOICE_ANSWER
         | EVENT_VOICE_ICE_CANDIDATE | EVENT_VOICE_MUTE | EVENT_VOICE_DEAFEN
+        | EVENT_VOICE_FORCE_MUTE
         | EVENT_VOICE_SCREEN_START | EVENT_VOICE_SCREEN_STOP
         | EVENT_VOICE_WEBCAM_START | EVENT_VOICE_WEBCAM_STOP
         | EVENT_VOICE_KEY_DISTRIBUTE | EVENT_VOICE_INVITE => {
@@ -294,6 +295,11 @@ pub(crate) async fn handle_voice_event(
         }
         EVENT_VOICE_ANSWER | EVENT_VOICE_ICE_CANDIDATE | EVENT_VOICE_MUTE | EVENT_VOICE_DEAFEN => {
             handle_voice_signaling(hub, user_id, event_type, payload).await;
+        }
+        EVENT_VOICE_FORCE_MUTE => {
+            if let Ok(p) = serde_json::from_value::<VoiceForceMutePayload>(payload) {
+                handle_voice_force_mute(hub, user_id, team_id, p).await;
+            }
         }
         EVENT_VOICE_SCREEN_START | EVENT_VOICE_SCREEN_STOP |
         EVENT_VOICE_WEBCAM_START | EVENT_VOICE_WEBCAM_STOP => {

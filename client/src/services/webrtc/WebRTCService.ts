@@ -568,6 +568,20 @@ class WebRTCService {
             muted: payload.muted,
             deafened: payload.deafened,
           });
+          // Server-driven mute targeting ME — typically the result of an
+          // admin's voice:force-mute. Kill the mic hardware-side so the
+          // OS indicator goes dark, not just the UI badge. We only
+          // ENFORCE the mute direction; unmuting stays a user choice so
+          // an admin can't keep someone's mic hot against their will.
+          if (
+            payload.user_id === this.localUserId &&
+            payload.muted &&
+            !useVoiceStore.getState().muted
+          ) {
+            this.toggleMute().catch((err) =>
+              console.error('[Voice] force-mute apply failed:', err),
+            );
+          }
         },
       ),
       ws.on('voice:screen-update', (payload: { user_id: string; sharing: boolean }) => {

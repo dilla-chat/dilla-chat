@@ -28,6 +28,7 @@ export const PERMISSION_FLAGS = [
   { bit: 0x040, label: 'permissions.createInvites' },   // PERM_CREATE_INVITES
   { bit: 0x080, label: 'permissions.manageTeam' },      // PERM_MANAGE_TEAM
   { bit: 0x100, label: 'permissions.bypassSlowMode' },  // PERM_BYPASS_SLOW_MODE
+  { bit: 0x200, label: 'permissions.muteVoice' },        // PERM_MUTE_VOICE
 ];
 
 export interface Invite {

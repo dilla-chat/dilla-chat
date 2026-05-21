@@ -29,12 +29,15 @@ pub(in crate::ws) async fn handle_voice_join(
     let cid = p.channel_id.clone();
     let uid = user_id.to_string();
     let tid = team_id.to_string();
+    let uid_log = uid.clone();
+    let cid_log = cid.clone();
     let allowed = tokio::task::spawn_blocking(move || {
         db_clone.with_conn(|conn| crate::db::user_can_access_channel(conn, &uid, &tid, &cid))
     })
     .await
     .unwrap_or(Ok(false))
     .unwrap_or(false);
+    tracing::info!(user_id = %uid_log, channel_id = %cid_log, allowed, "voice:join access-check result");
     if !allowed {
         tracing::info!(
             user_id = user_id,
@@ -349,6 +352,104 @@ pub(in crate::ws) async fn handle_voice_deafen(hub: &Hub, user_id: &str, p: Voic
             }
         }
     }
+}
+
+/// Admin/mod force-mute. Validates that:
+///   1. The actor is in the same team as the target channel.
+///   2. The actor has PERM_MUTE_VOICE (or PERM_ADMIN / is team owner).
+/// Then writes the target's muted state into the room snapshot, broadcasts
+/// the same voice:mute-update everyone else already listens for (so the
+/// target client kills its mic), and audit-logs the action.
+pub(in crate::ws) async fn handle_voice_force_mute(
+    hub: &Hub,
+    actor_user_id: &str,
+    actor_team_id: &str,
+    p: VoiceForceMutePayload,
+) {
+    if !verify_channel_team(&hub.db, &p.channel_id, actor_team_id).await {
+        tracing::warn!(
+            user_id = actor_user_id,
+            channel_id = %p.channel_id,
+            "voice:force-mute denied — channel does not belong to actor team"
+        );
+        return;
+    }
+
+    let db_clone = hub.db.clone();
+    let actor = actor_user_id.to_string();
+    let tid = actor_team_id.to_string();
+    let allowed = tokio::task::spawn_blocking(move || {
+        db_clone.with_conn(|conn| {
+            crate::db::user_has_permission(conn, &actor, &tid, crate::db::PERM_MUTE_VOICE)
+        })
+    })
+    .await
+    .unwrap_or(Ok(false))
+    .unwrap_or(false);
+    if !allowed {
+        tracing::warn!(
+            user_id = actor_user_id,
+            target = %p.target_user_id,
+            channel_id = %p.channel_id,
+            "voice:force-mute denied — actor lacks PERM_MUTE_VOICE"
+        );
+        return;
+    }
+
+    if let Some(room_mgr) = &hub.voice_room_manager {
+        room_mgr
+            .set_muted(&p.channel_id, &p.target_user_id, p.muted)
+            .await;
+
+        let deafened = room_mgr
+            .get_room(&p.channel_id)
+            .await
+            .and_then(|peers| {
+                peers
+                    .iter()
+                    .find(|peer| peer.user_id == p.target_user_id)
+                    .map(|peer| peer.deafened)
+            })
+            .unwrap_or(false);
+
+        let evt = Event::new(
+            EVENT_VOICE_MUTE_UPDATE,
+            VoiceMuteUpdatePayload {
+                channel_id: p.channel_id.clone(),
+                user_id: p.target_user_id.clone(),
+                muted: p.muted,
+                deafened,
+            },
+        );
+        if let Ok(evt) = evt {
+            if let Ok(data) = evt.to_bytes() {
+                hub.broadcast_to_all(data).await;
+            }
+        }
+    }
+
+    // Audit log — required for every team-settings mutation. Force-mute
+    // counts: it overrides another member's local state by privilege.
+    let db_clone = hub.db.clone();
+    let actor = actor_user_id.to_string();
+    let tid = actor_team_id.to_string();
+    let target = p.target_user_id.clone();
+    let channel = p.channel_id.clone();
+    let muted = p.muted;
+    let _ = tokio::task::spawn_blocking(move || {
+        db_clone.with_conn(|conn| {
+            crate::db::insert_audit_event(
+                conn,
+                &tid,
+                Some(&actor),
+                if muted { "voice.force_mute" } else { "voice.force_unmute" },
+                Some("user"),
+                Some(&target),
+                Some(&serde_json::json!({ "channel_id": channel, "muted": muted })),
+            )
+        })
+    })
+    .await;
 }
 
 pub(in crate::ws) async fn handle_voice_screen_start(hub: &Hub, user_id: &str, p: VoiceScreenPayload) {

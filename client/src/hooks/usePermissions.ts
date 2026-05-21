@@ -20,6 +20,7 @@ export const PERM_MANAGE_MESSAGES  = 0x020;
 export const PERM_CREATE_INVITES   = 0x040;
 export const PERM_MANAGE_TEAM      = 0x080;
 export const PERM_BYPASS_SLOW_MODE = 0x100;
+export const PERM_MUTE_VOICE       = 0x200;
 
 export interface Permissions {
   /** Raw OR of the user's role permissions bitmasks. */

@@ -482,6 +482,21 @@ export class WebSocketService {
     });
   }
 
+  /** Server-side force-mute of another participant. Requires the
+   *  PERM_MUTE_VOICE permission on the team — the server enforces and
+   *  audit-logs; this client just submits intent. */
+  voiceForceMute(
+    teamId: string,
+    channelId: string,
+    targetUserId: string,
+    muted: boolean,
+  ): void {
+    this.send(teamId, {
+      type: 'voice:force-mute',
+      payload: { channel_id: channelId, target_user_id: targetUserId, muted },
+    });
+  }
+
   voiceScreenStart(teamId: string, channelId: string): void {
     this.send(teamId, {
       type: 'voice:screen-start',
