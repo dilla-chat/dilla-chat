@@ -4,6 +4,14 @@ import './index.css'
 import App from './App.tsx'
 import { initTelemetry } from './services/telemetry';
 import { installBrowserLogRelay } from './services/browserLogs';
+import { installTrustedTypesPolicy } from './services/trustedTypes';
+
+// F7 — register the Trusted Types `default` policy BEFORE anything else
+// touches the DOM. The server CSP includes
+// `require-trusted-types-for 'script'`, so any DOM sink (innerHTML,
+// script.src, …) without a Trusted Type value would throw in Chromium.
+// Closes DR-XSS-1 from the architecture review §8.4.
+installTrustedTypesPolicy();
 
 // Pipe console output to the server (no-op when the server has the
 // relay disabled). Install before everything else so boot-time
