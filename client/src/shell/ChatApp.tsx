@@ -2402,12 +2402,13 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
         const canJoinSelected = !inVoice && activeIsVoice && canJoinChannel(activeCh);
         return (
           <div className="voice-dock">
-            {inVoice && (
-              <div className="voice-dock-stats">
-                <VoiceDockBitrate />
-                <VoiceDockLatency />
-              </div>
-            )}
+            {/* Render the stats row always and toggle via .is-hidden
+                so we get a CSS max-height / opacity transition on
+                join/leave instead of a hard mount/unmount snap. */}
+            <div className={'voice-dock-stats' + (inVoice ? '' : ' is-hidden')}>
+              <VoiceDockBitrate />
+              <VoiceDockLatency />
+            </div>
             <div className="voice-dock-controls">
               <button className={'vctrl' + (mute ? ' active' : '')} title={mute ? "Unmute" : "Mute"} onClick={() => { console.log('[Voice/diag] UI click: mute', { wasMuted: mute, willMute: !mute, inVoice }); setMute(!mute); }}>
                 <Icon.Mic size={14} off={mute} />

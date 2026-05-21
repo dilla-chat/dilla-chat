@@ -373,6 +373,19 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1.25rem;
+  /* Animate join/leave: when .is-hidden, collapse to zero height +
+     fade out. Slightly faster fade than collapse so the row is gone
+     visually before the layout has finished shifting up. */
+  overflow: hidden;
+  max-height: 4rem;
+  opacity: 1;
+  transition: max-height 220ms ease, opacity 160ms ease, margin 220ms ease;
+}
+.voice-dock-stats.is-hidden {
+  max-height: 0;
+  opacity: 0;
+  margin: 0;
+  pointer-events: none;
 }
 .vd-spark {
   display: flex;
@@ -445,11 +458,17 @@
 .voice-dock-controls {
   display: flex; gap: 4px;
 }
-/* Only draw the separator when the stats row is sitting above us —
-   outside a voice channel there's nothing to separate from. */
-.voice-dock-stats + .voice-dock-controls {
+/* Only draw the separator when the stats row is sitting above us
+   AND not in its collapsed (.is-hidden) state — outside a voice
+   channel there's nothing to separate from. The transition animates
+   the row collapse, but the border would otherwise flash off
+   instantly; transition it in lockstep with the row fade. */
+.voice-dock-stats:not(.is-hidden) + .voice-dock-controls {
   padding-top: 8px;
   border-top: 1px solid var(--hairline);
+}
+.voice-dock-controls {
+  transition: padding-top 220ms ease, border-color 220ms ease;
 }
 .vctrl {
   flex: 1;
