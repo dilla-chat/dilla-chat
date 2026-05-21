@@ -71,6 +71,37 @@ pub fn update_team(conn: &Connection, team: &Team) -> Result<(), rusqlite::Error
     Ok(())
 }
 
+/// Return the team's current upload-usage tally in bytes. H12 / UPL-DOS-1.
+pub fn get_team_upload_bytes_used(
+    conn: &Connection,
+    team_id: &str,
+) -> Result<i64, rusqlite::Error> {
+    let row: Option<i64> = conn
+        .query_row(
+            "SELECT upload_bytes_used FROM teams WHERE id = ?1",
+            rusqlite::params![team_id],
+            |row| row.get(0),
+        )
+        .ok();
+    Ok(row.unwrap_or(0))
+}
+
+/// Bump (or decrement, when delta is negative) the team's upload-usage
+/// tally. Caller orders this relative to the actual fs / row write.
+/// MAX(0, ...) avoids a negative balance after a stale or duplicate
+/// decrement. H12 / UPL-DOS-1.
+pub fn add_team_upload_bytes(
+    conn: &Connection,
+    team_id: &str,
+    delta: i64,
+) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "UPDATE teams SET upload_bytes_used = MAX(0, upload_bytes_used + ?1) WHERE id = ?2",
+        rusqlite::params![delta, team_id],
+    )?;
+    Ok(())
+}
+
 fn row_to_team(row: &rusqlite::Row) -> Result<Team, rusqlite::Error> {
     Ok(Team {
         id: row.get(0)?,

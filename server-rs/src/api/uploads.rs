@@ -117,6 +117,26 @@ pub async fn upload(
         return Err(AppError::BadRequest("invalid team id".into()));
     }
 
+    // H12 / UPL-DOS-1: per-team disk-usage quota. Refuse the upload if
+    // the new file would push the team over the configured cap.
+    let quota_bytes = state.config.upload_quota_per_team_gb as i64 * 1024 * 1024 * 1024;
+    if quota_bytes > 0 {
+        let db = state.db.clone();
+        let tid_quota = tid.clone();
+        let used: i64 = tokio::task::spawn_blocking(move || {
+            db.with_conn(|conn| db::get_team_upload_bytes_used(conn, &tid_quota))
+        })
+        .await
+        .map_err(|e| AppError::Internal(format!("task join: {}", e)))?
+        .map_err(|e| AppError::Internal(format!("db: {}", e)))?;
+        if used + (data.len() as i64) > quota_bytes {
+            return Err(AppError::PayloadTooLarge(format!(
+                "team upload quota exceeded ({} / {} bytes used)",
+                used, quota_bytes
+            )));
+        }
+    }
+
     // Write file to disk.
     let attachment_id = db::new_id();
     let upload_dir = PathBuf::from(&state.config.upload_dir).join(&tid);
@@ -139,6 +159,7 @@ pub async fn upload(
     let aid = attachment_id.clone();
     let size = data.len() as i64;
 
+    let tid_for_quota = tid.clone();
     let attachment = tokio::task::spawn_blocking(move || {
         db.with_conn(|conn| {
             let att = db::Attachment {
@@ -151,6 +172,11 @@ pub async fn upload(
                 created_at: db::now_str(),
             };
             db::create_attachment(conn, &att)?;
+            // H12 / UPL-DOS-1: bump the team-level usage tally. The
+            // quota pre-check above is racy under concurrent uploads,
+            // but the worst case is a small overshoot bounded by the
+            // per-request body limit.
+            db::add_team_upload_bytes(conn, &tid_for_quota, size)?;
             Ok(att)
         })
     })
@@ -313,6 +339,8 @@ pub async fn delete_attachment(
                 .ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)?;
 
             db::delete_attachment(conn, &aid)?;
+            // H12 / UPL-DOS-1: refund the team's quota on delete.
+            let _ = db::add_team_upload_bytes(conn, &tid, -attachment.size);
             Ok(attachment.storage_path)
         })
     })

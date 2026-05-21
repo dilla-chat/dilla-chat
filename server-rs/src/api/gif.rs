@@ -212,6 +212,25 @@ pub async fn embed(
     // reqwest's own resolution.
     let safe_url = crate::api::outbound::safe_outbound_url(&body.url).await?;
 
+    // H12 / UPL-DOS-1: cheap pre-check against the per-team quota.
+    // The post-fetch enforcement below catches the racy case; this
+    // saves an outbound fetch when the team is already over.
+    let quota_bytes = state.config.upload_quota_per_team_gb as i64 * 1024 * 1024 * 1024;
+    if quota_bytes > 0 {
+        let db = state.db.clone();
+        let tid_check = team_id.clone();
+        let used: i64 = spawn_db(db, move |conn| {
+            Ok::<_, rusqlite::Error>(db::get_team_upload_bytes_used(conn, &tid_check)?)
+        })
+        .await?;
+        if used >= quota_bytes {
+            return Err(AppError::PayloadTooLarge(format!(
+                "team upload quota exceeded ({} bytes used)",
+                used
+            )));
+        }
+    }
+
     // Fetch the gif. Re-use the same client + timeout as the search
     // proxy. Bounded by the team's max upload size so a malicious
     // redirect can't fill the disk.
@@ -248,6 +267,24 @@ pub async fn embed(
         )));
     }
 
+    // H12 / UPL-DOS-1: final quota check after we know the actual byte
+    // size from the response. Catches a quota that flipped above the
+    // line between the pre-check and the fetch.
+    if quota_bytes > 0 {
+        let db = state.db.clone();
+        let tid_check = team_id.clone();
+        let used: i64 = spawn_db(db, move |conn| {
+            Ok::<_, rusqlite::Error>(db::get_team_upload_bytes_used(conn, &tid_check)?)
+        })
+        .await?;
+        if used + (bytes.len() as i64) > quota_bytes {
+            return Err(AppError::PayloadTooLarge(format!(
+                "team upload quota exceeded ({} / {} bytes used)",
+                used, quota_bytes
+            )));
+        }
+    }
+
     if team_id.contains("..") || team_id.contains('/') || team_id.contains('\\') {
         return Err(AppError::BadRequest("invalid team id".into()));
     }
@@ -280,6 +317,7 @@ pub async fn embed(
 
     let aid = attachment_id.clone();
     let size = bytes.len() as i64;
+    let tid_for_quota = team_id.clone();
     let attachment = spawn_db(state.db.clone(), move |conn| {
         let att = db::Attachment {
             id: aid,
@@ -291,6 +329,8 @@ pub async fn embed(
             created_at: db::now_str(),
         };
         db::create_attachment(conn, &att)?;
+        // H12 / UPL-DOS-1: count Giphy embeds toward the team quota.
+        db::add_team_upload_bytes(conn, &tid_for_quota, size)?;
         Ok(att)
     })
     .await?;
