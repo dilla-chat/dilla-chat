@@ -205,6 +205,13 @@ pub async fn embed(
     })
     .await?;
 
+    // OUT-SSRF-1 / H11: belt-and-braces — even though is_giphy_url
+    // already pinned to giphy.com, run the network-layer SSRF guard.
+    // Defends against DNS rebinding pointing media.giphy.com at
+    // 127.0.0.1 / 169.254.169.254 / RFC-1918 between this check and
+    // reqwest's own resolution.
+    let safe_url = crate::api::outbound::safe_outbound_url(&body.url).await?;
+
     // Fetch the gif. Re-use the same client + timeout as the search
     // proxy. Bounded by the team's max upload size so a malicious
     // redirect can't fill the disk.
@@ -213,7 +220,7 @@ pub async fn embed(
         .build()
         .map_err(|e| AppError::Internal(format!("http client: {}", e)))?;
     let res: reqwest::Response = client
-        .get(&body.url)
+        .get(&safe_url)
         .send()
         .await
         .map_err(|e| AppError::BadGateway(format!("giphy fetch failed: {}", e)))?;

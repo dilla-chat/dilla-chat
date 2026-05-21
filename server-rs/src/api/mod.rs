@@ -14,6 +14,7 @@ pub mod presence;
 pub mod voice;
 pub mod federation;
 pub mod helpers;
+pub mod outbound;
 pub mod theme;
 pub mod debug;
 pub mod audit;
