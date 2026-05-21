@@ -2688,10 +2688,18 @@ img.attach-img {
 .voice-card.focusable:hover .voice-expand { opacity: 1; }
 .voice-expand:hover { background: var(--accent); color: var(--accent-ink); }
 
-.voice-unfocus {
+/* Action bar sits above the focused tile and holds the swap /
+   fullscreen / exit-focus buttons in a single row. Was on each
+   individual .voice-unfocus before, which made every button stack
+   at the same coordinate. */
+.voice-focus-actions {
   position: absolute;
   top: 10px; left: 10px;
   z-index: 10;
+  display: flex;
+  gap: 6px;
+}
+.voice-unfocus {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 6px 10px;
   background: var(--surface);
