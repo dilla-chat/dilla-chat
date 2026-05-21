@@ -28,6 +28,7 @@ mod block_queries;
 mod jwt_revocation_queries;
 
 use rusqlite::Connection;
+use secrecy::{ExposeSecret, SecretString};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -105,11 +106,18 @@ pub struct Database {
 }
 
 /// Open a SQLite connection with SQLCipher passphrase and WAL mode.
-fn open_connection(db_path: &Path, passphrase: &str) -> Result<Connection, rusqlite::Error> {
+///
+/// DB-MEM-1 / H9: the passphrase travels as a `&SecretString` so it
+/// cannot accidentally land in a `Debug` log line. We only `expose_secret`
+/// inside this function at the `PRAGMA key` call site. SecretString
+/// zeroizes its internal buffer on drop, so the cleartext doesn't
+/// linger in heap memory after open_connection returns.
+fn open_connection(db_path: &Path, passphrase: &SecretString) -> Result<Connection, rusqlite::Error> {
     let conn = Connection::open(db_path)?;
-    if !passphrase.is_empty() {
+    let key = passphrase.expose_secret();
+    if !key.is_empty() {
         // Use pragma_update for safe parameter binding instead of string formatting.
-        conn.pragma_update(None, "key", passphrase)?;
+        conn.pragma_update(None, "key", key)?;
     }
     conn.execute_batch("PRAGMA journal_mode = WAL;")?;
     conn.execute_batch("PRAGMA busy_timeout = 5000;")?;
@@ -122,14 +130,20 @@ impl Database {
     pub fn open(data_dir: &str, passphrase: &str) -> Result<Self, rusqlite::Error> {
         let db_path = Path::new(data_dir).join("dilla.db");
 
+        // Wrap the passphrase in SecretString immediately. Any callers
+        // that handed us a &str had to materialize it for the function
+        // call but we don't keep a long-lived copy of it.
+        let secret = SecretString::from(passphrase.to_string());
+
         // Open the write connection.
-        let write_conn = open_connection(&db_path, passphrase)?;
+        let write_conn = open_connection(&db_path, &secret)?;
 
         // Open read connections.
         let mut readers = Vec::with_capacity(DEFAULT_READ_POOL_SIZE);
         for _ in 0..DEFAULT_READ_POOL_SIZE {
-            readers.push(Mutex::new(open_connection(&db_path, passphrase)?));
+            readers.push(Mutex::new(open_connection(&db_path, &secret)?));
         }
+        // `secret` drops here; SecretString::Drop zeroizes the buffer.
 
         tracing::info!(
             path = %db_path.display(),

@@ -43,6 +43,18 @@ async fn main() {
     let _otel = observability::init_otel(&cfg)
         .expect("failed to initialize OpenTelemetry");
 
+    // H9 / DB-MEM-1: if DILLA_DB_PASSPHRASE_FILE is set, read the
+    // passphrase from disk and override the env-derived value before
+    // we open the DB or hand it to the auth service. File-mode takes
+    // precedence so an operator can avoid leaking the passphrase via
+    // `ps` / `/proc/{pid}/environ`.
+    let mut cfg = cfg;
+    if let Err(e) = load_db_passphrase_from_file(&mut cfg) {
+        tracing::error!("DILLA_DB_PASSPHRASE_FILE: {}", e);
+        std::process::exit(1);
+    }
+    let cfg = cfg;
+
     // H2 / AUTH-WEAK-1: refuse to start with a weak JWT-derivation
     // source. The JWT HMAC is HKDF-derived from DILLA_DB_PASSPHRASE; an
     // empty passphrase + missing DILLA_JWT_SECRET + insecure=false means
@@ -210,6 +222,27 @@ async fn main() {
     ));
 
     start_server(&cfg, app).await;
+}
+
+/// If `cfg.db_passphrase_file` is set, read the file (one line, trimmed)
+/// and override `cfg.db_passphrase`. The file takes precedence over the
+/// env var so an operator can keep the passphrase off `ps` /
+/// `/proc/<pid>/environ`. H9 / DB-MEM-1.
+fn load_db_passphrase_from_file(cfg: &mut Config) -> Result<(), String> {
+    if cfg.db_passphrase_file.is_empty() {
+        return Ok(());
+    }
+    let raw = std::fs::read_to_string(&cfg.db_passphrase_file)
+        .map_err(|e| format!("read {}: {}", cfg.db_passphrase_file, e))?;
+    let trimmed = raw.trim_end_matches(['\n', '\r', ' ', '\t']).to_string();
+    if trimmed.is_empty() {
+        return Err(format!(
+            "passphrase file {} exists but is empty after trim",
+            cfg.db_passphrase_file
+        ));
+    }
+    cfg.db_passphrase = trimmed;
+    Ok(())
 }
 
 /// Refuse to start when the JWT-signing material is too weak. Today the

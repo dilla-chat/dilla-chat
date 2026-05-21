@@ -27,6 +27,10 @@ hkdf = "0.12"
 # transitively present via ed25519-dalek; we promote it to a direct
 # dep so the call site doesn't break the day that transitive goes away.
 subtle = "2"
+# Wrap the SQLCipher passphrase so it doesn't leak via Debug / accidental
+# logging; zeroize on drop covers the dropped-buffer-in-RAM case.
+# DB-MEM-1.
+secrecy = "0.10"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
