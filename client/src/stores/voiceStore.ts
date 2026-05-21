@@ -158,7 +158,12 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
       await webrtcService.connect(channelId, teamId);
       playJoinSound();
 
-      // Immediately add self as a peer so the user sees themselves right away.
+      // Optimistic UI: render self in the participants list immediately
+      // so the sidebar reacts to the click. We deliberately stay in
+      // `connecting: true` here — the actual `connected: true` flip
+      // happens only when the server's voice:state arrives confirming
+      // we're in the room (see WebRTCService voice:state handler).
+      // voice:join-denied or a handshake timeout tears it down.
       const authEntry = useAuthStore.getState().teams.get(teamId);
       const user = authEntry?.user ?? null;
       if (user?.id) {
@@ -171,14 +176,7 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
           voiceLevel: 0,
         };
         set((s) => ({
-          connected: true,
-          connecting: false,
           peers: { [user.id]: selfPeer, ...s.peers },
-          // Also mirror into voiceOccupants for this channel so the
-          // sidebar's 'Active voice' group and the channel's participants
-          // list show self before any WS echo arrives. The server's
-          // voice:user-joined broadcast (when the SFU is wired) updates
-          // the same map for everyone else.
           voiceOccupants: {
             ...s.voiceOccupants,
             [channelId]: [
@@ -189,8 +187,22 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
         }));
       } else {
         console.warn('[Voice] joinChannel: NO user.id, falling back');
-        set({ connected: true, connecting: false });
       }
+
+      // Safety net: if the server never confirms our join (voice:state
+      // never arrives with us in the peer list, no voice:join-denied
+      // either), tear down so the UI doesn't sit forever in
+      // `connecting`.
+      setTimeout(() => {
+        const s = get();
+        if (s.connecting && s.currentChannelId === channelId) {
+          console.warn('[Voice] join handshake timed out — tearing down');
+          window.dispatchEvent(new CustomEvent('dilla:notify', { detail: {
+            channel: '', author: 'system', text: 'Voice join timed out — try again.', duration: 4000,
+          }}));
+          s.leaveChannel();
+        }
+      }, 8000);
     } catch (err) {
       console.error('[Voice] Join failed:', err);
       set({ connecting: false, currentChannelId: null, currentTeamId: null });

@@ -520,6 +520,21 @@ class WebRTCService {
           console.log('[Voice] WS voice:state received, peers:', payload.peers?.length ?? 0);
           store().setPeers(payload.peers.map((p) => ({ ...p, voiceLevel: p.voiceLevel ?? 0 })));
 
+          // Server-confirmed join: flip from `connecting` to `connected`
+          // only when this voice:state actually lists us in the room.
+          // Until then, the optimistic UI from joinChannel renders self
+          // as a peer but the store stays in `connecting` so timeouts
+          // and force-disconnects still work.
+          const s = store();
+          if (
+            this.localUserId &&
+            s.connecting &&
+            payload.peers.some((p) => p.user_id === this.localUserId)
+          ) {
+            s.setConnected(true, this.channelId ?? undefined, this.teamId ?? undefined);
+            s.setConnecting(false);
+          }
+
           // Detect existing screen sharer so late joiners see the share
           const sharer = payload.peers.find((p) => p.screen_sharing);
           if (sharer) {
@@ -581,6 +596,11 @@ class WebRTCService {
             this.toggleMute().catch((err) =>
               console.error('[Voice] force-mute apply failed:', err),
             );
+            window.dispatchEvent(new CustomEvent('dilla:notify', { detail: {
+              channel: '', author: 'admin',
+              text: 'You were server-muted by a moderator.',
+              duration: 5000,
+            }}));
           }
         },
       ),
