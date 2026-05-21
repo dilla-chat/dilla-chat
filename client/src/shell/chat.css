@@ -2569,6 +2569,11 @@ img.attach-img {
   overflow: hidden;
   border: 1.5px solid var(--accent);
   box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+  /* Drag the bottom-right corner to resize. The video child uses
+     width/height: 100% so it follows. */
+  resize: both;
+  min-width: 4rem; min-height: 4rem;
+  max-width: 30rem; max-height: 22rem;
 }
 
 /* Clickable PIP shown in focus mode — appears over the focused stream
@@ -2585,7 +2590,14 @@ img.attach-img {
   cursor: pointer;
   padding: 0;
   transition: transform 120ms ease, border-color 120ms ease;
+  /* Resizable via the bottom-right corner. Avoids the transform
+     hover lift while resizing so the drag handle stays under the
+     cursor. */
+  resize: both;
+  min-width: 7.5rem; min-height: 4.5rem;
+  max-width: 50rem; max-height: 30rem;
 }
+.voice-pip-swap:active { transform: none; }
 .voice-pip-swap:hover {
   transform: translateY(-2px);
   border-color: color-mix(in oklab, var(--accent) 130%, white);
