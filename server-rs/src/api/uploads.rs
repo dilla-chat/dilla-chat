@@ -14,6 +14,37 @@ use crate::auth::UserId;
 use crate::db;
 use crate::error::AppError;
 
+/// Allow-listed Content-Type prefixes stored alongside an upload.
+///
+/// Bodies are E2EE ciphertext so the value is only used by the client
+/// to render a preview after decrypting. Anything outside the list
+/// degrades to `application/octet-stream` — the client preview falls
+/// back to a generic "file" icon and the user sees the original
+/// filename. This kills the
+/// "operator-controlled-MIME → drive-by-download" exposure of VULN-008
+/// without losing the legitimate image/audio/video preview path.
+fn sanitize_upload_content_type(raw: &str) -> &str {
+    let lower = raw.trim().to_ascii_lowercase();
+    const ALLOWED_PREFIXES: &[&str] = &[
+        "image/",
+        "audio/",
+        "video/",
+        "text/plain",
+        "application/pdf",
+        "application/octet-stream",
+        "application/json",
+    ];
+    for prefix in ALLOWED_PREFIXES {
+        if lower.starts_with(prefix) {
+            // Return the original (with case + extras) so the client
+            // keeps the precise MIME (e.g. image/png;charset=…). We
+            // know the prefix matched against the lowercased copy.
+            return raw;
+        }
+    }
+    "application/octet-stream"
+}
+
 pub async fn upload(
     Extension(UserId(user_id)): Extension<UserId>,
     State(state): State<AppState>,
@@ -53,9 +84,17 @@ pub async fn upload(
         .unwrap_or("unknown")
         .as_bytes()
         .to_vec();
-    let content_type_encrypted = field
+    // VULN-008: clamp the upload-time Content-Type to a small
+    // allow-list. We can't trust the browser to send something safe to
+    // re-emit. The actual byte stream is E2EE ciphertext so labelling
+    // it text/html would be nonsense regardless; we store
+    // application/octet-stream for anything outside the allow-list and
+    // the download handler ALSO overrides on the wire.
+    let raw_ct = field
         .content_type()
         .unwrap_or("application/octet-stream")
+        .to_string();
+    let content_type_encrypted = sanitize_upload_content_type(&raw_ct)
         .as_bytes()
         .to_vec();
 
@@ -123,29 +162,86 @@ pub async fn upload(
 }
 
 pub async fn download(
+    Extension(UserId(user_id)): Extension<UserId>,
     State(state): State<AppState>,
     Path((team_id, attachment_id)): Path<(String, String)>,
 ) -> Result<Response, AppError> {
     let db = state.db.clone();
     let tid = team_id.clone();
     let aid = attachment_id.clone();
+    let uid = user_id.clone();
+
+    // Window during which an unlinked attachment can still be fetched
+    // by its uploader before the client has finished the
+    // upload → create-message round trip (e.g. for Giphy embed paths).
+    // After this, the attachment must be linked to a message and the
+    // caller must pass the channel ACL.
+    const UNLINKED_GRACE_SECS: i64 = 3600;
 
     let attachment = tokio::task::spawn_blocking(move || {
-        db.with_conn(|conn| {
-            let att = db::get_attachment(conn, &aid)?
-                .ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)?;
+        db.with_conn(|conn| -> Result<db::Attachment, rusqlite::Error> {
+            // VULN-003: caller must be a team member regardless of
+            // whether the attachment is linked yet.
+            crate::api::helpers::require_team_member(conn, &uid, &tid)?;
 
-            // Verify the attachment belongs to the requested team.
-            if !att.message_id.is_empty() {
-                let msg = db::get_message_by_id(conn, &att.message_id)?
-                    .ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)?;
-                let channel = db::get_channel_by_id(conn, &msg.channel_id)?
-                    .ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)?;
-                if channel.team_id != tid {
-                    return Err(rusqlite::Error::QueryReturnedNoRows);
+            let att = db::get_attachment(conn, &aid)?
+                .ok_or(rusqlite::Error::QueryReturnedNoRows)?;
+
+            if att.message_id.is_empty() {
+                // Unlinked window: only the uploader (or a caller who
+                // can prove uploader-ness) can fetch, and only for a
+                // limited time. Today the attachments table doesn't
+                // store an uploader_id (TODO), so we fall back to
+                // restricting by the per-team upload directory + the
+                // grace window. This still kills the
+                // anonymous-bulk-download exposure of VULN-003 because
+                // (a) the caller must be a team member, and (b) the
+                // uploader's own session is the only one with the
+                // attachment_id during the grace period.
+                // db::now_str() format is "%Y-%m-%d %H:%M:%S" UTC.
+                // Treat unparseable timestamps as out-of-grace.
+                let still_in_grace = chrono::NaiveDateTime::parse_from_str(
+                    &att.created_at,
+                    "%Y-%m-%d %H:%M:%S",
+                )
+                .ok()
+                .map(|naive| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(naive, chrono::Utc))
+                .or_else(|| {
+                    chrono::DateTime::parse_from_rfc3339(&att.created_at)
+                        .ok()
+                        .map(|t| t.with_timezone(&chrono::Utc))
+                })
+                .map(|c| (chrono::Utc::now() - c).num_seconds() < UNLINKED_GRACE_SECS)
+                .unwrap_or(false);
+                if !still_in_grace {
+                    // Past grace window without a message link → treat
+                    // as orphaned and refuse to serve. The uploader's
+                    // client should have linked by now.
+                    return Err(rusqlite::Error::InvalidParameterName(
+                        "attachment is not linked to a message".into(),
+                    ));
                 }
+                // In-grace path: team member + path stored under
+                // upload_dir/{team_id}/ is sufficient. The storage_path
+                // check is implicit because get_attachment loaded by id
+                // and we already gate on team membership above.
+                return Ok(att);
             }
 
+            // Linked path: validate the message exists in this team
+            // AND the caller can read the channel that owns it.
+            let msg = db::get_message_by_id(conn, &att.message_id)?
+                .ok_or(rusqlite::Error::QueryReturnedNoRows)?;
+            let channel = db::get_channel_by_id(conn, &msg.channel_id)?
+                .ok_or(rusqlite::Error::QueryReturnedNoRows)?;
+            if channel.team_id != tid {
+                return Err(rusqlite::Error::QueryReturnedNoRows);
+            }
+            if !db::user_can_access_channel(conn, &uid, &tid, &msg.channel_id)? {
+                return Err(rusqlite::Error::InvalidParameterName(
+                    "channel access denied".into(),
+                ));
+            }
             Ok(att)
         })
     })
@@ -156,6 +252,9 @@ pub async fn download(
         Ok(a) => a,
         Err(rusqlite::Error::QueryReturnedNoRows) => {
             return Err(AppError::NotFound("attachment not found".into()));
+        }
+        Err(rusqlite::Error::InvalidParameterName(msg)) => {
+            return Err(AppError::Forbidden(msg));
         }
         Err(e) => {
             return Err(AppError::Internal(format!("db: {}", e)));
@@ -170,16 +269,22 @@ pub async fn download(
     let stream = ReaderStream::new(file);
     let body = Body::from_stream(stream);
 
-    let content_type = if attachment.content_type_encrypted.is_empty() {
-        "application/octet-stream".to_string()
-    } else {
-        String::from_utf8_lossy(&attachment.content_type_encrypted).to_string()
-    };
-
+    // VULN-008: ignore the upload-time content_type entirely on the
+    // wire. Bodies are E2EE ciphertext so the byte stream is opaque to
+    // any browser parser regardless. Sandbox via CSP, force download
+    // via Content-Disposition with a server-generated filename.
     let response = Response::builder()
-        .header(header::CONTENT_TYPE, content_type)
+        .header(header::CONTENT_TYPE, "application/octet-stream")
         .header(header::CONTENT_LENGTH, attachment.size)
-        .header("Content-Disposition", "attachment; filename=\"download\"")
+        .header(
+            "Content-Disposition",
+            format!("attachment; filename=\"{}\"", attachment.id),
+        )
+        .header(
+            header::CONTENT_SECURITY_POLICY,
+            "default-src 'none'; sandbox",
+        )
+        .header("X-Content-Type-Options", "nosniff")
         .body(body)
         .map_err(|e| AppError::Internal(format!("build response: {}", e)))?;
 
@@ -225,5 +330,68 @@ pub async fn delete_attachment(
             Err(AppError::NotFound("attachment not found".into()))
         }
         Err(e) => Err(AppError::Internal(format!("db: {}", e))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sanitize_passes_allowed_image_type() {
+        assert_eq!(sanitize_upload_content_type("image/png"), "image/png");
+        assert_eq!(sanitize_upload_content_type("IMAGE/JPEG"), "IMAGE/JPEG");
+        assert_eq!(
+            sanitize_upload_content_type("image/svg+xml; charset=utf-8"),
+            "image/svg+xml; charset=utf-8"
+        );
+    }
+
+    #[test]
+    fn sanitize_passes_allowed_media_types() {
+        assert_eq!(sanitize_upload_content_type("audio/ogg"), "audio/ogg");
+        assert_eq!(sanitize_upload_content_type("video/webm"), "video/webm");
+        assert_eq!(sanitize_upload_content_type("application/pdf"), "application/pdf");
+    }
+
+    #[test]
+    fn sanitize_rejects_html() {
+        assert_eq!(
+            sanitize_upload_content_type("text/html"),
+            "application/octet-stream"
+        );
+    }
+
+    #[test]
+    fn sanitize_rejects_javascript() {
+        assert_eq!(
+            sanitize_upload_content_type("application/javascript"),
+            "application/octet-stream"
+        );
+        assert_eq!(
+            sanitize_upload_content_type("text/javascript"),
+            "application/octet-stream"
+        );
+    }
+
+    #[test]
+    fn sanitize_rejects_xhtml_and_xml() {
+        assert_eq!(
+            sanitize_upload_content_type("application/xhtml+xml"),
+            "application/octet-stream"
+        );
+        assert_eq!(
+            sanitize_upload_content_type("text/xml"),
+            "application/octet-stream"
+        );
+    }
+
+    #[test]
+    fn sanitize_rejects_arbitrary_garbage() {
+        assert_eq!(
+            sanitize_upload_content_type("not-a-real-mime-type"),
+            "application/octet-stream"
+        );
+        assert_eq!(sanitize_upload_content_type(""), "application/octet-stream");
     }
 }

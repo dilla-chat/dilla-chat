@@ -123,10 +123,9 @@ pub fn create_router(state: AppState) -> Router {
             "/api/v1/federation/join/{token}",
             get(federation::get_join_info),
         )
-        .route(
-            "/api/v1/teams/{team_id}/attachments/{attachment_id}",
-            get(uploads::download),
-        )
+        // VULN-003: attachment download moved to the PROTECTED group
+        // below so auth_middleware + per-channel ACL run on every
+        // fetch. Anonymous attachment exfil is no longer possible.
         // Browser-log relay. Public so the client can ship logs before
         // the user signs in. The handler itself no-ops (204) when the
         // feature is disabled in config, so it's safe to leave wired.
@@ -342,7 +341,7 @@ pub fn create_router(state: AppState) -> Router {
         )
         .route(
             "/api/v1/teams/{team_id}/attachments/{attachment_id}",
-            delete(uploads::delete_attachment),
+            get(uploads::download).delete(uploads::delete_attachment),
         )
         // Presence
         .route(
