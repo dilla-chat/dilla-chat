@@ -2336,16 +2336,21 @@ img.attach-img {
 }
 .voice-stage .voice-card {
   width: 13.75rem;
-  /* Lock width AND height — using aspect-ratio alone let the card
-     grow vertically when has-cam pushed cam-tile to 100% width
-     (cam-tile is `aspect-ratio:1`, so it claimed the full card-width
-     in height too, then v-name + badges piled on below and forced
-     the card past its square footprint). Explicit height with min-
-     height: 0 inside .voice-media bounds the cam-tile to whatever
-     space is left after the labels. */
+  /* Lock width AND height. Using aspect-ratio alone let the card
+     grow vertically once has-cam was applied because the cam-tile is
+     `aspect-ratio:1` and claimed the full card-width as height,
+     pushing v-name + badges past the 13.75rem square footprint.
+     Scope-narrow: only apply inside .voice-stage so the focused
+     stage's .voice-card (which lives in .voice-focus) keeps its
+     free-flowing dimensions. */
   height: 13.75rem;
   aspect-ratio: 1;
+  overflow: hidden;
   justify-content: stretch;
+}
+.voice-stage .voice-card .voice-media {
+  flex: 1;
+  min-height: 0;
 }
 .voice-card {
   background: var(--surface);
@@ -2355,7 +2360,6 @@ img.attach-img {
   position: relative;
   border: 1px solid var(--hairline);
   transition: transform .15s, border-color .15s;
-  overflow: hidden;
 }
 .voice-card.speaking {
   border-color: var(--accent);
@@ -2364,21 +2368,23 @@ img.attach-img {
 .voice-card .voice-media {
   position: relative;        /* offsetParent for nested FloatingPip */
   width: 100%;
-  flex: 1;
-  min-height: 0;
   display: flex; align-items: center; justify-content: center;
   margin-bottom: 4px;
 }
-/* The cam/avatar tiles inside .voice-media stay square — but bounded
-   to the AVAILABLE space (the card's media area, not the full card
-   width). Without the height cap they claim card-width as height and
-   push the card past its square footprint. */
-.voice-card .voice-media .cam-tile,
-.voice-card .voice-media .avatar-tile {
-  width: auto;
+/* In the GRID only: position the cam/avatar tile absolutely so it
+   doesn't participate in the card's flex height. Card stays locked
+   at 13.75rem², labels (v-name + v-badges) live in normal flow, and
+   the media tile fills whatever space remains above them without
+   ever pushing the card past its footprint. Scoped to .voice-stage
+   so the focused stage (which has its own large surface) is
+   unaffected. */
+.voice-stage .voice-card .voice-media .cam-tile,
+.voice-stage .voice-card .voice-media .avatar-tile {
+  position: absolute;
+  inset: 0;
+  width: 100%;
   height: 100%;
-  max-width: 100%;
-  aspect-ratio: 1;
+  aspect-ratio: auto;
 }
 .voice-card.has-screen { grid-column: span 2; padding: 10px; }
 .voice-card.has-cam .voice-media,
