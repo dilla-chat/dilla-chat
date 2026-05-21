@@ -44,14 +44,17 @@ async fn main() {
     let _otel = observability::init_otel(&cfg)
         .expect("failed to initialize OpenTelemetry");
 
-    // H9 / DB-MEM-1: if DILLA_DB_PASSPHRASE_FILE is set, read the
-    // passphrase from disk and override the env-derived value before
-    // we open the DB or hand it to the auth service. File-mode takes
-    // precedence so an operator can avoid leaking the passphrase via
-    // `ps` / `/proc/{pid}/environ`.
+    // H9 / DB-MEM-1: if any *_FILE env var is set for a secret-bearing
+    // config, read the file (one line, trimmed) and override the
+    // env-derived value before any consumer reads it. File-mode takes
+    // precedence so an operator can avoid leaking secrets via `ps` /
+    // `/proc/{pid}/environ` and can mount them from systemd
+    // `LoadCredential`, Docker secrets, Vault Agent templates, sops, or
+    // a cloud secret manager via tmpfs mount. See
+    // `deploy/secrets/README.md` for the operator-tiered guide.
     let mut cfg = cfg;
-    if let Err(e) = load_db_passphrase_from_file(&mut cfg) {
-        tracing::error!("DILLA_DB_PASSPHRASE_FILE: {}", e);
+    if let Err(e) = load_secrets_from_files(&mut cfg) {
+        tracing::error!("secret _FILE override: {}", e);
         std::process::exit(1);
     }
     let cfg = cfg;
@@ -225,24 +228,88 @@ async fn main() {
     start_server(&cfg, app).await;
 }
 
-/// If `cfg.db_passphrase_file` is set, read the file (one line, trimmed)
-/// and override `cfg.db_passphrase`. The file takes precedence over the
-/// env var so an operator can keep the passphrase off `ps` /
-/// `/proc/<pid>/environ`. H9 / DB-MEM-1.
-fn load_db_passphrase_from_file(cfg: &mut Config) -> Result<(), String> {
-    if cfg.db_passphrase_file.is_empty() {
-        return Ok(());
-    }
-    let raw = std::fs::read_to_string(&cfg.db_passphrase_file)
-        .map_err(|e| format!("read {}: {}", cfg.db_passphrase_file, e))?;
+/// Read a single secret from a file at `path`, trim trailing whitespace
+/// (newlines are the common gotcha — `echo "secret" > file` writes
+/// "secret\n"), reject the empty case, and return the trimmed value.
+///
+/// Generalized helper shared by every `*_FILE` override below. The
+/// caller stitches the value into `Config` (or `std::env::set_var` for
+/// `DILLA_JWT_SECRET` which is consumed via `std::env::var` later in
+/// `auth.rs`).
+fn read_secret_file(env_label: &str, path: &str) -> Result<String, String> {
+    let raw = std::fs::read_to_string(path)
+        .map_err(|e| format!("{}: read {}: {}", env_label, path, e))?;
     let trimmed = raw.trim_end_matches(['\n', '\r', ' ', '\t']).to_string();
     if trimmed.is_empty() {
         return Err(format!(
-            "passphrase file {} exists but is empty after trim",
-            cfg.db_passphrase_file
+            "{}: file {} exists but is empty after trim",
+            env_label, path
         ));
     }
-    cfg.db_passphrase = trimmed;
+    Ok(trimmed)
+}
+
+/// Resolve every supported `_FILE` override. Each `_FILE` env var, when
+/// set, points at a file containing the secret value; the file's
+/// contents take precedence over the matching non-`_FILE` env var and
+/// over `Config` defaults.
+///
+/// Matches the Docker secrets convention (Postgres / Redis images use
+/// the same pattern). H9 / DB-MEM-1 introduced `DILLA_DB_PASSPHRASE_FILE`;
+/// this generalizes the convention to every other secret-bearing env
+/// var Dilla accepts. See `deploy/secrets/README.md` for the operator
+/// playbook.
+fn load_secrets_from_files(cfg: &mut Config) -> Result<(), String> {
+    // 1. DB passphrase — overrides cfg.db_passphrase. Same behavior as
+    //    the H9 implementation, now flowing through the shared helper.
+    if !cfg.db_passphrase_file.is_empty() {
+        cfg.db_passphrase =
+            read_secret_file("DILLA_DB_PASSPHRASE_FILE", &cfg.db_passphrase_file)?;
+    }
+
+    // 2. JWT secret — consumed via `std::env::var("DILLA_JWT_SECRET")`
+    //    in `auth::derive_jwt_secret`, so we override the env var
+    //    in-process rather than carrying it in `Config`. Rust 2021:
+    //    `set_var` is safe; on edition migration this needs an
+    //    `unsafe` block.
+    if let Ok(path) = std::env::var("DILLA_JWT_SECRET_FILE") {
+        if !path.is_empty() {
+            let value = read_secret_file("DILLA_JWT_SECRET_FILE", &path)?;
+            std::env::set_var("DILLA_JWT_SECRET", value);
+        }
+    }
+
+    // 3. Federation join secret — overrides cfg.join_secret.
+    if let Ok(path) = std::env::var("DILLA_JOIN_SECRET_FILE") {
+        if !path.is_empty() {
+            cfg.join_secret = read_secret_file("DILLA_JOIN_SECRET_FILE", &path)?;
+        }
+    }
+
+    // 4. Cloudflare TURN API token — overrides cfg.cf_turn_api_token.
+    if let Ok(path) = std::env::var("DILLA_CF_TURN_API_TOKEN_FILE") {
+        if !path.is_empty() {
+            cfg.cf_turn_api_token =
+                read_secret_file("DILLA_CF_TURN_API_TOKEN_FILE", &path)?;
+        }
+    }
+
+    // 5. OTel exporter auth header value (e.g. an Authorization or
+    //    `x-honeycomb-team` token). The header *name* is configured via
+    //    DILLA_OTEL_API_HEADER and isn't secret; the *value* is.
+    if let Ok(path) = std::env::var("DILLA_OTEL_API_KEY_FILE") {
+        if !path.is_empty() {
+            cfg.otel_api_key = read_secret_file("DILLA_OTEL_API_KEY_FILE", &path)?;
+        }
+    }
+
+    // 6. Sentry DSN — embeds the project's ingest secret in the URL.
+    if let Ok(path) = std::env::var("DILLA_SENTRY_DSN_FILE") {
+        if !path.is_empty() {
+            cfg.sentry_dsn = read_secret_file("DILLA_SENTRY_DSN_FILE", &path)?;
+        }
+    }
+
     Ok(())
 }
 
