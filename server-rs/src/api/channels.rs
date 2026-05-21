@@ -211,6 +211,37 @@ pub async fn update(
         let mut channel = get_channel_for_team(conn, &channel_id, &team_id)?;
         let prev_locked = channel.locked;
         apply_channel_updates(&mut channel, &body);
+        // Keep the canonical group_id in sync with the legacy `category`
+        // string — empty category clears the group; non-empty resolves
+        // to an existing group (case-insensitive) or creates a fresh
+        // one. Mirrors the create-channel resolution so the sidebar
+        // reorders the channel under the new group without a re-sync.
+        if body.category.is_some() {
+            let trimmed_cat = channel.category.trim().to_string();
+            channel.group_id = if trimmed_cat.is_empty() {
+                None
+            } else {
+                let existing = db::get_groups_by_team(conn, &team_id)?
+                    .into_iter()
+                    .find(|g| g.name.trim().eq_ignore_ascii_case(&trimmed_cat));
+                if let Some(g) = existing {
+                    Some(g.id)
+                } else {
+                    let now = db::now_str();
+                    let new_group = db::ChannelGroup {
+                        id: db::new_id(),
+                        team_id: team_id.clone(),
+                        name: trimmed_cat,
+                        position: 0,
+                        created_at: now.clone(),
+                        updated_at: now,
+                        hidden_if_restricted: false,
+                    };
+                    db::create_group(conn, &new_group)?;
+                    Some(new_group.id)
+                }
+            };
+        }
         // After applying the rename, make sure no sibling channel of the
         // same type already owns the normalized name. The unique index
         // would catch this anyway, but pre-checking lets us surface a
