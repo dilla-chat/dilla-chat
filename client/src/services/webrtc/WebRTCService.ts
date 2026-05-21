@@ -213,6 +213,22 @@ class WebRTCService {
     }
     useVoiceStore.getState().setE2eVoice(this.encryption.e2eEnabled);
 
+    // Diagnostic state-change logging — chases "screen attached but
+    // never flows" and "track frozen for remote" by showing exactly
+    // when negotiation transitions vs. when tracks fire.
+    this.pc.onsignalingstatechange = () => {
+      console.log('[Voice/diag] signalingState →', this.pc?.signalingState);
+    };
+    this.pc.oniceconnectionstatechange = () => {
+      console.log('[Voice/diag] iceConnectionState →', this.pc?.iceConnectionState);
+    };
+    this.pc.onconnectionstatechange = () => {
+      console.log('[Voice/diag] connectionState →', this.pc?.connectionState);
+    };
+    this.pc.onnegotiationneeded = () => {
+      console.log('[Voice/diag] onnegotiationneeded fired (not handled — server drives negotiation)');
+    };
+
     // Handle ICE candidates
     this.pc.onicecandidate = (event) => {
       if (event.candidate && this.channelId && this.teamId) {
@@ -324,12 +340,16 @@ class WebRTCService {
     store.resetStatsWindow();
     this.lastBytesSent = 0;
     this.lastBytesSentAt = 0;
+    let diagTickCount = 0;
     this.statsPollerId = setInterval(async () => {
       if (!this.pc) return;
       try {
         const report = await this.pc.getStats();
         let rttMs: number | null = null;
         let bytesSent: number | null = null;
+        // Per-stream breakdown for diag logging — see which kind/mid
+        // is actually producing bytes vs. silently sitting on zero.
+        const perStream: Array<{ kind?: string; mid?: string; bytesSent?: number; packetsSent?: number; targetBitrate?: number }> = [];
         report.forEach((stat) => {
           // currentRoundTripTime lives on the *succeeded* candidate
           // pair. nominated is the one actively in use.
@@ -348,9 +368,18 @@ class WebRTCService {
             stat.type === 'outbound-rtp' &&
             typeof (stat as { bytesSent?: number }).bytesSent === 'number'
           ) {
-            bytesSent = (bytesSent ?? 0) + (stat as { bytesSent: number }).bytesSent;
+            const s = stat as { bytesSent: number; kind?: string; mid?: string; packetsSent?: number; targetBitrate?: number };
+            bytesSent = (bytesSent ?? 0) + s.bytesSent;
+            perStream.push({ kind: s.kind, mid: s.mid, bytesSent: s.bytesSent, packetsSent: s.packetsSent, targetBitrate: s.targetBitrate });
           }
         });
+        // Log per-sender breakdown every ~5 ticks (~3s) so the dev
+        // console shows which mid/kind is actually producing bytes
+        // vs. sitting at zero — the smoking gun for "screen attached
+        // but not flowing" type bugs.
+        if (++diagTickCount % 5 === 0 && perStream.length > 0) {
+          console.log('[Voice/diag] outbound-rtp stream breakdown:', perStream);
+        }
 
         if (rttMs !== null) {
           const s = useVoiceStore.getState();
@@ -454,6 +483,7 @@ class WebRTCService {
         }
       }),
       ws.on('voice:offer', (payload: { sdp: string; channel_id?: string }) => {
+        this.diagSnapshot('voice:offer received');
         // Chain onto the offer queue so two close-together offers
         // can't interleave their await points. Each offer waits for
         // the previous one's setLocalDescription to land before its
@@ -465,8 +495,10 @@ class WebRTCService {
           // run. Anything else (closed, etc.) bails out cleanly.
           if (this.pc.signalingState === 'closed') return;
           try {
+            console.log('[Voice/diag] offer SDP m-lines:', this.summariseSdp(payload.sdp));
             const desc: RTCSessionDescriptionInit = { type: 'offer', sdp: payload.sdp };
             await this.pc.setRemoteDescription(new RTCSessionDescription(desc));
+            this.diagSnapshot('after setRemoteDescription(offer)');
             // If a second offer arrived during the await above, the
             // pc state may have moved on. Skip the rest so we don't
             // build an answer for a description that's no longer
@@ -486,6 +518,8 @@ class WebRTCService {
             // Same check again — state can advance during createAnswer.
             if (this.pc.signalingState !== 'have-remote-offer') return;
             await this.pc.setLocalDescription(answer);
+            this.diagSnapshot('after setLocalDescription(answer)');
+            console.log('[Voice/diag] answer SDP m-lines:', this.summariseSdp(answer.sdp ?? ''));
             if (this.teamId && this.channelId && answer) {
               ws.voiceAnswer(this.teamId, this.channelId, answer);
             }
@@ -964,6 +998,8 @@ class WebRTCService {
     store.setScreenSharing(true);
     store.setScreenSharingUserId(this.localUserId);
 
+    console.log('[Voice/diag] startScreenShare — track', { id: videoTrack.id, kind: videoTrack.kind, label: videoTrack.label, readyState: videoTrack.readyState, enabled: videoTrack.enabled });
+    this.diagSnapshot('startScreenShare: before voiceScreenStart');
     // Tell the server to set up its end (recv-only transceiver + add
     // our track to every other peer). Server will fire a
     // renegotiation; the offer-queue handler in setupWSListeners
@@ -972,13 +1008,60 @@ class WebRTCService {
     // track) and binds our video to it.
     ws.voiceScreenStart(this.teamId, this.channelId);
     await this.waitForSignalingStable(3000);
+    this.diagSnapshot('startScreenShare: after signaling stable');
 
     if (this.pc && this.screenStream) {
       this.screenSender = this.pc.addTrack(videoTrack, this.screenStream);
+      this.diagSnapshot('startScreenShare: after addTrack');
       // High priority + 4 Mbps ceiling so the BWE allocator favors
       // the screen over the cam even when both are sending.
       await this.setSenderBitrate(this.screenSender, 4_000_000, 'maintain-resolution', 'high');
+      console.log('[Voice/diag] startScreenShare: sender params after setParameters', this.screenSender.getParameters());
     }
+  }
+
+  /** Heavy diagnostic snapshot of the PC state — every transceiver's
+   *  direction, currentDirection, mid, sender track id/kind/readyState
+   *  and receiver track id/kind/readyState. Used to chase track-flow
+   *  bugs in the multi-peer multi-video matrix where reasoning about
+   *  what the PC actually thinks is going on becomes the hard part. */
+  private diagSnapshot(label: string): void {
+    if (!this.pc) {
+      console.log('[Voice/diag]', label, '— pc is null');
+      return;
+    }
+    const txs = this.pc.getTransceivers().map((tx, i) => ({
+      i,
+      mid: tx.mid,
+      dir: tx.direction,
+      cur: tx.currentDirection,
+      stopped: tx.currentDirection === 'stopped',
+      sendKind: tx.sender.track?.kind,
+      sendTrack: tx.sender.track?.id,
+      sendReady: tx.sender.track?.readyState,
+      sendMuted: tx.sender.track?.muted,
+      sendEnabled: tx.sender.track?.enabled,
+      recvKind: tx.receiver.track?.kind,
+      recvTrack: tx.receiver.track?.id,
+      recvReady: tx.receiver.track?.readyState,
+      recvMuted: tx.receiver.track?.muted,
+    }));
+    console.log(
+      '[Voice/diag]', label,
+      `\n  signalingState=${this.pc.signalingState}`,
+      `connectionState=${this.pc.connectionState}`,
+      `iceConnectionState=${this.pc.iceConnectionState}`,
+      '\n  transceivers:', txs,
+    );
+  }
+
+  /** Compact one-line summary of an SDP's m-lines for log readability. */
+  private summariseSdp(sdp: string): string {
+    return sdp
+      .split('\n')
+      .filter((l) => l.startsWith('m=') || /^a=(mid|sendrecv|sendonly|recvonly|inactive|msid)/.test(l))
+      .map((l) => l.trim())
+      .join(' | ');
   }
 
   /** Wait until the PC's signaling state goes through a renegotiation
@@ -1069,15 +1152,20 @@ class WebRTCService {
     store.setWebcamSharing(true);
     store.updatePeer(this.localUserId ?? '', { webcam_sharing: true });
 
+    console.log('[Voice/diag] startWebcam — track', { id: videoTrack.id, kind: videoTrack.kind, label: videoTrack.label, readyState: videoTrack.readyState, enabled: videoTrack.enabled });
+    this.diagSnapshot('startWebcam: before voiceWebcamStart');
     ws.voiceWebcamStart(this.teamId, this.channelId);
     await this.waitForSignalingStable(3000);
+    this.diagSnapshot('startWebcam: after signaling stable');
 
     if (this.pc && this.webcamStream) {
       this.webcamSender = this.pc.addTrack(videoTrack, this.webcamStream);
+      this.diagSnapshot('startWebcam: after addTrack');
       // Cap the cam below the screen-share and mark it 'low' priority
       // so the allocator favors the screen when both are sending.
       // Cam stays smooth (face) by dropping resolution under load.
       await this.setSenderBitrate(this.webcamSender, 800_000, 'maintain-framerate', 'low');
+      console.log('[Voice/diag] startWebcam: sender params after setParameters', this.webcamSender.getParameters());
     }
   }
 
