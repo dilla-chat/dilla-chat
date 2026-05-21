@@ -456,19 +456,22 @@
 }
 .chat[data-style="mesh"] .voice-card::before,
 .chat[data-style="mesh"] .voice-card::after {
-  position: absolute;
   font-family: var(--font-mono);
   font-size: 9.5px;
   color: var(--fg-3);
   letter-spacing: 0.04em;
 }
+/* NODE label stays as an overlay anchored to the card's top-left. */
 .chat[data-style="mesh"] .voice-card::before {
   content: 'NODE: ' attr(data-node);
+  position: absolute;
   top: 8px; left: 10px;
 }
+/* LATENCY sits on its own row at the bottom of the card, in normal
+   flex flow — no corner overlay. */
 .chat[data-style="mesh"] .voice-card::after {
   content: 'LATENCY: ' attr(data-latency) 'ms';
-  bottom: 8px; right: 10px;
+  align-self: center;
 }
 .chat[data-style="mesh"] .voice-card.speaking::before { color: var(--accent); }
 
