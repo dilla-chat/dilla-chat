@@ -4143,20 +4143,29 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
   // sidebar would stay hidden after leaving focus mode.
   useEffect(() => { if (!focused) setTabFs(false); }, [focused]);
 
-  // Auto-flip into focus mode for every viewer the moment someone in
-  // the channel starts screen sharing — screen content is the point of
-  // the call once it's on, so showing it as a thumbnail amongst peers
-  // is worse than just making it the stage. Clear focus when the
-  // sharer stops (only if the focus was pointing at the screen — don't
-  // stomp on a manual webcam-focus the viewer set themselves).
+  // Auto-flip into focus mode the moment any peer starts a video
+  // stream — screen-share OR webcam. Screen wins over cam (so a
+  // cam-then-screen sequence promotes the screen to the stage). When
+  // every video stops, clear focus so the card grid returns. Manual
+  // focus picks made by the viewer still take precedence via the
+  // setFocused override.
+  const firstCamSharerId = useMemo(() => {
+    const ids = Object.values(voicePeers ?? {})
+      .filter((p) => p.webcam_sharing && p.user_id !== currentUserId())
+      .map((p) => p.user_id)
+      .sort();
+    return ids[0] ?? null;
+  }, [voicePeers]);
   useEffect(() => {
     if (!isConnected) return;
     if (channelSharerId) {
       setFocused({ id: channelSharerId, kind: 'screen' });
+    } else if (firstCamSharerId) {
+      setFocused({ id: firstCamSharerId, kind: 'cam' });
     } else {
-      setFocused((f) => (f?.kind === 'screen' ? null : f));
+      setFocused(null);
     }
-  }, [channelSharerId, isConnected]);
+  }, [channelSharerId, firstCamSharerId, isConnected]);
 
   // Fullscreen the focused stage. Uses the browser Fullscreen API and
   // bails silently if the user denies the request or fullscreen isn't
