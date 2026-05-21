@@ -2156,31 +2156,55 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
         </div>
       )}
 
-      {voiceConnection && (
-        <div className="voice-dock">
-          <div className="voice-dock-stats">
-            <VoiceDockBitrate />
-            <VoiceDockLatency />
+      {(() => {
+        // Show the dock always — when not in voice the controls work
+        // as pre-set toggles (mute/deaf/cam/screen state survives into
+        // the next join) and the hangup button is replaced with a
+        // Join button that activates when the currently-selected
+        // channel is a joinable voice channel.
+        const inVoice = !!voiceConnection;
+        const activeCh = channels.find((c) => c.id === activeChannel);
+        const activeIsVoice = activeCh?.type === 'voice';
+        const canJoinSelected = !inVoice && activeIsVoice && canJoinChannel(activeCh);
+        return (
+          <div className="voice-dock">
+            {inVoice && (
+              <div className="voice-dock-stats">
+                <VoiceDockBitrate />
+                <VoiceDockLatency />
+              </div>
+            )}
+            <div className="voice-dock-controls">
+              <button className={'vctrl' + (mute ? ' active' : '')} title={mute ? "Unmute" : "Mute"} onClick={() => setMute(!mute)}>
+                <Icon.Mic size={14} off={mute} />
+              </button>
+              <button className={'vctrl' + (deaf ? ' active' : '')} title={deaf ? "Undeafen" : "Deafen"} onClick={() => setDeaf(!deaf)}>
+                <Icon.Headphones size={14} off={deaf} />
+              </button>
+              <button className={'vctrl' + (cam ? ' on' : '')} title={cam ? "Stop camera" : "Start camera"} onClick={() => setCam(!cam)}>
+                <Icon.Video size={14} off={!cam} />
+              </button>
+              <button className={'vctrl' + (screen ? ' on' : '')} title={screen ? "Stop sharing" : "Share screen"} onClick={() => setScreen(!screen)}>
+                <Icon.Screen size={14} off={!screen} />
+              </button>
+              {inVoice ? (
+                <button className="vctrl danger" title="Disconnect" onClick={onLeaveVoice}>
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 7c2-2 8-2 10 0v2l-3 1V8.5c-1-.5-3-.5-4 0V10L3 9V7z" fill="currentColor"/></svg>
+                </button>
+              ) : (
+                <button
+                  className={'vctrl join' + (canJoinSelected ? '' : ' is-disabled')}
+                  disabled={!canJoinSelected}
+                  title={canJoinSelected ? `Join ${activeCh!.name}` : 'Select a voice channel to enable join'}
+                  onClick={() => { if (canJoinSelected) onJoinVoice?.(activeCh!.id); }}
+                >
+                  <Icon.Speaker size={14} />
+                </button>
+              )}
+            </div>
           </div>
-          <div className="voice-dock-controls">
-            <button className={'vctrl' + (mute ? ' active' : '')} title={mute ? "Unmute" : "Mute"} onClick={() => setMute(!mute)}>
-              <Icon.Mic size={14} off={mute} />
-            </button>
-            <button className={'vctrl' + (deaf ? ' active' : '')} title={deaf ? "Undeafen" : "Deafen"} onClick={() => setDeaf(!deaf)}>
-              <Icon.Headphones size={14} off={deaf} />
-            </button>
-            <button className={'vctrl' + (cam ? ' on' : '')} title={cam ? "Stop camera" : "Start camera"} onClick={() => setCam(!cam)}>
-              <Icon.Video size={14} off={!cam} />
-            </button>
-            <button className={'vctrl' + (screen ? ' on' : '')} title={screen ? "Stop sharing" : "Share screen"} onClick={() => setScreen(!screen)}>
-              <Icon.Screen size={14} off={!screen} />
-            </button>
-            <button className="vctrl danger" title="Disconnect" onClick={onLeaveVoice}>
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 7c2-2 8-2 10 0v2l-3 1V8.5c-1-.5-3-.5-4 0V10L3 9V7z" fill="currentColor"/></svg>
-            </button>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       <UserPanel member={members.byId[currentUserId()]} />
     </aside>
