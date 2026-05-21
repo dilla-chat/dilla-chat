@@ -4161,23 +4161,25 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
       isConnected,
       channelSharerId,
       firstCamSharerId,
+      focusedBefore: focused,
       currentUser: currentUserId(),
-      voicePeersKeys: Object.keys(voicePeers ?? {}),
-      voicePeers: Object.values(voicePeers ?? {}).map((p) => ({
-        user_id: p.user_id,
-        webcam_sharing: p.webcam_sharing,
-        screen_sharing: p.screen_sharing,
-      })),
     });
     if (!isConnected) return;
     if (channelSharerId) {
+      console.log('[Voice/diag] auto-focus → screen', channelSharerId);
       setFocused({ id: channelSharerId, kind: 'screen' });
     } else if (firstCamSharerId) {
+      console.log('[Voice/diag] auto-focus → cam', firstCamSharerId);
       setFocused({ id: firstCamSharerId, kind: 'cam' });
     } else {
+      console.log('[Voice/diag] auto-focus → null');
       setFocused(null);
     }
-  }, [channelSharerId, firstCamSharerId, isConnected, voicePeers]);
+  }, [channelSharerId, firstCamSharerId, isConnected]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    console.log('[Voice/diag] focused state changed', { focused, effectiveFocused });
+  }, [focused, effectiveFocused]);
 
   // Fullscreen the focused stage. Uses the browser Fullscreen API and
   // bails silently if the user denies the request or fullscreen isn't
