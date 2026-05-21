@@ -4517,28 +4517,10 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
           );
         })()}
 
-        <div className="voice-controls-bar">
-          {isConnected ? (
-            <button className="ctrl danger" onClick={onLeave} title="Disconnect">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 7c2-2 8-2 10 0v2l-3 1V8.5c-1-.5-3-.5-4 0V10L3 9V7z" fill="currentColor"/></svg>
-            </button>
-          ) : (
-            <button
-              className="ctrl"
-              style={{
-                background: lockedForMe ? 'var(--surface-hi)' : 'var(--accent)',
-                color: lockedForMe ? 'var(--fg-3)' : 'var(--accent-ink)',
-                borderColor: lockedForMe ? 'var(--hairline)' : 'var(--accent)',
-                cursor: lockedForMe ? 'not-allowed' : 'pointer',
-              }}
-              disabled={lockedForMe}
-              title={lockedForMe ? 'Channel is locked' : 'Join voice'}
-              onClick={() => { if (!lockedForMe) onJoin(); }}
-            >
-              {lockedForMe ? 'Locked' : 'Join'}
-            </button>
-          )}
-        </div>
+        {/* Voice-controls-bar removed — the sidebar's .voice-dock owns
+            both Join and Disconnect using the canonical .vctrl button
+            pattern. Keeping a second pair here under a different
+            classname (.ctrl) just duplicated the affordance off-style. */}
       </div>
     </div>
   );
