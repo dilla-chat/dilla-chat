@@ -21,11 +21,44 @@ struct AuthMessage {
 }
 
 /// Validate an authentication message against the expected join secret.
+///
+/// VULN-002 partial fix (Phase 1): replaces the previous non-constant-
+/// time `==` comparison with `subtle::ConstantTimeEq`, eliminating the
+/// classic timing oracle. Also rejects auth attempts when the
+/// configured `expected_secret` is empty — the previous implementation
+/// silently accepted every peer in that case because the caller gated
+/// the whole authentication block on `!expected_secret.is_empty()`.
+/// Callers that genuinely want anonymous federation must set
+/// `DILLA_INSECURE=true` and skip authentication explicitly (see
+/// `validate_auth_message_with_insecure`).
+///
+/// The full VULN-002 redesign — per-node Ed25519 signing keys, signed
+/// federation events, removal of last-writer-wins state merge — is a
+/// Phase 3 architectural change. See
+/// `.security-hardening/03-architecture-review.md` section 7.
 fn validate_auth_message(message_text: &str, expected_secret: &str) -> bool {
-    match serde_json::from_str::<AuthMessage>(message_text) {
-        Ok(auth) => auth.join_token == expected_secret,
-        Err(_) => false,
+    validate_auth_message_with_insecure(message_text, expected_secret, false)
+}
+
+fn validate_auth_message_with_insecure(
+    message_text: &str,
+    expected_secret: &str,
+    insecure: bool,
+) -> bool {
+    if expected_secret.is_empty() {
+        // Empty configured secret + insecure=true → explicit "let
+        // anyone in" mode for dev. Otherwise refuse.
+        return insecure;
     }
+    let auth = match serde_json::from_str::<AuthMessage>(message_text) {
+        Ok(a) => a,
+        Err(_) => return false,
+    };
+    use subtle::ConstantTimeEq;
+    auth.join_token
+        .as_bytes()
+        .ct_eq(expected_secret.as_bytes())
+        .into()
 }
 
 /// Build the outbound authentication message JSON.

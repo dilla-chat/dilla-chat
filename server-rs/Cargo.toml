@@ -22,6 +22,11 @@ hmac = "0.12"
 sha1 = "0.10"
 sha2 = "0.10"
 hkdf = "0.12"
+# Constant-time byte comparison for security-sensitive equality checks
+# (federation join_secret, future per-peer tokens). subtle is already
+# transitively present via ed25519-dalek; we promote it to a direct
+# dep so the call site doesn't break the day that transitive goes away.
+subtle = "2"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
