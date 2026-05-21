@@ -2277,51 +2277,22 @@ img.attach-img {
   gap: 14px;
   align-content: start;
 }
-/* Single-participant layout: the default grid stretches one card to
-   ~full chat width, which combined with .cam-tile's 1:1 aspect ratio
-   makes it taller than the viewport. Switch to a centered, height-
-   bounded layout so the tile fits the available space instead. */
+/* Single-participant layout: keep the same card pattern that the
+   multi-participant grid uses — one card at the grid min-width, no
+   stretching — and center it in the stage. This way "alone in voice"
+   looks like "first to join a multi-person voice", not a separate
+   layout. */
 .voice-stage.is-single {
   display: flex;
-  align-items: center;
   justify-content: center;
+  align-items: flex-start;
   height: 100%;
   min-height: 0;
 }
-/* Avatar-only card (no webcam, no screen-share): square floating card
-   centered in the stage — matches the cam-tile square so the empty
-   state reads as the same shape, just with the avatar inside. */
-.voice-stage.is-single .voice-card:not(.has-cam):not(.has-screen) {
-  width: 18rem;
-  max-width: min(100%, 100% - 2rem);
-  aspect-ratio: 1;
-  height: auto;
-  max-height: 100%;
-  padding: 1.5rem 1.25rem 1.25rem;
-  justify-content: center;
-}
-/* Video / screen card: bound to stage height so the 1:1 cam-tile
-   shrinks to fit instead of overflowing. */
-.voice-stage.is-single .voice-card.has-cam,
-.voice-stage.is-single .voice-card.has-screen {
-  height: 100%;
-  max-height: 100%;
+.voice-stage.is-single .voice-card {
+  width: 13.75rem;          /* 220px — same as grid minmax(220px, 1fr) min */
   max-width: 100%;
-  width: auto;
-}
-.voice-stage.is-single .voice-card.has-cam .voice-media,
-.voice-stage.is-single .voice-card.has-screen .voice-media {
-  flex: 1 1 0;
-  min-height: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.voice-stage.is-single .voice-card.has-cam .cam-tile,
-.voice-stage.is-single .voice-card.has-screen .screen-tile {
-  width: auto;
-  height: 100%;
-  max-width: 100%;
+  flex: 0 0 auto;
 }
 .voice-card {
   background: var(--surface);
