@@ -680,6 +680,12 @@ class WebRTCService {
     }
 
     const muted = !wasMuted;
+    // The connected path used to broadcast voice:mute-update to peers
+    // but never wrote the new value back to the local store — so
+    // remote clients saw 'muted' while the local UI button stayed in
+    // the previous state. Set it here so the dock button (bound to
+    // useVoiceStore.muted) reflects reality.
+    store.setMuted(muted);
     if (this.teamId && this.channelId) {
       ws.voiceMute(this.teamId, this.channelId, muted);
     }
@@ -714,6 +720,11 @@ class WebRTCService {
         await sender.replaceTrack(null);
       }
     }
+    // Mirror the new state into the store so the dock button reflects
+    // it locally. Deafen implies mute on the mic, so set both if we
+    // just turned deafen on.
+    store.setDeafened(deafened);
+    if (deafened) store.setMuted(true);
     if (this.teamId && this.channelId) {
       ws.voiceDeafen(this.teamId, this.channelId, deafened);
     }
