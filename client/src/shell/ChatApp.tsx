@@ -4353,12 +4353,25 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   const mute = voice.muted;
   const setMute = (next) => {
     const target = typeof next === 'function' ? next(voice.muted) : next;
-    if (target !== voice.muted) voice.toggleMute();
+    if (target === voice.muted) return;
+    // Must route through webrtcService (not voice.toggleMute, which is
+    // just a store action that flips the boolean). The service actually
+    // stops/restarts the mic track + updates SFU state — the OS mic
+    // indicator only turns off via this path.
+    import('../services/webrtc').then(({ webrtcService }) => {
+      webrtcService.toggleMute();
+    });
   };
   const deaf = voice.deafened;
   const setDeaf = (next) => {
     const target = typeof next === 'function' ? next(voice.deafened) : next;
-    if (target !== voice.deafened) voice.toggleDeafen();
+    if (target === voice.deafened) return;
+    // Same reason as setMute above: voice.toggleDeafen is store-only;
+    // the webrtcService method also pauses incoming-audio playback and
+    // hardware-mutes the mic.
+    import('../services/webrtc').then(({ webrtcService }) => {
+      webrtcService.toggleDeafen();
+    });
   };
   // Wrap the local cam/screen booleans with side effects that actually
   // publish/stop media via webrtcService. Previously these were just
