@@ -4400,8 +4400,12 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                 <div className="v-name">{p.name}</div>
                 {!isMini && (
                   <div className="v-badges v-badges-inline">
-                    {mineMuted && <span className="v-badge danger" title="muted"><Icon.Mic size={11} off /></span>}
-                    {mineDeaf && <span className="v-badge danger" title="deafened"><Icon.Headphones size={11} off /></span>}
+                    {mineMuted
+                      ? <span className="v-badge danger" title="muted"><Icon.Mic size={11} off /></span>
+                      : <span className="v-badge ok" title="mic on"><Icon.Mic size={11} /></span>}
+                    {mineDeaf
+                      ? <span className="v-badge danger" title="deafened"><Icon.Headphones size={11} off /></span>
+                      : <span className="v-badge ok" title="headphones on"><Icon.Headphones size={11} /></span>}
                     {showCam && <span className="v-badge ok" title="camera on"><Icon.Video size={11} /></span>}
                     {showScreen && <span className="v-badge ok" title="sharing screen"><Icon.Screen size={11} /></span>}
                   </div>
