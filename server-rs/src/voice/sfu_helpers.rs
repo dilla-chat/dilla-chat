@@ -389,23 +389,38 @@ pub(crate) async fn remove_track_from_peer(
     track_id: &str,
     kind: &str,
 ) {
-    let senders = peer.pc.get_senders().await;
-    for sender in &senders {
+    // We need to STOP the transceiver, not just remove its track. Pion's
+    // `pc.remove_track(sender)` deactivates the sender but leaves the
+    // transceiver alive in the SDP with the original msid still embedded —
+    // and because `add_track` for the next round only reuses a slot when
+    // `initial_track_id` matches (and our restart uses a fresh UUID), every
+    // restart appends a NEW m-line while the old one lingers as a recvonly
+    // ghost with stale msid. After a handful of cam toggles the SDP
+    // contains 10+ orphan m-lines all keyed to `webcam-stream-X` /
+    // `screen-stream-X`, which is what wedges Chrome's decoder on the
+    // current m-line.
+    //
+    // Stopping the transceiver makes Pion emit `m=video 0` (port 0) for
+    // that slot, which Chrome treats as permanently rejected — no msid,
+    // no receiver allocated, no decoder confusion.
+    let transceivers = peer.pc.get_transceivers().await;
+    for tx in &transceivers {
+        let sender = tx.sender().await;
         let Some(track) = sender.track().await else {
             continue;
         };
         if track.id() != track_id {
             continue;
         }
-        if let Err(e) = peer.pc.remove_track(sender).await {
+        if let Err(e) = tx.stop().await {
             tracing::error!(
-                "voice: failed to remove {} track from peer: {} (other={})",
+                "voice: failed to stop {} transceiver on peer: {} (other={})",
                 kind,
                 e,
                 peer_uid
             );
         }
-        break;
+        return;
     }
 }
 
