@@ -4361,27 +4361,34 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                      if (nextKind) setFocused({ id: p.id, kind: nextKind });
                    }}>
                 <div className="voice-media">
-                  {renderKind === 'screen' ? (
-                    // Outside focus mode, render a non-interactive PIP via
-                    // ScreenTile's `pip` prop when both streams exist. In
-                    // focus mode we render our own clickable PIP overlay
-                    // below so the user can swap to the other stream by
-                    // clicking it.
-                    <ScreenTile member={p} pip={showCam && !focusKind ? p : null} showStats={!!focusKind} />
-                  ) : renderKind === 'cam' ? (
-                    <CamTile member={p} showStats={!!focusKind} />
+                  {focusKind ? (
+                    // Focused stage: original single-tile render.
+                    focusKind === 'screen' ? (
+                      <ScreenTile member={p} pip={null} showStats />
+                    ) : (
+                      <CamTile member={p} showStats />
+                    )
                   ) : (
+                    // Grid card: one wrapper tile that hosts EITHER
+                    // the avatar OR the cam / screen video. Same
+                    // dimensions and same dot position — the only
+                    // thing that changes is the inner content.
                     <div className="avatar-tile">
-                      <Avatar member={p} size={isMini ? 32 : 96} />
+                      {renderKind === 'screen' ? (
+                        <ScreenTile member={p} pip={showCam ? p : null} />
+                      ) : renderKind === 'cam' ? (
+                        <CamTile member={p} />
+                      ) : (
+                        <Avatar member={p} size={isMini ? 32 : 96} />
+                      )}
+                      {/* Dot overlay for when the content is a cam / screen
+                          tile — the Avatar provides its own dot, so we
+                          only add this one when the avatar isn't the
+                          rendered content. */}
+                      {renderKind !== 'avatar' && (p as any).status && (
+                        <span className={`voice-media-presence presence ${(p as any).status}`} />
+                      )}
                     </div>
-                  )}
-                  {/* Presence dot overlay — keeps the green/idle/etc.
-                      indicator visible when the avatar is replaced by
-                      a cam / screen tile (the avatar's own dot is
-                      inside it, so it disappears with the avatar).
-                      Skipped on the focused stage. */}
-                  {!focusKind && renderKind !== 'avatar' && (p as any).status && (
-                    <span className={`voice-media-presence presence ${(p as any).status}`} />
                   )}
                   {/* Clickable swap PIP — only shown in focus mode when
                       the participant has BOTH streams. Click the PIP to
