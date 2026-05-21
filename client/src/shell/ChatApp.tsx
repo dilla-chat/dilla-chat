@@ -2367,17 +2367,17 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
               </div>
             )}
             <div className="voice-dock-controls">
-              <button className={'vctrl' + (mute ? ' active' : '')} title={mute ? "Unmute" : "Mute"} onClick={() => setMute(!mute)}>
+              <button className={'vctrl' + (mute ? ' active' : '')} title={mute ? "Unmute" : "Mute"} onClick={() => { console.log('[Voice/diag] UI click: mute', { wasMuted: mute, willMute: !mute, inVoice }); setMute(!mute); }}>
                 <Icon.Mic size={14} off={mute} />
               </button>
-              <button className={'vctrl' + (deaf ? ' active' : '')} title={deaf ? "Undeafen" : "Deafen"} onClick={() => setDeaf(!deaf)}>
+              <button className={'vctrl' + (deaf ? ' active' : '')} title={deaf ? "Undeafen" : "Deafen"} onClick={() => { console.log('[Voice/diag] UI click: deafen', { wasDeaf: deaf, willDeaf: !deaf, inVoice }); setDeaf(!deaf); }}>
                 <Icon.Headphones size={14} off={deaf} />
               </button>
               <button
                 className={'vctrl' + (cam ? ' on' : '') + (inVoice ? '' : ' is-disabled')}
                 disabled={!inVoice}
                 title={inVoice ? (cam ? 'Stop camera' : 'Start camera') : 'Join voice to use the camera'}
-                onClick={() => { if (inVoice) setCam(!cam); }}
+                onClick={() => { console.log('[Voice/diag] UI click: cam', { wasOn: cam, willStart: !cam, inVoice }); if (inVoice) setCam(!cam); }}
               >
                 <Icon.Video size={14} off={!cam} />
               </button>
@@ -2385,12 +2385,12 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
                 className={'vctrl' + (screen ? ' on' : '') + (inVoice ? '' : ' is-disabled')}
                 disabled={!inVoice}
                 title={inVoice ? (screen ? 'Stop sharing' : 'Share screen') : 'Join voice to share your screen'}
-                onClick={() => { if (inVoice) setScreen(!screen); }}
+                onClick={() => { console.log('[Voice/diag] UI click: screen', { wasOn: screen, willStart: !screen, inVoice }); if (inVoice) setScreen(!screen); }}
               >
                 <Icon.Screen size={14} off={!screen} />
               </button>
               {inVoice ? (
-                <button className="vctrl danger" title="Disconnect" onClick={onLeaveVoice}>
+                <button className="vctrl danger" title="Disconnect" onClick={() => { console.log('[Voice/diag] UI click: hangup'); onLeaveVoice(); }}>
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 7c2-2 8-2 10 0v2l-3 1V8.5c-1-.5-3-.5-4 0V10L3 9V7z" fill="currentColor"/></svg>
                 </button>
               ) : (
@@ -2398,7 +2398,7 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
                   className={'vctrl join' + (canJoinSelected ? '' : ' is-disabled')}
                   disabled={!canJoinSelected}
                   title={canJoinSelected ? `Join ${activeCh!.name}` : 'Select a voice channel to enable join'}
-                  onClick={() => { if (canJoinSelected) onJoinVoice?.(activeCh!.id); }}
+                  onClick={() => { console.log('[Voice/diag] UI click: join', { channelId: activeCh?.id, channelName: activeCh?.name, canJoin: canJoinSelected }); if (canJoinSelected) onJoinVoice?.(activeCh!.id); }}
                 >
                   <Icon.Speaker size={14} />
                 </button>
