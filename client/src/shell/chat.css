@@ -410,7 +410,15 @@
   color: var(--fg);
   font-variant-numeric: tabular-nums;
   line-height: 1;
+  transition: color 120ms ease;
 }
+/* Colour the current number to match the tone of the latest sample
+   (same palette as the sparkline bars) so the readout is good /
+   problem / bad at a glance. */
+.vd-spark-cur.vd-spark-ok   { color: var(--accent); }
+.vd-spark-cur.vd-spark-warn { color: var(--warn, #d4a017); }
+.vd-spark-cur.vd-spark-bad  { color: var(--danger); }
+.vd-spark-cur.vd-spark-idle { color: var(--fg-3); }
 .vd-spark-graph {
   display: flex;
   align-items: flex-end;

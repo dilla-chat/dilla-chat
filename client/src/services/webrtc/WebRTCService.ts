@@ -504,7 +504,7 @@ class WebRTCService {
       } catch {
         /* ignore stats errors; will retry next tick */
       }
-    }, 600);
+    }, 250);
   }
 
   private stopStatsPoller(): void {
@@ -566,6 +566,43 @@ class WebRTCService {
 
   private setupWSListeners(): void {
     const store = useVoiceStore.getState;
+
+    // voiceOccupants is the source of truth the channel sidebar reads
+    // from when it renders the per-user state pills (mic/headphone/
+    // cam/screen). The store's `peers` map and `voiceOccupants` map
+    // can drift apart because most updates only touch peers — mirror
+    // the same field onto every occupant entry the user appears in,
+    // so the sidebar reacts to flag flips in real time instead of
+    // showing the snapshot from voice:state.
+    const mirrorOccupantFlag = (
+      userId: string,
+      patch: Partial<{ muted: boolean; deafened: boolean; speaking: boolean; webcam_sharing: boolean; screen_sharing: boolean }>,
+    ) => {
+      const s = store();
+      const occ = s.voiceOccupants;
+      const next: typeof occ = {};
+      let changed = false;
+      for (const [chId, list] of Object.entries(occ)) {
+        let listChanged = false;
+        const nextList = list.map((p) => {
+          if (p.user_id !== userId) return p;
+          for (const k of Object.keys(patch) as Array<keyof typeof patch>) {
+            if ((p as any)[k] !== patch[k]) {
+              listChanged = true;
+              break;
+            }
+          }
+          return listChanged ? { ...p, ...patch } : p;
+        });
+        if (listChanged) {
+          next[chId] = nextList;
+          changed = true;
+        } else {
+          next[chId] = list;
+        }
+      }
+      if (changed) s.setVoiceOccupants(next);
+    };
 
     this.unsubscribers.push(
       ws.on('ws:disconnected', ({ teamId }: { teamId: string }) => {
@@ -810,30 +847,8 @@ class WebRTCService {
         if (payload.user_id !== this.localUserId) playLeaveSound();
       }),
       ws.on('voice:speaking', (payload: { user_id: string; speaking: boolean }) => {
-        const s = store();
-        s.updatePeer(payload.user_id, { speaking: payload.speaking });
-        // voiceOccupants is a separate source of truth for the
-        // channel sidebar's participant rows — mirror the speaking
-        // flag there so non-self users light up too.
-        const occ = s.voiceOccupants;
-        const next: typeof occ = {};
-        let changed = false;
-        for (const [chId, list] of Object.entries(occ)) {
-          let listChanged = false;
-          const nextList = list.map((p) => {
-            if (p.user_id !== payload.user_id) return p;
-            if (p.speaking === payload.speaking) return p;
-            listChanged = true;
-            return { ...p, speaking: payload.speaking };
-          });
-          if (listChanged) {
-            next[chId] = nextList;
-            changed = true;
-          } else {
-            next[chId] = list;
-          }
-        }
-        if (changed) s.setVoiceOccupants(next);
+        store().updatePeer(payload.user_id, { speaking: payload.speaking });
+        mirrorOccupantFlag(payload.user_id, { speaking: payload.speaking });
       }),
       ws.on(
         'voice:state',
@@ -915,6 +930,10 @@ class WebRTCService {
             muted: payload.muted,
             deafened: payload.deafened,
           });
+          mirrorOccupantFlag(payload.user_id, {
+            muted: payload.muted,
+            deafened: payload.deafened,
+          });
           // Server-driven mute targeting ME — typically the result of an
           // admin's voice:force-mute. Kill the mic hardware-side so the
           // OS indicator goes dark, not just the UI badge. We only
@@ -939,6 +958,7 @@ class WebRTCService {
       ws.on('voice:screen-update', (payload: { user_id: string; sharing: boolean }) => {
         const s = store();
         s.updatePeer(payload.user_id, { screen_sharing: payload.sharing });
+        mirrorOccupantFlag(payload.user_id, { screen_sharing: payload.sharing });
         if (payload.sharing) {
           s.setScreenSharingUserId(payload.user_id);
         } else {
@@ -962,6 +982,7 @@ class WebRTCService {
       }),
       ws.on('voice:webcam-update', (payload: { user_id: string; sharing: boolean }) => {
         store().updatePeer(payload.user_id, { webcam_sharing: payload.sharing });
+        mirrorOccupantFlag(payload.user_id, { webcam_sharing: payload.sharing });
         if (!payload.sharing) {
           store().setRemoteWebcamStream(payload.user_id, null);
         }

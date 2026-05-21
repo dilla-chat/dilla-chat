@@ -237,6 +237,7 @@ function StatsSparkline({
 
   const current = samples.length ? samples[samples.length - 1] : null;
   const max = Math.max(...samples, floor);
+  const currentTone = current != null ? tone(current) : 'idle';
   // Show only the most recent `barCount` samples; pad the head with
   // idle slots so the graph fills from the right while still showing
   // its frame on first paint.
@@ -248,7 +249,7 @@ function StatsSparkline({
     <div className="vd-spark" title={title(current)}>
       <div className="vd-spark-head">
         <span className="vd-k">{label}</span>
-        <span className="vd-spark-cur">
+        <span className={'vd-spark-cur vd-spark-' + currentTone}>
           {current != null ? current : 0}<span className="vd-u">{unit}</span>
         </span>
       </div>
