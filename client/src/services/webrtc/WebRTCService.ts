@@ -521,6 +521,24 @@ class WebRTCService {
             }
             this.pendingCandidates = [];
 
+            // Persist 'sendonly' on every transceiver that already
+            // has a sender track. Per JSEP, setRemoteDescription
+            // re-mirrors the offer's literal direction onto each
+            // matched transceiver — so previously bound sendonly
+            // slots get clobbered back to recvonly any time a NEW
+            // offer arrives (e.g. another peer joining triggers
+            // renegotiate_all). Without this re-write, our active
+            // senders end up with a=inactive in the answer and
+            // remote viewers stop receiving frames mid-call.
+            for (const tx of this.pc.getTransceivers()) {
+              if (tx.sender.track && tx.direction !== 'sendonly' && tx.currentDirection !== 'stopped') {
+                try {
+                  tx.direction = 'sendonly';
+                  console.log('[Voice/diag] re-pin sendonly:', { mid: tx.mid, kind: tx.sender.track.kind });
+                } catch { /* read-only in some states */ }
+              }
+            }
+
             // Pre-bind the pending cam/screen track to the new
             // transceiver Chrome created from the server's recvonly
             // m-line. Per JSEP, Chrome mirrors the offer direction
