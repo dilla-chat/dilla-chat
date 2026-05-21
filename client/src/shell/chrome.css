@@ -468,12 +468,17 @@
   top: 8px; left: 10px;
 }
 /* LATENCY sits on its own row at the bottom of the card, in normal
-   flex flow — no corner overlay. Only renders when the card carries
-   a data-latency attribute (set on the self card only — we don't have
-   accurate RTT for remote peers without server-side relay stats). */
+   flex flow — no corner overlay. Always rendered so the card has a
+   stable footprint; while we wait for the first measurement the JSX
+   passes data-latency="--" and we draw it as a muted skeleton so
+   the card doesn't visibly grow after the first sample lands. */
 .chat[data-style="mesh"] .voice-card[data-latency]::after {
   content: 'LATENCY: ' attr(data-latency) 'ms';
   align-self: center;
+}
+.chat[data-style="mesh"] .voice-card[data-latency="--"]::after {
+  color: var(--fg-3);
+  opacity: 0.55;
 }
 .chat[data-style="mesh"] .voice-card.speaking::before { color: var(--accent); }
 
