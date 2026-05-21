@@ -22,6 +22,7 @@ pub const EVENT_VOICE_INVITE: &str = "voice:invite";
 pub const EVENT_VOICE_MUTE: &str = "voice:mute";
 pub const EVENT_VOICE_DEAFEN: &str = "voice:deafen";
 pub const EVENT_VOICE_FORCE_MUTE: &str = "voice:force-mute";
+pub const EVENT_VOICE_FORCE_DISCONNECT: &str = "voice:force-disconnect";
 pub const EVENT_VOICE_SCREEN_START: &str = "voice:screen-start";
 pub const EVENT_VOICE_SCREEN_STOP: &str = "voice:screen-stop";
 pub const EVENT_VOICE_WEBCAM_START: &str = "voice:webcam-start";
@@ -283,7 +284,12 @@ pub struct VoiceMutePayload {
 pub struct VoiceForceMutePayload {
     pub channel_id: String,
     pub target_user_id: String,
-    pub muted: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceForceDisconnectPayload {
+    pub channel_id: String,
+    pub target_user_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

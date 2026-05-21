@@ -191,7 +191,17 @@
 /* Bottom padding used to be 80px to clear an absolutely-positioned
    voice dock / user panel — both are now normal-flow flex siblings
    inside .side, so the scroll area doesn't need to leave them room. */
-.side-scroll { flex: 1; overflow-y: auto; padding: 6px 8px 8px; min-height: 0; }
+.side-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 8px 8px;
+  min-height: 0;
+  /* Channel / DM / voice-participant rows are click targets, not
+     content — selecting their labels with the cursor never helps the
+     user and just produces visual noise on drag-scroll. */
+  user-select: none;
+  -webkit-user-select: none;
+}
 .cat {
   margin-top: 14px;
   padding: 6px 8px 4px;
@@ -2216,6 +2226,10 @@ img.attach-img {
   overflow-y: auto;
   padding: 16px 12px 24px;
   min-width: 0;
+  /* Same reasoning as .side-scroll — member rows are click targets,
+     not selectable content. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 .members-section {
   font-size: 10.5px;

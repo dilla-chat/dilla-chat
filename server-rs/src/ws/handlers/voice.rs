@@ -398,7 +398,7 @@ pub(in crate::ws) async fn handle_voice_force_mute(
 
     if let Some(room_mgr) = &hub.voice_room_manager {
         room_mgr
-            .set_muted(&p.channel_id, &p.target_user_id, p.muted)
+            .set_muted(&p.channel_id, &p.target_user_id, true)
             .await;
 
         let deafened = room_mgr
@@ -417,7 +417,7 @@ pub(in crate::ws) async fn handle_voice_force_mute(
             VoiceMuteUpdatePayload {
                 channel_id: p.channel_id.clone(),
                 user_id: p.target_user_id.clone(),
-                muted: p.muted,
+                muted: true,
                 deafened,
             },
         );
@@ -428,24 +428,120 @@ pub(in crate::ws) async fn handle_voice_force_mute(
         }
     }
 
-    // Audit log — required for every team-settings mutation. Force-mute
-    // counts: it overrides another member's local state by privilege.
+    // Audit log — moderation actions only ever ENFORCE mute; lifting a
+    // server-mute is a user-only action (the target must take their own
+    // mic back). So there's no force_unmute audit type.
     let db_clone = hub.db.clone();
     let actor = actor_user_id.to_string();
     let tid = actor_team_id.to_string();
     let target = p.target_user_id.clone();
     let channel = p.channel_id.clone();
-    let muted = p.muted;
     let _ = tokio::task::spawn_blocking(move || {
         db_clone.with_conn(|conn| {
             crate::db::insert_audit_event(
                 conn,
                 &tid,
                 Some(&actor),
-                if muted { "voice.force_mute" } else { "voice.force_unmute" },
+                "voice.force_mute",
                 Some("user"),
                 Some(&target),
-                Some(&serde_json::json!({ "channel_id": channel, "muted": muted })),
+                Some(&serde_json::json!({ "channel_id": channel })),
+            )
+        })
+    })
+    .await;
+}
+
+/// Admin/mod force-disconnect. Stronger sibling to handle_voice_force_mute
+/// — instead of just silencing the target, this kicks them out of the
+/// voice channel entirely. Same permission gate (PERM_MUTE_VOICE) covers
+/// both since they're the two halves of "voice moderator". Audit-logged.
+pub(in crate::ws) async fn handle_voice_force_disconnect(
+    hub: &Hub,
+    actor_user_id: &str,
+    actor_team_id: &str,
+    p: VoiceForceDisconnectPayload,
+) {
+    if !verify_channel_team(&hub.db, &p.channel_id, actor_team_id).await {
+        tracing::warn!(
+            user_id = actor_user_id,
+            channel_id = %p.channel_id,
+            "voice:force-disconnect denied — channel does not belong to actor team"
+        );
+        return;
+    }
+
+    let db_clone = hub.db.clone();
+    let actor = actor_user_id.to_string();
+    let tid = actor_team_id.to_string();
+    let allowed = tokio::task::spawn_blocking(move || {
+        db_clone.with_conn(|conn| {
+            crate::db::user_has_permission(conn, &actor, &tid, crate::db::PERM_MUTE_VOICE)
+        })
+    })
+    .await
+    .unwrap_or(Ok(false))
+    .unwrap_or(false);
+    if !allowed {
+        tracing::warn!(
+            user_id = actor_user_id,
+            target = %p.target_user_id,
+            channel_id = %p.channel_id,
+            "voice:force-disconnect denied — actor lacks PERM_MUTE_VOICE"
+        );
+        return;
+    }
+
+    // Mirror the access-eviction teardown path so the SFU, room map,
+    // and roster all drop the target consistently.
+    if let Some(sfu) = &hub.voice_sfu {
+        sfu.handle_leave(&p.channel_id, &p.target_user_id).await;
+    }
+    if let Some(room_mgr) = &hub.voice_room_manager {
+        room_mgr.remove_peer(&p.channel_id, &p.target_user_id).await;
+    }
+
+    // Tell everyone else the target left.
+    if let Ok(evt) = Event::new(
+        EVENT_VOICE_USER_LEFT,
+        VoiceUserLeftPayload {
+            channel_id: p.channel_id.clone(),
+            user_id: p.target_user_id.clone(),
+        },
+    ) {
+        if let Ok(bytes) = evt.to_bytes() {
+            hub.broadcast_to_all(bytes).await;
+        }
+    }
+
+    // Tell the target directly so their client tears down WebRTC.
+    if let Ok(evt) = Event::new(
+        EVENT_VOICE_FORCE_DISCONNECT,
+        serde_json::json!({
+            "channel_id": p.channel_id,
+            "reason": "moderator_action",
+        }),
+    ) {
+        if let Ok(bytes) = evt.to_bytes() {
+            hub.send_to_user(&p.target_user_id, bytes).await;
+        }
+    }
+
+    let db_clone = hub.db.clone();
+    let actor = actor_user_id.to_string();
+    let tid = actor_team_id.to_string();
+    let target = p.target_user_id.clone();
+    let channel = p.channel_id.clone();
+    let _ = tokio::task::spawn_blocking(move || {
+        db_clone.with_conn(|conn| {
+            crate::db::insert_audit_event(
+                conn,
+                &tid,
+                Some(&actor),
+                "voice.force_disconnect",
+                Some("user"),
+                Some(&target),
+                Some(&serde_json::json!({ "channel_id": channel })),
             )
         })
     })

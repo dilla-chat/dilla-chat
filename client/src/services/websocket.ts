@@ -484,16 +484,22 @@ export class WebSocketService {
 
   /** Server-side force-mute of another participant. Requires the
    *  PERM_MUTE_VOICE permission on the team — the server enforces and
-   *  audit-logs; this client just submits intent. */
-  voiceForceMute(
-    teamId: string,
-    channelId: string,
-    targetUserId: string,
-    muted: boolean,
-  ): void {
+   *  audit-logs; this client just submits intent. There's intentionally
+   *  no inverse (force-unmute): lifting a server-mute is a decision the
+   *  target makes for themselves by un-muting locally. */
+  voiceForceMute(teamId: string, channelId: string, targetUserId: string): void {
     this.send(teamId, {
       type: 'voice:force-mute',
-      payload: { channel_id: channelId, target_user_id: targetUserId, muted },
+      payload: { channel_id: channelId, target_user_id: targetUserId },
+    });
+  }
+
+  /** Boot another participant out of the voice channel. Same permission
+   *  gate as voiceForceMute (PERM_MUTE_VOICE covers all voice moderation). */
+  voiceForceDisconnect(teamId: string, channelId: string, targetUserId: string): void {
+    this.send(teamId, {
+      type: 'voice:force-disconnect',
+      payload: { channel_id: channelId, target_user_id: targetUserId },
     });
   }
 
