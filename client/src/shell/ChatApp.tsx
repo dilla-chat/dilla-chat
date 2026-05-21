@@ -1522,6 +1522,7 @@ function FloatingPip({
     const startW = rect.width;
     const startH = rect.height;
     let moved = false;
+    const parentBox = parent.getBoundingClientRect();
     const onMove = (ev: MouseEvent) => {
       const dx = ev.clientX - startX;
       const dy = ev.clientY - startY;
@@ -1533,6 +1534,10 @@ function FloatingPip({
         // them re-applied border-box vs content-box differences and
         // visibly grew the PIP on every drag start.
         l += dx; t += dy;
+        // Stay inside the parent stage — clamp so the PIP can never
+        // be dragged outside the focused video area.
+        l = Math.max(0, Math.min(l, parentBox.width - startW));
+        t = Math.max(0, Math.min(t, parentBox.height - startH));
         el.style.left = `${l}px`;
         el.style.top = `${t}px`;
         el.style.right = 'auto';
@@ -1580,6 +1585,21 @@ function FloatingPip({
         if (handle.includes('w')) l = startL + (startW - w);
         if (handle.includes('n')) t = startT + (startH - h);
       }
+      // Max clamp against the parent stage — never let the PIP grow
+      // or slide past the focused video's edges. Aspect ratio is
+      // preserved by scaling both dimensions on the same ratio.
+      if (w > parentBox.width) {
+        const ratio = parentBox.width / w;
+        w = parentBox.width;
+        h = h * ratio;
+      }
+      if (h > parentBox.height) {
+        const ratio = parentBox.height / h;
+        h = parentBox.height;
+        w = w * ratio;
+      }
+      l = Math.max(0, Math.min(l, parentBox.width - w));
+      t = Math.max(0, Math.min(t, parentBox.height - h));
       el.style.left = `${l}px`;
       el.style.top = `${t}px`;
       el.style.right = 'auto';
