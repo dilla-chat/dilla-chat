@@ -232,7 +232,30 @@ pub(in crate::ws) async fn handle_message_edit(hub: &Hub, user_id: &str, payload
         db.with_conn(|conn| {
             if let Ok(Some(msg)) = db::get_message_by_id(conn, &mid) {
                 if msg.author_id == uid {
+                    // Skip the audit row on a no-op same-content edit
+                    // to keep the audit log clean. H5 / MSG-AUDIT-1.
+                    let is_noop = msg.content == content;
                     db::update_message_content(conn, &mid, &content)?;
+                    if !is_noop {
+                        // Resolve team via channel to populate the audit
+                        // row. DM-channel edits skip the audit log —
+                        // dm_channels has its own audit story.
+                        if let Ok(Some(channel)) = db::get_channel_by_id(conn, &msg.channel_id) {
+                            let details = serde_json::json!({
+                                "channel_id": msg.channel_id,
+                                "edited_at": db::now_str(),
+                            });
+                            let _ = db::insert_audit_event(
+                                conn,
+                                &channel.team_id,
+                                Some(&uid),
+                                "message.edit",
+                                Some("message"),
+                                Some(&mid),
+                                Some(&details),
+                            );
+                        }
+                    }
                     return Ok(true);
                 }
             }
@@ -276,8 +299,28 @@ pub(in crate::ws) async fn handle_message_delete(hub: &Hub, user_id: &str, paylo
     let deleted = tokio::task::spawn_blocking(move || {
         db.with_conn(|conn| {
             if let Ok(Some(msg)) = db::get_message_by_id(conn, &mid) {
+                // Idempotence — don't double-log a soft-delete. H5 /
+                // MSG-AUDIT-1.
+                if msg.deleted {
+                    return Ok(false);
+                }
                 if msg.author_id == uid {
                     db::soft_delete_message(conn, &mid)?;
+                    if let Ok(Some(channel)) = db::get_channel_by_id(conn, &msg.channel_id) {
+                        let details = serde_json::json!({
+                            "channel_id": msg.channel_id,
+                            "deleted_at": db::now_str(),
+                        });
+                        let _ = db::insert_audit_event(
+                            conn,
+                            &channel.team_id,
+                            Some(&uid),
+                            "message.delete",
+                            Some("message"),
+                            Some(&mid),
+                            Some(&details),
+                        );
+                    }
                     return Ok(true);
                 }
             }

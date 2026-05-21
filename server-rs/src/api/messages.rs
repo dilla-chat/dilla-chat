@@ -189,11 +189,35 @@ pub async fn edit(
             ));
         }
 
+        // No-op edit (same content) skips the audit row so the log
+        // doesn't accumulate write-amplified entries. H5 / MSG-AUDIT-1.
+        let is_noop = msg.content == body.content;
+
         db::update_message_content(conn, &message_id, &body.content)?;
 
         // Re-fetch the updated message.
         let updated = db::get_message_by_id(conn, &message_id)?
             .ok_or(rusqlite::Error::QueryReturnedNoRows)?;
+
+        if !is_noop {
+            let details = serde_json::json!({
+                "channel_id": channel_id,
+                "edited_at": updated.edited_at,
+            });
+            // Best-effort audit insert — message edit/delete take
+            // precedence over the audit row so a transient audit
+            // failure must not block the user-visible action.
+            let _ = db::insert_audit_event(
+                conn,
+                &team_id,
+                Some(&user_id),
+                "message.edit",
+                Some("message"),
+                Some(&message_id),
+                Some(&details),
+            );
+        }
+
         Ok(updated)
     })
     .await
@@ -219,6 +243,8 @@ pub async fn delete_msg(
 ) -> Result<Json<Value>, AppError> {
     let mid = message_id.clone();
     let cid_check = channel_id.clone();
+    let cid_audit = channel_id.clone();
+    let team_audit = team_id.clone();
     spawn_db(state.db.clone(), move |conn| {
         require_team_member(conn, &user_id, &team_id)?;
         // VULN-007: same per-channel ACL on delete. Author of an old
@@ -233,6 +259,14 @@ pub async fn delete_msg(
         let msg = db::get_message_by_id(conn, &mid)?
             .ok_or(rusqlite::Error::QueryReturnedNoRows)?;
 
+        // Idempotence — refuse to log a duplicate delete on an already
+        // soft-deleted row. H5 / MSG-AUDIT-1.
+        if msg.deleted {
+            return Err(rusqlite::Error::InvalidParameterName(
+                "message already deleted".into(),
+            ));
+        }
+
         // Author can delete their own; admins can delete any.
         if msg.author_id != user_id
             && !db::user_has_permission(conn, &user_id, &team_id, db::PERM_MANAGE_MESSAGES)?
@@ -243,6 +277,24 @@ pub async fn delete_msg(
         }
 
         db::soft_delete_message(conn, &mid)?;
+
+        // H5 / MSG-AUDIT-1: log the delete after the row flips. The
+        // pre-check above keeps this idempotent (already-deleted rows
+        // never reach here).
+        let details = serde_json::json!({
+            "channel_id": cid_audit,
+            "deleted_at": db::now_str(),
+        });
+        let _ = db::insert_audit_event(
+            conn,
+            &team_audit,
+            Some(&user_id),
+            "message.delete",
+            Some("message"),
+            Some(&mid),
+            Some(&details),
+        );
+
         Ok(())
     })
     .await
