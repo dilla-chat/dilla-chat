@@ -2793,6 +2793,36 @@ img.attach-img {
   cursor: pointer;
 }
 .voice-unfocus:hover { color: var(--accent); border-color: var(--accent); }
+
+/* Segmented control for fullscreen mode selection. Three mutually
+   exclusive modes (normal / tab / screen) share one bordered pill
+   with internal dividers — visual grouping for what's conceptually
+   a radio choice rather than two independent toggles. */
+.voice-fs-group {
+  display: inline-flex;
+  background: var(--surface);
+  border: 1px solid var(--hairline-2);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+.voice-fs-opt {
+  appearance: none;
+  background: transparent;
+  border: none;
+  padding: 6px 10px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--fg-2);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+.voice-fs-opt + .voice-fs-opt { border-left: 1px solid var(--hairline-2); }
+.voice-fs-opt:hover { color: var(--accent); }
+.voice-fs-opt.is-active {
+  background: color-mix(in oklab, var(--accent) 18%, var(--surface));
+  color: var(--accent);
+}
 .voice-controls-bar {
   display: flex; justify-content: center; gap: 6px;
   padding: 16px 0 0;

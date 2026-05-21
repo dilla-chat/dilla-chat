@@ -4311,20 +4311,35 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                       </button>
                     )}
                     {effectiveFocused.kind === 'screen' && (
-                      <>
-                        <button className="voice-unfocus" onClick={() => setTabFs(v => !v)} title={tabFs ? 'Collapse to grid (esc)' : 'Expand within the tab'}>
-                          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                            <rect x="2.5" y="2.5" width="11" height="11" rx="1" stroke="currentColor" strokeWidth="1.4" />
-                          </svg>
-                          {tabFs ? 'collapse' : 'expand'}
+                      <div className="voice-fs-group" role="group" aria-label="Fullscreen mode">
+                        <button
+                          className={'voice-fs-opt' + (!tabFs && !browserFs ? ' is-active' : '')}
+                          onClick={() => { if (tabFs) setTabFs(false); if (browserFs) toggleBrowserFullscreen(); }}
+                          title="Normal — focus mode within the chat pane"
+                        >
+                          normal
                         </button>
-                        <button className="voice-unfocus" onClick={toggleBrowserFullscreen} title={browserFs ? 'Exit fullscreen' : 'Fullscreen the entire screen'}>
-                          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                            <path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                          {browserFs ? 'exit fullscreen' : 'fullscreen'}
+                        <button
+                          className={'voice-fs-opt' + (tabFs ? ' is-active' : '')}
+                          onClick={() => {
+                            if (browserFs) toggleBrowserFullscreen();
+                            setTabFs(true);
+                          }}
+                          title="Tab — fill the whole client viewport"
+                        >
+                          tab
                         </button>
-                      </>
+                        <button
+                          className={'voice-fs-opt' + (browserFs ? ' is-active' : '')}
+                          onClick={() => {
+                            if (tabFs) setTabFs(false);
+                            if (!browserFs) toggleBrowserFullscreen();
+                          }}
+                          title="Screen — fill the entire monitor (browser fullscreen)"
+                        >
+                          screen
+                        </button>
+                      </div>
                     )}
                     {canExitFocus && (
                       <button className="voice-unfocus" onClick={() => setFocused(null)} title="Exit focus (esc)">
