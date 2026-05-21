@@ -2285,14 +2285,16 @@ img.attach-img {
 .voice-stage.is-single {
   display: flex;
   justify-content: center;
-  align-items: flex-start;
+  align-items: center;
   height: 100%;
   min-height: 0;
 }
 .voice-stage.is-single .voice-card {
   width: 13.75rem;          /* 220px — same as grid minmax(220px, 1fr) min */
   max-width: 100%;
+  aspect-ratio: 1;
   flex: 0 0 auto;
+  justify-content: center;
 }
 .voice-card {
   background: var(--surface);
