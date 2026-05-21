@@ -24,6 +24,22 @@ interface QueuedEntry {
 const ENDPOINT = '/api/v1/debug/browser-log';
 const FLUSH_INTERVAL_MS = 500;
 const MAX_QUEUE = 500;
+// F6 — per-line ceiling sent to the server. JWTs, prekey blobs, or
+// runaway error stacks otherwise inflate the relay request to multi-MB
+// payloads. 2 KiB is plenty for human-readable diagnostics; anything
+// bigger gets truncated.
+const MAX_LINE_BYTES = 2048;
+// F6 — regex matching base64ish blobs of 40+ characters. Catches JWTs
+// (which routinely run to 200+ chars), Ed25519 sigs (88 b64 chars),
+// AES-GCM ciphertext, refresh tokens, identity blobs. We deliberately
+// pick 40 as the threshold so short strings like "channel-abc-1234"
+// pass through.
+const LONG_TOKEN_RE = /[A-Za-z0-9_+/=-]{40,}/g;
+// F6 — JWT-shaped triples (`header.payload.signature`) — catches the
+// common case even when the segments themselves are < 40 chars.
+const JWT_SHAPE_RE = /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g;
+// F6 — Authorization-style header blobs that leak the bearer token.
+const BEARER_RE = /(\bBearer\s+)([A-Za-z0-9._\-+/=]+)/gi;
 
 let installed = false;
 let queue: QueuedEntry[] = [];
@@ -64,13 +80,40 @@ function format(args: unknown[]): string {
   return args.map(safeStringify).join(' ');
 }
 
+/**
+ * F6 — strip PII / secret-shaped substrings from a forwarded log line
+ * and cap the result at MAX_LINE_BYTES.
+ *
+ * Order matters: JWT shapes first (so the substring `eyJ...` is replaced
+ * intact before LONG_TOKEN_RE would split it on the dots), then the
+ * Bearer header pattern (to keep the `Bearer ` literal but redact the
+ * value), then the generic long-token regex for everything else.
+ */
+export function scrubLogLine(input: string): string {
+  if (!input) return input;
+  let out = input
+    .replace(JWT_SHAPE_RE, '[REDACTED-JWT]')
+    .replace(BEARER_RE, '$1[REDACTED]')
+    .replace(LONG_TOKEN_RE, '[REDACTED]');
+  // Length cap. We count UTF-16 code units (string.length); a multi-byte
+  // UTF-8 measurement would be more precise but slower, and the server
+  // applies its own length guard too.
+  if (out.length > MAX_LINE_BYTES) {
+    out = out.slice(0, MAX_LINE_BYTES) + ' …[truncated]';
+  }
+  return out;
+}
+
 function enqueue(level: Level, message: string, tag?: string) {
   if (suppressed) return;
   if (queue.length >= MAX_QUEUE) {
     // Drop oldest — we'd rather lose backlog than block the console.
     queue.shift();
   }
-  queue.push({ level, message, ts: Date.now(), tag, user: currentUser });
+  // F6 — scrub long tokens + JWT shapes + Bearer headers + cap length
+  // BEFORE the entry hits the queue, so a flush failure can't leak the
+  // pre-scrub copy.
+  queue.push({ level, message: scrubLogLine(message), ts: Date.now(), tag, user: currentUser });
   scheduleFlush();
 }
 
