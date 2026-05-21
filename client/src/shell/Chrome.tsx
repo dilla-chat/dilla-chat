@@ -118,7 +118,7 @@ function BottomBar({ voiceConnection, peerStatus, federated = true, degraded = f
         <div className="mb-chunk mb-voice mb-clickable"
              title="Click for voice settings"
              onClick={() => window.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'user', tab: 'voice' } }))}>
-          <span className="mb-k">voice</span> SRTP · OPUS 48kHz @ 96kbps
+          <span className="mb-k">voice</span> SFRAME · SRTP · OPUS 48kHz
           <AudioMeter />
         </div>
       )}
