@@ -88,6 +88,15 @@ pub(crate) struct PeerState {
     pub(crate) local_track: Arc<TrackLocalStaticRTP>,
     pub(crate) screen_track: Option<Arc<TrackLocalStaticRTP>>,
     pub(crate) webcam_track: Option<Arc<TrackLocalStaticRTP>>,
+    /// The recvonly transceiver we added on the publisher's PC for cam/screen.
+    /// We compare these by Arc::ptr_eq to the transceiver the on_track callback
+    /// fires with so we can route incoming RTP correctly when a publisher has
+    /// BOTH cam and screen active. Chrome's outgoing track ids are opaque
+    /// UUIDs, so id-prefix matching can't distinguish them — without this,
+    /// both publisher tracks fall through to ps.screen_track in
+    /// resolve_target_track and the cam content pipes into the screen output.
+    pub(crate) screen_recv_tx: Option<Arc<webrtc::rtp_transceiver::RTCRtpTransceiver>>,
+    pub(crate) webcam_recv_tx: Option<Arc<webrtc::rtp_transceiver::RTCRtpTransceiver>>,
 }
 
 /// The SFU (Selective Forwarding Unit) manages WebRTC peer connections for voice channels.
@@ -243,6 +252,8 @@ impl SFU {
             local_track: Arc::clone(&local_track),
             screen_track: None,
             webcam_track: None,
+            screen_recv_tx: None,
+            webcam_recv_tx: None,
         };
 
         // Insert peer into room and wire tracks with existing peers.
@@ -451,8 +462,11 @@ impl SFU {
         ));
         ps.screen_track = Some(Arc::clone(&screen_track));
 
-        // Add a recv-only video transceiver to the sharer's PC so we receive their screen.
-        if let Err(e) = ps
+        // Add a recv-only video transceiver to the sharer's PC so we receive
+        // their screen. Hold onto the transceiver Arc so we can identify
+        // incoming RTP for THIS slot in on_track — Chrome's outgoing track
+        // ids are opaque UUIDs so we can't use them to tell cam from screen.
+        match ps
             .pc
             .add_transceiver_from_kind(
                 RTPCodecType::Video,
@@ -463,7 +477,12 @@ impl SFU {
             )
             .await
         {
-            tracing::error!("voice: failed to add screen recv transceiver: {}", e);
+            Ok(tx) => {
+                ps.screen_recv_tx = Some(tx);
+            }
+            Err(e) => {
+                tracing::error!("voice: failed to add screen recv transceiver: {}", e);
+            }
         }
 
         // Add the screen track to all OTHER peers so they can see the screen.
@@ -512,6 +531,10 @@ impl SFU {
             let ps = room
                 .get_mut(user_id)
                 .ok_or_else(|| format!("no peer state for user {}", user_id))?;
+            // Drop the recv-transceiver tag so a future re-start can register
+            // a fresh one. The transceiver itself stays alive inside Pion
+            // until renegotiation marks it stopped/inactive.
+            ps.screen_recv_tx = None;
             match ps.screen_track.take() {
                 Some(st) => st.id().to_string(),
                 None => return Ok(()),
@@ -567,7 +590,9 @@ impl SFU {
         ps.webcam_track = Some(Arc::clone(&webcam_track));
 
         // Add a recv-only video transceiver so we receive the webcam feed.
-        if let Err(e) = ps
+        // Hold onto the transceiver Arc so we can identify incoming RTP for
+        // THIS slot in on_track — see PeerState::webcam_recv_tx docs for why.
+        match ps
             .pc
             .add_transceiver_from_kind(
                 RTPCodecType::Video,
@@ -578,7 +603,12 @@ impl SFU {
             )
             .await
         {
-            tracing::error!("voice: failed to add webcam recv transceiver: {}", e);
+            Ok(tx) => {
+                ps.webcam_recv_tx = Some(tx);
+            }
+            Err(e) => {
+                tracing::error!("voice: failed to add webcam recv transceiver: {}", e);
+            }
         }
 
         // Add the webcam track to all OTHER peers.
@@ -624,6 +654,8 @@ impl SFU {
             let ps = room
                 .get_mut(user_id)
                 .ok_or_else(|| format!("no peer state for user {}", user_id))?;
+            // Drop the recv-transceiver tag — see remove_screen_track for why.
+            ps.webcam_recv_tx = None;
             match ps.webcam_track.take() {
                 Some(wt) => wt.id().to_string(),
                 None => return Ok(()),

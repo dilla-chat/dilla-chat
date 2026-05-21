@@ -432,7 +432,7 @@ pub(crate) fn setup_on_track_handler(
     channel_id: String,
     user_id: String,
 ) {
-    pc.on_track(Box::new(move |remote_track, _receiver, _transceiver| {
+    pc.on_track(Box::new(move |remote_track, _receiver, transceiver| {
         let rooms_ref = Arc::clone(&rooms_ref);
         let ch_id = channel_id.clone();
         let u_id = user_id.clone();
@@ -451,19 +451,27 @@ pub(crate) fn setup_on_track_handler(
                 track_id
             );
 
-            let target =
-                match resolve_target_track(&rooms_ref, &ch_id, &u_id, &track_id, kind).await {
-                    Some(t) => t,
-                    None => {
-                        tracing::warn!(
-                            "voice: no local track for incoming track kind={:?} id={} user={}",
-                            kind,
-                            track_id,
-                            u_id
-                        );
-                        return;
-                    }
-                };
+            let target = match resolve_target_track(
+                &rooms_ref,
+                &ch_id,
+                &u_id,
+                &track_id,
+                kind,
+                Some(&transceiver),
+            )
+            .await
+            {
+                Some(t) => t,
+                None => {
+                    tracing::warn!(
+                        "voice: no local track for incoming track kind={:?} id={} user={}",
+                        kind,
+                        track_id,
+                        u_id
+                    );
+                    return;
+                }
+            };
 
             spawn_rtp_forwarder(remote_track, target, u_id);
         })
@@ -471,6 +479,14 @@ pub(crate) fn setup_on_track_handler(
 }
 
 /// Resolve which local track should receive forwarded RTP for a given remote track.
+///
+/// For video, the only reliable identifier is the transceiver itself —
+/// Chrome's outgoing track ids are opaque UUIDs that don't carry any "webcam"
+/// or "screen" hint, and Pion's track-id prefix matching only worked for
+/// older server-created tracks. We tag each recvonly transceiver with its
+/// kind when we add it (see add_screen_track / add_webcam_track), then
+/// compare by Arc::ptr_eq here. Falls back to the legacy id-prefix path for
+/// any transceiver we don't recognise.
 #[cfg(not(tarpaulin_include))]
 async fn resolve_target_track(
     rooms_ref: &Arc<RwLock<HashMap<String, HashMap<String, PeerState>>>>,
@@ -478,10 +494,28 @@ async fn resolve_target_track(
     user_id: &str,
     track_id: &str,
     kind: RTPCodecType,
+    transceiver: Option<&Arc<webrtc::rtp_transceiver::RTCRtpTransceiver>>,
 ) -> Option<Arc<TrackLocalStaticRTP>> {
     let rooms = rooms_ref.read().await;
     let ps = rooms.get(channel_id).and_then(|room| room.get(user_id))?;
 
+    // Primary path: identify by the transceiver we registered for this slot.
+    if let Some(tx) = transceiver {
+        if let Some(screen_tx) = ps.screen_recv_tx.as_ref() {
+            if Arc::ptr_eq(screen_tx, tx) {
+                return ps.screen_track.clone();
+            }
+        }
+        if let Some(cam_tx) = ps.webcam_recv_tx.as_ref() {
+            if Arc::ptr_eq(cam_tx, tx) {
+                return ps.webcam_track.clone();
+            }
+        }
+    }
+
+    // Legacy fallback for server-side tracks whose id we control (audio
+    // forwarders re-using the local_track also fall through to the
+    // local_track branch below).
     if track_id.starts_with("webcam-") {
         return ps.webcam_track.clone();
     }
@@ -489,6 +523,14 @@ async fn resolve_target_track(
         return ps.screen_track.clone();
     }
     if kind == RTPCodecType::Video {
+        // Should not be reached now that the transceiver path covers both
+        // publisher slots — but if it is, log loudly and prefer whichever
+        // local track we have so audio still functions.
+        tracing::warn!(
+            "voice: video track resolution fell through to fallback for user={} track_id={} — transceiver path missed",
+            user_id,
+            track_id
+        );
         return ps
             .screen_track
             .clone()
