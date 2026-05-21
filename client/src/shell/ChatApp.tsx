@@ -3933,7 +3933,7 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                      + (isMini && focused && p.id === focused.id ? ' is-focused' : '')
                      + (focusable && !isMini ? ' focusable' : '')}
                    data-node={node}
-                   data-latency={latencyMs != null ? latencyMs : '—'}
+                   {...(p.id === currentUserId() ? { 'data-latency': latencyMs != null ? latencyMs : '—' } : {})}
                    onContextMenu={(e) => {
                      e.preventDefault();
                      window.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
