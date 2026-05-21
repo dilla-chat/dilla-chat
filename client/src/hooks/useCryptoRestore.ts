@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuthStore, restoreDerivedKey, restorePassphrase } from '../stores/authStore';
+import {
+  useAuthStore,
+  restoreDerivedKey,
+  restorePassphrase,
+  restoreEncryptedAuthDataIntoStore,
+} from '../stores/authStore';
 import { initCrypto, isCryptoInitialized } from '../services/crypto';
 import { unlockWithPrf, unlockWithPassphrase, hasPasskeyKeySlot, hasPasswordSlot } from '../services/keyStore';
 import { fromBase64 } from '../services/cryptoCore';
@@ -29,6 +34,12 @@ export function useCryptoRestore(): { cryptoReady: boolean } {
   useEffect(() => {
     if (derivedKey || cryptoRestored.current) return;
     (async () => {
+      // F4 — pull the encrypted teams/servers blobs into the store
+      // first; if both are present the user already had a session in
+      // this tab and we want their tokens before we even try to init
+      // crypto. Failure (private browsing / corrupt blob) is silent;
+      // the legacy plaintext load from `loadPersistedTeams` stands in.
+      await restoreEncryptedAuthDataIntoStore().catch(() => {});
       const restored = await restoreDerivedKey();
       if (restored) {
         setDerivedKey(restored);
