@@ -345,6 +345,13 @@
   background: var(--surface);
   box-shadow: var(--shadow-1);
   display: flex; flex-direction: column; gap: 8px;
+  transition: gap 220ms ease;
+}
+/* No stats row visible? drop the column gap so the controls row
+   sits flush against the top of the dock. Animates in lockstep
+   with .voice-dock-stats max-height transition. */
+.voice-dock:has(.voice-dock-stats.is-hidden) {
+  gap: 0;
 }
 .voice-dock-top { display: flex; align-items: center; gap: 10px; }
 .voice-dock-status {
