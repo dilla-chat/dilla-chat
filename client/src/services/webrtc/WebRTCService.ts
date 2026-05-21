@@ -314,12 +314,14 @@ class WebRTCService {
           ) {
             rttMs = Math.round((stat as { currentRoundTripTime: number }).currentRoundTripTime * 1000);
           }
+          // Sum bytes across ALL outbound RTP streams (audio + video
+          // when webcam/screen share are active) so the bitrate card
+          // reflects total upstream media bandwidth, not just the mic.
           if (
             stat.type === 'outbound-rtp' &&
-            (stat as { kind?: string }).kind === 'audio' &&
             typeof (stat as { bytesSent?: number }).bytesSent === 'number'
           ) {
-            bytesSent = (stat as { bytesSent: number }).bytesSent;
+            bytesSent = (bytesSent ?? 0) + (stat as { bytesSent: number }).bytesSent;
           }
         });
 
