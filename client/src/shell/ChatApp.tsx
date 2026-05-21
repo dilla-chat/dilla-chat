@@ -1763,7 +1763,7 @@ function ScreenTile({ member, pip }) {
             the purpose of sharing it. Black letterbox bars are fine. */}
         <VideoTile stream={stream} fit="contain" />
         {pip && (
-          <FloatingPip className="screen-pip" minW={64} minH={48}>
+          <FloatingPip className="screen-pip" minW={64} minH={36}>
             <CamTile member={pip} mini />
           </FloatingPip>
         )}
@@ -4372,7 +4372,7 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                   {focusKind && !isMini && showCam && showScreen && (
                     <FloatingPip
                       className="voice-pip-swap"
-                      minW={120}
+                      minW={128}
                       minH={72}
                       title={focusKind === 'screen' ? 'Switch to webcam' : 'Switch to screen'}
                       onClick={() => setFocused({ id: p.id, kind: focusKind === 'screen' ? 'cam' : 'screen' })}

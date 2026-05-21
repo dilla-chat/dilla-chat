@@ -2565,7 +2565,8 @@ img.attach-img {
 .screen-pip {
   position: absolute;
   bottom: 30px; right: 10px;
-  width: 80px; height: 80px;
+  /* 16:9 — webcam stream is 1280x720 native, anything else letterboxes */
+  width: 96px; height: 54px;
   border-radius: var(--r-sm);
   overflow: hidden;
   border: 1.5px solid var(--accent);
@@ -2578,7 +2579,8 @@ img.attach-img {
 .voice-pip-swap {
   position: absolute;
   bottom: 16px; right: 16px;
-  width: 160px; height: 100px;
+  /* 16:9 — webcam is 1280x720 native, anything else letterboxes */
+  width: 240px; height: 135px;
   border-radius: var(--r-sm);
   overflow: hidden;
   border: 2px solid var(--accent);
