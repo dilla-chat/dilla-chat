@@ -1104,17 +1104,15 @@ class WebRTCService {
     store.updatePeer(this.localUserId ?? '', { webcam_sharing: true });
 
     // Same anti-race as startScreenShare: pin the cam track to the
-    // specific transceiver the server appends, instead of letting
-    // addTrack pick whichever unused sender it finds (which would be
-    // the screen-share's after a start-cam-then-start-share sequence
-    // and steal it, freezing the earlier stream).
-    const txCountBefore = this.pc.getTransceivers().length;
+    // specific NEW sendonly transceiver the server appends — found
+    // by mid diff so we can't steal the screen-share's slot.
+    const existingMids = new Set(
+      this.pc.getTransceivers().map((t) => t.mid).filter((m): m is string => !!m),
+    );
     ws.voiceWebcamStart(this.teamId, this.channelId);
-    await this.waitForTransceiverCount(txCountBefore + 1, 3000);
+    const newTx = await this.waitForNewSendonlyTransceiver(existingMids, 3000);
 
     if (this.pc && this.webcamStream) {
-      const txs = this.pc.getTransceivers();
-      const newTx = txs[txs.length - 1];
       if (newTx) {
         try { newTx.direction = 'sendonly'; } catch { /* read-only in some states */ }
         await newTx.sender.replaceTrack(videoTrack);
