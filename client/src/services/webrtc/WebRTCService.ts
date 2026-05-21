@@ -594,10 +594,24 @@ class WebRTCService {
             // up with a=inactive in the answer and remote viewers
             // stop receiving frames mid-call.
             for (const tx of this.pc.getTransceivers()) {
-              if (tx.sender.track && tx.direction !== 'sendonly' && tx.currentDirection !== 'stopped') {
+              if (tx.currentDirection === 'stopped') continue;
+              // Active sender: keep us sending.
+              if (tx.sender.track && tx.direction !== 'sendonly') {
                 try {
                   tx.direction = 'sendonly';
                   console.log('[Voice/diag] re-pin sendonly:', { mid: tx.mid, kind: tx.sender.track.kind });
+                } catch { /* read-only in some states */ }
+                continue;
+              }
+              // Active receiver: keep us receiving. Chrome's literal
+              // mirror also clobbers recvonly slots to inactive on
+              // subsequent offers, which stalls inbound video — the
+              // receiver gets bytes for a while then the SFU stops
+              // forwarding and the decoder just sits.
+              if (!tx.sender.track && tx.receiver.track && tx.direction !== 'recvonly') {
+                try {
+                  tx.direction = 'recvonly';
+                  console.log('[Voice/diag] re-pin recvonly:', { mid: tx.mid, kind: tx.receiver.track.kind });
                 } catch { /* read-only in some states */ }
               }
             }
