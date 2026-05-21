@@ -2336,8 +2336,16 @@ img.attach-img {
 }
 .voice-stage .voice-card {
   width: 13.75rem;
+  /* Lock width AND height — using aspect-ratio alone let the card
+     grow vertically when has-cam pushed cam-tile to 100% width
+     (cam-tile is `aspect-ratio:1`, so it claimed the full card-width
+     in height too, then v-name + badges piled on below and forced
+     the card past its square footprint). Explicit height with min-
+     height: 0 inside .voice-media bounds the cam-tile to whatever
+     space is left after the labels. */
+  height: 13.75rem;
   aspect-ratio: 1;
-  justify-content: center;
+  justify-content: stretch;
 }
 .voice-card {
   background: var(--surface);
@@ -2347,6 +2355,7 @@ img.attach-img {
   position: relative;
   border: 1px solid var(--hairline);
   transition: transform .15s, border-color .15s;
+  overflow: hidden;
 }
 .voice-card.speaking {
   border-color: var(--accent);
@@ -2355,8 +2364,19 @@ img.attach-img {
 .voice-card .voice-media {
   position: relative;        /* offsetParent for nested FloatingPip */
   width: 100%;
+  flex: 1;
+  min-height: 0;
   display: flex; align-items: center; justify-content: center;
   margin-bottom: 4px;
+}
+/* The cam/avatar tiles inside .voice-media should fill the remaining
+   space — drop `aspect-ratio:1` so they shrink/grow with the parent
+   instead of demanding their own square. */
+.voice-card .voice-media .cam-tile,
+.voice-card .voice-media .avatar-tile {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
 }
 .voice-card.has-screen { grid-column: span 2; padding: 10px; }
 .voice-card.has-cam .voice-media,
