@@ -1711,7 +1711,7 @@ function CamTile({ member, mini }) {
 function ScreenTile({ member, pip }) {
   const isSelf = member.id === currentUserId();
   const localScreen = useVoiceStore((s) => s.localScreenStream);
-  const remoteScreen = useVoiceStore((s) => s.remoteScreenStream);
+  const remoteScreen = useVoiceStore((s) => s.remoteScreenStreams?.[member.id] ?? null);
   const stream = isSelf ? localScreen : remoteScreen;
   if (stream) {
     return (
@@ -4125,7 +4125,7 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
   // forwarded the screen track to us). Without this guard ScreenTile
   // renders its placeholder mockup instead.
   const localScreenStream = useVoiceStore((s) => s.localScreenStream);
-  const remoteScreenStream = useVoiceStore((s) => s.remoteScreenStream);
+  const remoteScreenStreams = useVoiceStore((s) => s.remoteScreenStreams);
   const localWebcamStream = useVoiceStore((s) => s.localWebcamStream);
   const remoteWebcamStreams = useVoiceStore((s) => s.remoteWebcamStreams);
   // Per-peer sharing flags so we can hide tiles when a peer toggles
@@ -4146,7 +4146,7 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
       : !!(peerVoice?.webcam_sharing && remoteWebcamStreams?.[focused.id]);
     const screenLive = isSelf
       ? !!(screen && localScreenStream)
-      : !!(peerVoice?.screen_sharing && remoteScreenStream);
+      : !!(peerVoice?.screen_sharing && remoteScreenStreams?.[focused.id]);
     if (!camLive && !screenLive) {
       setFocused(null);
       return;
@@ -4164,7 +4164,7 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
     localWebcamStream,
     localScreenStream,
     remoteWebcamStreams,
-    remoteScreenStream,
+    remoteScreenStreams,
   ]);
 
   return (
@@ -4215,7 +4215,7 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
             const peerSharingCam = !!peerVoice?.webcam_sharing;
             const showScreen = isSelf
               ? mineScreen && !!localScreenStream
-              : peerSharingScreen && !!remoteScreenStream;
+              : peerSharingScreen && !!remoteScreenStreams?.[p.id];
             const showCam = isSelf
               ? mineCam && !!localWebcamStream
               : peerSharingCam && !!remoteWebcamStreams?.[p.id];

@@ -12,8 +12,15 @@ interface VoiceStore {
   deafened: boolean;
   speaking: boolean;
   screenSharing: boolean;
+  /** The "primary" remote sharer for auto-focus purposes. With
+   *  multiple simultaneous sharers, this holds the latest one. UI
+   *  that lists all sharers should walk `peers` instead. */
   screenSharingUserId: string | null;
-  remoteScreenStream: MediaStream | null;
+  /** Per-user screen-share streams keyed by user_id — symmetric to
+   *  remoteWebcamStreams. Was previously a single MediaStream slot
+   *  which conflated peers and made "A stops sharing"
+   *  accidentally wipe B's stream on A's UI. */
+  remoteScreenStreams: Record<string, MediaStream>;
   localScreenStream: MediaStream | null;
   webcamSharing: boolean;
   localWebcamStream: MediaStream | null;
@@ -52,7 +59,7 @@ interface VoiceStore {
   setSpeaking(speaking: boolean): void;
   setScreenSharing(sharing: boolean): void;
   setScreenSharingUserId(userId: string | null): void;
-  setRemoteScreenStream(stream: MediaStream | null): void;
+  setRemoteScreenStream(userId: string, stream: MediaStream | null): void;
   setLocalScreenStream(stream: MediaStream | null): void;
   setWebcamSharing(sharing: boolean): void;
   setLocalWebcamStream(stream: MediaStream | null): void;
@@ -88,7 +95,7 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
   speaking: false,
   screenSharing: false,
   screenSharingUserId: null,
-  remoteScreenStream: null,
+  remoteScreenStreams: {},
   localScreenStream: null,
   webcamSharing: false,
   localWebcamStream: null,
@@ -144,7 +151,7 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
         speaking: false,
         screenSharing: false,
         screenSharingUserId: null,
-        remoteScreenStream: null,
+        remoteScreenStreams: {},
         localScreenStream: null,
         voiceOccupants: cleanedOccupants,
         webcamSharing: false,
@@ -247,7 +254,7 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
       speaking: false,
       screenSharing: false,
       screenSharingUserId: null,
-      remoteScreenStream: null,
+      remoteScreenStreams: {},
       localScreenStream: null,
       webcamSharing: false,
       localWebcamStream: null,
@@ -283,7 +290,14 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
   setSpeaking: (speaking: boolean) => set({ speaking }),
   setScreenSharing: (sharing: boolean) => set({ screenSharing: sharing }),
   setScreenSharingUserId: (userId: string | null) => set({ screenSharingUserId: userId }),
-  setRemoteScreenStream: (stream: MediaStream | null) => set({ remoteScreenStream: stream }),
+  setRemoteScreenStream: (userId: string, stream: MediaStream | null) => {
+    set((state) => {
+      const streams = { ...state.remoteScreenStreams };
+      if (stream === null) delete streams[userId];
+      else streams[userId] = stream;
+      return { remoteScreenStreams: streams };
+    });
+  },
   setLocalScreenStream: (stream: MediaStream | null) => set({ localScreenStream: stream }),
   setWebcamSharing: (sharing: boolean) => set({ webcamSharing: sharing }),
   setLocalWebcamStream: (stream: MediaStream | null) => set({ localWebcamStream: stream }),
@@ -422,7 +436,7 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
       speaking: false,
       screenSharing: false,
       screenSharingUserId: null,
-      remoteScreenStream: null,
+      remoteScreenStreams: {},
       localScreenStream: null,
       webcamSharing: false,
       localWebcamStream: null,

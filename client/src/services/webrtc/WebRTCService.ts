@@ -263,10 +263,18 @@ class WebRTCService {
             : track.id.replace('webcam-', '');
           useVoiceStore.getState().setRemoteWebcamStream(userId, stream);
         } else {
-          // Screen share video track
+          // Screen share video track. stream id format is
+          // "screen-stream-<userId>" from the server; extract so we
+          // can key the per-user map instead of stomping a single
+          // global slot.
           console.log('[WebRTC] Screen share track received:', streamId);
           this.remoteVideoStreams.set(streamId, stream);
-          useVoiceStore.getState().setRemoteScreenStream(stream);
+          const userId = streamId.startsWith('screen-stream-')
+            ? streamId.replace('screen-stream-', '')
+            : track.id.startsWith('screen-')
+              ? track.id.replace('screen-', '').replace(/-[a-f0-9-]+$/, '')
+              : streamId;
+          useVoiceStore.getState().setRemoteScreenStream(userId, stream);
         }
       } else {
         // Extract userId from stream ID (format: "stream-{userId}") for
@@ -755,8 +763,9 @@ class WebRTCService {
         // without this the receivers keep rendering a frozen "last
         // frame" (or a black tile) after the sender disappears.
         s.setRemoteWebcamStream(payload.user_id, null);
+        // Always drop the user's screen stream (per-user keyed map).
+        s.setRemoteScreenStream(payload.user_id, null);
         if (s.screenSharingUserId === payload.user_id) {
-          s.setRemoteScreenStream(null);
           s.setScreenSharingUserId(null);
         }
         voiceIsoTearDownPeer(payload.user_id);
@@ -894,15 +903,23 @@ class WebRTCService {
         s.updatePeer(payload.user_id, { screen_sharing: payload.sharing });
         if (payload.sharing) {
           s.setScreenSharingUserId(payload.user_id);
-        } else if (s.screenSharingUserId === payload.user_id) {
-          // Only clear the global slot when the user who stopped IS
-          // the one currently sitting in it. Without this guard, our
-          // own client receives its own voice:screen-update echo and
-          // wipes the remote peer's stream + sharer id — symptom was
-          // 'I pressed stop and the OTHER peer's screen-share
-          // disappeared from my UI'.
-          s.setRemoteScreenStream(null);
-          s.setScreenSharingUserId(null);
+        } else {
+          // Always drop THIS user's screen stream from the per-user
+          // map (own echo doesn't matter — we don't have an entry
+          // for ourselves there anyway). Only clear the global
+          // "primary sharer" pointer if it was pointing at this
+          // user; if another peer is still sharing, leave it.
+          s.setRemoteScreenStream(payload.user_id, null);
+          if (s.screenSharingUserId === payload.user_id) {
+            // Promote any remaining active sharer to the primary
+            // slot for auto-focus. Pick deterministically by user_id
+            // sort.
+            const stillSharing = Object.values(s.peers)
+              .filter((p) => p.screen_sharing && p.user_id !== payload.user_id)
+              .map((p) => p.user_id)
+              .sort();
+            s.setScreenSharingUserId(stillSharing[0] ?? null);
+          }
         }
       }),
       ws.on('voice:webcam-update', (payload: { user_id: string; sharing: boolean }) => {
@@ -1295,16 +1312,21 @@ class WebRTCService {
       ws.voiceScreenStop(this.teamId, this.channelId);
     }
 
-    // Clear local state. Only nuke screenSharingUserId if WE were
-    // the active sharer — otherwise we'd hide a remote peer's
-    // screen-share from our UI because they're tracked in the same
-    // global field. Symptom of getting this wrong was 'I pressed
-    // stop on MY share and the REMOTE'S video disappeared instead'.
+    // Clear LOCAL state only. Remote sharers live in the per-user
+    // remoteScreenStreams map (managed by voice:screen-update / WS
+    // handlers) — we never touch their entries here. For the global
+    // "primary sharer" pointer, only nudge it off ourselves if it's
+    // currently us; promote a remaining sharer if any. Mirrors the
+    // post-clear logic in the voice:screen-update handler.
     const store = useVoiceStore.getState();
     store.setScreenSharing(false);
     store.setLocalScreenStream(null);
     if (store.screenSharingUserId === this.localUserId) {
-      store.setScreenSharingUserId(null);
+      const stillSharing = Object.values(store.peers)
+        .filter((p) => p.screen_sharing && p.user_id !== this.localUserId)
+        .map((p) => p.user_id)
+        .sort();
+      store.setScreenSharingUserId(stillSharing[0] ?? null);
     }
   }
 
