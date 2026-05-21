@@ -3786,7 +3786,17 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
   // the kind separately lets you focus the webcam alone, the screen alone,
   // or swap between them — previously a participant with both shared their
   // screen with the webcam stuck as a small PIP that couldn't be promoted.
-  const [focused, setFocused] = useState<{ id: string; kind: 'cam' | 'screen' } | null>(null);
+  const [focused, setFocusedState] = useState<{ id: string; kind: 'cam' | 'screen' } | null>(null);
+  // Per-user memory of the last kind ('cam' / 'screen') the viewer
+  // had focused for that participant. Used so clicking back to a card
+  // restores the last view we were on for that user — e.g. flip from
+  // Alice's screen to Bob's cam, click Alice again → land back on
+  // her screen, not the default.
+  const lastFocusKindRef = useRef<Record<string, 'cam' | 'screen'>>({});
+  const setFocused = useCallback((next: { id: string; kind: 'cam' | 'screen' } | null) => {
+    if (next) lastFocusKindRef.current[next.id] = next.kind;
+    setFocusedState(next);
+  }, []);
   const focusRef = useRef<HTMLDivElement | null>(null);
   const [volumes, setVolumes] = useState({}); // memberId -> 0..100
   function vol(id) { return volumes[id] === undefined ? 100 : volumes[id]; }
@@ -3984,13 +3994,21 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                      ] } }));
                    }}
                    onClick={() => {
-                     // Click the mini strip → return to that stream.
-                     if (isMini && focused) { setFocused({ id: p.id, kind: focused.kind }); return; }
                      // Click an already-focused tile → exit focus.
                      if (focused?.id === p.id) { setFocused(null); return; }
-                     // Default: focus whichever single stream is showing.
-                     if (showScreen) setFocused({ id: p.id, kind: 'screen' });
-                     else if (showCam) setFocused({ id: p.id, kind: 'cam' });
+                     // Prefer the last kind we had focused for THIS
+                     // user (so screen→cam→screen click sequences feel
+                     // sticky), falling back to whichever stream is
+                     // currently live.
+                     const remembered = lastFocusKindRef.current[p.id];
+                     const canScreen = showScreen;
+                     const canCam = showCam;
+                     let nextKind: 'cam' | 'screen' | null = null;
+                     if (remembered === 'screen' && canScreen) nextKind = 'screen';
+                     else if (remembered === 'cam' && canCam) nextKind = 'cam';
+                     else if (canScreen) nextKind = 'screen';
+                     else if (canCam) nextKind = 'cam';
+                     if (nextKind) setFocused({ id: p.id, kind: nextKind });
                    }}>
                 <div className="voice-media">
                   {renderKind === 'screen' ? (
