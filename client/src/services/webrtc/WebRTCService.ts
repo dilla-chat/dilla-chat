@@ -349,6 +349,16 @@ class WebRTCService {
     let diagTickCount = 0;
     this.statsPollerId = setInterval(async () => {
       if (!this.pc) return;
+      // Hard gate: don't run the poller (or any WS-broadcasting
+      // side-effect inside it) when the store says we're not in a
+      // voice channel. Without this the poller can survive a logout
+      // / nav-to-onboarding and keep spamming voice:latency through
+      // a closed WS, filling the console with 'WebSocket not
+      // connected ... queued event' lines. Belt-and-suspenders for
+      // the broader "stop everything when connected is false"
+      // invariant.
+      const vs = useVoiceStore.getState();
+      if (!vs.connected) return;
       try {
         const report = await this.pc.getStats();
         let rttMs: number | null = null;
@@ -420,7 +430,9 @@ class WebRTCService {
           if (this.localUserId) s.setPeerLatency(this.localUserId, rttMs);
           // Tell other clients about our latency so their cards can
           // render real per-user RTT (not just their own). The
-          // server rebroadcasts with our user_id stamped in.
+          // server rebroadcasts with our user_id stamped in. Gated
+          // on `vs.connected` (checked above) so we don't broadcast
+          // while logged out.
           if (this.teamId && this.channelId) {
             ws.voiceLatency(this.teamId, this.channelId, rttMs);
           }
@@ -469,6 +481,22 @@ class WebRTCService {
       this.setSpeakerVolume(state.outputVolume);
     });
     this.storeUnsubscribers.push(unsubOutput);
+
+    // Safety net: if `connected` flips to false while we still have
+    // a peer connection alive (logout, force-disconnect, etc.), tear
+    // EVERYTHING down. Without this the mic / cam / screen tracks
+    // and the stats poller can outlive the session and the user
+    // sees their browser still flagging "sharing your screen" or
+    // mic-active long after they think they've left voice.
+    let wasConnected = useVoiceStore.getState().connected;
+    const unsubConnected = useVoiceStore.subscribe((state) => {
+      if (wasConnected && !state.connected && this.pc) {
+        console.warn('[Voice/diag] connected → false with live pc, forcing disconnect');
+        this.disconnect().catch((err) => console.error('[Voice] force-disconnect failed:', err));
+      }
+      wasConnected = state.connected;
+    });
+    this.storeUnsubscribers.push(unsubConnected);
   }
 
   private setSpeakerVolume(volume: number): void {
