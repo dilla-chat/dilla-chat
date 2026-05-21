@@ -458,7 +458,13 @@ pub fn create_router(state: AppState) -> Router {
             axum::http::header::REFERRER_POLICY,
             HeaderValue::from_static("strict-origin-when-cross-origin"),
         ))
-        .fallback_service(crate::webapp::webapp_fallback())
+        // F1 — propagate the operator's INSECURE flag into the CSP so
+        // the dev pattern (`DILLA_INSECURE=true`) keeps working with the
+        // plain-HTTP loopback API while production deployments only allow
+        // wss:/https: in connect-src. Cites VULN-001 / VULN-014.
+        .fallback_service(crate::webapp::webapp_fallback(crate::webapp::WebappSecurity {
+            insecure: state.config.insecure,
+        }))
         .with_state(state.clone());
 
     // Add HSTS header only when TLS is configured.
