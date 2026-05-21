@@ -4360,19 +4360,28 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                      else if (canCam) nextKind = 'cam';
                      if (nextKind) setFocused({ id: p.id, kind: nextKind });
                    }}>
-                <div className="voice-media">
-                  {renderKind === 'screen' ? (
-                    // Outside focus mode, render a non-interactive PIP via
-                    // ScreenTile's `pip` prop when both streams exist. In
-                    // focus mode we render our own clickable PIP overlay
-                    // below so the user can swap to the other stream by
-                    // clicking it.
-                    <ScreenTile member={p} pip={showCam && !focusKind ? p : null} showStats={!!focusKind} />
-                  ) : renderKind === 'cam' ? (
-                    <CamTile member={p} showStats={!!focusKind} />
-                  ) : (
-                    <div className="avatar-tile">
-                      <Avatar member={p} size={isMini ? 32 : 96} />
+                <div className={'voice-media render-' + renderKind}>
+                  {/* Render every possible layer (cam, screen, avatar) and
+                      cross-fade between them via opacity transitions on
+                      .voice-media.render-<kind>. Mounting/unmounting on
+                      a kind change would just snap; layered rendering
+                      keeps both the old and new tile in the DOM long
+                      enough for the transition to play. */}
+                  {renderKind === 'screen' && (
+                    <div className="voice-media-layer voice-media-screen">
+                      <ScreenTile member={p} pip={showCam && !focusKind ? p : null} showStats={!!focusKind} />
+                    </div>
+                  )}
+                  {renderKind === 'cam' && (
+                    <div className="voice-media-layer voice-media-cam">
+                      <CamTile member={p} showStats={!!focusKind} />
+                    </div>
+                  )}
+                  {renderKind === 'avatar' && (
+                    <div className="voice-media-layer voice-media-avatar">
+                      <div className="avatar-tile">
+                        <Avatar member={p} size={isMini ? 32 : 96} />
+                      </div>
                     </div>
                   )}
                   {/* Clickable swap PIP — only shown in focus mode when

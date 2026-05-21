@@ -2467,6 +2467,25 @@ img.attach-img {
 }
 
 /* ───── Mock webcam ───── */
+/* Cross-fade in when the media layer changes (avatar ↔ cam ↔ screen).
+   Each layer is mounted/unmounted by React on a renderKind change;
+   the keyframe gives it a 220ms ease-out fade-in so the swap doesn't
+   snap. The PREVIOUS layer is gone by the time the new one mounts,
+   so it's a fade-in rather than a true cross-fade — quick enough
+   that the seam isn't visible. */
+.voice-media-layer {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: voice-media-fade 220ms ease-out both;
+}
+@keyframes voice-media-fade {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
 /* Same outer dimensions as .cam-tile so the avatar fills the same
    square area the cam would. NO overflow:hidden — the Avatar's
    presence dot sits past the avatar's edge and gets clipped
