@@ -986,6 +986,12 @@ class WebRTCService {
         // ditch fallback so the share at least works locally.
         this.screenSender = this.pc.addTrack(videoTrack, this.screenStream);
       }
+      // Budget the screen at 2.5 Mbps and tell the encoder to
+      // preserve resolution over framerate when congestion hits.
+      // Without this, WebRTC's BWE starves the screen when the cam
+      // is also sending — user-visible as a screen track that only
+      // moves once the cam goes off.
+      await this.setSenderBitrate(this.screenSender, 2_500_000, 'maintain-resolution');
     }
   }
 
@@ -1120,6 +1126,34 @@ class WebRTCService {
       } else {
         this.webcamSender = this.pc.addTrack(videoTrack, this.webcamStream);
       }
+      // Cap the cam at 800 kbps and prefer dropping resolution before
+      // framerate (faces stay smooth, just lower res). Leaves room
+      // in the budget for the screen-share at 2.5 Mbps.
+      await this.setSenderBitrate(this.webcamSender, 800_000, 'maintain-framerate');
+    }
+  }
+
+  /** Set a hard bitrate cap + degradation preference on a sender so
+   *  WebRTC's bandwidth allocator gives each outgoing track the budget
+   *  it needs. Without explicit caps multiple video senders share the
+   *  pipe conservatively and one stream can starve the other (visible
+   *  as: screen-share doesn't flow until the cam goes off). */
+  private async setSenderBitrate(
+    sender: RTCRtpSender,
+    maxBitrate: number,
+    degradationPreference: 'maintain-framerate' | 'maintain-resolution' | 'balanced',
+  ): Promise<void> {
+    try {
+      const params = sender.getParameters();
+      if (!params.encodings || params.encodings.length === 0) {
+        params.encodings = [{}];
+      }
+      params.encodings[0].maxBitrate = maxBitrate;
+      (params as RTCRtpSendParameters & { degradationPreference?: string }).degradationPreference =
+        degradationPreference;
+      await sender.setParameters(params);
+    } catch (err) {
+      console.warn('[Voice] setParameters failed:', err);
     }
   }
 
