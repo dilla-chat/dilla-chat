@@ -362,7 +362,7 @@
 .voice-dock-stats {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.625rem;
+  gap: 1.25rem;
 }
 .vd-spark {
   display: flex;
