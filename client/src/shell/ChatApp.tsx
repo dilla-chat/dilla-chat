@@ -239,7 +239,7 @@ function VoiceDockBitrate() {
     <div className="vd-bitrate">
       <span className="vd-k">bitrate</span>
       <span className="vd-v">
-        {kbps > 0 ? kbps : '—'}<span className="vd-u">kbps</span>
+        {kbps > 0 ? kbps : 0}<span className="vd-u">kbps</span>
       </span>
     </div>
   );
