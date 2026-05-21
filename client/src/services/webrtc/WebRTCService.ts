@@ -588,12 +588,11 @@ class WebRTCService {
             // Persist 'sendonly' on every transceiver that already
             // has a sender track. Per JSEP, setRemoteDescription
             // re-mirrors the offer's literal direction onto each
-            // matched transceiver — so previously bound sendonly
-            // slots get clobbered back to recvonly any time a NEW
-            // offer arrives (e.g. another peer joining triggers
-            // renegotiate_all). Without this re-write, our active
-            // senders end up with a=inactive in the answer and
-            // remote viewers stop receiving frames mid-call.
+            // matched transceiver — previously bound sendonly slots
+            // get clobbered back to recvonly any time a NEW offer
+            // arrives. Without this re-write, active senders end
+            // up with a=inactive in the answer and remote viewers
+            // stop receiving frames mid-call.
             for (const tx of this.pc.getTransceivers()) {
               if (tx.sender.track && tx.direction !== 'sendonly' && tx.currentDirection !== 'stopped') {
                 try {
@@ -602,6 +601,28 @@ class WebRTCService {
                 } catch { /* read-only in some states */ }
               }
             }
+
+            // Chrome also clears sender.track on some renegotiations
+            // (transceiver dump showed mid:3 with sendKind/sendTrack
+            // missing after a 2nd offer arrived for the same m-line).
+            // Re-attach our cam/screen track to its sender if the
+            // sender we own has lost it, so the answer m-line stays
+            // a=sendonly with a real msid instead of a=inactive.
+            const reattach = async (sender: RTCRtpSender | null, track: MediaStreamTrack | null | undefined, label: string) => {
+              if (!sender || !track || sender.track === track) return;
+              try {
+                await sender.replaceTrack(track);
+                const tx = this.pc?.getTransceivers().find((t) => t.sender === sender);
+                if (tx) {
+                  try { tx.direction = 'sendonly'; } catch { /* read-only */ }
+                }
+                console.log('[Voice/diag] re-attach', label, '→ sender (track was cleared by Chrome on remote offer)');
+              } catch (err) {
+                console.warn('[Voice/diag] re-attach', label, 'failed:', err);
+              }
+            };
+            await reattach(this.webcamSender, this.webcamStream?.getVideoTracks()[0], 'cam');
+            await reattach(this.screenSender, this.screenStream?.getVideoTracks()[0], 'screen');
 
             // Pre-bind the pending cam/screen track to the new
             // transceiver Chrome created from the server's recvonly
