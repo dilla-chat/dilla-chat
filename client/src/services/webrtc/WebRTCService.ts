@@ -522,22 +522,21 @@ class WebRTCService {
             this.pendingCandidates = [];
 
             // Pre-bind the pending cam/screen track to the new
-            // recvonly-from-remote (sendonly-from-us) transceiver so
-            // createAnswer produces a=sendonly with a real track id
-            // instead of a=inactive. The logged smoking gun:
-            //   offer m=video a=recvonly
-            //   answer m=video a=inactive      ← bug
-            // After this attach, the answer becomes:
-            //   answer m=video a=sendonly a=msid:...
+            // transceiver Chrome created from the server's recvonly
+            // m-line. Per JSEP, Chrome mirrors the offer direction
+            // literally → new transceiver's local direction starts as
+            // 'recvonly' even though the server wants us to send.
+            // Without flipping it to 'sendonly' AND attaching the
+            // track BEFORE createAnswer, the answer m-line becomes
+            // a=inactive (recvonly ∩ recvonly = inactive) and the
+            // encoder produces nothing.
             if (this.pendingVideoTrack) {
               const pending = this.pendingVideoTrack;
               const target = this.pc.getTransceivers().find((tx) => {
                 if (tx.currentDirection === 'stopped') return false;
-                if (tx.sender.track) return false;
-                // The transceiver was just created by setRemoteDescription
-                // — for a recvonly remote offer, the browser sets local
-                // direction to 'sendonly' or 'sendrecv'.
-                return tx.direction === 'sendonly' || tx.direction === 'sendrecv';
+                if (tx.sender.track) return false;                  // already in use
+                if (tx.receiver.track?.kind !== 'video') return false; // must be video
+                return true;
               });
               if (target) {
                 try { target.direction = 'sendonly'; } catch { /* read-only */ }
