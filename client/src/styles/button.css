@@ -7,6 +7,7 @@
  *   .btn--block       — flex:1 (paired buttons share a row evenly)
  *   .btn--icon        — square icon-only (matches the row height)
  *   .btn--sm          — smaller (1.5rem) for tight chrome
+ *   .btn--lg          — larger (2.5rem) for prominent CTAs
  *   .btn--pill        — fully rounded corners (var(--r-pill))
  *   .btn--mono        — uppercase mono label (terminal-style chips)
  *
@@ -105,6 +106,19 @@
 }
 .btn--sm.btn--icon {
   width: 1.5rem;
+  padding: 0;
+}
+
+/* Larger variant for prominent CTAs (voice Join/Disconnect, modal
+ * primary actions where the row should feel weighty). Pair with
+ * --icon for a 2.5rem square. */
+.btn--lg {
+  height: 2.5rem;
+  padding: 0 1.25rem;
+  font-size: 0.875rem;
+}
+.btn--lg.btn--icon {
+  width: 2.5rem;
   padding: 0;
 }
 
