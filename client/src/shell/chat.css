@@ -2636,7 +2636,8 @@ img.attach-img {
    overflow / transform. The contents shrink the card chrome to zero
    so the screen share itself fills the viewport, not a centered tile
    with padding around it. */
-.voice-focus.is-tab-fs {
+.voice-focus.is-tab-fs,
+.voice-focus:fullscreen {
   position: fixed;
   inset: 0;
   z-index: 100;
@@ -2644,7 +2645,8 @@ img.attach-img {
   padding: 0;
   margin: 0;
 }
-.voice-focus.is-tab-fs .voice-card {
+.voice-focus.is-tab-fs .voice-card,
+.voice-focus:fullscreen .voice-card {
   background: transparent;
   border: none;
   padding: 0;
@@ -2653,19 +2655,28 @@ img.attach-img {
   border-radius: 0;
 }
 .voice-focus.is-tab-fs .voice-card::before,
-.voice-focus.is-tab-fs .voice-card::after { display: none; }
+.voice-focus.is-tab-fs .voice-card::after,
+.voice-focus:fullscreen .voice-card::before,
+.voice-focus:fullscreen .voice-card::after { display: none; }
 .voice-focus.is-tab-fs .voice-card > .v-name,
 .voice-focus.is-tab-fs .voice-card > .v-badges,
 .voice-focus.is-tab-fs .voice-card > .v-volume,
-.voice-focus.is-tab-fs .voice-card > .voice-expand { display: none; }
-.voice-focus.is-tab-fs .voice-card .voice-media {
+.voice-focus.is-tab-fs .voice-card > .voice-expand,
+.voice-focus:fullscreen .voice-card > .v-name,
+.voice-focus:fullscreen .voice-card > .v-badges,
+.voice-focus:fullscreen .voice-card > .v-volume,
+.voice-focus:fullscreen .voice-card > .voice-expand { display: none; }
+.voice-focus.is-tab-fs .voice-card .voice-media,
+.voice-focus:fullscreen .voice-card .voice-media {
   flex: 1 1 auto;
   width: 100%;
   height: 100%;
   margin: 0;
 }
 .voice-focus.is-tab-fs .screen-tile,
-.voice-focus.is-tab-fs .cam-tile {
+.voice-focus.is-tab-fs .cam-tile,
+.voice-focus:fullscreen .screen-tile,
+.voice-focus:fullscreen .cam-tile {
   width: 100%;
   height: 100%;
   aspect-ratio: auto;
