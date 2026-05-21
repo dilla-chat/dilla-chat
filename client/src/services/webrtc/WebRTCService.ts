@@ -504,7 +504,7 @@ class WebRTCService {
       } catch {
         /* ignore stats errors; will retry next tick */
       }
-    }, 600);
+    }, 250);
   }
 
   private stopStatsPoller(): void {
