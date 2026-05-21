@@ -1288,11 +1288,17 @@ class WebRTCService {
       ws.voiceScreenStop(this.teamId, this.channelId);
     }
 
-    // Clear local state.
+    // Clear local state. Only nuke screenSharingUserId if WE were
+    // the active sharer — otherwise we'd hide a remote peer's
+    // screen-share from our UI because they're tracked in the same
+    // global field. Symptom of getting this wrong was 'I pressed
+    // stop on MY share and the REMOTE'S video disappeared instead'.
     const store = useVoiceStore.getState();
     store.setScreenSharing(false);
     store.setLocalScreenStream(null);
-    store.setScreenSharingUserId(null);
+    if (store.screenSharingUserId === this.localUserId) {
+      store.setScreenSharingUserId(null);
+    }
   }
 
   isScreenSharing(): boolean {
