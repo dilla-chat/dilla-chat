@@ -956,24 +956,49 @@ class WebRTCService {
     store.setScreenSharingUserId(this.localUserId);
 
     // Tell the server we're starting screen share. The server will add a
-    // recv transceiver on its side and send a new voice:offer. We wait for
-    // that offer before adding the track to avoid signaling state conflicts.
+    // recv transceiver on its side and send a new voice:offer.
+    const txCountBefore = this.pc.getTransceivers().length;
     ws.voiceScreenStart(this.teamId, this.channelId);
 
-    // Wait for the server's renegotiation offer to arrive and be handled,
-    // then add the track. A short delay ensures setRemoteDescription completes.
-    await new Promise<void>((resolve) => {
-      const unsub = ws.on('voice:offer', () => {
-        unsub();
-        resolve();
-      });
-      // Timeout fallback in case the offer doesn't arrive
-      setTimeout(() => { unsub(); resolve(); }, 3000);
-    });
+    // Wait for the renegotiation to surface the NEW transceiver
+    // before binding our track. addTrack(track, stream) used to grab
+    // whatever sender it found unused — which after a second video
+    // start was the FIRST video's transceiver, stealing it and
+    // freezing the earlier stream for remote viewers. Pinning the
+    // track to the specific new transceiver by index removes the race.
+    await this.waitForTransceiverCount(txCountBefore + 1, 3000);
 
     if (this.pc && this.screenStream) {
-      this.screenSender = this.pc.addTrack(videoTrack, this.screenStream);
+      const txs = this.pc.getTransceivers();
+      const newTx = txs[txs.length - 1];
+      if (newTx) {
+        try { newTx.direction = 'sendonly'; } catch { /* read-only in some states */ }
+        await newTx.sender.replaceTrack(videoTrack);
+        this.screenSender = newTx.sender;
+      } else {
+        // Server never added the transceiver in time — last-ditch
+        // fallback so the share at least works locally.
+        this.screenSender = this.pc.addTrack(videoTrack, this.screenStream);
+      }
     }
+  }
+
+  /** Resolve when this.pc.getTransceivers().length reaches `target`,
+   *  or after `timeoutMs`. Used to make sure a server-initiated
+   *  renegotiation has surfaced the new m-line before we bind our
+   *  local track to it — without this we race against addTrack
+   *  picking up the wrong transceiver. */
+  private waitForTransceiverCount(target: number, timeoutMs: number): Promise<void> {
+    return new Promise((resolve) => {
+      const t0 = performance.now();
+      const tick = () => {
+        if (!this.pc) return resolve();
+        if (this.pc.getTransceivers().length >= target) return resolve();
+        if (performance.now() - t0 > timeoutMs) return resolve();
+        setTimeout(tick, 30);
+      };
+      tick();
+    });
   }
 
   async stopScreenShare(): Promise<void> {
@@ -1043,19 +1068,25 @@ class WebRTCService {
     store.setWebcamSharing(true);
     store.updatePeer(this.localUserId ?? '', { webcam_sharing: true });
 
-    // Tell server, wait for renegotiation offer, then add track
+    // Same anti-race as startScreenShare: pin the cam track to the
+    // specific transceiver the server appends, instead of letting
+    // addTrack pick whichever unused sender it finds (which would be
+    // the screen-share's after a start-cam-then-start-share sequence
+    // and steal it, freezing the earlier stream).
+    const txCountBefore = this.pc.getTransceivers().length;
     ws.voiceWebcamStart(this.teamId, this.channelId);
-
-    await new Promise<void>((resolve) => {
-      const unsub = ws.on('voice:offer', () => {
-        unsub();
-        resolve();
-      });
-      setTimeout(() => { unsub(); resolve(); }, 3000);
-    });
+    await this.waitForTransceiverCount(txCountBefore + 1, 3000);
 
     if (this.pc && this.webcamStream) {
-      this.webcamSender = this.pc.addTrack(videoTrack, this.webcamStream);
+      const txs = this.pc.getTransceivers();
+      const newTx = txs[txs.length - 1];
+      if (newTx) {
+        try { newTx.direction = 'sendonly'; } catch { /* read-only in some states */ }
+        await newTx.sender.replaceTrack(videoTrack);
+        this.webcamSender = newTx.sender;
+      } else {
+        this.webcamSender = this.pc.addTrack(videoTrack, this.webcamStream);
+      }
     }
   }
 
