@@ -2288,21 +2288,37 @@ img.attach-img {
   height: 100%;
   min-height: 0;
 }
-.voice-stage.is-single .voice-card {
+/* Avatar-only card (no webcam, no screen-share): square floating card
+   centered in the stage — matches the cam-tile square so the empty
+   state reads as the same shape, just with the avatar inside. */
+.voice-stage.is-single .voice-card:not(.has-cam):not(.has-screen) {
+  width: 18rem;
+  max-width: min(100%, 100% - 2rem);
+  aspect-ratio: 1;
+  height: auto;
+  max-height: 100%;
+  padding: 1.5rem 1.25rem 1.25rem;
+  justify-content: center;
+}
+/* Video / screen card: bound to stage height so the 1:1 cam-tile
+   shrinks to fit instead of overflowing. */
+.voice-stage.is-single .voice-card.has-cam,
+.voice-stage.is-single .voice-card.has-screen {
   height: 100%;
   max-height: 100%;
   max-width: 100%;
   width: auto;
 }
-.voice-stage.is-single .voice-card .voice-media {
+.voice-stage.is-single .voice-card.has-cam .voice-media,
+.voice-stage.is-single .voice-card.has-screen .voice-media {
   flex: 1 1 0;
   min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
 }
-.voice-stage.is-single .cam-tile,
-.voice-stage.is-single .screen-tile {
+.voice-stage.is-single .voice-card.has-cam .cam-tile,
+.voice-stage.is-single .voice-card.has-screen .screen-tile {
   width: auto;
   height: 100%;
   max-width: 100%;
