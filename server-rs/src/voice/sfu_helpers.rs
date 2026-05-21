@@ -165,6 +165,32 @@ pub(crate) async fn renegotiate_all_internal(
             );
         }
     }
+
+    // Every renegotiation can stall existing subscribers' decoders —
+    // when A toggles cam (while still sharing screen), B's screen
+    // receiver gets a new SDP version but no fresh I-frame, so the
+    // decoder shows `framesDecoded:0` until the next periodic
+    // keyframe (multi-second wait, sometimes never). Burst PLIs at
+    // EVERY active video publisher so all subscribers immediately
+    // pick up a keyframe on every stream they're already receiving.
+    let publishers: Vec<String> = {
+        let rooms_guard = rooms.read().await;
+        match rooms_guard.get(channel_id) {
+            Some(room) => room
+                .iter()
+                .filter(|(_, ps)| ps.webcam_track.is_some() || ps.screen_track.is_some())
+                .map(|(uid, _)| uid.clone())
+                .collect(),
+            None => return,
+        }
+    };
+    for publisher_uid in publishers {
+        spawn_keyframe_burst_for_publisher(
+            Arc::clone(rooms),
+            channel_id.to_string(),
+            publisher_uid,
+        );
+    }
 }
 
 pub(crate) async fn renegotiate_all_except_internal(
