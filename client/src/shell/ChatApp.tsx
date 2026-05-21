@@ -1507,6 +1507,46 @@ function FloatingPip({
   minH?: number;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
+  // When the stage around the PIP resizes (e.g. switching focus
+  // mode normal ↔ tab ↔ screen), rescale our inline left/top/
+  // width/height proportionally so the user's drag-positioned PIP
+  // stays in roughly the same relative spot and ends up inside the
+  // new stage bounds — instead of stranded outside or stuck at
+  // pixel coords that mean something totally different.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const parent = (el.offsetParent as HTMLElement) || null;
+    if (!parent) return;
+    let prev = parent.getBoundingClientRect();
+    const ro = new ResizeObserver(() => {
+      const next = parent.getBoundingClientRect();
+      if (!prev.width || !prev.height || !next.width || !next.height) {
+        prev = next;
+        return;
+      }
+      const rW = next.width / prev.width;
+      const rH = next.height / prev.height;
+      const scale = Math.min(rW, rH);
+      // Only rescale when WE have set inline values (otherwise the
+      // CSS-default bottom/right anchor handles things just fine).
+      if (el.style.left) {
+        const l = parseFloat(el.style.left) * rW;
+        const t = parseFloat(el.style.top) * rH;
+        const w = (parseFloat(el.style.width) || el.offsetWidth) * scale;
+        const h = (parseFloat(el.style.height) || el.offsetHeight) * scale;
+        const clampedL = Math.max(0, Math.min(l, next.width - w));
+        const clampedT = Math.max(0, Math.min(t, next.height - h));
+        el.style.left = `${clampedL}px`;
+        el.style.top = `${clampedT}px`;
+        el.style.width = `${w}px`;
+        el.style.height = `${h}px`;
+      }
+      prev = next;
+    });
+    ro.observe(parent);
+    return () => ro.disconnect();
+  }, []);
   const start = useCallback((handle: DragHandle, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
