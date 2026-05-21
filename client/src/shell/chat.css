@@ -2468,24 +2468,20 @@ img.attach-img {
 
 /* ───── Mock webcam ───── */
 /* Presence dot rendered on top of the cam / screen tile when those
-   replace the avatar — same look as the avatar's own dot but a
-   sibling of the tile so it survives the swap. Bottom-right of the
-   media area. */
+   replace the avatar. Matches `.avatar .presence` exactly (same
+   right/bottom offsets, same size, same border) so it lands in the
+   identical pixel position the avatar's own dot would. */
 .voice-media-presence {
   position: absolute;
-  right: 6px;
-  bottom: 6px;
-  width: 12px;
-  height: 12px;
+  right: -2px;
+  bottom: -2px;
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
-  border: 2px solid var(--surface);
+  border: 2px solid var(--bg-2);
   z-index: 2;
   pointer-events: none;
 }
-.voice-media-presence.online { background: var(--ok); }
-.voice-media-presence.idle   { background: var(--warn); }
-.voice-media-presence.dnd    { background: var(--danger); }
-.voice-media-presence.offline{ background: var(--fg-3); }
 
 /* Same outer dimensions as .cam-tile so the avatar fills the same
    square area the cam would. NO overflow:hidden — the Avatar's
