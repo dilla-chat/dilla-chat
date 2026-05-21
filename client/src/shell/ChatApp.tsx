@@ -2090,10 +2090,6 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
 
       {voiceConnection && (
         <div className="voice-dock">
-          <div className="voice-dock-top">
-            <div className="voice-dock-status">Voice</div>
-            <div className="voice-dock-name">{voiceConnection.channel} · {team.name}</div>
-          </div>
           <div className="voice-dock-stats">
             <VoiceDockBitrate />
             <VoiceDockLatency />

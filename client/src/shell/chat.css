@@ -363,8 +363,6 @@
   display: grid;
   grid-template-columns: 30% 1fr;
   gap: 0.625rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--hairline);
 }
 .vd-bitrate,
 .vd-latency {
