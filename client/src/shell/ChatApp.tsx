@@ -2181,10 +2181,20 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
               <button className={'vctrl' + (deaf ? ' active' : '')} title={deaf ? "Undeafen" : "Deafen"} onClick={() => setDeaf(!deaf)}>
                 <Icon.Headphones size={14} off={deaf} />
               </button>
-              <button className={'vctrl' + (cam ? ' on' : '')} title={cam ? "Stop camera" : "Start camera"} onClick={() => setCam(!cam)}>
+              <button
+                className={'vctrl' + (cam ? ' on' : '') + (inVoice ? '' : ' is-disabled')}
+                disabled={!inVoice}
+                title={inVoice ? (cam ? 'Stop camera' : 'Start camera') : 'Join voice to use the camera'}
+                onClick={() => { if (inVoice) setCam(!cam); }}
+              >
                 <Icon.Video size={14} off={!cam} />
               </button>
-              <button className={'vctrl' + (screen ? ' on' : '')} title={screen ? "Stop sharing" : "Share screen"} onClick={() => setScreen(!screen)}>
+              <button
+                className={'vctrl' + (screen ? ' on' : '') + (inVoice ? '' : ' is-disabled')}
+                disabled={!inVoice}
+                title={inVoice ? (screen ? 'Stop sharing' : 'Share screen') : 'Join voice to share your screen'}
+                onClick={() => { if (inVoice) setScreen(!screen); }}
+              >
                 <Icon.Screen size={14} off={!screen} />
               </button>
               {inVoice ? (
