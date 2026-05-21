@@ -5,11 +5,15 @@ use axum::{
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::api::helpers::{json_ok, json_ok_true, map_not_found, require_team_member, spawn_db};
+use crate::api::helpers::{json_ok, json_ok_true, map_not_found, spawn_db};
 use crate::api::AppState;
 use crate::auth::UserId;
 use crate::db;
 use crate::error::AppError;
+// A6: REST authz routes through the central policy module so every
+// deny flows through one place. Same semantics as the prior
+// `helpers::require_team_member` call sites.
+use crate::policy::require_team_member;
 
 #[derive(Deserialize)]
 pub struct ListMessagesQuery {

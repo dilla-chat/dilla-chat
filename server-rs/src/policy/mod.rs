@@ -184,6 +184,70 @@ pub fn can_call_federation(
     }
 }
 
+// ── A6: integration helpers wrapping the existing helpers::* shape ──────
+
+/// A6: typed wrapper for the membership check. Replaces direct calls to
+/// `helpers::require_team_member` inside REST handlers so every Deny
+/// flows through `log_decision` and a future audit pipeline can hook
+/// off this module.
+pub fn require_team_member(
+    conn: &Connection,
+    user_id: &str,
+    team_id: &str,
+) -> Result<(), rusqlite::Error> {
+    let decision = match db::get_member_by_user_and_team(conn, user_id, team_id) {
+        Ok(Some(_)) => Decision::Allow,
+        Ok(None) => Decision::Deny("team.not_member"),
+        Err(_) => Decision::Deny("team.db_error"),
+    };
+    log_decision(
+        &decision,
+        &DecisionContext {
+            user_id,
+            target_kind: "team",
+            target_id: team_id,
+            reason: "rest_handler",
+        },
+    );
+    match decision {
+        Decision::Allow => Ok(()),
+        Decision::Deny(_) => Err(rusqlite::Error::InvalidParameterName(
+            "not a member of this team".into(),
+        )),
+    }
+}
+
+/// A6: typed wrapper for permission-bit checks. Same shape as
+/// `helpers::require_permission` but routes every deny through
+/// `log_decision`.
+pub fn require_permission(
+    conn: &Connection,
+    user_id: &str,
+    team_id: &str,
+    perm: i64,
+) -> Result<(), rusqlite::Error> {
+    let decision = match db::user_has_permission(conn, user_id, team_id, perm) {
+        Ok(true) => Decision::Allow,
+        Ok(false) => Decision::Deny("team.insufficient_permission"),
+        Err(_) => Decision::Deny("team.db_error"),
+    };
+    log_decision(
+        &decision,
+        &DecisionContext {
+            user_id,
+            target_kind: "team",
+            target_id: team_id,
+            reason: "rest_handler",
+        },
+    );
+    match decision {
+        Decision::Allow => Ok(()),
+        Decision::Deny(_) => Err(rusqlite::Error::InvalidParameterName(
+            "insufficient permissions".into(),
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

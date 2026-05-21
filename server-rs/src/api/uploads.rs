@@ -208,7 +208,8 @@ pub async fn download(
         db.with_conn(|conn| -> Result<db::Attachment, rusqlite::Error> {
             // VULN-003: caller must be a team member regardless of
             // whether the attachment is linked yet.
-            crate::api::helpers::require_team_member(conn, &uid, &tid)?;
+            // A6: centralized authz — same semantics, deny telemetry.
+            crate::policy::require_team_member(conn, &uid, &tid)?;
 
             let att = db::get_attachment(conn, &aid)?
                 .ok_or(rusqlite::Error::QueryReturnedNoRows)?;

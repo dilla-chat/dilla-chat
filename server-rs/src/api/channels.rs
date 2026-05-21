@@ -7,11 +7,15 @@ use serde_json::Value;
 
 use rusqlite::OptionalExtension;
 
-use crate::api::helpers::{json_ok, json_ok_true, require_permission, require_team_member, spawn_db};
+use crate::api::helpers::{json_ok, json_ok_true, spawn_db};
 use crate::api::AppState;
 use crate::auth::UserId;
 use crate::db;
 use crate::error::AppError;
+// A6: REST authz routes through the central policy module so every
+// deny flows through one place. Same semantics as the prior
+// helpers::require_* call sites.
+use crate::policy::{require_permission, require_team_member};
 
 #[derive(Deserialize)]
 pub struct CreateChannelRequest {
@@ -304,7 +308,8 @@ pub async fn get_access(
     Path((team_id, channel_id)): Path<(String, String)>,
 ) -> Result<Json<Value>, AppError> {
     let role_ids = spawn_db(state.db.clone(), move |conn| {
-        crate::api::helpers::require_team_member(conn, &user_id, &team_id)?;
+        // A6: centralized authz — same semantics as before.
+        crate::policy::require_team_member(conn, &user_id, &team_id)?;
         get_channel_for_team(conn, &channel_id, &team_id)?;
         db::get_channel_access_roles(conn, &channel_id)
     })

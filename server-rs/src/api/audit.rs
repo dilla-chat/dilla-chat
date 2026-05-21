@@ -22,9 +22,11 @@ pub async fn list(
 ) -> Result<Json<Value>, AppError> {
     let limit = q.limit.unwrap_or(100).clamp(1, 500);
     let events = spawn_db(state.db.clone(), move |conn| {
-        // Any team admin (manage-roles or manage-members or manage-team) can
-        // read the log; use manage-team as the gating check.
-        require_permission(conn, &user_id, &team_id, db::PERM_MANAGE_TEAM)?;
+        // A3: read-the-log is its own perm class. PERM_VIEW_AUDIT_LOG
+        // lets a "team safety officer" review the log without holding
+        // member/role mutation rights. PERM_ADMIN still implies it via
+        // the bitmask short-circuit in `user_has_permission`.
+        require_permission(conn, &user_id, &team_id, db::PERM_VIEW_AUDIT_LOG)?;
         db::list_audit_events(conn, &team_id, limit)
     })
     .await?;

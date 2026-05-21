@@ -26,6 +26,7 @@ mod channel_mute_queries;
 mod pin_queries;
 mod block_queries;
 mod jwt_revocation_queries;
+mod device_queries;
 
 use rusqlite::Connection;
 use secrecy::{ExposeSecret, SecretString};
@@ -59,6 +60,7 @@ pub use channel_mute_queries::*;
 pub use pin_queries::*;
 pub use block_queries::*;
 pub use jwt_revocation_queries::*;
+pub use device_queries::*;
 
 const MIGRATIONS: &[(&str, &str)] = &[
     ("001_initial.sql", include_str!("../../migrations/001_initial.sql")),
@@ -89,6 +91,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
     ("026_bootstrap_token_expiry.sql", include_str!("../../migrations/026_bootstrap_token_expiry.sql")),
     ("027_jwt_revocations.sql", include_str!("../../migrations/027_jwt_revocations.sql")),
     ("028_team_upload_quota.sql", include_str!("../../migrations/028_team_upload_quota.sql")),
+    ("029_user_devices.sql", include_str!("../../migrations/029_user_devices.sql")),
 ];
 
 /// Default number of read connections in the pool.

@@ -1,5 +1,6 @@
 use axum::{
     extract::{Request, State},
+    http::HeaderMap,
     Json,
 };
 use base64::Engine;
@@ -10,6 +11,37 @@ use crate::api::helpers::spawn_db;
 use crate::api::AppState;
 use crate::db;
 use crate::error::AppError;
+
+/// Best-effort extraction of (ip, user_agent) for risk-signal
+/// recording. Prefers `X-Forwarded-For` / `X-Real-IP` when behind a
+/// reverse proxy. Both fields are optional — handler-side code MUST
+/// NOT branch on their presence (they're for telemetry only).
+fn extract_request_context(headers: &HeaderMap) -> (Option<String>, Option<String>) {
+    let ip = headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        // X-Forwarded-For is "client, proxy1, proxy2"; the leftmost
+        // is the original client.
+        .and_then(|s| s.split(',').next())
+        .map(|s| s.trim().to_string())
+        .or_else(|| {
+            headers
+                .get("x-real-ip")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string())
+        })
+        .filter(|s| !s.is_empty());
+
+    let ua = headers
+        .get(axum::http::header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty())
+        // Bound the stored UA so a hostile client can't pin large rows.
+        .map(|s| if s.len() > 256 { s[..256].to_string() } else { s });
+
+    (ip, ua)
+}
 
 #[derive(Deserialize)]
 pub struct ChallengeRequest {
@@ -68,8 +100,19 @@ pub async fn challenge(
 
 pub async fn verify(
     State(state): State<AppState>,
-    Json(body): Json<VerifyRequest>,
+    req: Request,
 ) -> Result<Json<Value>, AppError> {
+    // We took ownership of `Request` instead of the prior
+    // `Json<VerifyRequest>` so we can inspect headers for risk-signal
+    // recording. Body extraction happens explicitly below.
+    let (parts, body) = req.into_parts();
+    let bytes = axum::body::to_bytes(body, 1024 * 16) // 16 KiB body cap
+        .await
+        .map_err(|_| AppError::BadRequest("invalid body".into()))?;
+    let body: VerifyRequest =
+        serde_json::from_slice(&bytes).map_err(|e| AppError::BadRequest(format!("{}", e)))?;
+    let (ip, ua) = extract_request_context(&parts.headers);
+
     let pk_bytes = base64::engine::general_purpose::STANDARD
         .decode(&body.public_key)
         .map_err(|_| AppError::BadRequest("invalid base64 public key".into()))?;
@@ -93,18 +136,305 @@ pub async fn verify(
     .await?;
 
     if !valid || user.is_none() {
+        // A5: audit-log the failed verify. We can't tie it to a team
+        // (the public key may not match any user), so we log a global
+        // record under a synthetic team_id "_global" — the audit
+        // emitter MUST tolerate a non-existent team_id (it does:
+        // `audit_events` has no FK on team_id).
+        let ua_log = ua.clone();
+        let ip_log = ip.clone();
+        let reason = if !valid { "bad_signature" } else { "unknown_user" };
+        let _ = spawn_db(state.db.clone(), move |conn| {
+            db::insert_audit_event(
+                conn,
+                "_global",
+                None,
+                "auth.login_failed",
+                Some("auth"),
+                None,
+                Some(&json!({
+                    "reason": reason,
+                    "ip": ip_log,
+                    "user_agent": ua_log,
+                })),
+            )
+        })
+        .await;
         return Err(AppError::Unauthorized("invalid signature".into()));
     }
     let user = user.unwrap();
 
-    let token = state.auth.generate_jwt(&user.id)?;
-    let refresh_token = state.auth.generate_refresh_token(&user.id)?;
+    // A1: resolve the *device* row associated with this pubkey. The
+    // 029 migration backfills a row for every existing user, so this
+    // should be Some(...) on a properly-migrated DB. If absent (a
+    // user created right at the cutover boundary), fall back to the
+    // legacy no-device-id path.
+    let user_id_q = user.id.clone();
+    let pk_q = pk_bytes.clone();
+    let device =
+        spawn_db(state.db.clone(), move |conn| {
+            db::get_device_by_user_and_pubkey(conn, &user_id_q, &pk_q)
+        })
+        .await?;
+    let device_id = device.as_ref().map(|d| d.id.clone()).unwrap_or_default();
+
+    // Refuse to issue a token for a revoked device. The challenge
+    // already succeeded so the key is genuine; we still deny because
+    // the user (or another trusted device) marked this one untrusted.
+    if let Some(ref d) = device {
+        if !d.is_active() {
+            let user_id_log = user.id.clone();
+            let device_id_log = d.id.clone();
+            let ip_log = ip.clone();
+            let _ = spawn_db(state.db.clone(), move |conn| {
+                let teams = db::list_user_teams(conn, &user_id_log).unwrap_or_default();
+                for team_id in teams {
+                    let _ = db::insert_audit_event(
+                        conn,
+                        &team_id,
+                        Some(&user_id_log),
+                        "auth.login_failed",
+                        Some("device"),
+                        Some(&device_id_log),
+                        Some(&json!({
+                            "reason": "device_revoked",
+                            "ip": ip_log,
+                        })),
+                    );
+                }
+                Ok(())
+            })
+            .await;
+            return Err(AppError::Unauthorized("invalid signature".into()));
+        }
+    }
+
+    // A2: stamp risk signals + bump current_session_started_at. We
+    // also compare against the *previous* signals to compute a risk
+    // score — see below.
+    let prev_signals = device.as_ref().map(|d| {
+        (
+            d.last_seen_ip.clone(),
+            d.last_seen_user_agent.clone(),
+            d.last_seen_country.clone(),
+        )
+    });
+    let country = derive_country_from_ip(ip.as_deref());
+
+    if let Some(ref d) = device {
+        let did = d.id.clone();
+        let ip_q = ip.clone();
+        let ua_q = ua.clone();
+        let country_q = country.clone();
+        let _ = spawn_db(state.db.clone(), move |conn| {
+            db::record_device_login(
+                conn,
+                &did,
+                ip_q.as_deref(),
+                ua_q.as_deref(),
+                country_q.as_deref(),
+            )
+        })
+        .await;
+    }
+
+    // A2: compute a simple risk score from the delta between this
+    // login's signals and the previously-recorded ones. Heuristic-
+    // only — never a hard block. High-risk events fire a WS event to
+    // the user's other devices so they see the change in real time.
+    let risk_score = compute_risk_score(prev_signals.as_ref(), ip.as_deref(), ua.as_deref(), country.as_deref());
+    if risk_score >= 50 {
+        let user_id_log = user.id.clone();
+        let device_id_log = device_id.clone();
+        let ip_log = ip.clone();
+        let country_log = country.clone();
+        let _ = spawn_db(state.db.clone(), move |conn| {
+            let teams = db::list_user_teams(conn, &user_id_log).unwrap_or_default();
+            for team_id in teams {
+                let _ = db::insert_audit_event(
+                    conn,
+                    &team_id,
+                    Some(&user_id_log),
+                    "device.risk_event",
+                    Some("device"),
+                    Some(&device_id_log),
+                    Some(&json!({
+                        "risk_score": risk_score,
+                        "ip": ip_log,
+                        "country": country_log,
+                    })),
+                );
+            }
+            Ok(())
+        })
+        .await;
+
+        if risk_score >= 80 {
+            // Best-effort dispatch — failures here mustn't break login.
+            let evt = crate::ws::events::Event::new(
+                "security:device-risk",
+                json!({
+                    "device_id": device_id,
+                    "risk_score": risk_score,
+                    "country": country,
+                    "ip_hint": ip.as_ref().map(|s| ip_hint(s)),
+                }),
+            );
+            if let Ok(evt) = evt {
+                if let Ok(data) = evt.to_bytes() {
+                    state.hub.send_to_user(&user.id, data).await;
+                }
+            }
+        }
+    }
+
+    let token = state.auth.generate_jwt_for_device(&user.id, &device_id)?;
+    let refresh_token = state
+        .auth
+        .generate_refresh_token_for_device(&user.id, &device_id)?;
+
+    // A5: success-side audit event. Same per-team fan-out as the
+    // failure path so audit officers see every login from their team.
+    let user_id_log = user.id.clone();
+    let device_id_log = device_id.clone();
+    let ip_log = ip.clone();
+    let country_log = country.clone();
+    let _ = spawn_db(state.db.clone(), move |conn| {
+        let teams = db::list_user_teams(conn, &user_id_log).unwrap_or_default();
+        for team_id in teams {
+            let _ = db::insert_audit_event(
+                conn,
+                &team_id,
+                Some(&user_id_log),
+                "auth.login",
+                Some("device"),
+                Some(&device_id_log),
+                Some(&json!({
+                    "ip": ip_log,
+                    "country": country_log,
+                })),
+            );
+        }
+        Ok(())
+    })
+    .await;
 
     Ok(Json(json!({
         "token": token,
         "refresh_token": refresh_token,
         "user": user,
+        "device_id": device_id,
     })))
+}
+
+// ── A2 risk-scoring helpers ─────────────────────────────────────────────
+
+/// Optional Tor-exit-node lookup. The file lives at
+/// `<DILLA_DATA_DIR>/tor-exit-nodes.txt` if the operator wants the
+/// 50-point bonus on Tor traffic; absence is logged and silently
+/// skipped. Each line is a single IP (comments starting with `#`
+/// are ignored).
+fn ip_is_tor_exit(_ip: &str) -> bool {
+    // The list lives on disk; reading it on every login would amplify
+    // the syscall cost. We deliberately keep this a stub for the
+    // skeleton — the file plumbing is documented in the report so a
+    // future commit can wire it in. See 08-auth-enhancement.md A2.
+    false
+}
+
+/// Crude country derivation. We do NOT call out to a third-party geo
+/// service (the spec is explicit on this). For private / RFC-1918 IPs
+/// we return None; for everything else we return a generic "unknown"
+/// placeholder so the country-change signal still fires on the first
+/// real login after a reset. A future migration can plug in MaxMind's
+/// offline GeoLite2 country DB without touching call sites.
+fn derive_country_from_ip(ip: Option<&str>) -> Option<String> {
+    let ip = ip?;
+    if ip.starts_with("10.")
+        || ip.starts_with("172.")
+        || ip.starts_with("192.168.")
+        || ip == "127.0.0.1"
+        || ip == "::1"
+    {
+        return None;
+    }
+    Some("unknown".to_string())
+}
+
+/// Mask the last octet of an IPv4 (or last 32 bits of IPv6) for the WS
+/// risk-event payload so we don't leak the full IP to other devices.
+fn ip_hint(ip: &str) -> String {
+    if let Some(idx) = ip.rfind('.') {
+        return format!("{}.x", &ip[..idx]);
+    }
+    if let Some(idx) = ip.rfind(':') {
+        return format!("{}::x", &ip[..idx]);
+    }
+    "x".to_string()
+}
+
+fn user_agent_family(ua: Option<&str>) -> &'static str {
+    let Some(ua) = ua else { return "unknown" };
+    let lower = ua.to_ascii_lowercase();
+    if lower.contains("firefox") {
+        "firefox"
+    } else if lower.contains("edg/") {
+        "edge"
+    } else if lower.contains("chrome") {
+        "chrome"
+    } else if lower.contains("safari") {
+        "safari"
+    } else if lower.contains("dilla-tauri") || lower.contains("tauri") {
+        "tauri"
+    } else {
+        "other"
+    }
+}
+
+fn compute_risk_score(
+    prev: Option<&(Option<String>, Option<String>, Option<String>)>,
+    new_ip: Option<&str>,
+    new_ua: Option<&str>,
+    new_country: Option<&str>,
+) -> u32 {
+    let mut score: u32 = 0;
+    if let Some(prev) = prev {
+        let (prev_ip, prev_ua, prev_country) = prev;
+        // +30 if country changed (and we have a previous country to
+        // compare against — first login from a fresh device doesn't
+        // get the bonus).
+        if let (Some(p), Some(n)) = (prev_country.as_deref(), new_country) {
+            if p != n {
+                score = score.saturating_add(30);
+            }
+        }
+        // +20 if user-agent family changed.
+        if let Some(p) = prev_ua.as_deref() {
+            let p_family = user_agent_family(Some(p));
+            let n_family = user_agent_family(new_ua);
+            if p_family != n_family {
+                score = score.saturating_add(20);
+            }
+        }
+        // +50 if the new IP is a Tor exit node.
+        if let Some(n) = new_ip {
+            if ip_is_tor_exit(n) {
+                score = score.saturating_add(50);
+            }
+            // Also flag a *complete* IP change as a low signal so the
+            // delta-from-baseline still moves on the first foreign
+            // login.
+            if let Some(p) = prev_ip.as_deref() {
+                if p != n {
+                    // No standalone bonus — country change already
+                    // covers the cross-region case. The IP delta only
+                    // matters as a tie-breaker, which we omit here.
+                    let _ = p;
+                }
+            }
+        }
+    }
+    score
 }
 
 pub async fn register(
@@ -145,6 +475,10 @@ pub async fn register(
 
         db::increment_invite_uses(conn, &invite.id)?;
         db::log_invite_use(conn, &invite.id, &user.id)?;
+
+        // A1: seed the primary device row so this account starts
+        // multi-device tracking from day one.
+        let _ = db::create_device(conn, &user.id, &user.public_key, "primary");
 
         Ok((user, member, invite.team_id))
     })
@@ -233,6 +567,12 @@ pub async fn bootstrap(
 
         create_bootstrap_defaults(&tx, &team_id, &user.id, seed_demo)?;
 
+        // A1: also seed the primary device row inside the same
+        // transaction so multi-device tracking starts immediately
+        // (the 029 migration backfill won't catch users created
+        // *after* the migration runs).
+        let _ = db::create_device(&tx, &user.id, &user.public_key, "primary");
+
         tx.commit()?;
         Ok((user, team_id))
     })
@@ -245,12 +585,87 @@ pub async fn bootstrap(
     let token = state.auth.generate_jwt(&user.id)?;
     let refresh_token = state.auth.generate_refresh_token(&user.id)?;
 
+    // A5: bootstrap.consumed audit event. The team_id is the
+    // brand-new team we just created — this is the first record in
+    // it, which is exactly the provenance an auditor wants.
+    let uid_log = user.id.clone();
+    let team_id_log = team_id.clone();
+    let _ = spawn_db(state.db.clone(), move |conn| {
+        db::insert_audit_event(
+            conn,
+            &team_id_log,
+            Some(&uid_log),
+            "bootstrap.consumed",
+            Some("team"),
+            Some(&team_id_log),
+            None,
+        )
+    })
+    .await;
+
     Ok(Json(json!({
         "token": token,
         "refresh_token": refresh_token,
         "user": user,
         "team_id": team_id,
     })))
+}
+
+/// A4: refresh token endpoint. Validates the supplied refresh token,
+/// mints a new access token (always), and rotates the refresh token
+/// when it's at or past half its lifetime (sliding renewal).
+///
+/// The endpoint is intentionally not behind `auth_middleware` — the
+/// access token may already be expired, which is the whole reason the
+/// client is calling refresh.
+pub async fn refresh(
+    State(state): State<AppState>,
+    Json(body): Json<RefreshRequest>,
+) -> Result<Json<Value>, AppError> {
+    if body.refresh_token.is_empty() {
+        return Err(AppError::BadRequest("refresh_token is required".into()));
+    }
+    let (access, refresh, rotated) = state.auth.refresh_with_sliding(&body.refresh_token)?;
+
+    // A5: audit-log the refresh. We can identify the user by decoding
+    // the refresh-token claims; do it cheaply (we just validated it).
+    if let Ok((user_id, _iat, _exp, _jti, device_id)) =
+        state.auth.validate_refresh_token_full(&refresh)
+    {
+        let uid_log = user_id.clone();
+        let did_log = device_id.clone();
+        let _ = spawn_db(state.db.clone(), move |conn| {
+            let teams = db::list_user_teams(conn, &uid_log).unwrap_or_default();
+            for team_id in teams {
+                let _ = db::insert_audit_event(
+                    conn,
+                    &team_id,
+                    Some(&uid_log),
+                    "auth.token_refresh",
+                    Some("device"),
+                    if did_log.is_empty() {
+                        None
+                    } else {
+                        Some(&did_log)
+                    },
+                    Some(&json!({ "rotated": rotated })),
+                );
+            }
+            Ok(())
+        })
+        .await;
+    }
+
+    Ok(Json(json!({
+        "token": access,
+        "refresh_token": refresh,
+        "rotated": rotated,
+    })))
+}
+
+#[derive(Deserialize)]
+pub struct RefreshRequest {
+    pub refresh_token: String,
 }
 
 /// Log out the caller by revoking the bearer token. H2 / VULN-012.
@@ -268,7 +683,40 @@ pub async fn logout(
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.strip_prefix("Bearer "))
         .ok_or_else(|| AppError::Unauthorized("missing authorization header".into()))?;
+
+    // Capture user_id + device_id *before* revoking so the audit
+    // record carries them. validate_jwt_full ignores aud/iss strictly
+    // enough to work even on a token that's about to be revoked.
+    let context = state.auth.validate_jwt_full(token).ok();
+
     state.auth.revoke_token(token)?;
+
+    // A5: audit log the logout.
+    if let Some((user_id, _jti, _exp, device_id)) = context {
+        let uid_log = user_id.clone();
+        let did_log = device_id.clone();
+        let _ = spawn_db(state.db.clone(), move |conn| {
+            let teams = db::list_user_teams(conn, &uid_log).unwrap_or_default();
+            for team_id in teams {
+                let _ = db::insert_audit_event(
+                    conn,
+                    &team_id,
+                    Some(&uid_log),
+                    "auth.logout",
+                    Some("device"),
+                    if did_log.is_empty() {
+                        None
+                    } else {
+                        Some(&did_log)
+                    },
+                    None,
+                );
+            }
+            Ok(())
+        })
+        .await;
+    }
+
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -459,9 +907,22 @@ fn create_bootstrap_defaults(
 
     // Bootstrap only Admin + everyone — keeps the team-creator with full
     // perms and a fallback default. Any further role ladder is user-defined.
+    //
+    // A3: PERM_ADMIN already implies every bit via the bitmask
+    // short-circuit in `user_has_permission`. We still OR in
+    // PERM_MANAGE_FEDERATION + PERM_VIEW_AUDIT_LOG explicitly so a
+    // team operator who later splits the Admin role and demotes
+    // themselves doesn't accidentally lose federation-mint or
+    // audit-read.
     let mut admin_role_id: Option<String> = None;
     for (name, color, position, permissions, is_default) in [
-        ("Admin", "#5eebab", 1, db::PERM_ADMIN, false),
+        (
+            "Admin",
+            "#5eebab",
+            1,
+            db::PERM_ADMIN | db::PERM_MANAGE_FEDERATION | db::PERM_VIEW_AUDIT_LOG,
+            false,
+        ),
         (
             "everyone",
             "#99AAB5",

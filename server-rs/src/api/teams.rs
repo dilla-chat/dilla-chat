@@ -7,11 +7,15 @@ use serde_json::{json, Value};
 
 use std::sync::Arc;
 
-use crate::api::helpers::{json_ok, json_ok_true, map_not_found, require_permission, require_team_member, spawn_db};
+use crate::api::helpers::{json_ok, json_ok_true, map_not_found, spawn_db};
 use crate::api::AppState;
 use crate::auth::UserId;
 use crate::db;
 use crate::error::AppError;
+// A6: REST authz routes through the central policy module so every
+// deny flows through one place. Same semantics as the prior
+// helpers::require_* call sites.
+use crate::policy::{require_permission, require_team_member};
 use crate::ws::Hub;
 
 #[derive(Deserialize)]
@@ -341,6 +345,13 @@ pub async fn update_member(
                 Some(&target_user_id),
                 Some(&serde_json::json!({ "role_ids": role_ids })),
             );
+
+            // A4 / AUTH-FORCE-LOGOUT-1: invalidate every existing JWT
+            // for the target user so their in-flight access tokens
+            // can't keep operating with stale permission bits. The
+            // client's refresh path will mint a new token with the
+            // updated claims on the next call.
+            let _ = db::invalidate_user_tokens_now(conn, &target_user_id);
         }
 
         Ok(member)

@@ -57,7 +57,11 @@ pub struct CreateJoinTokenRequest {
 
 /// POST /api/v1/federation/join-token
 ///
-/// Generate a federation join token. Only admins may call this endpoint.
+/// Generate a federation join token. Caller must hold
+/// `PERM_MANAGE_FEDERATION` in at least one team they own
+/// (server-operator privilege class — see architecture review §6.2 / A3).
+/// `PERM_ADMIN` implies this bit via the bitmask short-circuit in
+/// `user_has_permission`.
 pub async fn create_join_token(
     Extension(UserId(user_id)): Extension<UserId>,
     State(state): State<AppState>,
@@ -66,22 +70,38 @@ pub async fn create_join_token(
         AppError::BadRequest("federation is not enabled".into())
     })?;
 
-    // Check that the user is an admin.
+    // A3: federation gating uses PERM_MANAGE_FEDERATION across any team
+    // the caller owns or holds the bit in. We can't tie this to a single
+    // team (federation is node-wide), so we sweep the user's memberships
+    // and pass if any one of them grants the perm.
     let db = state.db.clone();
     let uid = user_id.clone();
-    let is_admin = tokio::task::spawn_blocking(move || {
+    let permitted = tokio::task::spawn_blocking(move || {
         db.with_conn(|conn| {
-            let user = db::get_user_by_id(conn, &uid)?;
-            Ok(user.map(|u| u.is_admin).unwrap_or(false))
+            // `users.is_admin = true` continues to grant federation
+            // management to the bootstrap user so the dev pattern keeps
+            // working without a per-team role.
+            if let Some(u) = db::get_user_by_id(conn, &uid)? {
+                if u.is_admin {
+                    return Ok(true);
+                }
+            }
+            let memberships = db::list_user_teams(conn, &uid)?;
+            for team_id in memberships {
+                if db::user_has_permission(conn, &uid, &team_id, db::PERM_MANAGE_FEDERATION)? {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
         })
     })
     .await
     .map_err(|e| AppError::Internal(format!("task join: {}", e)))?
     .map_err(|e: rusqlite::Error| AppError::Internal(format!("db: {}", e)))?;
 
-    if !is_admin {
+    if !permitted {
         return Err(AppError::Forbidden(
-            "only admins can create federation join tokens".into(),
+            "PERM_MANAGE_FEDERATION required to mint a federation join token".into(),
         ));
     }
 

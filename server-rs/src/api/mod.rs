@@ -25,6 +25,7 @@ pub mod gif;
 pub mod integrations;
 pub mod pins;
 pub mod blocks;
+pub mod devices;
 
 use crate::auth::{self, AuthService};
 use crate::config::Config;
@@ -429,6 +430,28 @@ pub fn create_router(state: AppState) -> Router {
         // jwt_revocations table so a stolen JWT can be killed before
         // its natural expiry.
         .route("/api/v1/auth/logout", post(auth_handlers::logout))
+        // H2 / VULN-012 + A4: rotate the refresh token (sliding
+        // renewal) and mint a fresh access token in one round trip.
+        .route("/api/v1/auth/refresh", post(auth_handlers::refresh))
+        // A1 / AUTH-MULTIDEV-1: multi-device key trust. A user can
+        // enroll N devices, each with its own Ed25519 keypair; any
+        // trusted device can revoke any other. Token issuance carries
+        // a `device_id` claim so per-device revocation is possible.
+        .route("/api/v1/devices", get(devices::list_devices))
+        .route(
+            "/api/v1/devices/enroll-begin",
+            post(devices::enroll_begin)
+                .route_layer(GovernorLayer { config: auth_rate_config.clone() }),
+        )
+        .route(
+            "/api/v1/devices/enroll-complete",
+            post(devices::enroll_complete)
+                .route_layer(GovernorLayer { config: auth_rate_config.clone() }),
+        )
+        .route(
+            "/api/v1/devices/{device_id}/revoke",
+            post(devices::revoke_device),
+        )
         // WebSocket
         .layer(middleware::from_fn(auth::auth_middleware))
         // VULN-011 / H1: global per-IP rate limit for the protected

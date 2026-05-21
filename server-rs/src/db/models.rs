@@ -261,6 +261,18 @@ pub const PERM_BYPASS_SLOW_MODE: i64 = 1 << 8;
 /// the mute by broadcasting voice:mute-update; the target client kills
 /// its mic locally on receipt. Server-side action is audit-logged.
 pub const PERM_MUTE_VOICE: i64 = 1 << 9;
+/// Mint federation join tokens, list peers, mutate federation config.
+/// Split out from PERM_ADMIN so a team admin who manages members
+/// cannot also add a foreign Dilla node to the trust mesh (a different
+/// privilege class — see architecture review §6.2 + A3 in
+/// .security-hardening/08-auth-enhancement.md). PERM_ADMIN still
+/// implies this bit via the bitmask short-circuit in
+/// `user_has_permission`.
+pub const PERM_MANAGE_FEDERATION: i64 = 1 << 10;
+/// Read the team audit log. Split out from PERM_ADMIN so a "team
+/// safety officer" can review the log without holding member/role
+/// mutation rights. PERM_ADMIN still implies this bit.
+pub const PERM_VIEW_AUDIT_LOG: i64 = 1 << 11;
 
 mod base64_bytes {
     use base64::Engine;
@@ -283,4 +295,11 @@ mod base64_bytes {
             .decode(&s)
             .map_err(serde::de::Error::custom)
     }
+}
+
+/// Public re-export of the base64-bytes serde adapter so other model
+/// types (e.g. `UserDevice` in `device_queries.rs`) can serialize raw
+/// public keys consistently with `User`.
+pub mod base64_bytes_pub {
+    pub use super::base64_bytes::*;
 }

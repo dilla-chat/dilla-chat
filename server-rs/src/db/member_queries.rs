@@ -65,6 +65,19 @@ pub fn get_members_by_team(
     rows.collect()
 }
 
+/// Return every team_id where the user has a `members` row. Used by
+/// permission gates that aren't tied to a specific team (e.g. the
+/// federation join-token endpoint — see A3) and by audit-event
+/// emitters that need to scope an event to the caller's team.
+pub fn list_user_teams(
+    conn: &Connection,
+    user_id: &str,
+) -> Result<Vec<String>, rusqlite::Error> {
+    let mut stmt = conn.prepare("SELECT team_id FROM members WHERE user_id = ?1")?;
+    let rows = stmt.query_map([user_id], |row| row.get::<_, String>(0))?;
+    rows.collect()
+}
+
 pub fn get_member_by_user_and_team(
     conn: &Connection,
     user_id: &str,

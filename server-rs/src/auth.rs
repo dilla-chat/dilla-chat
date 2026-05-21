@@ -42,6 +42,11 @@ struct Claims {
     /// node identity without invalidating in-flight sessions.
     #[serde(default)]
     iss: String,
+    /// A1 / AUTH-MULTIDEV-1: device_id of the enrolled device that
+    /// presented this credential. Empty for legacy tokens minted
+    /// before multi-device rolled out.
+    #[serde(default)]
+    did: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,6 +61,9 @@ struct RefreshClaims {
     aud: String,
     #[serde(default)]
     iss: String,
+    /// A1: same device_id binding as the access token.
+    #[serde(default)]
+    did: String,
 }
 
 struct Challenge {
@@ -191,6 +199,17 @@ impl AuthService {
     }
 
     pub fn generate_jwt(&self, user_id: &str) -> Result<String, AppError> {
+        self.generate_jwt_for_device(user_id, "")
+    }
+
+    /// A1: generate an access token bound to a specific device_id. The
+    /// device_id is empty for the legacy verify path (pre-multi-device
+    /// rollout) — those tokens still validate.
+    pub fn generate_jwt_for_device(
+        &self,
+        user_id: &str,
+        device_id: &str,
+    ) -> Result<String, AppError> {
         let now = chrono::Utc::now().timestamp();
         let claims = Claims {
             sub: user_id.to_string(),
@@ -199,6 +218,7 @@ impl AuthService {
             jti: uuid::Uuid::new_v4().to_string(),
             aud: self.node_name.clone(),
             iss: self.node_name.clone(),
+            did: device_id.to_string(),
         };
         encode(
             &Header::default(),
@@ -209,13 +229,22 @@ impl AuthService {
     }
 
     pub fn validate_jwt(&self, token: &str) -> Result<String, AppError> {
-        let (sub, _jti, _exp) = self.validate_jwt_full(token)?;
+        let (sub, _jti, _exp, _did) = self.validate_jwt_full(token)?;
         Ok(sub)
     }
 
-    /// Validate a JWT and return (sub, jti, exp). Used by the logout
-    /// handler so it can revoke the *exact* token presented.
-    pub fn validate_jwt_full(&self, token: &str) -> Result<(String, String, i64), AppError> {
+    /// A1: validate and return (user_id, device_id). Device_id is empty
+    /// for legacy tokens that predate multi-device.
+    #[allow(dead_code)]
+    pub fn validate_jwt_with_device(&self, token: &str) -> Result<(String, String), AppError> {
+        let (sub, _jti, _exp, did) = self.validate_jwt_full(token)?;
+        Ok((sub, did))
+    }
+
+    /// Validate a JWT and return (sub, jti, exp, device_id). Used by
+    /// the logout handler so it can revoke the *exact* token presented
+    /// and by handlers that need device context.
+    pub fn validate_jwt_full(&self, token: &str) -> Result<(String, String, i64, String), AppError> {
         let mut validation = Validation::default();
         validation.algorithms = vec![jsonwebtoken::Algorithm::HS256];
         // H2 / VULN-012: require aud + iss to match this node's name
@@ -262,6 +291,8 @@ impl AuthService {
         // tokens always have a jti.
         let jti = data.claims.jti.clone();
         let exp = data.claims.exp;
+        let iat = data.claims.iat;
+        let did = data.claims.did.clone();
         if !jti.is_empty() {
             let jti_q = jti.clone();
             let revoked = self
@@ -273,7 +304,30 @@ impl AuthService {
             }
         }
 
-        Ok((data.claims.sub, jti, exp))
+        // A4: per-device force-logout. If the user's role changed
+        // server-side, every JWT issued *before* the change must be
+        // rejected so the in-flight token can't keep operating with
+        // stale permissions. We compare the token's `iat` to the
+        // device row's `tokens_invalidated_after` (unix seconds).
+        if !did.is_empty() {
+            let did_q = did.clone();
+            let device = self
+                .db
+                .with_read(|conn| db::get_device_by_id(conn, &did_q))
+                .map_err(|e| AppError::Internal(format!("device lookup: {}", e)))?;
+            if let Some(d) = device {
+                if !d.is_active() {
+                    return Err(AppError::Unauthorized("device revoked".into()));
+                }
+                if iat < d.tokens_invalidated_after {
+                    return Err(AppError::Unauthorized(
+                        "token superseded — re-authenticate".into(),
+                    ));
+                }
+            }
+        }
+
+        Ok((data.claims.sub, jti, exp, did))
     }
 
     /// Revoke the supplied JWT by inserting its `jti` into the
@@ -312,6 +366,17 @@ impl AuthService {
 
     /// Generate a refresh token for the given user.
     pub fn generate_refresh_token(&self, user_id: &str) -> Result<String, AppError> {
+        self.generate_refresh_token_for_device(user_id, "")
+    }
+
+    /// A1: refresh-token variant bound to a device_id. The device_id is
+    /// preserved across sliding renewals so a stolen-then-rotated
+    /// refresh token can be tied back to the originating device.
+    pub fn generate_refresh_token_for_device(
+        &self,
+        user_id: &str,
+        device_id: &str,
+    ) -> Result<String, AppError> {
         let now = chrono::Utc::now().timestamp();
         let claims = RefreshClaims {
             sub: user_id.to_string(),
@@ -321,6 +386,7 @@ impl AuthService {
             jti: uuid::Uuid::new_v4().to_string(),
             aud: self.node_name.clone(),
             iss: self.node_name.clone(),
+            did: device_id.to_string(),
         };
         encode(
             &Header::default(),
@@ -334,6 +400,18 @@ impl AuthService {
     /// Rejects access tokens (those without token_type == "refresh").
     #[allow(dead_code)] // Public API for future use (token refresh endpoint)
     pub fn validate_refresh_token(&self, token: &str) -> Result<String, AppError> {
+        let (sub, _iat, _exp, _jti, _did) = self.validate_refresh_token_full(token)?;
+        Ok(sub)
+    }
+
+    /// A4: full refresh-token introspection. Returns
+    /// (user_id, iat, exp, jti, device_id) so the caller can decide
+    /// whether to rotate (sliding renewal) and which device to bind
+    /// the new tokens to.
+    pub fn validate_refresh_token_full(
+        &self,
+        token: &str,
+    ) -> Result<(String, i64, i64, String, String), AppError> {
         let mut validation = Validation::default();
         validation.algorithms = vec![jsonwebtoken::Algorithm::HS256];
         if !self.node_name.is_empty() {
@@ -368,7 +446,13 @@ impl AuthService {
             }
         }
 
-        Ok(data.claims.sub)
+        Ok((
+            data.claims.sub,
+            data.claims.iat,
+            data.claims.exp,
+            data.claims.jti,
+            data.claims.did,
+        ))
     }
 
     /// Validate a refresh token and issue a new access token.
@@ -376,6 +460,52 @@ impl AuthService {
     pub fn refresh_access_token(&self, refresh_token: &str) -> Result<String, AppError> {
         let user_id = self.validate_refresh_token(refresh_token)?;
         self.generate_jwt(&user_id)
+    }
+
+    /// A4 — Sliding refresh. Validate `refresh_token` and:
+    /// - Always mint a fresh access token (1h life).
+    /// - If the refresh token is within the **last 12 hours** of its 24h
+    ///   life, rotate it: revoke the old jti and mint a new 24h refresh
+    ///   token. Otherwise, return the old refresh token unchanged.
+    ///
+    /// Returns `(access_token, refresh_token, rotated)`. The `rotated`
+    /// flag lets callers (and tests) tell whether a fresh refresh
+    /// token was issued. The new tokens carry the same `device_id` as
+    /// the old refresh token, so a per-device session view stays
+    /// consistent.
+    pub fn refresh_with_sliding(
+        &self,
+        refresh_token: &str,
+    ) -> Result<(String, String, bool), AppError> {
+        let (user_id, _iat, exp, old_jti, device_id) =
+            self.validate_refresh_token_full(refresh_token)?;
+
+        let access = self.generate_jwt_for_device(&user_id, &device_id)?;
+
+        let now = chrono::Utc::now().timestamp();
+        let remaining = exp - now;
+        // Rotate when at least half the lifetime has elapsed (≤ 12h
+        // left out of a 24h window). This bounds the blast radius of a
+        // stolen refresh token to one half-life.
+        let rotate = remaining <= REFRESH_TOKEN_EXPIRY_SECS / 2;
+
+        if rotate {
+            // Mint the new refresh token *before* revoking the old one
+            // so a transient DB error doesn't leave the user with no
+            // refresh credential.
+            let new_refresh =
+                self.generate_refresh_token_for_device(&user_id, &device_id)?;
+            // Best-effort revoke — if it fails, the rotation succeeded
+            // but the old jti will simply live to its natural exp.
+            if !old_jti.is_empty() {
+                let _ = self
+                    .db
+                    .with_conn(|conn| db::revoke_jti(conn, &old_jti, exp));
+            }
+            Ok((access, new_refresh, true))
+        } else {
+            Ok((access, refresh_token.to_string(), false))
+        }
     }
 
     pub fn generate_bootstrap_token(&self) -> Result<String, AppError> {
@@ -1257,12 +1387,14 @@ mod tests {
             jwt_secret: secret_a,
             challenges: Arc::new(RwLock::new(HashMap::new())),
             ws_tickets: Arc::new(RwLock::new(HashMap::new())),
+            node_name: String::new(),
         };
         let auth2 = AuthService {
             db,
             jwt_secret: secret_b,
             challenges: Arc::new(RwLock::new(HashMap::new())),
             ws_tickets: Arc::new(RwLock::new(HashMap::new())),
+            node_name: String::new(),
         };
         let token = auth1.generate_jwt("cross-user").unwrap();
         let user_id = auth2.validate_jwt(&token).unwrap();
