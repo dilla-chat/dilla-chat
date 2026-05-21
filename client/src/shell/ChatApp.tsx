@@ -4157,6 +4157,18 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
     return ids[0] ?? null;
   }, [voicePeers]);
   useEffect(() => {
+    console.log('[Voice/diag] auto-focus effect', {
+      isConnected,
+      channelSharerId,
+      firstCamSharerId,
+      currentUser: currentUserId(),
+      voicePeersKeys: Object.keys(voicePeers ?? {}),
+      voicePeers: Object.values(voicePeers ?? {}).map((p) => ({
+        user_id: p.user_id,
+        webcam_sharing: p.webcam_sharing,
+        screen_sharing: p.screen_sharing,
+      })),
+    });
     if (!isConnected) return;
     if (channelSharerId) {
       setFocused({ id: channelSharerId, kind: 'screen' });
@@ -4165,7 +4177,7 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
     } else {
       setFocused(null);
     }
-  }, [channelSharerId, firstCamSharerId, isConnected]);
+  }, [channelSharerId, firstCamSharerId, isConnected, voicePeers]);
 
   // Fullscreen the focused stage. Uses the browser Fullscreen API and
   // bails silently if the user denies the request or fullscreen isn't
