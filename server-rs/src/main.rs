@@ -466,6 +466,15 @@ async fn init_federation_mesh(
         return None;
     }
 
+    // VULN-005 / VULN-021: panic on empty join_secret when peers are
+    // configured unless DILLA_INSECURE=true. Also warn loudly when the
+    // secret is shorter than 32 bytes (offline brute-force territory).
+    federation::join::JoinManager::enforce_security_policy(
+        &cfg.join_secret,
+        !cfg.peers.is_empty(),
+        cfg.insecure,
+    );
+
     let mesh_config = federation::MeshConfig {
         node_name: if cfg.node_name.is_empty() {
             format!("node-{}", cfg.port)
