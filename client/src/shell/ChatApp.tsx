@@ -1543,13 +1543,42 @@ function FloatingPip({
       if (handle.includes('s')) { h += dy; }
       if (handle.includes('w')) { l += dx; w -= dx; }
       if (handle.includes('e')) { w += dx; }
+      // Preserve the PIP's starting aspect ratio so video doesn't
+      // squash/stretch as the user resizes. For edge handles we lock
+      // the orthogonal dimension; for corners we pick whichever axis
+      // the user pushed harder and derive the other.
+      const aspect = startW / startH;
+      const onlyW = handle === 'e' || handle === 'w';
+      const onlyH = handle === 'n' || handle === 's';
+      if (onlyW) {
+        h = w / aspect;
+      } else if (onlyH) {
+        w = h * aspect;
+      } else {
+        if (Math.abs(w - startW) > Math.abs(h - startH) * aspect) {
+          h = w / aspect;
+        } else {
+          w = h * aspect;
+        }
+      }
+      // Re-anchor whichever edges were *not* grabbed so the dragged
+      // corner stays under the cursor.
+      if (handle.includes('n')) t = startT + (startH - h);
+      if (handle.includes('w')) l = startL + (startW - w);
+      // Min clamp: bump both dimensions together to keep the aspect.
       if (w < minW) {
-        if (handle.includes('w')) l -= minW - w;
+        const ratio = minW / w;
         w = minW;
+        h = h * ratio;
+        if (handle.includes('w')) l = startL + (startW - w);
+        if (handle.includes('n')) t = startT + (startH - h);
       }
       if (h < minH) {
-        if (handle.includes('n')) t -= minH - h;
+        const ratio = minH / h;
         h = minH;
+        w = w * ratio;
+        if (handle.includes('w')) l = startL + (startW - w);
+        if (handle.includes('n')) t = startT + (startH - h);
       }
       el.style.left = `${l}px`;
       el.style.top = `${t}px`;
