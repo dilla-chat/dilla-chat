@@ -3804,19 +3804,26 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
   // Strip shows all participants (including the focused one) for context.
   const others = focused ? participants : [];
 
+  // While someone is sharing their screen, exit-focus is disabled —
+  // the share IS the call, dismissing it would just leave the viewer
+  // staring at avatars. The user can still switch focus between
+  // users by clicking another card; they just can't dismiss focus
+  // mode entirely until the sharer stops.
+  const channelSharerId = useVoiceStore((s) => s.screenSharingUserId);
+  const canExitFocus = !channelSharerId;
+
   useEffect(() => {
     if (!focused) return;
     function onKey(e) {
       if (e.key !== 'Escape') return;
       // Esc unwinds one layer at a time: tab-fullscreen first, then
-      // the focus itself. Matches the browser Fullscreen API's own
-      // Esc behavior so muscle memory transfers.
+      // (only when exit-focus is permitted) the focus itself.
       if (tabFs) setTabFs(false);
-      else setFocused(null);
+      else if (canExitFocus) setFocused(null);
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [focused, tabFs]);
+  }, [focused, tabFs, canExitFocus]);
 
   // Whenever focus clears, drop tab-fullscreen too — otherwise the
   // sidebar would stay hidden after leaving focus mode.
@@ -3828,7 +3835,6 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
   // is worse than just making it the stage. Clear focus when the
   // sharer stops (only if the focus was pointing at the screen — don't
   // stomp on a manual webcam-focus the viewer set themselves).
-  const channelSharerId = useVoiceStore((s) => s.screenSharingUserId);
   useEffect(() => {
     if (!isConnected) return;
     if (channelSharerId) {
@@ -4005,8 +4011,12 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                      ] } }));
                    }}
                    onClick={() => {
-                     // Click an already-focused tile → exit focus.
-                     if (focused?.id === p.id) { setFocused(null); return; }
+                     // Click an already-focused tile → exit focus, unless
+                     // a screen share is locking us in focus mode.
+                     if (focused?.id === p.id) {
+                       if (canExitFocus) setFocused(null);
+                       return;
+                     }
                      // Prefer the last kind we had focused for THIS
                      // user (so screen→cam→screen click sequences feel
                      // sticky), falling back to whichever stream is
@@ -4130,12 +4140,14 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                         </button>
                       </>
                     )}
-                    <button className="voice-unfocus" onClick={() => setFocused(null)} title="Exit focus (esc)">
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                        <path d="M2 2h5v5M7 2L2 7M14 9v5h-5M14 14l-5-5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                      exit focus
-                    </button>
+                    {canExitFocus && (
+                      <button className="voice-unfocus" onClick={() => setFocused(null)} title="Exit focus (esc)">
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                          <path d="M2 2h5v5M7 2L2 7M14 9v5h-5M14 14l-5-5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                        exit focus
+                      </button>
+                    )}
                   </div>
                   {cardFor(focusedMember, false, focused.kind)}
                 </div>
