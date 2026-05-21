@@ -1528,7 +1528,17 @@ function FloatingPip({
       if (!moved && Math.abs(dx) + Math.abs(dy) < 4) return;
       moved = true;
       let l = startL, t = startT, w = startW, h = startH;
-      if (handle === 'move') { l += dx; t += dy; }
+      if (handle === 'move') {
+        // Pure drag — translate, never touch width/height. Setting
+        // them re-applied border-box vs content-box differences and
+        // visibly grew the PIP on every drag start.
+        l += dx; t += dy;
+        el.style.left = `${l}px`;
+        el.style.top = `${t}px`;
+        el.style.right = 'auto';
+        el.style.bottom = 'auto';
+        return;
+      }
       if (handle.includes('n')) { t += dy; h -= dy; }
       if (handle.includes('s')) { h += dy; }
       if (handle.includes('w')) { l += dx; w -= dx; }
