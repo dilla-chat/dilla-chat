@@ -2468,26 +2468,24 @@ img.attach-img {
 
 /* ───── Mock webcam ───── */
 /* Same outer dimensions as .cam-tile so the avatar fills the same
-   square area the cam would. No background/scanlines — the Avatar
-   inside provides its own colour. */
+   square area the cam would. NO overflow:hidden — the Avatar's
+   presence dot sits past the avatar's edge and gets clipped
+   otherwise. */
 .avatar-tile {
   width: 100%;
   aspect-ratio: 1;
-  border-radius: var(--r-md);
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
+  position: relative;
 }
-/* When the avatar lives inside .avatar-tile, expand it to fill the
-   whole tile so it visually matches the cam frame in adjacent
-   cards. Override Avatar's inline width/height with !important
-   since the component sets pixel dimensions per `size` prop. */
+/* Inside .avatar-tile, the avatar fills the tile (matching the cam
+   frame in neighbouring cards) but keeps its round shape and its
+   presence dot visible. */
 .avatar-tile > .avatar {
   width: 100% !important;
   height: 100% !important;
   font-size: clamp(28px, 36%, 72px);
-  border-radius: var(--r-md);
 }
 .cam-tile {
   width: 100%;
