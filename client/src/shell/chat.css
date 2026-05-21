@@ -444,6 +444,10 @@
 }
 .voice-dock-controls {
   display: flex; gap: 4px;
+}
+/* Only draw the separator when the stats row is sitting above us —
+   outside a voice channel there's nothing to separate from. */
+.voice-dock-stats + .voice-dock-controls {
   padding-top: 8px;
   border-top: 1px solid var(--hairline);
 }
