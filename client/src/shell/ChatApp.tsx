@@ -1394,6 +1394,7 @@ function ThreadPanel({ channelId, messageId, members, onClose, onReact }) {
 function VideoTile({ stream, fit = 'cover', mirror }: { stream: MediaStream; fit?: 'cover' | 'contain'; mirror?: boolean }) {
   const ref = useRef<HTMLVideoElement | null>(null);
   const [stats, setStats] = useState<{ w: number; h: number; fps: number } | null>(null);
+  const [bitrate, setBitrate] = useState<number | null>(null);
 
   useEffect(() => {
     const el = ref.current;
@@ -1439,6 +1440,47 @@ function VideoTile({ stream, fit = 'cover', mirror }: { stream: MediaStream; fit
     };
   }, [stream]);
 
+  // Per-track bitrate from RTCPeerConnection.getStats(track). Works for
+  // both incoming (inbound-rtp) and outgoing (outbound-rtp) senders/receivers
+  // because we look up by the underlying track on whichever PC owns it.
+  useEffect(() => {
+    const track = stream.getVideoTracks()[0];
+    if (!track) return;
+    const pc = useVoiceStore.getState().peerConnection;
+    if (!pc) return;
+    let lastBytes = 0;
+    let lastTs = 0;
+    const id = window.setInterval(() => {
+      pc.getStats(track)
+        .then((report) => {
+          let bytes = 0;
+          let ts = 0;
+          report.forEach((stat) => {
+            if (stat.type === 'outbound-rtp' || stat.type === 'inbound-rtp') {
+              const s = stat as RTCRtpStreamStats & {
+                kind?: string;
+                bytesSent?: number;
+                bytesReceived?: number;
+              };
+              if (s.kind !== 'video') return;
+              bytes += s.bytesSent ?? s.bytesReceived ?? 0;
+              ts = Math.max(ts, s.timestamp ?? 0);
+            }
+          });
+          if (lastTs > 0 && ts > lastTs && bytes >= lastBytes) {
+            const dtSec = (ts - lastTs) / 1000;
+            const dBytes = bytes - lastBytes;
+            const kbps = Math.round((dBytes * 8) / dtSec / 1000);
+            setBitrate(kbps);
+          }
+          lastBytes = bytes;
+          lastTs = ts;
+        })
+        .catch(() => { /* track gone, stats throw — fine */ });
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [stream]);
+
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <video
@@ -1476,7 +1518,7 @@ function VideoTile({ stream, fit = 'cover', mirror }: { stream: MediaStream; fit
             zIndex: 2,
           }}
         >
-          {stats.w}×{stats.h} · {stats.fps}fps
+          {stats.w}×{stats.h} · {stats.fps}fps{bitrate != null ? ` · ${bitrate} kbps` : ''}
         </div>
       )}
     </div>
