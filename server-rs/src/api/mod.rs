@@ -140,7 +140,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/auth/verify", post(auth_handlers::verify))
         .route("/api/v1/auth/register", post(auth_handlers::register))
         .route("/api/v1/auth/bootstrap", post(auth_handlers::bootstrap))
-        .layer(GovernorLayer { config: auth_rate_config });
+        .layer(GovernorLayer { config: auth_rate_config.clone() });
 
     let public = Router::new()
         .route("/api/v1/health", get(health))
@@ -166,7 +166,13 @@ pub fn create_router(state: AppState) -> Router {
         // Browser-log relay. Public so the client can ship logs before
         // the user signs in. The handler itself no-ops (204) when the
         // feature is disabled in config, so it's safe to leave wired.
-        .route("/api/v1/debug/browser-log", post(debug::ingest));
+        // H8 / VULN-010: same per-IP rate limit as auth routes so a
+        // hostile browser can't pin the server's log pipeline.
+        .route(
+            "/api/v1/debug/browser-log",
+            post(debug::ingest)
+                .route_layer(GovernorLayer { config: auth_rate_config.clone() }),
+        );
 
     // Protected routes (auth required).
     let protected = Router::new()

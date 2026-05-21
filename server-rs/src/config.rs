@@ -164,10 +164,11 @@ impl Config {
             insecure: env_bool("DILLA_INSECURE", false),
             theme_file: env_str("DILLA_THEME_FILE", ""),
             seed_demo: env_bool("DILLA_SEED_DEMO", false),
-            browser_log_forward: env_bool(
-                "DILLA_BROWSER_LOG_FORWARD",
-                env_bool("DILLA_INSECURE", false),
-            ),
+            // H8 / VULN-010: default false regardless of DILLA_INSECURE.
+            // The dev pattern (`DILLA_BROWSER_LOG_FORWARD=true`) keeps
+            // working but we no longer enable it implicitly via the
+            // insecure flag.
+            browser_log_forward: env_bool("DILLA_BROWSER_LOG_FORWARD", false),
             telemetry_adapter: env_str("DILLA_TELEMETRY_ADAPTER", "none"),
             sentry_dsn: env_str("DILLA_SENTRY_DSN", ""),
             environment: env_str("DILLA_ENVIRONMENT", "production"),
