@@ -5,6 +5,7 @@ mod db;
 mod error;
 mod federation;
 mod observability;
+mod policy;
 mod presence;
 mod telemetry;
 mod voice;

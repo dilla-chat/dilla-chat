@@ -323,29 +323,32 @@ pub(crate) async fn user_can_subscribe_to_channel(
     let cid = channel_id.to_string();
     let uid = user_id.to_string();
     let tid = team_id.to_string();
-    let allowed = tokio::task::spawn_blocking(move || {
-        db.with_conn(|conn| -> Result<bool, rusqlite::Error> {
-            // (1) Text / voice channel path — must belong to caller's
-            // team AND pass the role-gated access check.
-            if let Some(channel) = db::get_channel_by_id(conn, &cid)? {
-                if channel.team_id != tid {
-                    return Ok(false);
-                }
-                return db::user_can_access_channel(conn, &uid, &tid, &cid);
-            }
-            // (2) DM channel path — caller must appear in dm_members.
-            // is_dm_member returns false when the row set is empty.
-            if db::is_dm_member(conn, &cid, &uid)? {
-                return Ok(true);
-            }
-            Ok(false)
+    let uid_for_log = user_id.to_string();
+    let cid_for_log = channel_id.to_string();
+    let decision = tokio::task::spawn_blocking(move || {
+        // H10 / R-21: route the decision through the policy module so
+        // future audit + telemetry only need one hook point.
+        db.with_conn(|conn| {
+            Ok::<crate::policy::Decision, rusqlite::Error>(
+                crate::policy::can_subscribe_channel(conn, &uid, &tid, &cid),
+            )
         })
     })
     .await;
 
-    match allowed {
-        Ok(Ok(true)) => true,
-        Ok(Ok(false)) => false,
+    match decision {
+        Ok(Ok(d)) => {
+            crate::policy::log_decision(
+                &d,
+                &crate::policy::DecisionContext {
+                    user_id: &uid_for_log,
+                    target_kind: "channel",
+                    target_id: &cid_for_log,
+                    reason: "ws.channel.subscribe",
+                },
+            );
+            d.is_allowed()
+        }
         Ok(Err(e)) => {
             tracing::warn!(error = %e, channel_id = channel_id, "channel access check failed");
             false
