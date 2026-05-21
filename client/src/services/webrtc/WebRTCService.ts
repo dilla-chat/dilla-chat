@@ -538,7 +538,16 @@ class WebRTCService {
         }
       }),
       ws.on('voice:user-left', (payload: { user_id: string }) => {
-        store().removePeer(payload.user_id);
+        const s = store();
+        s.removePeer(payload.user_id);
+        // Drop any media streams the departing user was sourcing —
+        // without this the receivers keep rendering a frozen "last
+        // frame" (or a black tile) after the sender disappears.
+        s.setRemoteWebcamStream(payload.user_id, null);
+        if (s.screenSharingUserId === payload.user_id) {
+          s.setRemoteScreenStream(null);
+          s.setScreenSharingUserId(null);
+        }
         voiceIsoTearDownPeer(payload.user_id);
         if (payload.user_id !== this.localUserId) playLeaveSound();
       }),
@@ -955,32 +964,58 @@ class WebRTCService {
     store.setScreenSharing(true);
     store.setScreenSharingUserId(this.localUserId);
 
-    // Tell the server we're starting screen share. The server will add a
-    // recv transceiver on its side and send a new voice:offer.
-    const txCountBefore = this.pc.getTransceivers().length;
+    // Snapshot which transceiver mids exist before signalling so we
+    // can identify the NEW one the server adds for our sender. mids
+    // are negotiated globally so they're stable identifiers — much
+    // safer than "last in the array", which can drift when another
+    // peer's track gets added in the same renegotiation.
+    const existingMids = new Set(
+      this.pc.getTransceivers().map((t) => t.mid).filter((m): m is string => !!m),
+    );
     ws.voiceScreenStart(this.teamId, this.channelId);
 
-    // Wait for the renegotiation to surface the NEW transceiver
-    // before binding our track. addTrack(track, stream) used to grab
-    // whatever sender it found unused — which after a second video
-    // start was the FIRST video's transceiver, stealing it and
-    // freezing the earlier stream for remote viewers. Pinning the
-    // track to the specific new transceiver by index removes the race.
-    await this.waitForTransceiverCount(txCountBefore + 1, 3000);
+    const newTx = await this.waitForNewSendonlyTransceiver(existingMids, 3000);
 
     if (this.pc && this.screenStream) {
-      const txs = this.pc.getTransceivers();
-      const newTx = txs[txs.length - 1];
       if (newTx) {
         try { newTx.direction = 'sendonly'; } catch { /* read-only in some states */ }
         await newTx.sender.replaceTrack(videoTrack);
         this.screenSender = newTx.sender;
       } else {
-        // Server never added the transceiver in time — last-ditch
-        // fallback so the share at least works locally.
+        // Server never surfaced a new transceiver in time — last-
+        // ditch fallback so the share at least works locally.
         this.screenSender = this.pc.addTrack(videoTrack, this.screenStream);
       }
     }
+  }
+
+  /** Wait for a sendonly transceiver with an EMPTY sender track and a
+   *  mid not in `existingMids` to appear — that's the slot the server
+   *  created for our brand-new outgoing video. Filtering on
+   *  sender.track === null prevents us from picking the previous
+   *  video's transceiver and replacing its track (which would steal
+   *  the earlier stream — exactly the bug we're trying to kill). */
+  private waitForNewSendonlyTransceiver(
+    existingMids: Set<string>,
+    timeoutMs: number,
+  ): Promise<RTCRtpTransceiver | null> {
+    return new Promise((resolve) => {
+      const t0 = performance.now();
+      const tick = () => {
+        if (!this.pc) return resolve(null);
+        const candidate = this.pc.getTransceivers().find((tx) => {
+          if (tx.currentDirection === 'stopped') return false;
+          if (tx.direction !== 'sendonly' && tx.direction !== 'sendrecv') return false;
+          if (tx.sender.track) return false;            // already in use
+          if (tx.mid && existingMids.has(tx.mid)) return false; // pre-existing slot
+          return true;
+        });
+        if (candidate) return resolve(candidate);
+        if (performance.now() - t0 > timeoutMs) return resolve(null);
+        setTimeout(tick, 30);
+      };
+      tick();
+    });
   }
 
   /** Resolve when this.pc.getTransceivers().length reaches `target`,
