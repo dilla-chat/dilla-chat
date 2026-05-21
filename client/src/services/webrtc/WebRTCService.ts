@@ -1247,6 +1247,7 @@ class WebRTCService {
   }
 
   async stopScreenShare(): Promise<void> {
+    console.log('[Voice/diag] stopScreenShare — track', this.screenStream?.getTracks()[0]?.id ?? 'none', 'sender', !!this.screenSender);
     // Stop the screen track.
     if (this.screenStream) {
       this.screenStream.getTracks().forEach((t) => t.stop());
@@ -1360,6 +1361,7 @@ class WebRTCService {
   }
 
   async stopWebcam(): Promise<void> {
+    console.log('[Voice/diag] stopWebcam — track', this.webcamStream?.getTracks()[0]?.id ?? 'none', 'sender', !!this.webcamSender);
     if (this.webcamStream) {
       this.webcamStream.getTracks().forEach((t) => t.stop());
       this.webcamStream = null;
