@@ -13,6 +13,12 @@ const PONG_WAIT: Duration = Duration::from_secs(60);
 const PING_PERIOD: Duration = Duration::from_secs(54);
 const MAX_MESSAGE_SIZE: usize = 16 * 1024; // 16KB
 
+/// VULN-023 / WS-AMP-1 / H4: maximum number of channels a single WS
+/// connection may subscribe to. Beyond this, channel:join is silently
+/// rejected. Sized to comfortably accommodate a power user across
+/// multiple teams without giving an attacker free amplification.
+const MAX_SUBSCRIPTIONS_PER_CLIENT: usize = 200;
+
 pub async fn handle_ws_connection(
     socket: WebSocket,
     hub: Arc<Hub>,
@@ -92,29 +98,51 @@ pub async fn handle_ws_connection(
     let read_task = tokio::spawn(async move {
         let mut last_pong = Instant::now();
 
-        while let Some(msg) = ws_receiver.next().await {
-            match msg {
-                Ok(Message::Text(text)) => {
-                    if text.len() > MAX_MESSAGE_SIZE {
-                        continue;
+        // H4 / VULN-023: idle-pong enforcement. The previous loop only
+        // checked PONG_WAIT after a frame arrived, so a peer that simply
+        // stopped sending bytes (half-open TCP) could linger forever
+        // and tie up resources. Use a sleep-until branch in `select!`
+        // so the loop wakes up when PONG_WAIT elapses and reaps the
+        // connection.
+        loop {
+            let pong_deadline = last_pong + PONG_WAIT;
+            tokio::select! {
+                msg = ws_receiver.next() => {
+                    let Some(msg) = msg else { break };
+                    match msg {
+                        Ok(Message::Text(text)) => {
+                            if text.len() > MAX_MESSAGE_SIZE {
+                                continue;
+                            }
+
+                            // Notify activity.
+                            hub_read.emit_event(super::hub::HubEvent::ClientActivity { user_id: uid.clone() });
+
+                            if let Ok(event) = serde_json::from_str::<Event>(&text) {
+                                handle_event(&hub_read, &cid_read, &uid, &uname, &tid, event).await;
+                            }
+                        }
+                        Ok(Message::Pong(_)) => {
+                            last_pong = Instant::now();
+                        }
+                        Ok(Message::Close(_)) | Err(_) => break,
+                        _ => {}
                     }
 
-                    // Notify activity.
-                    hub_read.emit_event(super::hub::HubEvent::ClientActivity { user_id: uid.clone() });
-
-                    if let Ok(event) = serde_json::from_str::<Event>(&text) {
-                        handle_event(&hub_read, &cid_read, &uid, &uname, &tid, event).await;
+                    if last_pong.elapsed() > PONG_WAIT {
+                        break;
                     }
                 }
-                Ok(Message::Pong(_)) => {
-                    last_pong = Instant::now();
+                _ = tokio::time::sleep_until(pong_deadline) => {
+                    // No pong within PONG_WAIT — reap the ghost.
+                    tracing::debug!(
+                        client_id = %cid_read,
+                        user_id = %uid,
+                        "ws: closing idle connection — no pong within {:?}",
+                        PONG_WAIT,
+                    );
+                    break;
                 }
-                Ok(Message::Close(_)) | Err(_) => break,
-                _ => {}
-            }
-
-            if last_pong.elapsed() > PONG_WAIT {
-                break;
             }
         }
     });
@@ -250,6 +278,22 @@ pub(crate) async fn handle_channel_event(
             channel_id = %p.channel_id,
             team_id = team_id,
             "channel:join denied — access check failed"
+        );
+        return;
+    }
+
+    // H4 / VULN-023 / WS-AMP-1: cap the number of channel subscriptions
+    // per WS connection. Beyond the cap, silently drop the request —
+    // the client should not have asked for this many channels.
+    let current = hub.client_subscription_count(client_id).await;
+    if current >= MAX_SUBSCRIPTIONS_PER_CLIENT {
+        tracing::warn!(
+            user_id = user_id,
+            client_id = client_id,
+            channel_id = %p.channel_id,
+            current = current,
+            cap = MAX_SUBSCRIPTIONS_PER_CLIENT,
+            "channel:join denied — per-client subscription cap reached"
         );
         return;
     }

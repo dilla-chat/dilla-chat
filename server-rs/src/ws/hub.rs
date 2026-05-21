@@ -307,6 +307,17 @@ impl Hub {
             .await;
     }
 
+    /// Count how many channels a given client currently subscribes to.
+    /// VULN-023 / WS-AMP-1 / H4: enforces the per-client subscription
+    /// cap. O(n_channels) but n_channels per-team is bounded.
+    pub async fn client_subscription_count(&self, client_id: &str) -> usize {
+        let channels = self.channels.read().await;
+        channels
+            .values()
+            .filter(|subs| subs.contains(client_id))
+            .count()
+    }
+
     pub async fn unsubscribe(&self, client_id: &str, channel_id: &str) {
         let _ = self
             .unsubscribe_tx
