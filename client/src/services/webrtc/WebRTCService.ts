@@ -257,9 +257,20 @@ class WebRTCService {
     // Handle remote tracks (audio and video)
     this.pc.ontrack = (event) => {
       const track = event.track;
-      // Some Pion scenarios deliver tracks without streams -- create one as fallback
-      const stream = event.streams[0] ?? new MediaStream([track]);
+      // Use msid stream-ID for classification, but ALWAYS build a fresh
+      // single-track MediaStream for the store. Chrome reuses the same
+      // MediaStream object across renegotiations whose msid matches
+      // (e.g. "webcam-stream-<uid>"), so a publisher's cam restart
+      // leaves the previous (now-ended) track lingering inside that
+      // shared MediaStream. The <video> element then renders the dead
+      // track's last frame instead of the live one — "cam frozen on
+      // remote, still thinks they're sharing" even after the state
+      // flips back to true. Wrapping the new track in its own stream
+      // means the store always points at a stream that contains only
+      // the live track from THIS ontrack event.
       const streamId = event.streams[0]?.id ?? track.id;
+      const stream =
+        track.kind === 'video' ? new MediaStream([track]) : (event.streams[0] ?? new MediaStream([track]));
 
       // Apply E2E decrypt transform to incoming track
       this.encryption.applyDecryptTransform(event.receiver, streamId, this.localUserId);
