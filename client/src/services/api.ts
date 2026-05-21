@@ -213,6 +213,28 @@ class ApiService {
     return result.ticket;
   }
 
+  /**
+   * F5 — Revoke the caller's bearer JWT on the server. Backed by
+   * server-side `POST /api/v1/auth/logout` (added in step 5 H2). The
+   * server inserts the jti into the `jwt_revocations` table so any
+   * stolen copy of the token becomes unusable immediately.
+   *
+   * Calls per server (NOT per team) — a single revocation invalidates
+   * the token for every team on that server. The caller is responsible
+   * for clearing local state afterwards.
+   *
+   * Returns `true` on confirmed server-side revocation, `false` if the
+   * server was unreachable (call site warns the user). Never throws.
+   */
+  async logoutServer(baseUrl: string, token: string): Promise<boolean> {
+    try {
+      await this.request(baseUrl, '/api/v1/auth/logout', { method: 'POST' }, token);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   // User profile
   async getMe(baseUrl: string, token: string): Promise<unknown> {
     const data = await this.request(baseUrl, '/api/v1/users/me', { method: 'GET' }, token);

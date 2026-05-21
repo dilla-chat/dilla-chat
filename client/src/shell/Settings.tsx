@@ -148,10 +148,38 @@ function Settings({ open, mode, defaultTab, onClose }) {
                   }
                   return;
                 }
-                // Sign out: clear all auth/derivedKey/passphrase from
-                // storage, reset crypto manager, disconnect every WS, and
-                // bounce to /login.
+                // Sign out: F5 — revoke the bearer JWT server-side first
+                // so a stolen copy of the token (sessionStorage snapshot,
+                // process dump, etc.) becomes unusable immediately via the
+                // server-side jwt_revocations table (step 5 H2). When the
+                // server is unreachable we still clear local state — but
+                // surface an in-app warning so the user knows the
+                // server-side revocation didn't go through.
                 onClose();
+                if (!isMockSession()) {
+                  const auth = useAuthStore.getState();
+                  // Revoke once per server (NOT per team) — a single
+                  // jti revocation invalidates every team on that
+                  // server because they share a token.
+                  const seen = new Set<string>();
+                  const calls: Array<Promise<boolean>> = [];
+                  for (const [, server] of auth.servers) {
+                    if (!server.baseUrl || !server.token || seen.has(server.baseUrl)) continue;
+                    seen.add(server.baseUrl);
+                    calls.push(api.logoutServer(server.baseUrl, server.token));
+                  }
+                  if (calls.length > 0) {
+                    const results = await Promise.all(calls);
+                    const anyFailed = results.some((ok) => !ok);
+                    if (anyFailed) {
+                      window.dispatchEvent(new CustomEvent('dilla:notify', { detail: {
+                        author: 'system',
+                        text: 'Signed out locally, but the server-side token revocation may have failed for one or more servers. The token will expire on its own.',
+                        duration: 6000,
+                      }}));
+                    }
+                  }
+                }
                 try { useAuthStore.getState().logout(); } catch { /* ignore */ }
                 navigate('/login');
               }}
