@@ -1,4 +1,7 @@
-use axum::{extract::State, Json};
+use axum::{
+    extract::{Request, State},
+    Json,
+};
 use base64::Engine;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -248,6 +251,25 @@ pub async fn bootstrap(
         "user": user,
         "team_id": team_id,
     })))
+}
+
+/// Log out the caller by revoking the bearer token. H2 / VULN-012.
+///
+/// Idempotent: a second call with the same (now-revoked) token still
+/// returns 200 because validate_jwt_full has already rejected the
+/// request via the auth middleware.
+pub async fn logout(
+    State(state): State<AppState>,
+    req: Request,
+) -> Result<Json<Value>, AppError> {
+    let token = req
+        .headers()
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "))
+        .ok_or_else(|| AppError::Unauthorized("missing authorization header".into()))?;
+    state.auth.revoke_token(token)?;
+    Ok(Json(json!({ "ok": true })))
 }
 
 // --- Shared helper functions ---

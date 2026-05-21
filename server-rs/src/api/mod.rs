@@ -418,6 +418,10 @@ pub fn create_router(state: AppState) -> Router {
         )
         // WebSocket ticket (returns a single-use ticket for WS connection)
         .route("/api/v1/auth/ws-ticket", post(ws_ticket))
+        // H2 / VULN-012: logout revokes the bearer token via the
+        // jwt_revocations table so a stolen JWT can be killed before
+        // its natural expiry.
+        .route("/api/v1/auth/logout", post(auth_handlers::logout))
         // WebSocket
         .layer(middleware::from_fn(auth::auth_middleware))
         // VULN-011 / H1: global per-IP rate limit for the protected

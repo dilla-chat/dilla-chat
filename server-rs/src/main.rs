@@ -43,9 +43,46 @@ async fn main() {
     let _otel = observability::init_otel(&cfg)
         .expect("failed to initialize OpenTelemetry");
 
+    // H2 / AUTH-WEAK-1: refuse to start with a weak JWT-derivation
+    // source. The JWT HMAC is HKDF-derived from DILLA_DB_PASSPHRASE; an
+    // empty passphrase + missing DILLA_JWT_SECRET + insecure=false means
+    // we'd derive the signing key from a known-empty input. Same is
+    // true for a short passphrase (<32 raw bytes) — refuse unless
+    // operator explicitly accepted the risk via DILLA_INSECURE=true.
+    enforce_jwt_secret_strength(&cfg);
+
     let database = init_database(&cfg);
-    let auth_svc = Arc::new(AuthService::new(database.clone(), &cfg.db_passphrase));
+    let node_name_for_auth = if cfg.node_name.is_empty() {
+        format!("node-{}", cfg.port)
+    } else {
+        cfg.node_name.clone()
+    };
+    let auth_svc = Arc::new(AuthService::with_node_name(
+        database.clone(),
+        &cfg.db_passphrase,
+        node_name_for_auth,
+    ));
     check_first_start(&database, &auth_svc, &cfg);
+
+    // GC expired JWT revocation rows in the background so the table
+    // stays bounded.
+    {
+        let db = database.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
+            interval.tick().await; // skip the immediate first tick
+            loop {
+                interval.tick().await;
+                let _ = tokio::task::spawn_blocking({
+                    let db = db.clone();
+                    move || {
+                        let _ = db.with_conn(|c| db::gc_revoked_jtis(c));
+                    }
+                })
+                .await;
+            }
+        });
+    }
 
     let sfu = Arc::new(voice::SFU::new());
     configure_turn_provider(&sfu, &cfg).await;
@@ -173,6 +210,59 @@ async fn main() {
     ));
 
     start_server(&cfg, app).await;
+}
+
+/// Refuse to start when the JWT-signing material is too weak. Today the
+/// JWT secret is HKDF-derived from `DILLA_DB_PASSPHRASE` (or, when
+/// explicitly set, `DILLA_JWT_SECRET`). A 0-byte / sub-32-byte
+/// passphrase + no explicit JWT secret means the signing key derives
+/// from a low-entropy input and is brute-forceable from any captured
+/// token. H2 / AUTH-WEAK-1.
+fn enforce_jwt_secret_strength(cfg: &Config) {
+    let has_jwt_secret = std::env::var("DILLA_JWT_SECRET")
+        .map(|v| !v.is_empty())
+        .unwrap_or(false);
+    if has_jwt_secret {
+        return; // explicit operator override
+    }
+    let pass_len = cfg.db_passphrase.as_bytes().len();
+    if cfg.db_passphrase.is_empty() {
+        if cfg.insecure {
+            tracing::warn!(
+                "SECURITY: JWT secret is derived from an EMPTY DB passphrase (DILLA_INSECURE=true). \
+                 Tokens are signed with an ephemeral random key lost on restart. (AUTH-WEAK-1)"
+            );
+            return;
+        }
+        eprintln!();
+        eprintln!("  ERROR: refusing to start with an empty DILLA_DB_PASSPHRASE.");
+        eprintln!("  The JWT signing key is HKDF-derived from the DB passphrase.");
+        eprintln!("  Either:");
+        eprintln!("    - set DILLA_DB_PASSPHRASE to a >= 32-byte high-entropy value, or");
+        eprintln!("    - set DILLA_JWT_SECRET to a >= 32-byte high-entropy value, or");
+        eprintln!("    - set DILLA_INSECURE=true to explicitly accept the risk (dev only).");
+        eprintln!();
+        std::process::exit(1);
+    }
+    if pass_len < 32 && !cfg.insecure {
+        eprintln!();
+        eprintln!("  ERROR: DILLA_DB_PASSPHRASE is shorter than 32 bytes ({} given).", pass_len);
+        eprintln!("  The JWT signing key is HKDF-derived from this value; a short");
+        eprintln!("  passphrase is brute-forceable offline from any captured token.");
+        eprintln!("  Either:");
+        eprintln!("    - lengthen DILLA_DB_PASSPHRASE to >= 32 bytes, or");
+        eprintln!("    - set DILLA_JWT_SECRET to a >= 32-byte value (decoupled from DB key), or");
+        eprintln!("    - set DILLA_INSECURE=true to explicitly accept the risk (dev only).");
+        eprintln!();
+        std::process::exit(1);
+    }
+    if pass_len < 32 {
+        tracing::warn!(
+            "SECURITY: DILLA_DB_PASSPHRASE is shorter than 32 bytes ({} given). \
+             JWT signing key is weak — (AUTH-WEAK-1). Continuing because DILLA_INSECURE=true.",
+            pass_len,
+        );
+    }
 }
 
 fn init_database(cfg: &Config) -> Database {

@@ -19,14 +19,29 @@ use std::time::{Duration, Instant};
 /// Access token expiry: 1 hour.
 const ACCESS_TOKEN_EXPIRY_SECS: i64 = 3600;
 
-/// Refresh token expiry: 7 days.
-const REFRESH_TOKEN_EXPIRY_SECS: i64 = 7 * 24 * 3600;
+/// Refresh token expiry: 24 hours. H2 / VULN-012: reduced from 7 days
+/// so a stolen refresh token has at most a one-day blast radius before
+/// the natural exp kicks in.
+const REFRESH_TOKEN_EXPIRY_SECS: i64 = 24 * 3600;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Claims {
     sub: String,
     iat: i64,
     exp: i64,
+    /// JWT id — random 128-bit UUID. H2 / VULN-012: lets the
+    /// revocation list reject a token before its natural expiry.
+    #[serde(default)]
+    jti: String,
+    /// Audience — pinned to this node's `node_name` so a token minted
+    /// for one node won't validate when replayed at another (assuming
+    /// node names diverge). H2 / VULN-012.
+    #[serde(default)]
+    aud: String,
+    /// Issuer — same value as `aud` so it survives a re-handshake of
+    /// node identity without invalidating in-flight sessions.
+    #[serde(default)]
+    iss: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,6 +50,12 @@ struct RefreshClaims {
     iat: i64,
     exp: i64,
     token_type: String, // "refresh"
+    #[serde(default)]
+    jti: String,
+    #[serde(default)]
+    aud: String,
+    #[serde(default)]
+    iss: String,
 }
 
 struct Challenge {
@@ -85,10 +106,17 @@ pub struct AuthService {
     jwt_secret: Vec<u8>,
     challenges: Arc<RwLock<HashMap<String, Challenge>>>,
     ws_tickets: Arc<RwLock<HashMap<String, WsTicket>>>,
+    /// Node name — pinned into `aud` + `iss` so tokens minted by this
+    /// node only validate at this node. H2 / VULN-012.
+    node_name: String,
 }
 
 impl AuthService {
     pub fn new(database: Database, db_passphrase: &str) -> Self {
+        Self::with_node_name(database, db_passphrase, String::new())
+    }
+
+    pub fn with_node_name(database: Database, db_passphrase: &str, node_name: String) -> Self {
         let jwt_secret = derive_jwt_secret(db_passphrase);
 
         let svc = AuthService {
@@ -96,6 +124,7 @@ impl AuthService {
             jwt_secret,
             challenges: Arc::new(RwLock::new(HashMap::new())),
             ws_tickets: Arc::new(RwLock::new(HashMap::new())),
+            node_name,
         };
 
         // Spawn background challenge cleanup.
@@ -167,6 +196,9 @@ impl AuthService {
             sub: user_id.to_string(),
             iat: now,
             exp: now + ACCESS_TOKEN_EXPIRY_SECS,
+            jti: uuid::Uuid::new_v4().to_string(),
+            aud: self.node_name.clone(),
+            iss: self.node_name.clone(),
         };
         encode(
             &Header::default(),
@@ -177,8 +209,27 @@ impl AuthService {
     }
 
     pub fn validate_jwt(&self, token: &str) -> Result<String, AppError> {
+        let (sub, _jti, _exp) = self.validate_jwt_full(token)?;
+        Ok(sub)
+    }
+
+    /// Validate a JWT and return (sub, jti, exp). Used by the logout
+    /// handler so it can revoke the *exact* token presented.
+    pub fn validate_jwt_full(&self, token: &str) -> Result<(String, String, i64), AppError> {
         let mut validation = Validation::default();
         validation.algorithms = vec![jsonwebtoken::Algorithm::HS256];
+        // H2 / VULN-012: require aud + iss to match this node's name
+        // when one is configured. When node_name is empty (single-node
+        // dev) we skip the check so the existing dev pattern keeps
+        // working.
+        if !self.node_name.is_empty() {
+            validation.set_audience(&[&self.node_name]);
+            validation.set_issuer(&[&self.node_name]);
+        } else {
+            // Tokens without aud/iss claims (e.g. minted before this
+            // change rolls out) must still validate.
+            validation.validate_aud = false;
+        }
 
         // First try to decode and check it's not a refresh token.
         // We decode without requiring specific fields first to peek at token_type.
@@ -193,6 +244,7 @@ impl AuthService {
         let mut no_exp_validation = Validation::default();
         no_exp_validation.algorithms = vec![jsonwebtoken::Algorithm::HS256];
         no_exp_validation.validate_exp = false;
+        no_exp_validation.validate_aud = false;
         if let Ok(refresh_data) = decode::<RefreshClaims>(
             token,
             &DecodingKey::from_secret(&self.jwt_secret),
@@ -205,7 +257,57 @@ impl AuthService {
             }
         }
 
-        Ok(data.claims.sub)
+        // H2 / VULN-012: revocation check. Empty jti (legacy token)
+        // passes — we just don't have a way to revoke it. Newly minted
+        // tokens always have a jti.
+        let jti = data.claims.jti.clone();
+        let exp = data.claims.exp;
+        if !jti.is_empty() {
+            let jti_q = jti.clone();
+            let revoked = self
+                .db
+                .with_read(|conn| db::is_revoked(conn, &jti_q))
+                .map_err(|e| AppError::Internal(format!("revocation lookup: {}", e)))?;
+            if revoked {
+                return Err(AppError::Unauthorized("token revoked".into()));
+            }
+        }
+
+        Ok((data.claims.sub, jti, exp))
+    }
+
+    /// Revoke the supplied JWT by inserting its `jti` into the
+    /// revocation list. Returns ok even if the token was already
+    /// revoked so the logout endpoint is idempotent.
+    pub fn revoke_token(&self, token: &str) -> Result<(), AppError> {
+        // We need to be able to revoke the token even if it has just
+        // been rotated server-side (e.g. immediately after issue), so
+        // decode without enforcing aud/iss strictly — but still require
+        // signature validity to prevent a denial-of-service via writing
+        // garbage jtis to the revocation table.
+        let mut validation = Validation::default();
+        validation.algorithms = vec![jsonwebtoken::Algorithm::HS256];
+        validation.validate_aud = false;
+        validation.validate_exp = false;
+
+        let data = decode::<Claims>(
+            token,
+            &DecodingKey::from_secret(&self.jwt_secret),
+            &validation,
+        )
+        .map_err(|e| AppError::Unauthorized(format!("invalid token: {}", e)))?;
+
+        let jti = data.claims.jti;
+        let exp = data.claims.exp;
+        if jti.is_empty() {
+            // Legacy / pre-H2 token without a jti — nothing to record.
+            // Returning Ok matches the idempotent semantics of logout.
+            return Ok(());
+        }
+        self.db
+            .with_conn(|conn| db::revoke_jti(conn, &jti, exp))
+            .map_err(|e| AppError::Internal(format!("revoke: {}", e)))?;
+        Ok(())
     }
 
     /// Generate a refresh token for the given user.
@@ -216,6 +318,9 @@ impl AuthService {
             iat: now,
             exp: now + REFRESH_TOKEN_EXPIRY_SECS,
             token_type: "refresh".to_string(),
+            jti: uuid::Uuid::new_v4().to_string(),
+            aud: self.node_name.clone(),
+            iss: self.node_name.clone(),
         };
         encode(
             &Header::default(),
@@ -231,6 +336,12 @@ impl AuthService {
     pub fn validate_refresh_token(&self, token: &str) -> Result<String, AppError> {
         let mut validation = Validation::default();
         validation.algorithms = vec![jsonwebtoken::Algorithm::HS256];
+        if !self.node_name.is_empty() {
+            validation.set_audience(&[&self.node_name]);
+            validation.set_issuer(&[&self.node_name]);
+        } else {
+            validation.validate_aud = false;
+        }
 
         let data = decode::<RefreshClaims>(
             token,
@@ -243,6 +354,18 @@ impl AuthService {
             return Err(AppError::Unauthorized(
                 "token is not a refresh token".into(),
             ));
+        }
+
+        // Revocation check (refresh tokens are also revocable).
+        if !data.claims.jti.is_empty() {
+            let jti = data.claims.jti.clone();
+            let revoked = self
+                .db
+                .with_read(|conn| db::is_revoked(conn, &jti))
+                .map_err(|e| AppError::Internal(format!("revocation lookup: {}", e)))?;
+            if revoked {
+                return Err(AppError::Unauthorized("refresh token revoked".into()));
+            }
         }
 
         Ok(data.claims.sub)
@@ -406,6 +529,7 @@ mod tests {
             jwt_secret: raw,
             challenges: Arc::new(RwLock::new(HashMap::new())),
             ws_tickets: Arc::new(RwLock::new(HashMap::new())),
+            node_name: String::new(),
         }
     }
 
@@ -418,6 +542,7 @@ mod tests {
             jwt_secret,
             challenges: Arc::new(RwLock::new(HashMap::new())),
             ws_tickets: Arc::new(RwLock::new(HashMap::new())),
+            node_name: String::new(),
         }
     }
 
@@ -632,14 +757,16 @@ mod tests {
     }
 
     #[test]
-    fn test_refresh_token_has_7_day_expiry() {
+    fn test_refresh_token_has_24h_expiry() {
+        // H2 / VULN-012: refresh expiry reduced from 7 days to 24h to
+        // bound the blast radius of a stolen refresh token.
         let auth = test_auth_service();
         let refresh = auth.generate_refresh_token("user-1").unwrap();
 
         let data = jsonwebtoken::dangerous::insecure_decode::<RefreshClaims>(&refresh).unwrap();
 
         let diff = data.claims.exp - data.claims.iat;
-        assert_eq!(diff, 7 * 24 * 3600);
+        assert_eq!(diff, 24 * 3600);
         assert_eq!(data.claims.token_type, "refresh");
     }
 
@@ -731,6 +858,78 @@ mod tests {
     }
 
     // ── AuthService::new derives JWT secret from passphrase ─────────────
+
+    // ── H2 / VULN-012 tests ─────────────────────────────────────────────
+
+    #[test]
+    fn test_jwt_contains_jti_aud_iss() {
+        let auth = AuthService {
+            db: test_db(),
+            jwt_secret: vec![1u8; 32],
+            challenges: Arc::new(RwLock::new(HashMap::new())),
+            ws_tickets: Arc::new(RwLock::new(HashMap::new())),
+            node_name: "node-test".into(),
+        };
+        let token = auth.generate_jwt("user-1").unwrap();
+        let data = jsonwebtoken::dangerous::insecure_decode::<Claims>(&token).unwrap();
+        assert!(!data.claims.jti.is_empty());
+        assert_eq!(data.claims.aud, "node-test");
+        assert_eq!(data.claims.iss, "node-test");
+    }
+
+    #[test]
+    fn test_jwt_validates_with_matching_node_name() {
+        let auth = AuthService {
+            db: test_db(),
+            jwt_secret: vec![1u8; 32],
+            challenges: Arc::new(RwLock::new(HashMap::new())),
+            ws_tickets: Arc::new(RwLock::new(HashMap::new())),
+            node_name: "alpha".into(),
+        };
+        let token = auth.generate_jwt("u").unwrap();
+        assert_eq!(auth.validate_jwt(&token).unwrap(), "u");
+    }
+
+    #[test]
+    fn test_jwt_rejected_when_aud_mismatches() {
+        let db = test_db();
+        let auth_alpha = AuthService {
+            db: db.clone(),
+            jwt_secret: vec![1u8; 32],
+            challenges: Arc::new(RwLock::new(HashMap::new())),
+            ws_tickets: Arc::new(RwLock::new(HashMap::new())),
+            node_name: "alpha".into(),
+        };
+        let auth_beta = AuthService {
+            db,
+            jwt_secret: vec![1u8; 32],
+            challenges: Arc::new(RwLock::new(HashMap::new())),
+            ws_tickets: Arc::new(RwLock::new(HashMap::new())),
+            node_name: "beta".into(),
+        };
+        let token = auth_alpha.generate_jwt("u").unwrap();
+        // Same signing secret but different node names — beta must
+        // reject a token minted with aud="alpha".
+        assert!(auth_beta.validate_jwt(&token).is_err());
+    }
+
+    #[test]
+    fn test_revoke_token_blocks_validation() {
+        let auth = AuthService {
+            db: test_db(),
+            jwt_secret: vec![1u8; 32],
+            challenges: Arc::new(RwLock::new(HashMap::new())),
+            ws_tickets: Arc::new(RwLock::new(HashMap::new())),
+            node_name: "node-test".into(),
+        };
+        let token = auth.generate_jwt("u").unwrap();
+        assert!(auth.validate_jwt(&token).is_ok());
+
+        auth.revoke_token(&token).unwrap();
+        let err = auth.validate_jwt(&token).unwrap_err();
+        let msg = format!("{:?}", err);
+        assert!(msg.contains("revoked"), "expected revoked error, got: {msg}");
+    }
 
     #[tokio::test]
     async fn test_auth_service_new_with_passphrase_is_deterministic() {

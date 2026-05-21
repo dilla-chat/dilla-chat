@@ -25,6 +25,7 @@ mod channel_group_queries;
 mod channel_mute_queries;
 mod pin_queries;
 mod block_queries;
+mod jwt_revocation_queries;
 
 use rusqlite::Connection;
 use std::path::Path;
@@ -56,6 +57,7 @@ pub use channel_group_queries::*;
 pub use channel_mute_queries::*;
 pub use pin_queries::*;
 pub use block_queries::*;
+pub use jwt_revocation_queries::*;
 
 const MIGRATIONS: &[(&str, &str)] = &[
     ("001_initial.sql", include_str!("../../migrations/001_initial.sql")),
@@ -84,6 +86,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
     ("024_user_blocks.sql", include_str!("../../migrations/024_user_blocks.sql")),
     ("025_message_reply_to.sql", include_str!("../../migrations/025_message_reply_to.sql")),
     ("026_bootstrap_token_expiry.sql", include_str!("../../migrations/026_bootstrap_token_expiry.sql")),
+    ("027_jwt_revocations.sql", include_str!("../../migrations/027_jwt_revocations.sql")),
 ];
 
 /// Default number of read connections in the pool.
