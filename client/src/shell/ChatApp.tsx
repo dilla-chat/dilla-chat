@@ -4096,6 +4096,15 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
   // 2. Otherwise honour the explicit manual focus.
   // 3. Otherwise fall back to the channel's active sharer so a
   //    late-joiner lands on the share instead of the card grid.
+  // Compute the "first cam sharer" fallback up front so we can use it
+  // in BOTH the effective-focus derivation and the auto-focus effect.
+  const firstCamSharerIdEarly = useMemo(() => {
+    const ids = Object.values(voicePeers ?? {})
+      .filter((p) => p.webcam_sharing && p.user_id !== currentUserId())
+      .map((p) => p.user_id)
+      .sort();
+    return ids[0] ?? null;
+  }, [voicePeers]);
   const effectiveFocused = (() => {
     if (focused) {
       const peer = voicePeers?.[focused.id];
@@ -4105,7 +4114,15 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
       }
       return focused;
     }
-    return channelSharerId ? { id: channelSharerId, kind: 'screen' as const } : null;
+    // Manual focus is null: fall back to whichever peer is currently
+    // producing a video stream. Screen wins over cam. Without these
+    // fallbacks a transient focused=null (e.g. liveness gate clearing
+    // ahead of stream arrival) drops the viewer back into the card
+    // grid for the cam case — screen avoided this because
+    // channelSharerId was already its fallback.
+    if (channelSharerId) return { id: channelSharerId, kind: 'screen' as const };
+    if (firstCamSharerIdEarly) return { id: firstCamSharerIdEarly, kind: 'cam' as const };
+    return null;
   })();
   // Resolve the focused user. Prefer the shell's member record (full
   // profile data) but fall back through voiceStore.peers so a late
@@ -4149,37 +4166,16 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
   // every video stops, clear focus so the card grid returns. Manual
   // focus picks made by the viewer still take precedence via the
   // setFocused override.
-  const firstCamSharerId = useMemo(() => {
-    const ids = Object.values(voicePeers ?? {})
-      .filter((p) => p.webcam_sharing && p.user_id !== currentUserId())
-      .map((p) => p.user_id)
-      .sort();
-    return ids[0] ?? null;
-  }, [voicePeers]);
   useEffect(() => {
-    console.log('[Voice/diag] auto-focus effect', {
-      isConnected,
-      channelSharerId,
-      firstCamSharerId,
-      focusedBefore: focused,
-      currentUser: currentUserId(),
-    });
     if (!isConnected) return;
     if (channelSharerId) {
-      console.log('[Voice/diag] auto-focus → screen', channelSharerId);
       setFocused({ id: channelSharerId, kind: 'screen' });
-    } else if (firstCamSharerId) {
-      console.log('[Voice/diag] auto-focus → cam', firstCamSharerId);
-      setFocused({ id: firstCamSharerId, kind: 'cam' });
+    } else if (firstCamSharerIdEarly) {
+      setFocused({ id: firstCamSharerIdEarly, kind: 'cam' });
     } else {
-      console.log('[Voice/diag] auto-focus → null');
       setFocused(null);
     }
-  }, [channelSharerId, firstCamSharerId, isConnected]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    console.log('[Voice/diag] focused state changed', { focused, effectiveFocused });
-  }, [focused, effectiveFocused]);
+  }, [channelSharerId, firstCamSharerIdEarly, isConnected]);
 
   // Fullscreen the focused stage. Uses the browser Fullscreen API and
   // bails silently if the user denies the request or fullscreen isn't
@@ -4222,31 +4218,25 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
     if (!focused) return;
     const isSelf = focused.id === currentUserId();
     const peerVoice = !isSelf ? voicePeers?.[focused.id] : null;
-    const camLive = isSelf
-      ? !!(cam && localWebcamStream)
-      : !!(peerVoice?.webcam_sharing && remoteWebcamStreams?.[focused.id]);
-    const screenLive = isSelf
-      ? !!(screen && localScreenStream)
-      : !!(peerVoice?.screen_sharing && remoteScreenStreams?.[focused.id]);
-    if (!camLive && !screenLive) {
+    // Trust the sharing FLAG, not stream presence. The flag flips
+    // synchronously when the publisher toggles cam/screen (via voice:*-update
+    // broadcast), whereas the remote MediaStream lands later via SFU
+    // renegotiation. Gating on stream presence created a race: focus was set
+    // by the auto-focus effect, then this gate cleared it before ontrack
+    // populated remoteWebcamStreams, dropping the viewer back into the
+    // card grid even though the publisher was actively sharing.
+    const camOn = isSelf ? !!cam : !!peerVoice?.webcam_sharing;
+    const screenOn = isSelf ? !!screen : !!peerVoice?.screen_sharing;
+    if (!camOn && !screenOn) {
       setFocused(null);
       return;
     }
-    if (focused.kind === 'cam' && !camLive && screenLive) {
+    if (focused.kind === 'cam' && !camOn && screenOn) {
       setFocused({ id: focused.id, kind: 'screen' });
-    } else if (focused.kind === 'screen' && !screenLive && camLive) {
+    } else if (focused.kind === 'screen' && !screenOn && camOn) {
       setFocused({ id: focused.id, kind: 'cam' });
     }
-  }, [
-    focused,
-    voicePeers,
-    cam,
-    screen,
-    localWebcamStream,
-    localScreenStream,
-    remoteWebcamStreams,
-    remoteScreenStreams,
-  ]);
+  }, [focused, voicePeers, cam, screen]);
 
   return (
     <div className="main">
