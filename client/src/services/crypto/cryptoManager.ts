@@ -10,6 +10,11 @@ import { GroupSession } from './groupSession';
 import type { GroupMessageData, SenderKeyDistribution } from './groupSession';
 import { saveGroupSession, loadGroupSession } from './sessionStore';
 import { generateSafetyNumber } from './safetyNumbers';
+// F3 — safetyNumberInWorker dispatches into the crypto Web Worker so
+// CPU-bound SHA-256 ×5200 doesn't block the main thread, and so the
+// (eventual) ratchet-key consumers in the worker have a battle-tested
+// RPC pipeline to lean on. See architecture review §8.4 bullet 1.
+import { safetyNumberInWorker } from './workerClient';
 import { x25519DH, importX25519PrivateKey } from './x25519';
 import { hkdfDerive } from './hkdf';
 import { aesGcmEncrypt, aesGcmDecrypt } from './aesGcm';
@@ -253,12 +258,27 @@ export class CryptoManager {
   }
 
   async getSafetyNumber(peerId: string, peerPublicKey: Uint8Array): Promise<string> {
-    return generateSafetyNumber(
-      this.identityPublicKeyBytes,
-      'self',
-      peerPublicKey,
-      peerId,
-    );
+    // F3 — first migrated crypto op. Falls back to the in-thread impl
+    // automatically when Workers are unavailable (SSR/tests) or when
+    // CRYPTO_BACKEND='main' is set. Inputs are public identity keys; no
+    // secret material crosses postMessage.
+    try {
+      return await safetyNumberInWorker(
+        this.identityPublicKeyBytes,
+        'self',
+        peerPublicKey,
+        peerId,
+      );
+    } catch {
+      // Worker pipeline broke — fall through to the in-thread copy
+      // so the UI still renders a safety number rather than erroring.
+      return generateSafetyNumber(
+        this.identityPublicKeyBytes,
+        'self',
+        peerPublicKey,
+        peerId,
+      );
+    }
   }
 
   /** Persisted-format version. Bump when changing the on-disk shape
