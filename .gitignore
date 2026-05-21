@@ -5,8 +5,10 @@ bin/
 target/
 **/*.rs.bk
 Cargo.lock
-# Keep Cargo.lock for the Tauri app (binary); uncomment if needed:
-# !client/src-tauri/Cargo.lock
+# F8 / TAU-SUPPLY-1 — keep Cargo.lock for the Tauri client (binary).
+# Locking the resolved tree pins every transitive supply-chain dep so
+# a hostile crates.io publish can't sneak in via the next CI build.
+!client/src-tauri/Cargo.lock
 
 # === Node.js ===
 node_modules/
