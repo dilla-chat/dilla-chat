@@ -12,6 +12,9 @@ pub enum AppError {
     Forbidden(String),
     BadRequest(String),
     Conflict(String),
+    /// HTTP 413. Used for size-cap rejections (identity_blob, upload
+    /// disk quota, etc.). VULN-013 / H6, UPL-DOS-1 / H12.
+    PayloadTooLarge(String),
     ServiceUnavailable(String),
     BadGateway(String),
     Internal(String),
@@ -25,6 +28,7 @@ impl std::fmt::Display for AppError {
             AppError::Forbidden(msg) => write!(f, "forbidden: {}", msg),
             AppError::BadRequest(msg) => write!(f, "bad request: {}", msg),
             AppError::Conflict(msg) => write!(f, "conflict: {}", msg),
+            AppError::PayloadTooLarge(msg) => write!(f, "payload too large: {}", msg),
             AppError::ServiceUnavailable(msg) => write!(f, "service unavailable: {}", msg),
             AppError::BadGateway(msg) => write!(f, "bad gateway: {}", msg),
             AppError::Internal(msg) => write!(f, "internal error: {}", msg),
@@ -40,6 +44,7 @@ impl IntoResponse for AppError {
             AppError::Forbidden(msg) => (StatusCode::FORBIDDEN, msg),
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
             AppError::Conflict(msg) => (StatusCode::CONFLICT, msg),
+            AppError::PayloadTooLarge(msg) => (StatusCode::PAYLOAD_TOO_LARGE, msg),
             AppError::ServiceUnavailable(msg) => (StatusCode::SERVICE_UNAVAILABLE, msg),
             AppError::BadGateway(msg) => (StatusCode::BAD_GATEWAY, msg),
             AppError::Internal(msg) => {

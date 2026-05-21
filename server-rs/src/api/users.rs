@@ -159,11 +159,28 @@ fn is_valid_hh_mm(s: &str) -> bool {
     h < 24 && m < 60
 }
 
+/// Cap on the identity-blob upload, in bytes. 64 KiB is comfortably
+/// larger than the Signal Protocol session export but small enough that
+/// an attacker can't fill the table with unbounded payloads. VULN-013 / H6.
+const MAX_IDENTITY_BLOB_BYTES: usize = 64 * 1024;
+
 pub async fn put_identity_blob(
     Extension(UserId(user_id)): Extension<UserId>,
     State(state): State<AppState>,
     Json(body): Json<IdentityBlobRequest>,
 ) -> Result<Json<Value>, AppError> {
+    // VULN-013 / H6: refuse blobs larger than 64 KiB. Returning the
+    // same shape (BadRequest) as other size-cap violations — axum will
+    // surface a 413 only when the body exceeds the per-route limit
+    // layer, but we don't have one configured for this route; 400 is
+    // the closest substitute and tells the client this is a hard cap.
+    if body.blob.as_bytes().len() > MAX_IDENTITY_BLOB_BYTES {
+        return Err(AppError::PayloadTooLarge(format!(
+            "identity_blob too large (max {} bytes)",
+            MAX_IDENTITY_BLOB_BYTES
+        )));
+    }
+
     let db = state.db.clone();
     let uid = user_id.clone();
     let blob = body.blob.clone();

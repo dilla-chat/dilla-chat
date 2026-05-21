@@ -248,7 +248,8 @@ pub async fn list_messages(
     Path((team_id, thread_id)): Path<(String, String)>,
     Query(query): Query<ListMessagesQuery>,
 ) -> Result<Json<Value>, AppError> {
-    let limit = query.limit.clamp(1, 100);
+    // MSG-DOS-1 / H6: server-side cap on thread page size.
+    let limit = query.limit.clamp(1, crate::api::messages::MAX_PAGE_LIMIT);
 
     let messages = spawn_db(state.db.clone(), move |conn| {
         require_team_member(conn, &user_id, &team_id)?;

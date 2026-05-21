@@ -23,6 +23,11 @@ fn default_limit() -> i32 {
     50
 }
 
+/// Server-side maximum page size for message / reaction / thread
+/// listing. Clients may pass a larger `limit` query parameter but the
+/// server silently clamps it. MSG-DOS-1 / H6.
+pub(crate) const MAX_PAGE_LIMIT: i32 = 200;
+
 #[derive(Deserialize)]
 pub struct CreateMessageRequest {
     pub content: String,
@@ -45,7 +50,12 @@ pub async fn list(
     Path((team_id, channel_id)): Path<(String, String)>,
     Query(query): Query<ListMessagesQuery>,
 ) -> Result<Json<Value>, AppError> {
-    let limit = query.limit.clamp(1, 100);
+    // MSG-DOS-1 / H6: server-side cap on pagination — the client can
+    // ask for any limit but we never return more than MAX_PAGE_LIMIT
+    // rows per call regardless. The existing clamp(1, 100) already
+    // limited list; widen to 200 to align with the other listing
+    // endpoints but make it a *server* cap not a client suggestion.
+    let limit = query.limit.clamp(1, MAX_PAGE_LIMIT);
 
     let enriched = spawn_db(state.db.clone(), move |conn| {
         require_team_member(conn, &user_id, &team_id)?;
