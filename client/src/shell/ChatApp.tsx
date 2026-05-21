@@ -4371,7 +4371,9 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                   ) : renderKind === 'cam' ? (
                     <CamTile member={p} showStats={!!focusKind} />
                   ) : (
-                    <Avatar member={p} size={isMini ? 32 : 64} />
+                    <div className="avatar-tile">
+                      <Avatar member={p} size={isMini ? 32 : 96} />
+                    </div>
                   )}
                   {/* Clickable swap PIP — only shown in focus mode when
                       the participant has BOTH streams. Click the PIP to
@@ -4411,14 +4413,6 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                            onChange={(e) => setVolumes(v => ({ ...v, [p.id]: parseInt(e.target.value, 10) }))} />
                     <span className="v-volume-val">{vol(p.id)}</span>
                   </div>
-                )}
-                {!isMini && focusable && !focused && (
-                  <button className="voice-expand" title="Expand"
-                          onClick={(e) => { e.stopPropagation(); setFocusedId(p.id); }}>
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                      <path d="M9 2h5v5M14 2l-5 5M7 14H2V9M2 14l5-5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </button>
                 )}
               </div>
             );

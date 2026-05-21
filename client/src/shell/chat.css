@@ -2442,6 +2442,19 @@ img.attach-img {
 }
 
 /* ───── Mock webcam ───── */
+/* Same outer dimensions as .cam-tile so the avatar fills the same
+   square area the cam would. No background/scanlines — just a flex
+   container that centers the avatar. */
+.avatar-tile {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: var(--r-md);
+  background: var(--surface-hi);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.voice-card.mini .avatar-tile { background: transparent; }
 .cam-tile {
   width: 100%;
   aspect-ratio: 1;
