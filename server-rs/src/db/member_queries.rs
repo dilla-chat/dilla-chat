@@ -108,6 +108,39 @@ pub fn delete_member(
     Ok(())
 }
 
+/// Return true when `caller` and `target` are both members of at least
+/// one shared team.
+///
+/// Used as the gate for cross-user lookups that should only be
+/// available to people who already legitimately know about each other
+/// (prekey bundle fetch — see VULN-006). The query is index-backed via
+/// the `members(team_id, user_id)` covering index established in
+/// 001_initial.sql so an attacker can't turn it into a fanout DoS.
+pub fn users_share_team(
+    conn: &Connection,
+    caller: &str,
+    target: &str,
+) -> Result<bool, rusqlite::Error> {
+    if caller == target {
+        // A user always "shares" with themself for the purposes of
+        // looking up their own keys — keeps the call sites simple.
+        return Ok(true);
+    }
+    let exists: bool = conn
+        .query_row(
+            "SELECT 1
+             FROM members ma
+             JOIN members mb ON mb.team_id = ma.team_id
+             WHERE ma.user_id = ?1 AND mb.user_id = ?2
+             LIMIT 1",
+            params![caller, target],
+            |_| Ok(true),
+        )
+        .optional()?
+        .unwrap_or(false);
+    Ok(exists)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

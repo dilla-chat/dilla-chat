@@ -1141,9 +1141,19 @@ class ApiService {
     );
   }
 
+  /**
+   * Fetch a user's prekey bundle.
+   *
+   * Pass `initiate: true` only when you're about to actually start an
+   * X3DH session — that's the call site that needs an OTPK. Drive-by
+   * fetches (identity-key lookup, safety-number recomputation) MUST
+   * leave it false so the server doesn't drain the keyspace. VULN-006
+   * server-side gate refuses cross-team lookups regardless.
+   */
   async getPrekeyBundle(
     teamId: string,
     userId: string,
+    options: { initiate?: boolean } = {},
   ): Promise<{
     identity_key: string;
     identity_dh_key: string;
@@ -1152,9 +1162,10 @@ class ApiService {
     one_time_prekeys: string[];
   }> {
     const conn = this.getConnection(teamId);
+    const query = options.initiate ? '?initiate=true' : '';
     return this.request(
       conn.baseUrl,
-      `/api/v1/prekeys/${userId}`,
+      `/api/v1/prekeys/${userId}${query}`,
       { method: 'GET' },
       conn.token,
     );

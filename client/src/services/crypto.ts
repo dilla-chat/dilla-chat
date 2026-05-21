@@ -234,7 +234,10 @@ export const cryptoService = {
 
     const promise = (async () => {
       try {
-        const wire = await api.getPrekeyBundle(teamId, peerId);
+        // VULN-006: real X3DH session start — ask the server to pop a
+        // one-time prekey. wrap/unwrap paths above leave initiate
+        // unset because they only need the static identity_dh_key.
+        const wire = await api.getPrekeyBundle(teamId, peerId, { initiate: true });
         // The wire format is base64 strings; the PrekeyBundle the
         // crypto layer consumes expects raw byte arrays. Doing
         // `new Uint8Array(base64String)` (which is what x3dhInitiate
