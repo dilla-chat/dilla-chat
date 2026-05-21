@@ -1717,7 +1717,7 @@ function FloatingPip({
   );
 }
 
-function CamTile({ member, mini }) {
+function CamTile({ member, mini, showStats = false }) {
   // Pick the real webcam stream if available — local user reads from
   // useVoiceStore.localWebcamStream, peers from remoteWebcamStreams[user_id].
   // Falls back to the SVG silhouette when no stream exists yet.
@@ -1732,8 +1732,7 @@ function CamTile({ member, mini }) {
         {/* Webcam tiles: `cover` for the full-size tile (people are used
             to face-cropped video calls), `contain` for the mini PIP so
             the whole frame is visible at a glance. */}
-        <VideoTile stream={stream} fit={mini ? 'contain' : 'cover'} mirror={isSelf} showStats={!mini} />
-        {!mini && <span className="cam-tile-label">{member.name}</span>}
+        <VideoTile stream={stream} fit={mini ? 'contain' : 'cover'} mirror={isSelf} showStats={showStats && !mini} />
       </div>
     );
   }
@@ -1750,7 +1749,7 @@ function CamTile({ member, mini }) {
 
 // Screen-share tile. Real getDisplayMedia stream when available, otherwise
 // the stylized terminal/editor placeholder (kept for tests + offline UX).
-function ScreenTile({ member, pip }) {
+function ScreenTile({ member, pip, showStats = false }: { member: any; pip: any; showStats?: boolean }) {
   const isSelf = member.id === currentUserId();
   const localScreen = useVoiceStore((s) => s.localScreenStream);
   const remoteScreen = useVoiceStore((s) => s.remoteScreenStreams?.[member.id] ?? null);
@@ -1761,7 +1760,7 @@ function ScreenTile({ member, pip }) {
         {/* Screen-share ALWAYS uses `contain` — cropping a desktop screen
             (top/bottom of a long window, or sides of a wide one) defeats
             the purpose of sharing it. Black letterbox bars are fine. */}
-        <VideoTile stream={stream} fit="contain" />
+        <VideoTile stream={stream} fit="contain" showStats={showStats} />
         {pip && (
           <FloatingPip className="screen-pip" minW={64} minH={36}>
             <CamTile member={pip} mini />
@@ -4368,9 +4367,9 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                     // focus mode we render our own clickable PIP overlay
                     // below so the user can swap to the other stream by
                     // clicking it.
-                    <ScreenTile member={p} pip={showCam && !focusKind ? p : null} />
+                    <ScreenTile member={p} pip={showCam && !focusKind ? p : null} showStats={!!focusKind} />
                   ) : renderKind === 'cam' ? (
-                    <CamTile member={p} />
+                    <CamTile member={p} showStats={!!focusKind} />
                   ) : (
                     <Avatar member={p} size={isMini ? 32 : 64} />
                   )}
