@@ -2579,6 +2579,18 @@ img.attach-img {
   min-height: 0;
   margin-bottom: 12px;
 }
+/* Tab fullscreen: cover the whole client viewport (everything inside
+   the browser tab — sidebar, top bar, member list all overlaid). Use
+   fixed positioning so it doesn't get scoped by an ancestor's
+   overflow / transform. */
+.voice-focus.is-tab-fs {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: var(--bg);
+  padding: 1rem;
+  margin: 0;
+}
 .voice-focus .voice-card {
   flex: 1;
   max-width: 100%;

@@ -3792,6 +3792,12 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
     setFocusedState(next);
   }, []);
   const focusRef = useRef<HTMLDivElement | null>(null);
+  // Tab-level fullscreen: the focused stage covers the whole client
+  // viewport (everything inside the browser tab — sidebar, header,
+  // member list all hidden). Separate from the browser Fullscreen API
+  // (which takes over the entire monitor) — both are useful in
+  // different contexts.
+  const [tabFs, setTabFs] = useState(false);
   const [volumes, setVolumes] = useState({}); // memberId -> 0..100
   function vol(id) { return volumes[id] === undefined ? 100 : volumes[id]; }
   const focusedMember = focused ? participants.find(p => p.id === focused.id) : null;
@@ -3800,10 +3806,21 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
 
   useEffect(() => {
     if (!focused) return;
-    function onKey(e) { if (e.key === 'Escape') setFocused(null); }
+    function onKey(e) {
+      if (e.key !== 'Escape') return;
+      // Esc unwinds one layer at a time: tab-fullscreen first, then
+      // the focus itself. Matches the browser Fullscreen API's own
+      // Esc behavior so muscle memory transfers.
+      if (tabFs) setTabFs(false);
+      else setFocused(null);
+    }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [focused]);
+  }, [focused, tabFs]);
+
+  // Whenever focus clears, drop tab-fullscreen too — otherwise the
+  // sidebar would stay hidden after leaving focus mode.
+  useEffect(() => { if (!focused) setTabFs(false); }, [focused]);
 
   // Auto-flip into focus mode for every viewer the moment someone in
   // the channel starts screen sharing — screen content is the point of
@@ -4089,7 +4106,7 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
             const showSwap = (focused.kind === 'cam' && hasScreen) || (focused.kind === 'screen' && hasCam);
             return (
               <>
-                <div className="voice-focus" ref={focusRef}>
+                <div className={'voice-focus' + (tabFs ? ' is-tab-fs' : '')} ref={focusRef}>
                   <div className="voice-focus-actions">
                     {showSwap && (
                       <button className="voice-unfocus" onClick={() => setFocused({ id: focused.id, kind: focused.kind === 'cam' ? 'screen' : 'cam' })} title={focused.kind === 'cam' ? 'Switch to screen' : 'Switch to webcam'}>
@@ -4098,12 +4115,20 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                       </button>
                     )}
                     {focused.kind === 'screen' && (
-                      <button className="voice-unfocus" onClick={enterFullscreen} title="Fullscreen (f)">
-                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                          <path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                        fullscreen
-                      </button>
+                      <>
+                        <button className="voice-unfocus" onClick={() => setTabFs(v => !v)} title={tabFs ? 'Exit tab fullscreen (esc)' : 'Fullscreen within tab'}>
+                          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                            <rect x="2.5" y="2.5" width="11" height="11" rx="1" stroke="currentColor" strokeWidth="1.4" />
+                          </svg>
+                          {tabFs ? 'shrink' : 'tab full'}
+                        </button>
+                        <button className="voice-unfocus" onClick={enterFullscreen} title="Fullscreen entire screen (f)">
+                          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                            <path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                          screen full
+                        </button>
+                      </>
                     )}
                     <button className="voice-unfocus" onClick={() => setFocused(null)} title="Exit focus (esc)">
                       <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
