@@ -15,7 +15,7 @@ Dilla is a federated, end-to-end encrypted Discord alternative. AGPLv3 licensed.
 
 **Communication pattern:** REST for CRUD operations, WebSocket for real-time events (messages, presence, voice signaling, typing indicators). The server embeds the built client via rust-embed.
 
-**Auth:** Ed25519 challenge-response → JWT tokens. No passwords — identity is a keypair.
+**Auth:** Ed25519 challenge-response → JWT tokens. No passwords — identity is a keypair. Multi-device key trust + per-device JWT binding + sliding refresh + force-logout on permission change — see `SECURITY.md` for the full lifecycle.
 
 **E2E encryption:** Signal Protocol (X3DH + Double Ratchet) implemented in Rust, called from React via Tauri IPC. Server sees metadata only.
 

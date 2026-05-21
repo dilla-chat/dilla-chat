@@ -142,6 +142,10 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/auth/verify", post(auth_handlers::verify))
         .route("/api/v1/auth/register", post(auth_handlers::register))
         .route("/api/v1/auth/bootstrap", post(auth_handlers::bootstrap))
+        // A4: refresh is intentionally public — the access token may
+        // already be expired, which is the whole reason the client is
+        // calling it. The refresh-token body provides the credential.
+        .route("/api/v1/auth/refresh", post(auth_handlers::refresh))
         .layer(GovernorLayer { config: auth_rate_config.clone() });
 
     let public = Router::new()
@@ -430,9 +434,6 @@ pub fn create_router(state: AppState) -> Router {
         // jwt_revocations table so a stolen JWT can be killed before
         // its natural expiry.
         .route("/api/v1/auth/logout", post(auth_handlers::logout))
-        // H2 / VULN-012 + A4: rotate the refresh token (sliding
-        // renewal) and mint a fresh access token in one round trip.
-        .route("/api/v1/auth/refresh", post(auth_handlers::refresh))
         // A1 / AUTH-MULTIDEV-1: multi-device key trust. A user can
         // enroll N devices, each with its own Ed25519 keypair; any
         // trusted device can revoke any other. Token issuance carries

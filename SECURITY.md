@@ -1,0 +1,177 @@
+# Security policy
+
+Dilla is a federated, end-to-end encrypted Discord alternative. This
+document describes the authentication / authorization design, the
+threat model assumptions, and how to report a compromise.
+
+For the broader hardening history see `.security-hardening/` —
+each numbered report covers one phase (vulnerability scan, threat
+model, architecture review, critical fixes, backend / frontend /
+mobile hardening, and this auth-enhancement work in `08-`).
+
+## 1. The passwordless Ed25519 model
+
+Dilla does not use passwords. A user's identity *is* an Ed25519
+keypair generated client-side at first install:
+
+1. **Challenge.** The client posts the user's public key to
+   `POST /api/v1/auth/challenge`. The server returns a 256-bit random
+   nonce + a single-use `challenge_id` with a 5-minute expiry.
+2. **Sign.** The client signs the nonce with the private key and posts
+   `{challenge_id, public_key, signature}` to
+   `POST /api/v1/auth/verify`.
+3. **Verify.** The server consumes the challenge, verifies the
+   Ed25519 signature in constant time (`ed25519-dalek`), looks up the
+   user, and — on success — mints an access JWT (1 h) + a refresh JWT
+   (24 h).
+
+Failure modes (bad signature, unknown user, revoked device) all
+return the same `401 invalid signature` response so the endpoint
+cannot be used to enumerate registered public keys
+(H3 / AUTH-ENUM-1).
+
+## 2. Multi-factor without "MFA"
+
+A passwordless model already eliminates the password-as-factor
+class of attacks. Dilla pairs that with **multi-device key trust**
+(see `.security-hardening/08-auth-enhancement.md` § A1):
+
+- A user can hold N enrolled devices, each with its own Ed25519
+  keypair stored client-side (Tauri keychain on desktop,
+  IndexedDB-backed encrypted storage in the browser).
+- Enrolling a new device requires an *already-trusted* device on the
+  user's other machine to sign the new device's public key. The
+  server verifies that signature against the trusted device's
+  stored pubkey before inserting the row.
+- Any trusted device can revoke any other device. Revocation is
+  immediate for new JWT issuance and propagates to in-flight JWTs
+  via the per-device `tokens_invalidated_after` cutoff.
+
+That is the analog of MFA in a passwordless setting — every new
+device must be authorized by an existing one, no SMS / TOTP /
+hardware-key step required.
+
+## 3. JWT lifecycle
+
+| Claim | Source | Purpose |
+|---|---|---|
+| `sub` | user_id | Standard subject |
+| `iat` | unix seconds | Issued-at; force-logout uses this |
+| `exp` | unix seconds | Natural expiry (1 h access / 24 h refresh) |
+| `jti` | UUID v4 | Per-token id used by the revocation list (H2) |
+| `aud` | `node_name` | Audience pinning — only this node accepts the token |
+| `iss` | `node_name` | Same value as `aud` |
+| `did` | device_id | Multi-device binding (A1); empty for legacy tokens |
+
+**Sliding refresh.** `POST /api/v1/auth/refresh` always mints a
+fresh access token, and rotates the refresh token when it's past
+half its lifetime (≤ 12 h remaining out of 24). Rotation revokes
+the old jti, so a stolen refresh token has at most a 12 h blast
+radius before its replacement supersedes it.
+
+**Revocation.** `POST /api/v1/auth/logout` revokes the bearer
+token by jti. The same revocation table backs refresh rotation.
+The hourly GC task drops expired rows.
+
+**Force-logout on permission change.** When a user's role is
+updated server-side, every device row's `tokens_invalidated_after`
+is bumped to "now". `validate_jwt` rejects any token with
+`iat < tokens_invalidated_after` — in-flight access tokens
+immediately stop honoring stale permissions.
+
+## 4. Permission model
+
+Dilla uses a bitmask per role. PERM_ADMIN (1<<0) short-circuits to
+"every bit set" — a future split would scope this down further.
+
+| Bit | Constant | Default Owner | Default everyone | Notes |
+|---|---|---|---|---|
+| 0 | `PERM_ADMIN` | yes | no | All other bits implied |
+| 1 | `PERM_MANAGE_CHANNELS` | via admin | no | |
+| 2 | `PERM_MANAGE_MEMBERS` | via admin | no | |
+| 3 | `PERM_MANAGE_ROLES` | via admin | no | |
+| 4 | `PERM_SEND_MESSAGES` | via admin | yes | |
+| 5 | `PERM_MANAGE_MESSAGES` | via admin | no | Delete / edit anyone's |
+| 6 | `PERM_CREATE_INVITES` | via admin | yes | |
+| 7 | `PERM_MANAGE_TEAM` | via admin | no | |
+| 8 | `PERM_BYPASS_SLOW_MODE` | via admin | no | |
+| 9 | `PERM_MUTE_VOICE` | via admin | no | |
+| 10 | `PERM_MANAGE_FEDERATION` | yes (explicit) | no | A3: mint join tokens, manage peers |
+| 11 | `PERM_VIEW_AUDIT_LOG` | yes (explicit) | no | A3: read `audit_events` |
+
+Bits 10 and 11 are explicitly granted to the Owner role on team
+creation in addition to being implied by `PERM_ADMIN`. The 029
+migration backfills these bits onto every existing role that holds
+`PERM_ADMIN` so the in-place upgrade is transparent.
+
+## 5. Audit log
+
+Every team-settings mutation and every authentication event writes
+a row to `audit_events`. Schema: `(id, team_id, actor_user_id,
+action, target_type, target_id, details, created_at)`.
+
+The full action taxonomy is documented in
+`.security-hardening/08-auth-enhancement.md` § Audit-event
+taxonomy. Notable additions in this round:
+
+- `auth.login` / `auth.login_failed`
+- `auth.logout` / `auth.token_refresh`
+- `device.enrolled` / `device.revoked` / `device.risk_event`
+- `bootstrap.consumed`
+
+Read access is gated by `PERM_VIEW_AUDIT_LOG` via
+`GET /api/v1/teams/{team_id}/audit`.
+
+## 6. Reporting a compromised device
+
+If you suspect a device has been compromised:
+
+1. From any other trusted device, open Settings → Devices and
+   click **Revoke** on the compromised row. The server marks the
+   device revoked; new JWT issuance fails immediately for that
+   device_id.
+2. Call `POST /api/v1/auth/logout` from the affected device if you
+   can — it adds the current JWT's jti to the revocation list so
+   the in-flight token dies before its natural exp.
+3. If you can no longer access *any* of your devices, contact your
+   team owner. They can mint a new bootstrap token via the
+   operator-side CLI; you re-bootstrap on a fresh device.
+
+## 7. Coordinated disclosure
+
+Email security@dilla.chat (PGP key on the public website).
+
+Please include reproduction steps and a clear severity assessment
+in your initial report. We commit to:
+
+- **24 hours**: acknowledgement.
+- **7 days**: initial triage + proposed timeline.
+- **90 days or sooner**: fix shipped and disclosure published.
+
+We will credit reporters in the release notes unless you ask not
+to be named.
+
+## 8. Configuration security checklist
+
+For production deployments:
+
+- [ ] `DILLA_INSECURE=false` (the default).
+- [ ] `DILLA_DB_PASSPHRASE` set to ≥ 32 raw bytes — load from file
+      via `DILLA_DB_PASSPHRASE_FILE` to keep it out of `/proc`.
+- [ ] `DILLA_TLS_CERT` + `DILLA_TLS_KEY` present (HTTPS only).
+- [ ] `DILLA_ALLOWED_ORIGINS` pinned to the actual frontend
+      origin(s).
+- [ ] `DILLA_NODE_NAME` set so JWT `aud`/`iss` pinning has a
+      stable identity.
+- [ ] Federation peers configured with `wss://` URLs; the
+      transport refuses `ws://` outside `DILLA_INSECURE=true`
+      (H7 / VULN-014).
+
+## 9. Cross-references
+
+- Architecture review (current + target): `.security-hardening/03-architecture-review.md`
+- Critical fixes: `.security-hardening/04-critical-fixes.md`
+- Backend hardening (H1–H12): `.security-hardening/05-backend-hardening.md`
+- Frontend hardening (F1–F5): `.security-hardening/06-frontend-hardening.md`
+- Mobile hardening: `.security-hardening/07-mobile-hardening.md`
+- Auth enhancement (A1–A7, this round): `.security-hardening/08-auth-enhancement.md`

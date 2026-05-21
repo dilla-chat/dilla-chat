@@ -597,6 +597,12 @@ Connect to `/ws?token=<JWT>` for real-time events. Event types include:
 
 ## Security Model
 
+For the full auth/authz design, the audit-event taxonomy, the
+coordinated-disclosure policy, and the production deployment
+checklist, see [`SECURITY.md`](./SECURITY.md). The
+`.security-hardening/` directory holds the phase-by-phase
+hardening reports.
+
 ### End-to-End Encryption
 
 All messages are encrypted **on the client** before being sent to the server. The server only stores and relays ciphertext.
