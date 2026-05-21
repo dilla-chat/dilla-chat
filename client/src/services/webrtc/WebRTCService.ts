@@ -964,80 +964,39 @@ class WebRTCService {
     store.setScreenSharing(true);
     store.setScreenSharingUserId(this.localUserId);
 
-    // Snapshot which transceiver mids exist before signalling so we
-    // can identify the NEW one the server adds for our sender. mids
-    // are negotiated globally so they're stable identifiers — much
-    // safer than "last in the array", which can drift when another
-    // peer's track gets added in the same renegotiation.
-    const existingMids = new Set(
-      this.pc.getTransceivers().map((t) => t.mid).filter((m): m is string => !!m),
-    );
+    // Tell the server to set up its end (recv-only transceiver + add
+    // our track to every other peer). Server will fire a
+    // renegotiation; the offer-queue handler in setupWSListeners
+    // processes it. We then call addTrack — it finds the new server-
+    // created sendonly transceiver (the only one without a sender
+    // track) and binds our video to it.
     ws.voiceScreenStart(this.teamId, this.channelId);
-
-    const newTx = await this.waitForNewSendonlyTransceiver(existingMids, 3000);
+    await this.waitForSignalingStable(3000);
 
     if (this.pc && this.screenStream) {
-      if (newTx) {
-        try { newTx.direction = 'sendonly'; } catch { /* read-only in some states */ }
-        await newTx.sender.replaceTrack(videoTrack);
-        this.screenSender = newTx.sender;
-      } else {
-        // Server never surfaced a new transceiver in time — last-
-        // ditch fallback so the share at least works locally.
-        this.screenSender = this.pc.addTrack(videoTrack, this.screenStream);
-      }
-      // Give the screen-share priority over the cam in WebRTC's
-      // bandwidth allocator and let it have a wide ceiling. The
-      // 'cam off → screen-share jumps in bitrate' symptom is the
-      // allocator distributing the estimated capacity across senders
-      // — even on LAN it starts conservatively and treats both video
-      // senders equally without these hints.
+      this.screenSender = this.pc.addTrack(videoTrack, this.screenStream);
+      // High priority + 4 Mbps ceiling so the BWE allocator favors
+      // the screen over the cam even when both are sending.
       await this.setSenderBitrate(this.screenSender, 4_000_000, 'maintain-resolution', 'high');
     }
   }
 
-  /** Wait for a sendonly transceiver with an EMPTY sender track and a
-   *  mid not in `existingMids` to appear — that's the slot the server
-   *  created for our brand-new outgoing video. Filtering on
-   *  sender.track === null prevents us from picking the previous
-   *  video's transceiver and replacing its track (which would steal
-   *  the earlier stream — exactly the bug we're trying to kill). */
-  private waitForNewSendonlyTransceiver(
-    existingMids: Set<string>,
-    timeoutMs: number,
-  ): Promise<RTCRtpTransceiver | null> {
+  /** Wait until the PC's signaling state goes through a renegotiation
+   *  and lands back on 'stable'. Specifically: catches the next
+   *  have-remote-offer → stable transition, so the caller knows the
+   *  server's renegotiation finished before they do further work
+   *  (like addTrack) that could race the negotiation. */
+  private waitForSignalingStable(timeoutMs: number): Promise<void> {
     return new Promise((resolve) => {
+      if (!this.pc) return resolve();
       const t0 = performance.now();
-      const tick = () => {
-        if (!this.pc) return resolve(null);
-        const candidate = this.pc.getTransceivers().find((tx) => {
-          if (tx.currentDirection === 'stopped') return false;
-          if (tx.direction !== 'sendonly' && tx.direction !== 'sendrecv') return false;
-          if (tx.sender.track) return false;            // already in use
-          if (tx.mid && existingMids.has(tx.mid)) return false; // pre-existing slot
-          return true;
-        });
-        if (candidate) return resolve(candidate);
-        if (performance.now() - t0 > timeoutMs) return resolve(null);
-        setTimeout(tick, 30);
-      };
-      tick();
-    });
-  }
-
-  /** Resolve when this.pc.getTransceivers().length reaches `target`,
-   *  or after `timeoutMs`. Used to make sure a server-initiated
-   *  renegotiation has surfaced the new m-line before we bind our
-   *  local track to it — without this we race against addTrack
-   *  picking up the wrong transceiver. */
-  private waitForTransceiverCount(target: number, timeoutMs: number): Promise<void> {
-    return new Promise((resolve) => {
-      const t0 = performance.now();
+      let sawRemoteOffer = this.pc.signalingState !== 'stable';
       const tick = () => {
         if (!this.pc) return resolve();
-        if (this.pc.getTransceivers().length >= target) return resolve();
+        if (this.pc.signalingState !== 'stable') sawRemoteOffer = true;
+        if (sawRemoteOffer && this.pc.signalingState === 'stable') return resolve();
         if (performance.now() - t0 > timeoutMs) return resolve();
-        setTimeout(tick, 30);
+        setTimeout(tick, 25);
       };
       tick();
     });
@@ -1110,23 +1069,11 @@ class WebRTCService {
     store.setWebcamSharing(true);
     store.updatePeer(this.localUserId ?? '', { webcam_sharing: true });
 
-    // Same anti-race as startScreenShare: pin the cam track to the
-    // specific NEW sendonly transceiver the server appends — found
-    // by mid diff so we can't steal the screen-share's slot.
-    const existingMids = new Set(
-      this.pc.getTransceivers().map((t) => t.mid).filter((m): m is string => !!m),
-    );
     ws.voiceWebcamStart(this.teamId, this.channelId);
-    const newTx = await this.waitForNewSendonlyTransceiver(existingMids, 3000);
+    await this.waitForSignalingStable(3000);
 
     if (this.pc && this.webcamStream) {
-      if (newTx) {
-        try { newTx.direction = 'sendonly'; } catch { /* read-only in some states */ }
-        await newTx.sender.replaceTrack(videoTrack);
-        this.webcamSender = newTx.sender;
-      } else {
-        this.webcamSender = this.pc.addTrack(videoTrack, this.webcamStream);
-      }
+      this.webcamSender = this.pc.addTrack(videoTrack, this.webcamStream);
       // Cap the cam below the screen-share and mark it 'low' priority
       // so the allocator favors the screen when both are sending.
       // Cam stays smooth (face) by dropping resolution under load.
