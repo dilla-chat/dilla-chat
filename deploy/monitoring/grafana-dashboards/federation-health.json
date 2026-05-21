@@ -1,0 +1,147 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Dilla federation mesh health — per-peer volume, auth fails, state_sync size, RTT. Pairs with deploy/monitoring/playbooks/federation-peer-compromise.md.",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 38,
+  "tags": ["dilla", "security", "federation"],
+  "templating": {
+    "list": [
+      {
+        "name": "ds_loki",
+        "type": "datasource",
+        "query": "loki",
+        "current": { "selected": false, "text": "Loki", "value": "loki-placeholder-uid" }
+      },
+      {
+        "name": "ds_prom",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "selected": false, "text": "Prometheus", "value": "prom-placeholder-uid" }
+      },
+      {
+        "name": "peer_id",
+        "type": "query",
+        "datasource": { "type": "loki", "uid": "${ds_loki}" },
+        "query": "label_values({job=\"dilla-server\"} |~ \"state_sync\", peer_id)",
+        "includeAll": true,
+        "multi": true,
+        "current": { "selected": false, "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "time": { "from": "now-24h", "to": "now" },
+  "title": "Dilla — federation health",
+  "uid": "dilla-federation-health",
+  "version": 1,
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "state_sync messages / min per peer",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 8 },
+      "datasource": { "type": "loki", "uid": "${ds_loki}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (peer_id) (rate({job=\"dilla-server\", peer_id=~\"$peer_id\"} |~ \"state_sync_received\" | json | __error__ = \"\" [1m])) * 60",
+          "legendFormat": "{{peer_id}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 500 },
+              { "color": "red", "value": 1000 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Per-peer auth failures / 5m",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "loki", "uid": "${ds_loki}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (peer_id) (count_over_time({job=\"dilla-server\", peer_id=~\"$peer_id\"} |~ \"federation.peer.auth_failed\" | json | __error__ = \"\" [5m]))",
+          "legendFormat": "{{peer_id}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Federation peers connected (gauge)",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "dilla_fed_peers_connected",
+          "legendFormat": "peers"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "heatmap",
+      "title": "state_sync payload-size distribution",
+      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(dilla_fed_state_sync_bytes_bucket[5m])) by (le)",
+          "format": "heatmap",
+          "legendFormat": "{{le}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Peer round-trip time p99 (ms)",
+      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.99, sum by (le, peer_id) (rate(dilla_fed_rtt_seconds_bucket[5m]))) * 1000",
+          "legendFormat": "{{peer_id}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Top peers by 1h event volume",
+      "gridPos": { "x": 0, "y": 24, "w": 24, "h": 8 },
+      "datasource": { "type": "loki", "uid": "${ds_loki}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "topk(20, sum by (peer_id) (count_over_time({job=\"dilla-server\"} |~ \"state_sync_received\" | json | __error__ = \"\" [1h])))"
+        }
+      ]
+    }
+  ]
+}

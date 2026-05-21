@@ -1,0 +1,270 @@
+# Dilla — security correlation rules
+#
+# Format: Loki ruler / Prometheus alerting rule syntax (interchangeable —
+# Alertmanager consumes either). Loki-side rules use `expr:` with LogQL;
+# Prometheus-side rules use `expr:` with PromQL. Both wire into the same
+# Alertmanager; see `deploy/monitoring/alertmanager.yml`.
+#
+# Sources: `audit_events` (shipped via `dilla-audit` Promtail job; see
+# `ARCHITECTURE.md §5`), journald stream (`dilla-server` job), OTel metrics
+# (Prometheus remote-write target).
+#
+# Severity vocabulary (drives Alertmanager routing):
+#   critical = page on-call immediately
+#   high     = page on-call (business hours OK)
+#   medium   = slack + email
+#   low      = log only / weekly digest
+#
+# Each rule SHOULD have a runbook under deploy/monitoring/playbooks/.
+
+groups:
+
+# =====================================================================
+# Auth
+# =====================================================================
+- name: dilla.auth
+  interval: 30s
+  rules:
+
+    # --- Rule 1: brute force from one IP ---------------------------------
+    - alert: AuthBruteForceFromIP
+      expr: |
+        sum by (ip) (
+          count_over_time(
+            {job="dilla-audit", action="auth.login_failed"}
+              | json | __error__ = "" [5m]
+          )
+        ) > 10
+      for: 1m
+      labels:
+        severity: high
+        category: auth
+      annotations:
+        summary: ">10 failed logins in 5m from {{ $labels.ip }}"
+        description: |
+          Source IP {{ $labels.ip }} produced {{ $value }} `auth.login_failed`
+          events in 5 min. Brute-force or credential-stuffing attempt.
+        runbook_url: deploy/monitoring/playbooks/auth-brute-force.md
+
+    # --- Rule 2: cross-IP credential stuffing ----------------------------
+    - alert: AuthCredentialStuffing
+      expr: |
+        count(
+          count by (ip) (
+            count_over_time(
+              {job="dilla-audit", action="auth.login_failed"}
+                | json | __error__ = "" [5m]
+            )
+          )
+        ) > 30
+      for: 2m
+      labels:
+        severity: critical
+        category: auth
+      annotations:
+        summary: "Failed logins from >30 distinct IPs in 5m"
+        description: |
+          {{ $value }} unique source IPs emitted `auth.login_failed` in
+          the last 5 min — distributed scan / credential stuffing.
+        runbook_url: deploy/monitoring/playbooks/auth-brute-force.md
+
+    # --- Rule 3: device enrollment burst (per user) ----------------------
+    - alert: DeviceEnrollmentBurst
+      expr: |
+        sum by (user_id) (
+          count_over_time(
+            {job="dilla-audit", action="device.enrolled"}
+              | json | __error__ = "" [1h]
+          )
+        ) > 3
+      for: 1m
+      labels:
+        severity: medium
+        category: auth
+      annotations:
+        summary: ">3 device enrollments in 1h for user {{ $labels.user_id }}"
+        description: |
+          User {{ $labels.user_id }} enrolled {{ $value }} devices in the
+          last hour. This is unusual and may indicate authorizer-device
+          compromise. The user should also receive a WS notification
+          (the auth flow emits `security:device-enrolled` per A1).
+        runbook_url: deploy/monitoring/playbooks/stolen-jwt.md
+
+    # --- Rule 4: device risk score escalation ----------------------------
+    - alert: DeviceRiskScoreCritical
+      expr: |
+        count_over_time(
+          {job="dilla-audit", action="device.risk_event"}
+            | json | risk_score >= 80 | __error__ = "" [10m]
+        ) > 0
+      for: 0m
+      labels:
+        severity: critical
+        category: auth
+      annotations:
+        summary: "Device risk score >= 80 (user {{ $labels.user_id }})"
+        description: |
+          A login attempt scored >=80 on the risk heuristic
+          (see `08-auth-enhancement.md §3` — new IP/country/UA combo).
+          Investigate immediately and consider revoking the device.
+        runbook_url: deploy/monitoring/playbooks/stolen-jwt.md
+
+# =====================================================================
+# Federation
+# =====================================================================
+- name: dilla.federation
+  interval: 30s
+  rules:
+
+    # --- Rule 5: federation peer flood -----------------------------------
+    - alert: FederationPeerFlood
+      expr: |
+        sum by (peer_id) (
+          rate(
+            {job="dilla-server"}
+              |~ "state_sync_received"
+              | json | __error__ = "" [1m]
+          )
+        ) * 60 > 1000
+      for: 2m
+      labels:
+        severity: critical
+        category: federation
+      annotations:
+        summary: "Peer {{ $labels.peer_id }} sending >1000 sync msg/min"
+        description: |
+          Peer {{ $labels.peer_id }} exceeded 1000 state_sync messages/min
+          for >2 min. Either runaway sync loop or hostile peer poisoning
+          the mesh. Auto-disable per playbook.
+        runbook_url: deploy/monitoring/playbooks/federation-peer-compromise.md
+
+# =====================================================================
+# E2EE / prekey integrity
+# =====================================================================
+- name: dilla.crypto
+  interval: 30s
+  rules:
+
+    # --- Rule 6: OTPK drain on one user ----------------------------------
+    - alert: OneTimePrekeyDrain
+      expr: |
+        sum by (target_id) (
+          count_over_time(
+            {job="dilla-audit", action="prekey.consume"}
+              | json | __error__ = "" [1h]
+          )
+        ) > 100
+      for: 1m
+      labels:
+        severity: critical
+        category: crypto
+      annotations:
+        summary: ">100 OTPK consumptions in 1h targeting user {{ $labels.target_id }}"
+        description: |
+          User {{ $labels.target_id }} had {{ $value }} one-time pre-keys
+          consumed in the last hour. Deanonymization or session-forgery
+          attempt. Notify the user via WS and page on-call.
+        runbook_url: deploy/monitoring/playbooks/stolen-jwt.md
+
+# =====================================================================
+# Data / storage
+# =====================================================================
+- name: dilla.data
+  interval: 1m
+  rules:
+
+    # --- Rule 7: DB growth anomaly ---------------------------------------
+    # Requires `dilla_db_size_bytes` gauge — see `.security-hardening/13-monitoring-siem.md §6 FU-1`.
+    - alert: DBGrowthAnomaly
+      expr: |
+        (dilla_db_size_bytes - dilla_db_size_bytes offset 1h) > 1073741824
+      for: 5m
+      labels:
+        severity: high
+        category: data
+      annotations:
+        summary: "DB grew >1 GiB in the last hour"
+        description: |
+          dilla.db gained {{ $value | humanize1024 }}B in 1h. Likely
+          attachment-quota bypass, federation flood, or audit-log fanout.
+        runbook_url: deploy/monitoring/playbooks/db-growth-spike.md
+
+    # --- Rule 8: bootstrap token misuse (post-expiry consumption) --------
+    # The bootstrap token is single-use and 15-min expiring (R-06). A
+    # `bootstrap.consumed` event landing >15 min after server boot means
+    # either a clock-skew bug or the operator regenerated the token.
+    - alert: BootstrapTokenLateConsumption
+      expr: |
+        count_over_time(
+          {job="dilla-audit", action="bootstrap.consumed"}
+            | json | __error__ = "" [5m]
+        ) > 0
+        and on()
+        (time() - dilla_server_start_time_seconds) > 900
+      for: 0m
+      labels:
+        severity: critical
+        category: auth
+      annotations:
+        summary: "bootstrap.consumed fired >15 min after server boot"
+        description: |
+          The bootstrap token should expire within 15 min of binary boot
+          (see R-06). A `bootstrap.consumed` event this late suggests
+          clock skew, a leaked persisted token, or a misconfiguration.
+        runbook_url: deploy/monitoring/playbooks/bootstrap-token-leak.md
+
+# =====================================================================
+# Rate limiting / abuse
+# =====================================================================
+- name: dilla.ratelimit
+  interval: 30s
+  rules:
+
+    # --- Rule 9: rate-limit hits clustering on one IP --------------------
+    - alert: RateLimitClusterPerIP
+      expr: |
+        sum by (remote_ip) (
+          rate(
+            {job="caddy"}
+              | json | status = "429" | __error__ = "" [1m]
+          )
+        ) * 60 > 100
+      for: 2m
+      labels:
+        severity: low
+        category: abuse
+      annotations:
+        summary: "{{ $labels.remote_ip }} taking >100 429s/min"
+        description: |
+          IP {{ $labels.remote_ip }} is repeatedly hitting tower_governor /
+          edge rate limits. Either misbehaving client or scraper.
+        runbook_url: deploy/monitoring/playbooks/auth-brute-force.md
+
+# =====================================================================
+# WebSocket
+# =====================================================================
+- name: dilla.ws
+  interval: 30s
+  rules:
+
+    # --- Rule 10: WS subscription cap exceeded repeatedly ---------------
+    - alert: WSSubscriptionCapExceededRepeatedly
+      expr: |
+        sum by (user_id) (
+          count_over_time(
+            {job="dilla-server"}
+              |~ "MAX_SUBSCRIPTIONS_PER_CLIENT"
+              | json | __error__ = "" [1h]
+          )
+        ) > 5
+      for: 0m
+      labels:
+        severity: low
+        category: abuse
+      annotations:
+        summary: "User {{ $labels.user_id }} hit WS sub cap >5x in 1h"
+        description: |
+          The 200-subscription cap from H4 is being bumped repeatedly by
+          the same user. Likely a buggy client or a deliberate amplification
+          probe. Log-only; visit during business hours.
+        runbook_url: deploy/detection/README.md
