@@ -300,6 +300,11 @@ pub struct VoiceUserLeftPayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VoiceKeyDistributePayload {
     pub channel_id: String,
+    /// Stamped by the server from the authenticated user_id before
+    /// rebroadcast — clients can't forge another peer's identity.
+    /// Default-empty on the inbound parse so the client doesn't need
+    /// to send a redundant field.
+    #[serde(default)]
     pub sender_id: String,
     pub key_id: u32,
     pub encrypted_keys: std::collections::HashMap<String, String>,
