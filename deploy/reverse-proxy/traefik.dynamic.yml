@@ -1,0 +1,56 @@
+# Dilla — Traefik v3 dynamic configuration (routers, services, middlewares).
+#
+# Pair with traefik.static.yml. Replace ${DILLA_DOMAIN} before deploying.
+#
+# Required Traefik version: v3.0+. Refer to the security headers in
+# .security-hardening/03-architecture-review.md §9 — these MUST stay in sync
+# with the Caddy/nginx variants.
+
+http:
+  routers:
+    dilla-web:
+      rule: "Host(`${DILLA_DOMAIN}`)"
+      entryPoints: [websecure]
+      service: dilla-backend
+      middlewares:
+        - dilla-security-headers
+        - dilla-rate-limit
+      tls:
+        certResolver: letsencrypt
+
+  services:
+    dilla-backend:
+      loadBalancer:
+        servers:
+          # dilla-server bound to 127.0.0.1:8080 (loopback only — the proxy is
+          # the only entity that talks to it).
+          - url: "http://127.0.0.1:8080"
+        passHostHeader: true
+        # Traefik handles the WebSocket Upgrade transparently. No extra config.
+
+  middlewares:
+    dilla-security-headers:
+      headers:
+        stsSeconds: 63072000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        contentTypeNosniff: true
+        frameDeny: true
+        referrerPolicy: "strict-origin-when-cross-origin"
+        permissionsPolicy: "accelerometer=(), camera=(self), microphone=(self), geolocation=(), payment=(), usb=()"
+        contentSecurityPolicy: "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob:; connect-src 'self' wss:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+        customResponseHeaders:
+          Server: ""              # strip the Server header
+          X-Powered-By: ""
+
+    # Defense-in-depth on top of the app's tower_governor (step 5 H1).
+    dilla-rate-limit:
+      rateLimit:
+        average: 100
+        burst: 200
+        period: 1s
+        sourceCriterion:
+          ipStrategy:
+            depth: 1            # behind one Cloudflare hop; raise to 2 if double-proxied
+
+# tested-with: Traefik v3.0.4, Apr 2026.

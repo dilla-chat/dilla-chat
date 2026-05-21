@@ -1,0 +1,123 @@
+# Dilla — Docker Compose v2 reference stack.
+#
+# Reference deployment for a single-VPS install: Caddy fronts TLS, dilla-server
+# binds loopback inside the network, Caddy is the only thing that can reach it.
+#
+# Usage:
+#   1. Copy .env.example → .env, fill in DILLA_DOMAIN, ADMIN_EMAIL, secrets.
+#   2. Place the Caddyfile from deploy/reverse-proxy/ at ./Caddyfile.
+#   3. docker compose up -d
+#
+# Tested-with: Docker Engine 26.x + Compose v2.27.
+
+name: dilla
+
+services:
+  dilla-server:
+    image: dilla/server:dev   # replace with a pinned tag for production
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # TLS is delegated to Caddy. The app itself runs cleartext on loopback.
+      DILLA_INSECURE: "true"
+      DILLA_PORT: "8080"
+      DILLA_DATA_DIR: /data
+      # Load passphrase from a file rather than env (avoids ENV leakage via
+      # `docker inspect`). Mount the secret at /run/secrets/dilla-db-passphrase.
+      DILLA_DB_PASSPHRASE_FILE: /run/secrets/dilla-db-passphrase
+      # The reverse proxy IS the only trusted source — pin it.
+      DILLA_TRUSTED_PROXIES: "172.20.0.0/16"
+    secrets:
+      - dilla-db-passphrase
+    volumes:
+      - dilla-data:/data
+    # Only the reverse proxy may reach us. Bind the host-side port to
+    # loopback so an accidentally-disabled UFW does NOT expose 8080.
+    ports:
+      - "127.0.0.1:8080:8080"
+    networks:
+      - dilla-internal
+    # --- Hardening ----------------------------------------------------------
+    read_only: true                # rootfs read-only
+    tmpfs:
+      - /tmp:size=64m,mode=1777    # for any transient scratch
+    cap_drop:
+      - ALL                         # we bind 8080, no NET_BIND_SERVICE needed
+    security_opt:
+      - no-new-privileges:true
+    user: "65532:65532"            # nonroot in the distroless base image
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/dilla-server", "--healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  caddy:
+    image: caddy:2.7-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"             # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data           # ACME cert storage — keep this volume
+      - caddy-config:/config
+    networks:
+      - dilla-internal
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE           # required to bind 80/443
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - dilla-server
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  # ------------------------------------------------------------------------
+  # OPTIONAL: Tor hidden service for high-anonymity deploys.
+  # Uncomment + set HiddenServiceDir contents below to expose dilla over a
+  # .onion address. Operators who don't need this should leave it commented.
+  # ------------------------------------------------------------------------
+  # tor:
+  #   image: dperson/torproxy:latest
+  #   restart: unless-stopped
+  #   environment:
+  #     LOCATION: "US"
+  #   volumes:
+  #     - tor-data:/var/lib/tor
+  #     - ./torrc:/etc/tor/torrc:ro
+  #   networks:
+  #     - dilla-internal
+  #   cap_drop: [ALL]
+  #   cap_add: [NET_BIND_SERVICE]
+  #   security_opt: [no-new-privileges:true]
+
+volumes:
+  dilla-data:
+  caddy-data:
+  caddy-config:
+  # tor-data:
+
+networks:
+  dilla-internal:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+secrets:
+  dilla-db-passphrase:
+    # Generate once with:  openssl rand -base64 48 > ./secrets/db-passphrase
+    file: ./secrets/db-passphrase

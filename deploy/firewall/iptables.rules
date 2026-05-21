@@ -1,0 +1,71 @@
+# Dilla — iptables-restore reference rule-set (legacy, but still common on
+# older distros and embedded boxes).
+#
+# Threat model identical to ufw.sh / nftables.conf: dilla behind a local
+# reverse proxy, federation on WireGuard, admin SSH on a non-default port.
+#
+# Edit the placeholders below before loading, then:
+#   sudo iptables-restore < iptables.rules
+#   sudo netfilter-persistent save        # Debian/Ubuntu
+#
+# Placeholders:
+#   __ADMIN_CIDR__       e.g. 203.0.113.0/24
+#   __ADMIN_SSH_PORT__   e.g. 2222
+#   __WG_MESH_CIDR__     e.g. 10.42.0.0/24
+#
+# Tested-with: iptables 1.8.9 on Debian 12 (iptables-legacy).
+
+*filter
+:INPUT   DROP [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT  DROP [0:0]
+:DILLA_IN  - [0:0]
+:DILLA_OUT - [0:0]
+
+# --- Common -----------------------------------------------------------------
+-A INPUT  -i lo -j ACCEPT
+-A OUTPUT -o lo -j ACCEPT
+-A INPUT  -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+-A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+-A INPUT  -m conntrack --ctstate INVALID -j DROP
+-A OUTPUT -m conntrack --ctstate INVALID -j DROP
+
+# --- INPUT -------------------------------------------------------------------
+-A INPUT -p icmp   -m limit --limit 4/sec -j ACCEPT
+-A INPUT -p ipv6-icmp -m limit --limit 4/sec -j ACCEPT
+
+# SSH — restricted source + rate limit.
+-A INPUT -s __ADMIN_CIDR__ -p tcp --dport __ADMIN_SSH_PORT__ -m conntrack --ctstate NEW -m recent --name SSH --update --seconds 60 --hitcount 6 -j DROP
+-A INPUT -s __ADMIN_CIDR__ -p tcp --dport __ADMIN_SSH_PORT__ -m conntrack --ctstate NEW -m recent --name SSH --set -j ACCEPT
+
+# Public web.
+-A INPUT -p tcp --dport 80  -j ACCEPT
+-A INPUT -p tcp --dport 443 -j ACCEPT
+-A INPUT -p udp --dport 443 -j ACCEPT
+
+# WireGuard.
+-A INPUT -p udp --dport 51820 -j ACCEPT
+
+# Federation — only from mesh peers.
+-A INPUT -s __WG_MESH_CIDR__ -p tcp --dport 9443 -j ACCEPT
+
+-A INPUT -m limit --limit 4/min -j LOG --log-prefix "ipt-drop-in: " --log-level 4
+
+# --- OUTPUT ------------------------------------------------------------------
+# DNS.
+-A OUTPUT -p udp --dport 53 -j ACCEPT
+-A OUTPUT -p tcp --dport 53 -j ACCEPT
+
+# HTTPS egress.
+-A OUTPUT -p tcp --dport 443 -j ACCEPT
+
+# NTP.
+-A OUTPUT -p udp --dport 123 -j ACCEPT
+
+# Federation peers + WireGuard handshake.
+-A OUTPUT -d __WG_MESH_CIDR__ -p tcp --dport 9443 -j ACCEPT
+-A OUTPUT -p udp --dport 51820 -j ACCEPT
+
+-A OUTPUT -m limit --limit 4/min -j LOG --log-prefix "ipt-drop-out: " --log-level 4
+
+COMMIT

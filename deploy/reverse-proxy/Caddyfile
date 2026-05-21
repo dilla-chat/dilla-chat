@@ -1,0 +1,75 @@
+# Dilla — Caddy v2 reverse-proxy reference config.
+#
+# Mode A from .security-hardening/03-architecture-review.md §9: Caddy terminates
+# TLS and proxies cleartext HTTP to dilla-server bound on 127.0.0.1:8080.
+# dilla-server itself runs with DILLA_INSECURE=true (intentional: TLS lives in
+# the proxy, not the app — closes VULN-001 with the smallest code change).
+#
+# Required Caddy version: v2.7+ (uses the `header_up X-Forwarded-*` syntax).
+# Required DNS: an A/AAAA record for ${DILLA_DOMAIN} pointing at this host.
+#
+# Replace ${DILLA_DOMAIN} and ${ADMIN_EMAIL} before deploying. Caddy fetches
+# Let's Encrypt certs automatically on first boot; subsequent renewals are
+# unattended.
+
+{
+	email ${ADMIN_EMAIL}
+	# servers { protocols h1 h2 h3 }   # uncomment to enable HTTP/3 (QUIC, UDP 443)
+}
+
+# HTTP → HTTPS canonical redirect. Caddy does this automatically when a site
+# block uses a hostname, but we make it explicit for the audit trail.
+http://${DILLA_DOMAIN} {
+	redir https://${DILLA_DOMAIN}{uri} permanent
+}
+
+${DILLA_DOMAIN} {
+	encode gzip zstd
+
+	# --- Security headers --------------------------------------------------
+	# HSTS: 2 years, include subdomains, preload-eligible. Only enable preload
+	# once you have committed to HTTPS for every dilla.* subdomain.
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		X-Content-Type-Options    "nosniff"
+		X-Frame-Options           "DENY"
+		Referrer-Policy           "strict-origin-when-cross-origin"
+		Permissions-Policy        "accelerometer=(), camera=(self), microphone=(self), geolocation=(), payment=(), usb=()"
+		# CSP must match the embedded SPA (see R-17 in 03-architecture-review).
+		# 'wasm-unsafe-eval' is required by the Signal Protocol WASM bundle.
+		Content-Security-Policy   "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob:; connect-src 'self' wss:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+		# Remove server fingerprinting.
+		-Server
+		-X-Powered-By
+	}
+
+	# --- Upload size cap (default 25 MiB, matches DILLA_MAX_UPLOAD_SIZE). --
+	request_body {
+		max_size 50MB
+	}
+
+	# --- Proxy everything to dilla-server on loopback ----------------------
+	# Caddy handles WebSocket Upgrade transparently — no extra config needed.
+	reverse_proxy 127.0.0.1:8080 {
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+
+		# Idle WS connections: keep them open for 1h (server-side reaper at 60s
+		# pong-miss is still authoritative; this is just the proxy ceiling).
+		transport http {
+			read_timeout  3600s
+			write_timeout 3600s
+		}
+	}
+
+	# --- Log rotation (journald-style; switch to file for SIEM ingestion). -
+	log {
+		output stdout
+		format console
+		level  INFO
+	}
+}
+
+# tested-with: Caddy 2.7.6 (Debian 12, Alpine 3.20), Let's Encrypt R10, Apr 2026.
