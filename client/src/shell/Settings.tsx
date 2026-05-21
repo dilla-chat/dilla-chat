@@ -22,6 +22,7 @@ import { exportIdentityBlob } from '../services/keyStore';
 import { useShellDataContext } from './ShellDataContext';
 import { startMicTest, stopMicTest, type MicTestSession } from '../services/micTest';
 import { useAudioSettingsStore } from '../stores/audioSettingsStore';
+import { resolvePermissions } from '../hooks/usePermissions';
 
 const { useState: useStateS, useEffect: useEffectS, useRef: useRefS, useMemo } = React;
 
@@ -1884,9 +1885,12 @@ function RoleEditor({ teamId, role, onClose, onSaved }: { teamId: string; role: 
   // also rejects with 403 if a moderator tries to grant a bit past
   // their ceiling — this is the discoverability half of the same gate.
   const teamMembersForGuard = useTeamStore((s) => s.members.get(teamId) ?? []);
+  const meIdForGuard = useShellDataContext()?.currentUserId ?? null;
   const myBits = useMemo(
-    () => resolvePermissions(teamMembersForGuard as any, currentUserId()).bits,
-    [teamMembersForGuard],
+    () => meIdForGuard
+      ? resolvePermissions(teamMembersForGuard as any, meIdForGuard).bits
+      : 0,
+    [teamMembersForGuard, meIdForGuard],
   );
 
   if (!role) return null;
