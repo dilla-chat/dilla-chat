@@ -127,6 +127,28 @@ pub(crate) async fn renegotiate_internal(
         .await
         .map_err(|e| format!("set local description: {e}"))?;
 
+    let mline_summary: String = offer
+        .sdp
+        .lines()
+        .filter(|l| {
+            l.starts_with("m=")
+                || l.starts_with("a=mid")
+                || l.starts_with("a=sendrecv")
+                || l.starts_with("a=sendonly")
+                || l.starts_with("a=recvonly")
+                || l.starts_with("a=inactive")
+                || l.starts_with("a=msid")
+        })
+        .collect::<Vec<_>>()
+        .join(" | ");
+    tracing::info!(
+        target: "voice_sdp",
+        "renegotiate offer channel={} user={} sdp_mlines={}",
+        channel_id,
+        user_id,
+        mline_summary
+    );
+
     let handler = on_event.read().await;
     if let Some(ref f) = *handler {
         f(
