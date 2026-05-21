@@ -2273,15 +2273,20 @@ img.attach-img {
 .chat[data-style="mesh"] .voice-view { background: var(--bg); }
 .voice-stage {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  /* Fixed-width tracks (not 1fr) so cards never stretch wider than
+     their natural 13.75rem — every card looks identical regardless of
+     how many participants are in the channel. */
+  grid-template-columns: repeat(auto-fit, 13.75rem);
+  justify-content: center;
   gap: 14px;
   align-content: start;
 }
-/* Single-participant layout: keep the same card pattern that the
-   multi-participant grid uses — one card at the grid min-width, no
-   stretching — and center it in the stage. This way "alone in voice"
-   looks like "first to join a multi-person voice", not a separate
-   layout. */
+.voice-stage .voice-card {
+  width: 13.75rem;
+  aspect-ratio: 1;
+  justify-content: center;
+}
+/* Single-participant: same card, just middle-middle in the stage. */
 .voice-stage.is-single {
   display: flex;
   justify-content: center;
@@ -2289,13 +2294,7 @@ img.attach-img {
   height: 100%;
   min-height: 0;
 }
-.voice-stage.is-single .voice-card {
-  width: 13.75rem;          /* 220px — same as grid minmax(220px, 1fr) min */
-  max-width: 100%;
-  aspect-ratio: 1;
-  flex: 0 0 auto;
-  justify-content: center;
-}
+.voice-stage.is-single .voice-card { flex: 0 0 auto; }
 .voice-card {
   background: var(--surface);
   border-radius: var(--r-lg);
