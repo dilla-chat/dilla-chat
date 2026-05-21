@@ -310,12 +310,27 @@ pub(in crate::ws) async fn handle_typing(
     client_id: &str,
     user_id: &str,
     username: &str,
+    team_id: &str,
     payload: serde_json::Value,
 ) {
     let p: ChannelJoinPayload = match serde_json::from_value(payload) {
         Ok(p) => p,
         Err(_) => return,
     };
+
+    // Same authorization gate as channel:join. Without this, an attacker
+    // with a valid JWT could spray typing indicators into private
+    // channels they can't read, leaking who-is-watching-what.
+    if !crate::ws::client::user_can_subscribe_to_channel(hub, user_id, team_id, &p.channel_id)
+        .await
+    {
+        tracing::debug!(
+            user_id = user_id,
+            channel_id = %p.channel_id,
+            "typing event denied — access check failed"
+        );
+        return;
+    }
 
     let throttle_key = format!("{}:{}", p.channel_id, user_id);
     let now = chrono::Utc::now().timestamp();

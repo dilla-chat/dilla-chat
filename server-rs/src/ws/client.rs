@@ -138,7 +138,7 @@ pub(crate) async fn handle_event(
 ) {
     match event.event_type.as_str() {
         EVENT_CHANNEL_JOIN | EVENT_CHANNEL_LEAVE => {
-            handle_channel_event(hub, client_id, &event.event_type, event.payload).await;
+            handle_channel_event(hub, client_id, user_id, team_id, &event.event_type, event.payload).await;
         }
         EVENT_MESSAGE_SEND => {
             handle_message_send(hub, client_id, user_id, username, team_id, event.payload).await;
@@ -150,7 +150,7 @@ pub(crate) async fn handle_event(
             handle_message_delete(hub, user_id, event.payload).await;
         }
         EVENT_TYPING_START | EVENT_TYPING_STOP => {
-            handle_typing(hub, client_id, user_id, username, event.payload).await;
+            handle_typing(hub, client_id, user_id, username, team_id, event.payload).await;
         }
         EVENT_PRESENCE_UPDATE => {
             handle_presence_update(hub, user_id, event.payload);
@@ -218,16 +218,98 @@ pub(crate) async fn handle_event(
     }
 }
 
-pub(crate) async fn handle_channel_event(hub: &Hub, client_id: &str, event_type: &str, payload: serde_json::Value) {
-    match serde_json::from_value::<ChannelJoinPayload>(payload) {
-        Ok(p) => {
-            if event_type == EVENT_CHANNEL_JOIN {
-                hub.subscribe(client_id, &p.channel_id).await;
-            } else {
-                hub.unsubscribe(client_id, &p.channel_id).await;
-            }
+pub(crate) async fn handle_channel_event(
+    hub: &Hub,
+    client_id: &str,
+    user_id: &str,
+    team_id: &str,
+    event_type: &str,
+    payload: serde_json::Value,
+) {
+    let p = match serde_json::from_value::<ChannelJoinPayload>(payload) {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!(error = %e, event = event_type, "failed to parse payload");
+            return;
         }
-        Err(e) => tracing::warn!(error = %e, event = event_type, "failed to parse payload"),
+    };
+
+    // Unsubscribe is always permitted — it only removes the caller from
+    // an existing subscription. The expensive part is the access check
+    // on subscribe, where we have to confirm the channel actually
+    // belongs to the user's team AND the caller can read it (text
+    // channels + DM channels are mixed in the same subscriber map).
+    if event_type != EVENT_CHANNEL_JOIN {
+        hub.unsubscribe(client_id, &p.channel_id).await;
+        return;
+    }
+
+    if !user_can_subscribe_to_channel(hub, user_id, team_id, &p.channel_id).await {
+        tracing::debug!(
+            user_id = user_id,
+            channel_id = %p.channel_id,
+            team_id = team_id,
+            "channel:join denied — access check failed"
+        );
+        return;
+    }
+
+    hub.subscribe(client_id, &p.channel_id).await;
+}
+
+/// Authorize a WebSocket subscriber for a channel ID.
+///
+/// The hub uses a single namespaced subscriber map for text channels,
+/// thread IDs, DM channels and a few federation IDs. We don't trust the
+/// client to tell us the channel type — instead, look the ID up in
+/// every table that might own it and apply the matching ACL:
+///
+/// 1. If a row exists in `channels` and `channel.team_id == team_id`,
+///    fall through to `user_can_access_channel`.
+/// 2. If a row exists in `dm_members` for this channel, require the
+///    caller to be in the member list.
+/// 3. Otherwise — unknown channel — deny.
+pub(crate) async fn user_can_subscribe_to_channel(
+    hub: &Hub,
+    user_id: &str,
+    team_id: &str,
+    channel_id: &str,
+) -> bool {
+    let db = hub.db.clone();
+    let cid = channel_id.to_string();
+    let uid = user_id.to_string();
+    let tid = team_id.to_string();
+    let allowed = tokio::task::spawn_blocking(move || {
+        db.with_conn(|conn| -> Result<bool, rusqlite::Error> {
+            // (1) Text / voice channel path — must belong to caller's
+            // team AND pass the role-gated access check.
+            if let Some(channel) = db::get_channel_by_id(conn, &cid)? {
+                if channel.team_id != tid {
+                    return Ok(false);
+                }
+                return db::user_can_access_channel(conn, &uid, &tid, &cid);
+            }
+            // (2) DM channel path — caller must appear in dm_members.
+            // is_dm_member returns false when the row set is empty.
+            if db::is_dm_member(conn, &cid, &uid)? {
+                return Ok(true);
+            }
+            Ok(false)
+        })
+    })
+    .await;
+
+    match allowed {
+        Ok(Ok(true)) => true,
+        Ok(Ok(false)) => false,
+        Ok(Err(e)) => {
+            tracing::warn!(error = %e, channel_id = channel_id, "channel access check failed");
+            false
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "channel access check task join failed");
+            false
+        }
     }
 }
 
@@ -484,5 +566,224 @@ pub(crate) async fn handle_dm_typing(hub: &Hub, user_id: &str, username: &str, p
                 hub.send_to_user(&member.user_id, data.clone()).await;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::Database;
+    use crate::ws::hub::Hub;
+
+    fn test_hub() -> Hub {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        db.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;"))
+            .unwrap();
+        db.run_migrations().unwrap();
+        // Leak the tempdir so the DB stays around for the test.
+        std::mem::forget(tmp);
+        Hub::new(db)
+    }
+
+    fn now() -> String {
+        db::now_str()
+    }
+
+    fn seed_team_with_default_role(
+        db: &Database,
+        team_id: &str,
+        owner_id: &str,
+    ) -> String {
+        let role_id = db::new_id();
+        db.with_conn(|conn| {
+            db::create_user(conn, &db::User {
+                id: owner_id.into(),
+                username: format!("user-{}", owner_id),
+                display_name: owner_id.into(),
+                public_key: vec![1u8; 32],
+                avatar_url: String::new(),
+                status_text: String::new(),
+                status_type: "online".into(),
+                is_admin: false,
+                created_at: now(),
+                updated_at: now(),
+                quiet_hours_enabled: false,
+                quiet_hours_from: String::new(),
+                quiet_hours_to: String::new(),
+            })?;
+            db::create_team(conn, &db::Team {
+                id: team_id.into(),
+                name: team_id.into(),
+                description: String::new(),
+                icon_url: String::new(),
+                created_by: owner_id.into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                federated: false,
+                created_at: now(),
+                updated_at: now(),
+            })?;
+            db::create_member(conn, &db::Member {
+                id: db::new_id(),
+                team_id: team_id.into(),
+                user_id: owner_id.into(),
+                nickname: String::new(),
+                joined_at: now(),
+                invited_by: String::new(),
+                updated_at: String::new(),
+            })?;
+            conn.execute(
+                "INSERT INTO roles (id, team_id, name, color, position, permissions, is_default, created_at, updated_at) VALUES (?1, ?2, 'everyone', '#ccc', 0, 0, 1, ?3, ?3)",
+                rusqlite::params![role_id, team_id, now()],
+            )?;
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+        role_id
+    }
+
+    #[tokio::test]
+    async fn channel_join_denied_when_user_not_a_team_member() {
+        let hub = test_hub();
+        let db = hub.db.clone();
+        let _everyone = seed_team_with_default_role(&db, "team1", "owner1");
+
+        // Create a non-default role and put it on a private channel.
+        // user_can_access_channel returns true when access_roles is empty,
+        // so we need a private gated channel to make the access check
+        // meaningful.
+        let private_role = db::new_id();
+        let channel_id = "channel1".to_string();
+        db.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO roles (id, team_id, name, color, position, permissions, is_default, created_at, updated_at) VALUES (?1, ?2, 'mods', '#f00', 1, 0, 0, ?3, ?3)",
+                rusqlite::params![private_role, "team1", now()],
+            )?;
+            db::create_channel(conn, &db::Channel {
+                id: channel_id.clone(),
+                team_id: "team1".into(),
+                name: "private".into(),
+                topic: String::new(),
+                channel_type: "text".into(),
+                position: 0,
+                category: String::new(),
+                created_by: "owner1".into(),
+                created_at: now(),
+                updated_at: now(),
+                locked: false,
+                hidden_if_restricted: false,
+                slow_mode_seconds: 0,
+                group_id: None,
+            })?;
+            conn.execute(
+                "INSERT INTO channel_role_access (channel_id, role_id) VALUES (?1, ?2)",
+                rusqlite::params![channel_id, private_role],
+            )?;
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+
+        // outsider — has a valid JWT, but no team membership at all.
+        let allowed = user_can_subscribe_to_channel(&hub, "outsider", "team1", &channel_id).await;
+        assert!(!allowed, "outsider must not be allowed to subscribe to a private channel");
+    }
+
+    #[tokio::test]
+    async fn channel_join_denied_when_channel_belongs_to_another_team() {
+        let hub = test_hub();
+        let db = hub.db.clone();
+        let _everyone = seed_team_with_default_role(&db, "team1", "owner1");
+        let _everyone2 = seed_team_with_default_role(&db, "team2", "owner2");
+
+        db.with_conn(|conn| {
+            db::create_channel(conn, &db::Channel {
+                id: "ch-in-t2".into(),
+                team_id: "team2".into(),
+                name: "general".into(),
+                topic: String::new(),
+                channel_type: "text".into(),
+                position: 0,
+                category: String::new(),
+                created_by: "owner2".into(),
+                created_at: now(),
+                updated_at: now(),
+                locked: false,
+                hidden_if_restricted: false,
+                slow_mode_seconds: 0,
+                group_id: None,
+            })
+        })
+        .unwrap();
+
+        // owner1 is the team owner of team1 — would normally bypass
+        // every channel check — but the channel belongs to team2, so
+        // the cross-team boundary must reject the subscribe.
+        let allowed = user_can_subscribe_to_channel(&hub, "owner1", "team1", "ch-in-t2").await;
+        assert!(!allowed, "must not subscribe to a channel that doesn't belong to caller's team");
+    }
+
+    #[tokio::test]
+    async fn dm_subscribe_requires_dm_membership() {
+        let hub = test_hub();
+        let db = hub.db.clone();
+        let _everyone = seed_team_with_default_role(&db, "team1", "owner1");
+
+        db.with_conn(|conn| {
+            db::create_user(conn, &db::User {
+                id: "alice".into(),
+                username: "alice".into(),
+                display_name: "Alice".into(),
+                public_key: vec![1u8; 32],
+                avatar_url: String::new(),
+                status_text: String::new(),
+                status_type: "online".into(),
+                is_admin: false,
+                created_at: now(),
+                updated_at: now(),
+                quiet_hours_enabled: false,
+                quiet_hours_from: String::new(),
+                quiet_hours_to: String::new(),
+            })?;
+            db::create_user(conn, &db::User {
+                id: "eve".into(),
+                username: "eve".into(),
+                display_name: "Eve".into(),
+                public_key: vec![2u8; 32],
+                avatar_url: String::new(),
+                status_text: String::new(),
+                status_type: "online".into(),
+                is_admin: false,
+                created_at: now(),
+                updated_at: now(),
+                quiet_hours_enabled: false,
+                quiet_hours_from: String::new(),
+                quiet_hours_to: String::new(),
+            })?;
+            conn.execute(
+                "INSERT INTO dm_channels (id, team_id, type, name, created_at) VALUES (?1, ?2, 'dm', '', ?3)",
+                rusqlite::params!["dm-alice-owner1", "team1", now()],
+            )?;
+            db::add_dm_members(conn, "dm-alice-owner1", &["alice".into(), "owner1".into()])?;
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+
+        // Alice and owner1 are members — both must be allowed.
+        assert!(user_can_subscribe_to_channel(&hub, "alice", "team1", "dm-alice-owner1").await);
+        assert!(user_can_subscribe_to_channel(&hub, "owner1", "team1", "dm-alice-owner1").await);
+        // Eve is in the team but not in the DM — must be denied.
+        assert!(!user_can_subscribe_to_channel(&hub, "eve", "team1", "dm-alice-owner1").await);
+    }
+
+    #[tokio::test]
+    async fn channel_join_denied_for_unknown_channel_id() {
+        let hub = test_hub();
+        let db = hub.db.clone();
+        let _everyone = seed_team_with_default_role(&db, "team1", "owner1");
+
+        // Channel ID that doesn't exist in channels OR dm_members → deny.
+        let allowed = user_can_subscribe_to_channel(&hub, "owner1", "team1", "bogus-id").await;
+        assert!(!allowed);
     }
 }
