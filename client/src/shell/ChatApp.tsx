@@ -188,39 +188,49 @@ function MiniMeter() {
   );
 }
 
-// Voice-dock latency sparkline. Subscribes to useVoiceStore for the
-// rolling RTT window (populated by WebRTCService.startStatsPoller) and
-// renders 28 bars left-to-right (oldest → newest). Empty slots render
-// as min-height placeholders so the chart shows from the first sample.
-const LATENCY_BARS = 28;
-function VoiceDockLatency() {
-  const samples = useVoiceStore((s) => s.latencySamples);
+// Voice-dock stats sparkline — shared design used for both latency
+// and bitrate. Renders 28 bars left-to-right (oldest → newest); pads
+// the window with idle bars so the chart frame is visible from the
+// first sample. `tone` returns ok/warn/bad based on a metric-specific
+// threshold so the same bar color language reads correctly in both
+// directions (lower-better for latency, higher-better for bitrate).
+const STATS_BARS = 28;
+function StatsSparkline({
+  label,
+  unit,
+  samples,
+  floor,
+  tone,
+  title,
+}: {
+  label: string;
+  unit: string;
+  samples: number[];
+  floor: number;
+  tone: (v: number) => 'ok' | 'warn' | 'bad';
+  title: (current: number | null) => string;
+}) {
   const current = samples.length ? samples[samples.length - 1] : null;
-  const max = Math.max(...samples, 30);
-  // Pad with empty slots so even an empty window renders the chart
-  // frame.
+  const max = Math.max(...samples, floor);
   const display: Array<number | null> = [];
-  for (let i = 0; i < LATENCY_BARS - samples.length; i++) display.push(null);
+  for (let i = 0; i < STATS_BARS - samples.length; i++) display.push(null);
   for (const s of samples) display.push(s);
   return (
-    <div
-      className="vd-latency"
-      title={current != null ? `live latency · current ${current}ms` : 'measuring latency…'}
-    >
-      <div className="vd-lat-head">
-        <span className="vd-k">latency</span>
-        <span className="vd-lat-cur">
-          {current != null ? current : '—'}<span className="vd-u">ms</span>
+    <div className="vd-spark" title={title(current)}>
+      <div className="vd-spark-head">
+        <span className="vd-k">{label}</span>
+        <span className="vd-spark-cur">
+          {current != null ? current : 0}<span className="vd-u">{unit}</span>
         </span>
       </div>
-      <div className="vd-lat-graph">
+      <div className="vd-spark-graph">
         {display.map((v, i) => {
-          const tone = v == null ? 'idle' : v < 20 ? 'ok' : v < 35 ? 'warn' : 'bad';
+          const t = v == null ? 'idle' : tone(v);
           const pct = v == null ? 0 : (v / max) * 100;
           return (
             <span
               key={i}
-              className={'vd-lat-bar vd-lat-' + tone}
+              className={'vd-spark-bar vd-spark-' + t}
               style={{ height: pct ? `${pct}%` : undefined }}
             />
           );
@@ -230,18 +240,35 @@ function VoiceDockLatency() {
   );
 }
 
-// Voice-dock bitrate card. Reads the most recent outbound audio
-// kbps from voiceStore (also written by the WebRTCService stats
-// poller).
-function VoiceDockBitrate() {
-  const kbps = useVoiceStore((s) => s.bitrateKbps);
+// Latency: lower-is-better.
+function VoiceDockLatency() {
+  const samples = useVoiceStore((s) => s.latencySamples);
   return (
-    <div className="vd-bitrate">
-      <span className="vd-k">bitrate</span>
-      <span className="vd-v">
-        {kbps > 0 ? kbps : 0}<span className="vd-u">kbps</span>
-      </span>
-    </div>
+    <StatsSparkline
+      label="latency"
+      unit="ms"
+      samples={samples}
+      floor={30}
+      tone={(v) => (v < 20 ? 'ok' : v < 35 ? 'warn' : 'bad')}
+      title={(c) => c != null ? `live latency · current ${c}ms` : 'measuring latency…'}
+    />
+  );
+}
+
+// Bitrate: higher-is-better. Opus voice typically sits 16-32kbps;
+// drops below ~8 mean we're either muted, in DTX silence, or
+// network-throttled.
+function VoiceDockBitrate() {
+  const samples = useVoiceStore((s) => s.bitrateSamples);
+  return (
+    <StatsSparkline
+      label="bitrate"
+      unit="kbps"
+      samples={samples}
+      floor={32}
+      tone={(v) => (v >= 16 ? 'ok' : v >= 8 ? 'warn' : 'bad')}
+      title={(c) => c != null ? `outbound audio · current ${c}kbps` : 'measuring bitrate…'}
+    />
   );
 }
 

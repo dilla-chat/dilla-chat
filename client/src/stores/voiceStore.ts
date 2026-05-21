@@ -33,9 +33,10 @@ interface VoiceStore {
    *  matches the sparkline bar count so the UI can render the
    *  whole window directly. */
   latencySamples: number[];
-  /** Most-recent outbound audio bitrate (kbps), updated by the same
-   *  poller. */
-  bitrateKbps: number;
+  /** Rolling window of recent outbound audio bitrate (kbps), same
+   *  cadence and cap as latencySamples — drives the matching
+   *  voice-dock sparkline. */
+  bitrateSamples: number[];
 
   setE2eVoice(enabled: boolean): void;
   joinChannel(teamId: string, channelId: string): Promise<void>;
@@ -65,8 +66,8 @@ interface VoiceStore {
   removeVoiceOccupant(channelId: string, userId: string): void;
   updateVoiceOccupant(channelId: string, userId: string, patch: Partial<VoicePeer>): void;
   pushLatencySample(ms: number): void;
-  setBitrateKbps(kbps: number): void;
-  resetLatencyWindow(): void;
+  pushBitrateSample(kbps: number): void;
+  resetStatsWindow(): void;
   cleanup(): void;
 }
 
@@ -93,7 +94,7 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
   peerConnection: null,
   localStream: null,
   latencySamples: [],
-  bitrateKbps: 0,
+  bitrateSamples: [],
 
   setE2eVoice: (enabled: boolean) => set({ e2eVoice: enabled }),
 
@@ -370,9 +371,16 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
     });
   },
 
-  setBitrateKbps: (kbps: number) => set({ bitrateKbps: kbps }),
+  pushBitrateSample: (kbps: number) => {
+    set((s) => {
+      const next = s.bitrateSamples.length >= LATENCY_WINDOW_SIZE
+        ? [...s.bitrateSamples.slice(s.bitrateSamples.length - LATENCY_WINDOW_SIZE + 1), kbps]
+        : [...s.bitrateSamples, kbps];
+      return { bitrateSamples: next };
+    });
+  },
 
-  resetLatencyWindow: () => set({ latencySamples: [], bitrateKbps: 0 }),
+  resetStatsWindow: () => set({ latencySamples: [], bitrateSamples: [] }),
 
   cleanup: () => {
     const state = get();
@@ -401,7 +409,7 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
       peerConnection: null,
       localStream: null,
       latencySamples: [],
-      bitrateKbps: 0,
+      bitrateSamples: [],
     });
   },
 }));

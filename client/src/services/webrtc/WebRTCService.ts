@@ -294,7 +294,7 @@ class WebRTCService {
   private startStatsPoller(): void {
     if (this.statsPollerId) return; // already running
     const store = useVoiceStore.getState();
-    store.resetLatencyWindow();
+    store.resetStatsWindow();
     this.lastBytesSent = 0;
     this.lastBytesSentAt = 0;
     this.statsPollerId = setInterval(async () => {
@@ -335,7 +335,7 @@ class WebRTCService {
             const dBytes = bytesSent - this.lastBytesSent;
             if (dt > 0) {
               const kbps = Math.round((dBytes * 8) / 1000 / dt);
-              useVoiceStore.getState().setBitrateKbps(kbps);
+              useVoiceStore.getState().pushBitrateSample(kbps);
             }
           }
           this.lastBytesSent = bytesSent;
@@ -604,7 +604,7 @@ class WebRTCService {
   async disconnect(): Promise<void> {
     this.vad.cleanup();
     this.stopStatsPoller();
-    useVoiceStore.getState().resetLatencyWindow();
+    useVoiceStore.getState().resetStatsWindow();
 
     // Clean up PTT listeners
     this.ptt.cleanupPTT();

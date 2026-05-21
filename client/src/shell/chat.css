@@ -361,11 +361,10 @@
 .voice-dock-name { font-size: 12px; color: var(--fg-2); margin-left: auto; }
 .voice-dock-stats {
   display: grid;
-  grid-template-columns: 30% 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 0.625rem;
 }
-.vd-bitrate,
-.vd-latency {
+.vd-spark {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
@@ -379,14 +378,6 @@
   color: var(--fg-3);
   font-weight: 600;
 }
-.vd-v {
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 1rem;
-  color: var(--fg);
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
 .vd-u {
   margin-left: 0.125rem;
   font-family: var(--font-mono);
@@ -396,13 +387,13 @@
   text-transform: lowercase;
   letter-spacing: 0.04em;
 }
-.vd-lat-head {
+.vd-spark-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 0.375rem;
 }
-.vd-lat-cur {
+.vd-spark-cur {
   font-family: var(--font-display);
   font-weight: 600;
   font-size: 0.8125rem;
@@ -410,14 +401,14 @@
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
-.vd-lat-graph {
+.vd-spark-graph {
   display: flex;
   align-items: flex-end;
   gap: 0.125rem;
   height: 1.5rem;
   width: 100%;
 }
-.vd-lat-bar {
+.vd-spark-bar {
   flex: 1;
   min-width: 0.1875rem;
   min-height: 0.125rem;
@@ -425,12 +416,12 @@
   background: var(--surface-2);
   transition: height 0.4s ease-out, background-color 0.4s ease-out;
 }
-.vd-lat-bar.vd-lat-ok   { background: var(--accent); }
-.vd-lat-bar.vd-lat-warn { background: var(--warn, #d4a017); }
-.vd-lat-bar.vd-lat-bad  { background: var(--danger); }
-.vd-lat-bar.vd-lat-idle { background: var(--surface-2); }
+.vd-spark-bar.vd-spark-ok   { background: var(--accent); }
+.vd-spark-bar.vd-spark-warn { background: var(--warn, #d4a017); }
+.vd-spark-bar.vd-spark-bad  { background: var(--danger); }
+.vd-spark-bar.vd-spark-idle { background: var(--surface-2); }
 @media (prefers-reduced-motion: reduce) {
-  .vd-lat-bar { transition: none; }
+  .vd-spark-bar { transition: none; }
 }
 .voice-dock-controls {
   display: flex; gap: 4px;
