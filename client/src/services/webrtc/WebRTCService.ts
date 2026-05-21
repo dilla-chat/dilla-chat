@@ -52,6 +52,12 @@ class WebRTCService {
   private statsPollerId: ReturnType<typeof setInterval> | null = null;
   private lastBytesSent = 0;
   private lastBytesSentAt = 0;
+  // Tracks queued up by startWebcam / startScreenShare to be bound to
+  // the next renegotiation's new transceiver BEFORE createAnswer runs.
+  // Without this, the answer m-line lands as a=inactive (Chrome
+  // downgrades empty sendonly to inactive) and the encoder never
+  // produces frames.
+  private pendingVideoTrack: { kind: 'cam' | 'screen'; track: MediaStreamTrack } | null = null;
 
   // Composed modules
   private readonly vad = new VoiceActivityDetector();
@@ -514,6 +520,37 @@ class WebRTCService {
               }
             }
             this.pendingCandidates = [];
+
+            // Pre-bind the pending cam/screen track to the new
+            // recvonly-from-remote (sendonly-from-us) transceiver so
+            // createAnswer produces a=sendonly with a real track id
+            // instead of a=inactive. The logged smoking gun:
+            //   offer m=video a=recvonly
+            //   answer m=video a=inactive      ← bug
+            // After this attach, the answer becomes:
+            //   answer m=video a=sendonly a=msid:...
+            if (this.pendingVideoTrack) {
+              const pending = this.pendingVideoTrack;
+              const target = this.pc.getTransceivers().find((tx) => {
+                if (tx.currentDirection === 'stopped') return false;
+                if (tx.sender.track) return false;
+                // The transceiver was just created by setRemoteDescription
+                // — for a recvonly remote offer, the browser sets local
+                // direction to 'sendonly' or 'sendrecv'.
+                return tx.direction === 'sendonly' || tx.direction === 'sendrecv';
+              });
+              if (target) {
+                try { target.direction = 'sendonly'; } catch { /* read-only */ }
+                await target.sender.replaceTrack(pending.track);
+                if (pending.kind === 'screen') this.screenSender = target.sender;
+                else this.webcamSender = target.sender;
+                console.log('[Voice/diag] pre-bind:', pending.kind, '→ transceiver', { mid: target.mid, dir: target.direction });
+                this.pendingVideoTrack = null;
+              } else {
+                console.warn('[Voice/diag] pre-bind:', pending.kind, '— no eligible new transceiver found');
+              }
+            }
+
             const answer = await this.pc.createAnswer();
             // Same check again — state can advance during createAnswer.
             if (this.pc.signalingState !== 'have-remote-offer') return;
@@ -1000,23 +1037,22 @@ class WebRTCService {
 
     console.log('[Voice/diag] startScreenShare — track', { id: videoTrack.id, kind: videoTrack.kind, label: videoTrack.label, readyState: videoTrack.readyState, enabled: videoTrack.enabled });
     this.diagSnapshot('startScreenShare: before voiceScreenStart');
-    // Tell the server to set up its end (recv-only transceiver + add
-    // our track to every other peer). Server will fire a
-    // renegotiation; the offer-queue handler in setupWSListeners
-    // processes it. We then call addTrack — it finds the new server-
-    // created sendonly transceiver (the only one without a sender
-    // track) and binds our video to it.
+    // Queue the track so the offer-queue handler binds it to the
+    // new transceiver BEFORE createAnswer (otherwise the answer
+    // becomes a=inactive and the encoder never produces frames —
+    // see the offer/answer pre-bind logic in setupWSListeners).
+    this.pendingVideoTrack = { kind: 'screen', track: videoTrack };
     ws.voiceScreenStart(this.teamId, this.channelId);
     await this.waitForSignalingStable(3000);
     this.diagSnapshot('startScreenShare: after signaling stable');
 
-    if (this.pc && this.screenStream) {
-      this.screenSender = this.pc.addTrack(videoTrack, this.screenStream);
-      this.diagSnapshot('startScreenShare: after addTrack');
+    if (this.screenSender) {
       // High priority + 4 Mbps ceiling so the BWE allocator favors
       // the screen over the cam even when both are sending.
       await this.setSenderBitrate(this.screenSender, 4_000_000, 'maintain-resolution', 'high');
       console.log('[Voice/diag] startScreenShare: sender params after setParameters', this.screenSender.getParameters());
+    } else {
+      console.warn('[Voice/diag] startScreenShare: pre-bind never landed — screen will not flow');
     }
   }
 
@@ -1154,18 +1190,19 @@ class WebRTCService {
 
     console.log('[Voice/diag] startWebcam — track', { id: videoTrack.id, kind: videoTrack.kind, label: videoTrack.label, readyState: videoTrack.readyState, enabled: videoTrack.enabled });
     this.diagSnapshot('startWebcam: before voiceWebcamStart');
+    this.pendingVideoTrack = { kind: 'cam', track: videoTrack };
     ws.voiceWebcamStart(this.teamId, this.channelId);
     await this.waitForSignalingStable(3000);
     this.diagSnapshot('startWebcam: after signaling stable');
 
-    if (this.pc && this.webcamStream) {
-      this.webcamSender = this.pc.addTrack(videoTrack, this.webcamStream);
-      this.diagSnapshot('startWebcam: after addTrack');
+    if (this.webcamSender) {
       // Cap the cam below the screen-share and mark it 'low' priority
       // so the allocator favors the screen when both are sending.
       // Cam stays smooth (face) by dropping resolution under load.
       await this.setSenderBitrate(this.webcamSender, 800_000, 'maintain-framerate', 'low');
       console.log('[Voice/diag] startWebcam: sender params after setParameters', this.webcamSender.getParameters());
+    } else {
+      console.warn('[Voice/diag] startWebcam: pre-bind never landed — cam will not flow');
     }
   }
 
