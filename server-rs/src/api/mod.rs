@@ -76,6 +76,43 @@ pub fn create_router(state: AppState) -> Router {
         auth_rate_limiter.retain_recent();
     });
 
+    // VULN-011 / H1: per-IP rate limiter for the *protected* router.
+    // Auth routes have a strict 10/burst at 6/s; this one is the
+    // backstop for everything behind auth_middleware. Defaults are
+    // intentionally permissive (chat traffic spikes) and tunable via
+    // DILLA_RATELIMIT_BURST / DILLA_RATELIMIT_PER_SECOND.
+    let protected_rate_config = Arc::new(
+        GovernorConfigBuilder::default()
+            .per_second(state.config.ratelimit_per_second.max(1))
+            .burst_size(state.config.ratelimit_burst.max(1))
+            .key_extractor(SmartIpKeyExtractor)
+            .finish()
+            .unwrap(),
+    );
+    let protected_rate_limiter = protected_rate_config.limiter().clone();
+    std::thread::spawn(move || loop {
+        std::thread::sleep(std::time::Duration::from_secs(60));
+        protected_rate_limiter.retain_recent();
+    });
+
+    // Stricter limiter for expensive / abuse-prone endpoints: uploads,
+    // Giphy embed (outbound fetch + disk write), prekey-bundle fetch
+    // (OTPK consumption). burst=10, per_second=5 keeps a normal user
+    // unaffected while throttling enumeration sweeps.
+    let strict_rate_config = Arc::new(
+        GovernorConfigBuilder::default()
+            .per_second(5)
+            .burst_size(10)
+            .key_extractor(SmartIpKeyExtractor)
+            .finish()
+            .unwrap(),
+    );
+    let strict_rate_limiter = strict_rate_config.limiter().clone();
+    std::thread::spawn(move || loop {
+        std::thread::sleep(std::time::Duration::from_secs(60));
+        strict_rate_limiter.retain_recent();
+    });
+
     let cors = if state.config.allowed_origins.is_empty() {
         if state.config.insecure {
             CorsLayer::very_permissive()
@@ -145,7 +182,11 @@ pub fn create_router(state: AppState) -> Router {
             "/api/v1/prekeys",
             post(prekeys::upload).delete(prekeys::delete_own),
         )
-        .route("/api/v1/prekeys/{user_id}", get(prekeys::get_bundle))
+        .route(
+            "/api/v1/prekeys/{user_id}",
+            get(prekeys::get_bundle)
+                .route_layer(GovernorLayer { config: strict_rate_config.clone() }),
+        )
         // Teams
         .route("/api/v1/teams", get(teams::list).post(teams::create))
         .route(
@@ -274,7 +315,11 @@ pub fn create_router(state: AppState) -> Router {
         // Materialize a picked Giphy URL into a team attachment — keeps
         // viewer IPs off media.giphy.com and survives Giphy rotating
         // the URL. Returns the same attachment shape /upload does.
-        .route("/api/v1/teams/{team_id}/gif/embed", post(gif::embed))
+        .route(
+            "/api/v1/teams/{team_id}/gif/embed",
+            post(gif::embed)
+                .route_layer(GovernorLayer { config: strict_rate_config.clone() }),
+        )
         .route(
             "/api/v1/teams/{team_id}/integrations/giphy",
             get(integrations::get_giphy).put(integrations::set_giphy),
@@ -337,7 +382,8 @@ pub fn create_router(state: AppState) -> Router {
         // Uploads
         .route(
             "/api/v1/teams/{team_id}/upload",
-            post(uploads::upload),
+            post(uploads::upload)
+                .route_layer(GovernorLayer { config: strict_rate_config.clone() }),
         )
         .route(
             "/api/v1/teams/{team_id}/attachments/{attachment_id}",
@@ -373,7 +419,11 @@ pub fn create_router(state: AppState) -> Router {
         // WebSocket ticket (returns a single-use ticket for WS connection)
         .route("/api/v1/auth/ws-ticket", post(ws_ticket))
         // WebSocket
-        .layer(middleware::from_fn(auth::auth_middleware));
+        .layer(middleware::from_fn(auth::auth_middleware))
+        // VULN-011 / H1: global per-IP rate limit for the protected
+        // router. Applied after the auth middleware so denials count
+        // against the calling client (not the public surface).
+        .layer(GovernorLayer { config: protected_rate_config });
 
     // WebSocket route — outside auth middleware (does its own token auth via query params)
     let ws_route = Router::new()

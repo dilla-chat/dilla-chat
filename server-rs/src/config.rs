@@ -23,6 +23,19 @@ pub struct Config {
     pub log_format: String,
     pub rate_limit: f64,
     pub rate_burst: u32,
+    /// Per-IP rate limit (requests/second) applied to the protected
+    /// (auth-required) router. Auth routes have a stricter limiter; this
+    /// one covers everything behind `auth_middleware`. VULN-011.
+    pub ratelimit_per_second: u64,
+    pub ratelimit_burst: u32,
+    /// Per-team upload disk-usage quota in gigabytes. Tracked via
+    /// `teams.upload_bytes_used`; uploads past this are rejected with 413.
+    /// UPL-DOS-1.
+    pub upload_quota_per_team_gb: u64,
+    /// Path to a file containing the SQLCipher passphrase. When set,
+    /// takes precedence over `DILLA_DB_PASSPHRASE` so secrets stay out
+    /// of the process environment / `ps`. DB-MEM-1.
+    pub db_passphrase_file: String,
     pub domain: String,
     pub cf_turn_key_id: String,
     pub cf_turn_api_token: String,
@@ -135,6 +148,10 @@ impl Config {
             log_format: env_str("DILLA_LOG_FORMAT", "text"),
             rate_limit: env_f64("DILLA_RATE_LIMIT", 100.0),
             rate_burst: env_u32("DILLA_RATE_BURST", 200),
+            ratelimit_per_second: env_u64("DILLA_RATELIMIT_PER_SECOND", 30),
+            ratelimit_burst: env_u32("DILLA_RATELIMIT_BURST", 60),
+            upload_quota_per_team_gb: env_u64("DILLA_UPLOAD_QUOTA_PER_TEAM_GB", 10),
+            db_passphrase_file: env_str("DILLA_DB_PASSPHRASE_FILE", ""),
             domain: env_str("DILLA_DOMAIN", ""),
             cf_turn_key_id: env_str("DILLA_CF_TURN_KEY_ID", ""),
             cf_turn_api_token: env_str("DILLA_CF_TURN_API_TOKEN", ""),
