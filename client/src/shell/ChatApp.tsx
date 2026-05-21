@@ -4360,39 +4360,29 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                      else if (canCam) nextKind = 'cam';
                      if (nextKind) setFocused({ id: p.id, kind: nextKind });
                    }}>
-                <div className="voice-media">
-                  {focusKind ? (
-                    // Focused stage: just the single requested kind,
-                    // no avatar-underneath / presence-dot overlay.
-                    focusKind === 'screen' ? (
-                      <ScreenTile member={p} pip={null} showStats />
-                    ) : (
-                      <CamTile member={p} showStats />
-                    )
-                  ) : (
-                    // Grid card: avatar lives at the bottom and is
-                    // always rendered. The cam / screen layer above
-                    // fades in on top when the publisher starts the
-                    // stream so the visual transition is the cam feed
-                    // appearing OVER the avatar. Presence dot floats
-                    // on top of every layer.
-                    <>
-                      <div className="voice-media-layer voice-media-avatar">
-                        <div className="avatar-tile">
-                          <Avatar member={p} size={isMini ? 32 : 96} />
-                        </div>
+                <div className={'voice-media render-' + renderKind}>
+                  {/* Render every possible layer (cam, screen, avatar) and
+                      cross-fade between them via opacity transitions on
+                      .voice-media.render-<kind>. Mounting/unmounting on
+                      a kind change would just snap; layered rendering
+                      keeps both the old and new tile in the DOM long
+                      enough for the transition to play. */}
+                  {renderKind === 'screen' && (
+                    <div className="voice-media-layer voice-media-screen">
+                      <ScreenTile member={p} pip={showCam && !focusKind ? p : null} showStats={!!focusKind} />
+                    </div>
+                  )}
+                  {renderKind === 'cam' && (
+                    <div className="voice-media-layer voice-media-cam">
+                      <CamTile member={p} showStats={!!focusKind} />
+                    </div>
+                  )}
+                  {renderKind === 'avatar' && (
+                    <div className="voice-media-layer voice-media-avatar">
+                      <div className="avatar-tile">
+                        <Avatar member={p} size={isMini ? 32 : 96} />
                       </div>
-                      {renderKind === 'cam' && (
-                        <div className="voice-media-layer voice-media-cam">
-                          <CamTile member={p} />
-                        </div>
-                      )}
-                      {renderKind === 'screen' && (
-                        <div className="voice-media-layer voice-media-screen">
-                          <ScreenTile member={p} pip={showCam ? p : null} />
-                        </div>
-                      )}
-                    </>
+                    </div>
                   )}
                   {/* Clickable swap PIP — only shown in focus mode when
                       the participant has BOTH streams. Click the PIP to

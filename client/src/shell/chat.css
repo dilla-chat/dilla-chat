@@ -2467,26 +2467,21 @@ img.attach-img {
 }
 
 /* ───── Mock webcam ───── */
-/* Stacked layers inside .voice-media. The avatar layer sits at the
-   bottom and is always present; the cam / screen layers fade in
-   over it when the publisher starts that kind of stream. The
-   avatar's presence dot stays visible at the edge until the cam
-   fully covers (the cam layer rounds inside its tile, leaving the
-   avatar corner peeking briefly during the fade). */
+/* Cross-fade in when the media layer changes (avatar ↔ cam ↔ screen).
+   Each layer is mounted/unmounted by React on a renderKind change;
+   the keyframe gives it a 220ms ease-out fade-in so the swap doesn't
+   snap. The PREVIOUS layer is gone by the time the new one mounts,
+   so it's a fade-in rather than a true cross-fade — quick enough
+   that the seam isn't visible. */
 .voice-media-layer {
-  position: absolute;
-  inset: 0;
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
+  animation: voice-media-fade 220ms ease-out both;
 }
-.voice-media-avatar { z-index: 0; }
-.voice-media-cam,
-.voice-media-screen {
-  z-index: 1;
-  animation: voice-media-reveal 260ms ease-out both;
-}
-@keyframes voice-media-reveal {
+@keyframes voice-media-fade {
   from { opacity: 0; transform: scale(0.96); }
   to   { opacity: 1; transform: scale(1); }
 }
