@@ -55,6 +55,11 @@ tower_governor = "0.6"
 tokio-rustls = "0.26"
 rustls = "0.23"
 rustls-pemfile = "2"
+# Serves axum::Router over a rustls TLS listener. VULN-001: the
+# previous start_server bound a plain TcpListener even when TLS_CERT
+# / TLS_KEY were set; axum-server gives us the bind_rustls path so
+# operators who configure TLS actually get TLS.
+axum-server = { version = "0.7", features = ["tls-rustls"] }
 
 # Embed
 rust-embed = "8"

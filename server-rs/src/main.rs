@@ -590,24 +590,84 @@ fn init_telemetry_relay(cfg: &Config) -> Option<Arc<telemetry::TelemetryRelay>> 
 }
 
 async fn start_server(cfg: &Config, app: axum::Router) {
-    let addr = format!("0.0.0.0:{}", cfg.port);
-    tracing::info!(addr = %addr, team = %cfg.team_name, "server starting");
+    let addr: std::net::SocketAddr = format!("0.0.0.0:{}", cfg.port)
+        .parse()
+        .unwrap_or_else(|e| {
+            tracing::error!("invalid bind address: {}", e);
+            std::process::exit(1);
+        });
 
-    let listener = match tokio::net::TcpListener::bind(&addr).await {
-        Ok(l) => l,
-        Err(e) => {
-            tracing::error!("failed to bind: {}", e);
+    let tls_configured = !cfg.tls_cert.is_empty() && !cfg.tls_key.is_empty();
+
+    // VULN-001: refuse to start in plaintext unless the operator
+    // explicitly opted in via DILLA_INSECURE=true. The dev binary in
+    // CLAUDE.md uses DILLA_INSECURE=true and is unaffected.
+    if !tls_configured && !cfg.insecure {
+        eprintln!();
+        eprintln!("  ERROR: refusing to start in plaintext.");
+        eprintln!("  Either:");
+        eprintln!("    - set DILLA_TLS_CERT and DILLA_TLS_KEY to a valid certificate pair, or");
+        eprintln!("    - set DILLA_INSECURE=true to explicitly run an unencrypted HTTP server (dev only).");
+        eprintln!();
+        std::process::exit(1);
+    }
+
+    if tls_configured {
+        tracing::info!(addr = %addr, team = %cfg.team_name, "server starting (TLS)");
+
+        let rustls_cfg = match axum_server::tls_rustls::RustlsConfig::from_pem_file(
+            &cfg.tls_cert,
+            &cfg.tls_key,
+        )
+        .await
+        {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::error!(
+                    cert = %cfg.tls_cert,
+                    key = %cfg.tls_key,
+                    "failed to load TLS cert/key pair: {}",
+                    e,
+                );
+                std::process::exit(1);
+            }
+        };
+
+        if let Err(e) = axum_server::bind_rustls(addr, rustls_cfg)
+            .serve(app.into_make_service_with_connect_info::<std::net::SocketAddr>())
+            .await
+        {
+            tracing::error!("TLS server error: {}", e);
             std::process::exit(1);
         }
-    };
+    } else {
+        // insecure=true confirmed above. Make sure the operator sees a
+        // loud reminder in every restart.
+        tracing::warn!(
+            addr = %addr,
+            "SECURITY: running plaintext HTTP because DILLA_INSECURE=true. \
+             Do not use in production. (VULN-001)"
+        );
+        tracing::info!(addr = %addr, team = %cfg.team_name, "server starting (plaintext, insecure mode)");
 
-    // Use into_make_service_with_connect_info so rate limiter can access peer IP.
-    if let Err(e) = axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>())
+        let listener = match tokio::net::TcpListener::bind(addr).await {
+            Ok(l) => l,
+            Err(e) => {
+                tracing::error!("failed to bind: {}", e);
+                std::process::exit(1);
+            }
+        };
+
+        if let Err(e) = axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
         .with_graceful_shutdown(shutdown_signal())
         .await
-    {
-        tracing::error!("server error: {}", e);
-        std::process::exit(1);
+        {
+            tracing::error!("server error: {}", e);
+            std::process::exit(1);
+        }
     }
 
     tracing::info!("server stopped");
