@@ -986,12 +986,13 @@ class WebRTCService {
         // ditch fallback so the share at least works locally.
         this.screenSender = this.pc.addTrack(videoTrack, this.screenStream);
       }
-      // Budget the screen at 2.5 Mbps and tell the encoder to
-      // preserve resolution over framerate when congestion hits.
-      // Without this, WebRTC's BWE starves the screen when the cam
-      // is also sending — user-visible as a screen track that only
-      // moves once the cam goes off.
-      await this.setSenderBitrate(this.screenSender, 2_500_000, 'maintain-resolution');
+      // Give the screen-share priority over the cam in WebRTC's
+      // bandwidth allocator and let it have a wide ceiling. The
+      // 'cam off → screen-share jumps in bitrate' symptom is the
+      // allocator distributing the estimated capacity across senders
+      // — even on LAN it starts conservatively and treats both video
+      // senders equally without these hints.
+      await this.setSenderBitrate(this.screenSender, 4_000_000, 'maintain-resolution', 'high');
     }
   }
 
@@ -1126,22 +1127,24 @@ class WebRTCService {
       } else {
         this.webcamSender = this.pc.addTrack(videoTrack, this.webcamStream);
       }
-      // Cap the cam at 800 kbps and prefer dropping resolution before
-      // framerate (faces stay smooth, just lower res). Leaves room
-      // in the budget for the screen-share at 2.5 Mbps.
-      await this.setSenderBitrate(this.webcamSender, 800_000, 'maintain-framerate');
+      // Cap the cam below the screen-share and mark it 'low' priority
+      // so the allocator favors the screen when both are sending.
+      // Cam stays smooth (face) by dropping resolution under load.
+      await this.setSenderBitrate(this.webcamSender, 800_000, 'maintain-framerate', 'low');
     }
   }
 
-  /** Set a hard bitrate cap + degradation preference on a sender so
-   *  WebRTC's bandwidth allocator gives each outgoing track the budget
-   *  it needs. Without explicit caps multiple video senders share the
-   *  pipe conservatively and one stream can starve the other (visible
-   *  as: screen-share doesn't flow until the cam goes off). */
+  /** Set bitrate budget, degradation preference, and priority on a
+   *  sender. Priority hints tell WebRTC's bandwidth allocator how to
+   *  divide estimated capacity between simultaneous tracks — without
+   *  this, two video senders are treated equally and the screen-share
+   *  can be starved by the cam (visible as: screen-share doesn't
+   *  actually flow until the cam is turned off). */
   private async setSenderBitrate(
     sender: RTCRtpSender,
     maxBitrate: number,
     degradationPreference: 'maintain-framerate' | 'maintain-resolution' | 'balanced',
+    priority: 'very-low' | 'low' | 'medium' | 'high',
   ): Promise<void> {
     try {
       const params = sender.getParameters();
@@ -1149,6 +1152,8 @@ class WebRTCService {
         params.encodings = [{}];
       }
       params.encodings[0].maxBitrate = maxBitrate;
+      params.encodings[0].priority = priority;
+      params.encodings[0].networkPriority = priority;
       (params as RTCRtpSendParameters & { degradationPreference?: string }).degradationPreference =
         degradationPreference;
       await sender.setParameters(params);
