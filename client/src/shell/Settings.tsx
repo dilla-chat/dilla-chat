@@ -2008,7 +2008,31 @@ function TeamMembers() {
   const members = useTeamStore((s) => (teamId ? s.members.get(teamId) ?? [] : []));
   const roles = useTeamStore((s) => (teamId ? s.roles.get(teamId) ?? [] : []));
   const setMembers = useTeamStore((s) => s.setMembers);
-  const [busyId, setBusyId] = useStateS<string | null>(null);
+  const [saving, setSaving] = useStateS(false);
+  const [savedAt, setSavedAt] = useStateS<number | null>(null);
+  // Local draft of role-id assignments, keyed by user_id. Edits only
+  // mutate the draft — pressing Save in the FormBar commits the diff
+  // to the server. Discard reverts everything back to the server state.
+  const initialDraft = useMemo(() => {
+    const out: Record<string, string[]> = {};
+    for (const m of members) out[m.userId] = [...(m.roleIds ?? [])];
+    return out;
+  }, [members]);
+  const [draft, setDraft] = useStateS<Record<string, string[]>>(initialDraft);
+  // Re-seed the draft when the server state changes (e.g. after a save
+  // round-trip or another admin's edit comes in via websocket).
+  useEffectS(() => {
+    setDraft(initialDraft);
+  }, [initialDraft]);
+
+  const dirty = useMemo(() => {
+    for (const m of members) {
+      const cur = (m.roleIds ?? []).slice().sort().join('|');
+      const nxt = (draft[m.userId] ?? []).slice().sort().join('|');
+      if (cur !== nxt) return true;
+    }
+    return false;
+  }, [members, draft]);
 
   // Non-default roles are the ones admins explicitly assign. `everyone` is
   // applied implicitly to every member so we hide it from the toggles.
@@ -2016,32 +2040,51 @@ function TeamMembers() {
     .filter((r) => !r.isDefault)
     .sort((a, b) => (b.position ?? 0) - (a.position ?? 0));
 
-  async function toggleRole(member: any, roleId: string) {
-    if (!teamId || busyId) return;
-    setBusyId(member.userId);
-    try {
-      const has = (member.roleIds ?? []).includes(roleId);
-      const nextIds = has
-        ? (member.roleIds ?? []).filter((id: string) => id !== roleId)
-        : [...(member.roleIds ?? []), roleId];
-      await api.updateMember(teamId, member.userId, { role_ids: nextIds });
+  function toggleRole(memberId: string, roleId: string) {
+    setDraft((prev) => {
+      const cur = prev[memberId] ?? [];
+      const next = cur.includes(roleId)
+        ? cur.filter((id) => id !== roleId)
+        : [...cur, roleId];
+      return { ...prev, [memberId]: next };
+    });
+  }
 
-      // Optimistically update the local store so the row reflects the new
-      // assignment without waiting for a re-sync.
+  async function save() {
+    if (!teamId || saving) return;
+    setSaving(true);
+    try {
       const rolesById = new Map(roles.map((r) => [r.id, r]));
       const PERM_ADMIN = 1 << 0;
-      const nextRoles = nextIds.map((id: string) => rolesById.get(id)).filter(Boolean);
-      const isAdmin = nextRoles.some((r: any) => (r.permissions & PERM_ADMIN) !== 0);
-      const updated = members.map((m) =>
-        m.userId === member.userId ? { ...m, roleIds: nextIds, roles: nextRoles, isAdmin } : m,
-      );
+      const updates: Array<{ memberId: string; roleIds: string[] }> = [];
+      for (const m of members) {
+        const cur = (m.roleIds ?? []).slice().sort().join('|');
+        const nxt = (draft[m.userId] ?? []).slice().sort().join('|');
+        if (cur !== nxt) updates.push({ memberId: m.userId, roleIds: draft[m.userId] ?? [] });
+      }
+      for (const u of updates) {
+        await api.updateMember(teamId, u.memberId, { role_ids: u.roleIds });
+      }
+      // Optimistically reflect the new assignments locally so the store
+      // matches the server without waiting for a re-sync.
+      const updated = members.map((m) => {
+        const nextIds = draft[m.userId] ?? m.roleIds ?? [];
+        const nextRoles = nextIds.map((id) => rolesById.get(id)).filter(Boolean);
+        const isAdmin = nextRoles.some((r: any) => (r.permissions & PERM_ADMIN) !== 0);
+        return { ...m, roleIds: nextIds, roles: nextRoles, isAdmin };
+      });
       setMembers(teamId, updated as any);
+      setSavedAt(Date.now());
     } catch (err) {
-      console.warn('[Settings] toggleRole failed', err);
+      console.warn('[Settings] save members failed', err);
       window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'members', text: 'Update failed — manage-members permission required.', duration: 3500 } }));
     } finally {
-      setBusyId(null);
+      setSaving(false);
     }
+  }
+
+  function discard() {
+    setDraft(initialDraft);
   }
 
   if (!auth) {
@@ -2053,51 +2096,56 @@ function TeamMembers() {
   }
 
   return (
-    <Group title="Members" hint="Toggle a role to promote or demote a member. The default role applies to everyone automatically.">
-      <div className="set-table">
-        {members.length === 0 && <div className="set-empty">No members yet.</div>}
-        {members.map((m) => (
-          <div key={m.userId} className="set-tr" style={{ display: 'grid', gridTemplateColumns: '1.4fr 2fr', gap: 12, alignItems: 'center' }}>
-            <div>
-              <div style={{ fontWeight: 600 }}>{m.displayName || m.username}</div>
-              <div style={{ color: 'var(--fg-3)', fontSize: 11 }}>{m.username}</div>
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {assignableRoles.length === 0 && (
-                <span style={{ color: 'var(--fg-3)', fontSize: 11 }}>No roles to assign — create one in Roles & permissions.</span>
-              )}
-              {assignableRoles.map((r) => {
-                const has = (m.roleIds ?? []).includes(r.id);
-                return (
-                  <button
-                    key={r.id}
-                    onClick={() => toggleRole(m, r.id)}
-                    disabled={busyId === m.userId}
-                    title={has ? `Remove ${r.name}` : `Grant ${r.name}`}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      padding: '3px 9px',
-                      border: '1px solid ' + (has ? r.color : 'var(--hairline)'),
-                      background: has ? r.color + '22' : 'transparent',
-                      color: has ? 'var(--fg)' : 'var(--fg-2)',
-                      borderRadius: 999,
-                      cursor: busyId === m.userId ? 'wait' : 'pointer',
-                      fontSize: 11,
-                      fontFamily: 'var(--font-mono)',
-                    }}
-                  >
-                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: r.color }} />
-                    {r.name}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
-    </Group>
+    <>
+      <Group title="Members" hint="Toggle a role to promote or demote a member, then press Save. The default role applies to everyone automatically.">
+        <div className="set-table">
+          {members.length === 0 && <div className="set-empty">No members yet.</div>}
+          {members.map((m) => {
+            const memberRoleIds = draft[m.userId] ?? m.roleIds ?? [];
+            return (
+              <div key={m.userId} className="set-tr" style={{ display: 'grid', gridTemplateColumns: '1.4fr 2fr', gap: 12, alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontWeight: 600 }}>{m.displayName || m.username}</div>
+                  <div style={{ color: 'var(--fg-3)', fontSize: 11 }}>{m.username}</div>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {assignableRoles.length === 0 && (
+                    <span style={{ color: 'var(--fg-3)', fontSize: 11 }}>No roles to assign — create one in Roles & permissions.</span>
+                  )}
+                  {assignableRoles.map((r) => {
+                    const has = memberRoleIds.includes(r.id);
+                    return (
+                      <button
+                        key={r.id}
+                        onClick={() => toggleRole(m.userId, r.id)}
+                        title={has ? `Remove ${r.name}` : `Grant ${r.name}`}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          padding: '3px 9px',
+                          border: '1px solid ' + (has ? r.color : 'var(--hairline)'),
+                          background: has ? r.color + '22' : 'transparent',
+                          color: has ? 'var(--fg)' : 'var(--fg-2)',
+                          borderRadius: 999,
+                          cursor: 'pointer',
+                          fontSize: 11,
+                          fontFamily: 'var(--font-mono)',
+                        }}
+                      >
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: r.color }} />
+                        {r.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Group>
+      <FormBar dirty={dirty} saving={saving} savedAt={savedAt} onSave={save} onDiscard={discard} />
+    </>
   );
 }
 // Team Settings → Integrations. Mirror of pages/TeamSettings/IntegrationsTab
