@@ -131,6 +131,8 @@ mod tests {
             otel_service_name: "test".into(),
             otel_api_key: String::new(),
             otel_api_header: String::new(),
+            seed_demo: false,
+            browser_log_forward: false,
         });
         let custom_theme_css = load_theme_file(theme_file);
         let state = AppState {

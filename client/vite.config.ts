@@ -2,7 +2,31 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 import fs from 'fs'
+import { execFileSync } from 'child_process'
 import type { Plugin } from 'vite'
+
+// Single source of truth for the version shown in the UI footer:
+// pull it straight from package.json and append the current git
+// short SHA so the displayed "v X · build Y" stays accurate
+// without us having to hand-edit any string.
+const pkgJson = JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8'),
+) as { version: string }
+const APP_VERSION = pkgJson.version
+let GIT_SHA = 'dev'
+try {
+  // execFileSync (not exec) avoids shell interpretation — args are
+  // a fixed array, not a concatenated string, so there's nothing
+  // for an attacker to inject. Inputs here are all static.
+  GIT_SHA = execFileSync('git', ['rev-parse', '--short', 'HEAD'], {
+    cwd: __dirname,
+    stdio: ['ignore', 'pipe', 'ignore'],
+  })
+    .toString()
+    .trim()
+} catch {
+  // not a git checkout / git not installed — leave as "dev"
+}
 
 /**
  * Serve ORT WASM files from node_modules in dev.
@@ -48,9 +72,17 @@ function ortWasmPlugin(): Plugin {
 
 // https://vite.dev/config/
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(APP_VERSION),
+    __GIT_SHA__: JSON.stringify(GIT_SHA),
+  },
   plugins: [react(), ortWasmPlugin()],
   server: {
     port: 8888,
+    // Bind on all interfaces so the dev server is reachable from
+    // other machines on the LAN (e.g. http://192.168.x.y:8888/app).
+    // Defaults to localhost otherwise.
+    host: '0.0.0.0',
     allowedHosts: ['dilla.thim.dev'],
     headers: {
       'Cross-Origin-Opener-Policy': 'same-origin',

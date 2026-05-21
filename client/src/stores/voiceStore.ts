@@ -291,6 +291,11 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
   setScreenSharing: (sharing: boolean) => set({ screenSharing: sharing }),
   setScreenSharingUserId: (userId: string | null) => set({ screenSharingUserId: userId }),
   setRemoteScreenStream: (userId: string, stream: MediaStream | null) => {
+    if (stream === null) {
+      console.log('[Voice/diag] setRemoteScreenStream(null) for', userId, 'stack:', new Error().stack);
+    } else {
+      console.log('[Voice/diag] setRemoteScreenStream(', stream.id, ') for', userId);
+    }
     set((state) => {
       const streams = { ...state.remoteScreenStreams };
       if (stream === null) delete streams[userId];
@@ -301,15 +306,22 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
   setLocalScreenStream: (stream: MediaStream | null) => set({ localScreenStream: stream }),
   setWebcamSharing: (sharing: boolean) => set({ webcamSharing: sharing }),
   setLocalWebcamStream: (stream: MediaStream | null) => set({ localWebcamStream: stream }),
-  setRemoteWebcamStream: (userId: string, stream: MediaStream | null) => set((state) => {
-    const streams = { ...state.remoteWebcamStreams };
-    if (stream) {
-      streams[userId] = stream;
+  setRemoteWebcamStream: (userId: string, stream: MediaStream | null) => {
+    if (stream === null) {
+      console.log('[Voice/diag] setRemoteWebcamStream(null) for', userId, 'stack:', new Error().stack);
     } else {
-      delete streams[userId];
+      console.log('[Voice/diag] setRemoteWebcamStream(', stream.id, ') for', userId);
     }
-    return { remoteWebcamStreams: streams };
-  }),
+    set((state) => {
+      const streams = { ...state.remoteWebcamStreams };
+      if (stream) {
+        streams[userId] = stream;
+      } else {
+        delete streams[userId];
+      }
+      return { remoteWebcamStreams: streams };
+    });
+  },
 
   setPeers: (peers: VoicePeer[]) => {
     const map: Record<string, VoicePeer> = {};
@@ -334,6 +346,9 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
   },
 
   updatePeer: (userId: string, updates: Partial<VoicePeer>) => {
+    if ('screen_sharing' in updates || 'webcam_sharing' in updates) {
+      console.log('[Voice/diag] updatePeer', userId, updates, 'stack:', new Error().stack);
+    }
     set((state) => {
       const existing = state.peers[userId];
       if (!existing) return state;

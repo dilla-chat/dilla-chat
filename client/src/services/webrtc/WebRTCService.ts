@@ -265,11 +265,22 @@ class WebRTCService {
       this.encryption.applyDecryptTransform(event.receiver, streamId, this.localUserId);
 
       if (track.kind === 'video') {
+        console.log('[Voice/diag] ontrack video — streamId=', streamId, 'trackId=', track.id, 'streamIdsAll=', event.streams.map((s) => s.id));
         // Distinguish webcam vs screen by stream/track ID prefix
         if (streamId.startsWith('webcam-stream-') || track.id.startsWith('webcam-')) {
           const userId = streamId.startsWith('webcam-stream-')
             ? streamId.replace('webcam-stream-', '')
             : track.id.replace('webcam-', '');
+          console.log('[Voice/diag] ontrack → webcam for', userId);
+          // Watch the track for unexpected end events — that's the
+          // smoking gun for "B sees A's stream vanish even though
+          // server thinks A is still publishing".
+          track.addEventListener('ended', () => {
+            console.warn('[Voice/diag] webcam track ended for', userId, 'streamId=', streamId, 'trackId=', track.id);
+          });
+          track.addEventListener('mute', () => {
+            console.warn('[Voice/diag] webcam track muted for', userId, 'streamId=', streamId, 'trackId=', track.id);
+          });
           useVoiceStore.getState().setRemoteWebcamStream(userId, stream);
         } else {
           // Screen share video track. stream id format is
@@ -283,6 +294,13 @@ class WebRTCService {
             : track.id.startsWith('screen-')
               ? track.id.replace('screen-', '').replace(/-[a-f0-9-]+$/, '')
               : streamId;
+          console.log('[Voice/diag] ontrack → screen for', userId);
+          track.addEventListener('ended', () => {
+            console.warn('[Voice/diag] screen track ended for', userId, 'streamId=', streamId, 'trackId=', track.id);
+          });
+          track.addEventListener('mute', () => {
+            console.warn('[Voice/diag] screen track muted for', userId, 'streamId=', streamId, 'trackId=', track.id);
+          });
           useVoiceStore.getState().setRemoteScreenStream(userId, stream);
         }
       } else {

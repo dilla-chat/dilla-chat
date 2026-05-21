@@ -14,6 +14,9 @@ use crate::error::AppError;
 #[derive(Deserialize)]
 pub struct UploadPrekeyRequest {
     pub identity_key: String,
+    /// X25519 public DH key (base64). Required for X3DH's DH2 step;
+    /// the Ed25519 `identity_key` above can't be used for raw DH.
+    pub identity_dh_key: String,
     pub signed_prekey: String,
     pub signed_prekey_signature: String,
     #[serde(default)]
@@ -28,6 +31,10 @@ pub async fn upload(
     let identity_key = base64::engine::general_purpose::STANDARD
         .decode(&body.identity_key)
         .map_err(|_| AppError::BadRequest("invalid base64 identity_key".into()))?;
+
+    let identity_dh_key = base64::engine::general_purpose::STANDARD
+        .decode(&body.identity_dh_key)
+        .map_err(|_| AppError::BadRequest("invalid base64 identity_dh_key".into()))?;
 
     let signed_prekey = base64::engine::general_purpose::STANDARD
         .decode(&body.signed_prekey)
@@ -50,6 +57,7 @@ pub async fn upload(
                 id: db::new_id(),
                 user_id: uid,
                 identity_key,
+                identity_dh_key,
                 signed_prekey,
                 signed_prekey_signature,
                 one_time_prekeys: otpk_json,
@@ -83,19 +91,28 @@ pub async fn get_bundle(
 
             let identity_key_b64 =
                 base64::engine::general_purpose::STANDARD.encode(&bundle.identity_key);
+            let identity_dh_key_b64 =
+                base64::engine::general_purpose::STANDARD.encode(&bundle.identity_dh_key);
             let signed_prekey_b64 =
                 base64::engine::general_purpose::STANDARD.encode(&bundle.signed_prekey);
             let sig_b64 =
                 base64::engine::general_purpose::STANDARD.encode(&bundle.signed_prekey_signature);
-            let otpk_b64 =
-                one_time_prekey.map(|k| base64::engine::general_purpose::STANDARD.encode(&k));
+            // Wire format returns `one_time_prekeys` as an array
+            // (length 0 or 1 — we consume at most one). Keeping the
+            // field as an array means the client doesn't need a
+            // singular/plural-aware parser.
+            let otpk_array: Vec<String> = match one_time_prekey {
+                Some(k) => vec![base64::engine::general_purpose::STANDARD.encode(&k)],
+                None => vec![],
+            };
 
             Ok(json!({
                 "user_id": bundle.user_id,
                 "identity_key": identity_key_b64,
+                "identity_dh_key": identity_dh_key_b64,
                 "signed_prekey": signed_prekey_b64,
                 "signed_prekey_signature": sig_b64,
-                "one_time_prekey": otpk_b64,
+                "one_time_prekeys": otpk_array,
             }))
         })
     })

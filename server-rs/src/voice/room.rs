@@ -37,17 +37,49 @@ impl RoomManager {
         }
     }
 
+    /// Add the user to a voice channel. Enforces the server-side
+    /// invariant "a user is in at most one voice channel at a time" —
+    /// any prior channel they were in is silently evicted. Returns the
+    /// list of channels they were evicted from so the caller can
+    /// broadcast `voice:user-left` and tear down their SFU peers.
+    /// This makes voice:join a self-sufficient operation: the client
+    /// doesn't need to coordinate a leave-before-join.
     pub async fn add_peer(
         &self,
         channel_id: &str,
         user_id: &str,
         username: &str,
         team_id: &str,
-    ) {
-        // Track the channel -> team mapping.
+    ) -> Vec<String> {
         {
             let mut teams = self.channel_teams.write().await;
             teams.insert(channel_id.to_string(), team_id.to_string());
+        }
+
+        let mut evicted_channels: Vec<String> = Vec::new();
+        let mut emptied: Vec<String> = Vec::new();
+        {
+            let mut rooms = self.rooms.write().await;
+            for (cid, room) in rooms.iter_mut() {
+                if cid == channel_id {
+                    continue;
+                }
+                if room.remove(user_id).is_some() {
+                    evicted_channels.push(cid.clone());
+                    if room.is_empty() {
+                        emptied.push(cid.clone());
+                    }
+                }
+            }
+            for cid in &emptied {
+                rooms.remove(cid);
+            }
+        }
+        if !emptied.is_empty() {
+            let mut teams = self.channel_teams.write().await;
+            for cid in &emptied {
+                teams.remove(cid);
+            }
         }
 
         let mut rooms = self.rooms.write().await;
@@ -64,6 +96,38 @@ impl RoomManager {
                 webcam_sharing: false,
             },
         );
+
+        evicted_channels
+    }
+
+    /// Evict a user from every voice channel they're in. Called when
+    /// their last WS connection closes — voice membership is bound
+    /// to WS-lifetime so a closed tab cleans up automatically.
+    /// Returns the channels they were removed from so the caller can
+    /// broadcast voice:user-left.
+    pub async fn remove_peer_everywhere(&self, user_id: &str) -> Vec<String> {
+        let mut rooms = self.rooms.write().await;
+        let mut removed_channels = Vec::new();
+        let mut emptied = Vec::new();
+        for (cid, room) in rooms.iter_mut() {
+            if room.remove(user_id).is_some() {
+                removed_channels.push(cid.clone());
+                if room.is_empty() {
+                    emptied.push(cid.clone());
+                }
+            }
+        }
+        for cid in &emptied {
+            rooms.remove(cid);
+        }
+        if !emptied.is_empty() {
+            drop(rooms);
+            let mut teams = self.channel_teams.write().await;
+            for cid in &emptied {
+                teams.remove(cid);
+            }
+        }
+        removed_channels
     }
 
     pub async fn remove_peer(&self, channel_id: &str, user_id: &str) {

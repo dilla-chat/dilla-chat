@@ -65,6 +65,39 @@ pub fn get_unread_counts_for_team(
     rows.collect()
 }
 
+/// Get unread counts for DM channels the user belongs to in a team. DM
+/// reads reuse the same `channel_reads` table as text channels (keyed by
+/// `dm_channel_id` in the channel_id column), so the read-state shape is
+/// uniform — only the source-of-truth join changes.
+pub fn get_dm_unread_counts_for_user(
+    conn: &Connection,
+    user_id: &str,
+    team_id: &str,
+) -> Result<Vec<(String, i64)>, rusqlite::Error> {
+    let mut stmt = conn.prepare(
+        "SELECT dc.id,
+            COUNT(m.id) AS unread_count
+         FROM dm_channels dc
+         JOIN dm_members dmem ON dmem.channel_id = dc.id AND dmem.user_id = ?1
+         LEFT JOIN messages m ON m.dm_channel_id = dc.id
+             AND m.deleted = 0
+             AND m.author_id != ?1
+             AND m.created_at > COALESCE(
+                 (SELECT cr.last_read_at FROM channel_reads cr
+                  WHERE cr.user_id = ?1 AND cr.channel_id = dc.id),
+                 datetime('now')
+             )
+         WHERE dc.team_id = ?2
+         GROUP BY dc.id",
+    )?;
+    let rows = stmt.query_map(params![user_id, team_id], |row| {
+        let channel_id: String = row.get(0)?;
+        let count: i64 = row.get(1)?;
+        Ok((channel_id, count))
+    })?;
+    rows.collect()
+}
+
 /// Get the last read message ID for a user in a channel.
 pub fn get_last_read_message_id(
     conn: &Connection,

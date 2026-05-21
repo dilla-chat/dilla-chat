@@ -578,6 +578,8 @@ mod tests {
             otel_service_name: "".into(),
             otel_api_key: "".into(),
             otel_api_header: "".into(),
+            seed_demo: false,
+            browser_log_forward: false,
         }
     }
 

@@ -8,12 +8,13 @@ pub fn save_prekey_bundle(
     bundle: &PrekeyBundle,
 ) -> Result<(), rusqlite::Error> {
     conn.execute(
-        "INSERT OR REPLACE INTO prekey_bundles (id, user_id, identity_key, signed_prekey, signed_prekey_signature, one_time_prekeys, uploaded_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        "INSERT OR REPLACE INTO prekey_bundles (id, user_id, identity_key, identity_dh_key, signed_prekey, signed_prekey_signature, one_time_prekeys, uploaded_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         params![
             bundle.id,
             bundle.user_id,
             bundle.identity_key,
+            bundle.identity_dh_key,
             bundle.signed_prekey,
             bundle.signed_prekey_signature,
             bundle.one_time_prekeys,
@@ -28,7 +29,7 @@ pub fn get_prekey_bundle(
     user_id: &str,
 ) -> Result<Option<PrekeyBundle>, rusqlite::Error> {
     conn.query_row(
-        "SELECT id, user_id, identity_key, signed_prekey, signed_prekey_signature, one_time_prekeys, uploaded_at
+        "SELECT id, user_id, identity_key, identity_dh_key, signed_prekey, signed_prekey_signature, one_time_prekeys, uploaded_at
          FROM prekey_bundles WHERE user_id = ?1",
         [user_id],
         |row| {
@@ -36,10 +37,11 @@ pub fn get_prekey_bundle(
                 id: row.get(0)?,
                 user_id: row.get(1)?,
                 identity_key: row.get(2)?,
-                signed_prekey: row.get(3)?,
-                signed_prekey_signature: row.get(4)?,
-                one_time_prekeys: row.get::<_, Option<Vec<u8>>>(5)?.unwrap_or_default(),
-                uploaded_at: row.get(6)?,
+                identity_dh_key: row.get(3)?,
+                signed_prekey: row.get(4)?,
+                signed_prekey_signature: row.get(5)?,
+                one_time_prekeys: row.get::<_, Option<Vec<u8>>>(6)?.unwrap_or_default(),
+                uploaded_at: row.get(7)?,
             })
         },
     )
@@ -100,7 +102,7 @@ mod tests {
 
         let bundle = PrekeyBundle {
             id: "pk1".into(), user_id: "u1".into(),
-            identity_key: vec![1, 2, 3], signed_prekey: vec![4, 5, 6],
+            identity_key: vec![1, 2, 3], identity_dh_key: vec![10, 11, 12], signed_prekey: vec![4, 5, 6],
             signed_prekey_signature: vec![7, 8, 9],
             one_time_prekeys: vec![], uploaded_at: crate::db::now_str(),
         };
@@ -118,7 +120,7 @@ mod tests {
 
         let bundle = PrekeyBundle {
             id: "pk1".into(), user_id: "u1".into(),
-            identity_key: vec![1], signed_prekey: vec![2],
+            identity_key: vec![1], identity_dh_key: vec![10], signed_prekey: vec![2],
             signed_prekey_signature: vec![3],
             one_time_prekeys: vec![], uploaded_at: crate::db::now_str(),
         };
@@ -142,7 +144,7 @@ mod tests {
 
         let bundle = PrekeyBundle {
             id: "pk1".into(), user_id: "u1".into(),
-            identity_key: vec![1], signed_prekey: vec![2],
+            identity_key: vec![1], identity_dh_key: vec![10], signed_prekey: vec![2],
             signed_prekey_signature: vec![3],
             one_time_prekeys: prekeys_json, uploaded_at: crate::db::now_str(),
         };

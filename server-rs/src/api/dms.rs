@@ -65,6 +65,38 @@ fn require_dm_member(
     Ok(())
 }
 
+/// Render a DMChannel into the enriched shape the client expects:
+/// `{ id, team_id, is_group, members: [{user_id, username, display_name}], created_at }`.
+/// The raw `db::DMChannel` only carries the channel row — the client needs
+/// member identities to render the PMs sidebar and resolve "with" peers.
+fn enrich_dm_channel(
+    conn: &rusqlite::Connection,
+    dm: &db::DMChannel,
+) -> Result<Value, rusqlite::Error> {
+    let members = db::get_dm_members(conn, &dm.id)?;
+    let mut enriched: Vec<Value> = Vec::with_capacity(members.len());
+    for m in &members {
+        let user = db::get_user_by_id(conn, &m.user_id)?;
+        let (username, display_name) = match user {
+            Some(u) => (u.username, u.display_name),
+            None => (String::new(), String::new()),
+        };
+        enriched.push(json!({
+            "user_id": m.user_id,
+            "username": username,
+            "display_name": display_name,
+        }));
+    }
+    Ok(json!({
+        "id": dm.id,
+        "team_id": dm.team_id,
+        "is_group": dm.dm_type == "group_dm",
+        "name": dm.name,
+        "members": enriched,
+        "created_at": dm.created_at,
+    }))
+}
+
 pub async fn create_or_get(
     Extension(UserId(user_id)): Extension<UserId>,
     State(state): State<AppState>,
@@ -75,21 +107,44 @@ pub async fn create_or_get(
         return Err(AppError::BadRequest("user_ids is required".into()));
     }
 
-    let dm = spawn_db(state.db.clone(), move |conn| {
+    let (enriched, created, member_ids) = spawn_db(state.db.clone(), move |conn| {
         require_team_member(conn, &user_id, &team_id)?;
 
-        // For 1:1 DMs, check if one already exists.
+        // For 1:1 DMs, return the existing channel when one is present so we
+        // don't fan out duplicate dm:created events. `created=false` keeps
+        // the broadcast below as a no-op for the cached path.
         if body.user_ids.len() == 1 {
             if let Some(existing) = db::get_dm_channel_by_members(conn, &team_id, &user_id, &body.user_ids[0])? {
-                return Ok(existing);
+                let enriched = enrich_dm_channel(conn, &existing)?;
+                let members = db::get_dm_members(conn, &existing.id)?;
+                let member_ids: Vec<String> = members.into_iter().map(|m| m.user_id).collect();
+                return Ok((enriched, false, member_ids));
             }
         }
 
-        create_new_dm_channel(conn, &team_id, &user_id, &body)
+        let dm = create_new_dm_channel(conn, &team_id, &user_id, &body)?;
+        let enriched = enrich_dm_channel(conn, &dm)?;
+        let members = db::get_dm_members(conn, &dm.id)?;
+        let member_ids: Vec<String> = members.into_iter().map(|m| m.user_id).collect();
+        Ok((enriched, true, member_ids))
     })
     .await?;
 
-    json_ok(dm)
+    // Notify every member (including the creator's other devices) when a
+    // brand-new DM channel was just created so the PMs sidebar populates
+    // without requiring a manual refresh on the recipient side.
+    if created {
+        let event_data = serde_json::to_vec(&json!({
+            "type": "dm:created",
+            "payload": enriched.clone(),
+        }))
+        .unwrap_or_default();
+        for member_id in &member_ids {
+            state.hub.send_to_user(member_id, event_data.clone()).await;
+        }
+    }
+
+    json_ok(enriched)
 }
 
 pub async fn list(
@@ -98,7 +153,12 @@ pub async fn list(
     Path(team_id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
     let dms = spawn_db(state.db.clone(), move |conn| {
-        db::get_user_dm_channels(conn, &team_id, &user_id)
+        let channels = db::get_user_dm_channels(conn, &team_id, &user_id)?;
+        let mut enriched = Vec::with_capacity(channels.len());
+        for ch in &channels {
+            enriched.push(enrich_dm_channel(conn, ch)?);
+        }
+        Ok(enriched)
     })
     .await?;
 
@@ -116,11 +176,12 @@ pub async fn get_dm(
         let dm = db::get_dm_channel(conn, &dm_id)?
             .ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)?;
 
-        let members = db::get_dm_members(conn, &dm_id)?;
+        // Use the same enriched shape as the list endpoint so the client
+        // can ingest either via the same DMChannel TypeScript type.
+        let channel = enrich_dm_channel(conn, &dm)?;
 
         Ok(json!({
-            "channel": dm,
-            "members": members,
+            "channel": channel,
         }))
     })
     .await
@@ -156,7 +217,7 @@ pub async fn send_message(
             thread_id: String::new(),
             edited_at: None,
             deleted: false,
-            lamport_ts: 0,
+            lamport_ts: 0, reply_to_message_id: None,
             created_at: now,
         };
         db::create_dm_message(conn, &msg)?;

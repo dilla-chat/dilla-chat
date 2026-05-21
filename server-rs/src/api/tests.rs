@@ -60,6 +60,8 @@ fn test_config() -> Config {
         otel_service_name: "test".into(),
         otel_api_key: String::new(),
         otel_api_header: String::new(),
+        seed_demo: false,
+        browser_log_forward: false,
     }
 }
 
@@ -1701,8 +1703,12 @@ async fn get_dm_returns_channel_and_members() {
 
     assert_eq!(resp.status(), StatusCode::OK);
     let json = body_to_json(resp.into_body()).await;
+    // GET /dms/{id} now returns the same enriched channel shape the list
+    // endpoint returns — `channel.members` is the array, not a sibling
+    // `members` field. See enrich_dm_channel in api/dms.rs.
     assert!(json["channel"].is_object());
-    assert!(json["members"].is_array());
+    assert!(json["channel"]["members"].is_array());
+    assert!(json["channel"]["is_group"].is_boolean());
 }
 
 #[tokio::test]

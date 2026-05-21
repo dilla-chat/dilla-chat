@@ -20,6 +20,13 @@ use tokio::signal;
 
 #[tokio::main]
 async fn main() {
+    // Install the rustls CryptoProvider at process startup. webrtc-rs
+    // and any other rustls-using crate panics with "Could not
+    // automatically determine the process-level CryptoProvider" the
+    // first time it tries to do TLS otherwise. Idempotent if a
+    // provider is already installed.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     // Set version.
     api::VERSION
         .set(env!("CARGO_PKG_VERSION").to_string())
@@ -44,9 +51,87 @@ async fn main() {
 
     // Create WebSocket hub.
     let mut hub = ws::Hub::new(database.clone());
-    hub.voice_sfu = Some(sfu as Arc<dyn ws::hub::VoiceSFU>);
+    hub.voice_sfu = Some(sfu.clone() as Arc<dyn ws::hub::VoiceSFU>);
+    // Wire the room manager so handle_voice_join can actually register
+    // peers + broadcast voice:user-joined and voice:state. Without
+    // this, joining a voice channel becomes a no-op (the handler
+    // bails out early on missing room_mgr) and two users in the same
+    // channel never see each other.
+    hub.voice_room_manager = Some(Arc::new(voice::RoomManager::new()));
     hub.telemetry_relay = init_telemetry_relay(&cfg);
     let hub = Arc::new(hub);
+
+    // Wire SFU → WS event bridge. webrtc-rs generates ICE candidates and
+    // renegotiate offers asynchronously after handle_join returns; without
+    // this callback those events are dropped on the floor and the
+    // server-side ICE agent has no remote candidates to ping → media
+    // never connects. The callback is sync (Fn, not async), so each
+    // event spawns a short task to do the async broadcast.
+    {
+        use voice::SFUEvent;
+        use ws::events::*;
+        let hub_for_sfu = hub.clone();
+        sfu.set_on_event(move |_channel_id, evt| {
+            let hub = hub_for_sfu.clone();
+            tokio::spawn(async move {
+                match evt {
+                    SFUEvent::ICECandidate {
+                        channel_id,
+                        user_id,
+                        candidate,
+                    } => {
+                        let payload = VoiceICECandidatePayload {
+                            channel_id,
+                            candidate: candidate.candidate.clone(),
+                            sdp_mid: candidate.sdp_mid.clone().unwrap_or_default(),
+                            sdp_mline_index: candidate.sdp_mline_index.unwrap_or(0),
+                        };
+                        if let Ok(evt) = Event::new(EVENT_VOICE_ICE_CANDIDATE, payload) {
+                            if let Ok(bytes) = evt.to_bytes() {
+                                hub.send_to_user(&user_id, bytes).await;
+                            }
+                        }
+                    }
+                    SFUEvent::Renegotiate {
+                        channel_id,
+                        user_id,
+                        offer,
+                    } => {
+                        let payload = VoiceOfferPayload {
+                            channel_id,
+                            sdp: offer.sdp.clone(),
+                        };
+                        if let Ok(evt) = Event::new(EVENT_VOICE_OFFER, payload) {
+                            if let Ok(bytes) = evt.to_bytes() {
+                                hub.send_to_user(&user_id, bytes).await;
+                            }
+                        }
+                    }
+                    SFUEvent::PeerDropped { channel_id, user_id } => {
+                        // ICE failed / PC closed / browser reload —
+                        // clean up the RoomManager entry and tell every
+                        // client. The explicit voice:leave path doesn't
+                        // go through here (it handles its own broadcast).
+                        if let Some(room_mgr) = &hub.voice_room_manager {
+                            room_mgr.remove_peer(&channel_id, &user_id).await;
+                        }
+                        if let Ok(evt) = Event::new(
+                            EVENT_VOICE_USER_LEFT,
+                            VoiceUserLeftPayload {
+                                channel_id: channel_id.clone(),
+                                user_id: user_id.clone(),
+                            },
+                        ) {
+                            if let Ok(bytes) = evt.to_bytes() {
+                                hub.broadcast_to_all(bytes).await;
+                            }
+                        }
+                    }
+                }
+            });
+        })
+        .await;
+    }
 
     // Spawn hub dispatch loop.
     let hub_runner = hub.clone();
@@ -205,21 +290,82 @@ async fn init_presence_manager(hub: &Arc<ws::Hub>) -> Arc<PresenceManager> {
 fn spawn_hub_event_handler(hub: &Arc<ws::Hub>, presence_mgr: &Arc<PresenceManager>, database: &Database) {
     let pm = presence_mgr.clone();
     let db_evt = database.clone();
+    let hub_for_evt = hub.clone();
     let mut event_rx = hub.event_tx().subscribe();
     tokio::spawn(async move {
         while let Ok(event) = event_rx.recv().await {
-            handle_hub_event(&pm, &db_evt, event).await;
+            handle_hub_event(&pm, &db_evt, &hub_for_evt, event).await;
         }
     });
 }
 
-async fn handle_hub_event(pm: &PresenceManager, db_evt: &Database, event: ws::hub::HubEvent) {
+async fn handle_hub_event(
+    pm: &PresenceManager,
+    db_evt: &Database,
+    hub: &Arc<ws::Hub>,
+    event: ws::hub::HubEvent,
+) {
     match event {
         ws::hub::HubEvent::ClientConnected { user_id } => {
             pm.set_online(&user_id).await;
         }
         ws::hub::HubEvent::ClientDisconnected { user_id } => {
             pm.set_offline(&user_id).await;
+            // Last WS for this user gone — also clean voice as a
+            // safety net (the per-client VoiceClientGone path already
+            // handled it if the closed WS was the voice-holder, but
+            // this catches edge cases like the user_index falling
+            // out of sync).
+            if let Some(room_mgr) = &hub.voice_room_manager {
+                let channels = room_mgr.remove_peer_everywhere(&user_id).await;
+                for channel_id in channels {
+                    if let Ok(evt) = ws::events::Event::new(
+                        ws::events::EVENT_VOICE_USER_LEFT,
+                        ws::events::VoiceUserLeftPayload {
+                            channel_id: channel_id.clone(),
+                            user_id: user_id.clone(),
+                        },
+                    ) {
+                        if let Ok(bytes) = evt.to_bytes() {
+                            hub.broadcast_to_all(bytes).await;
+                        }
+                    }
+                    if let Some(sfu) = &hub.voice_sfu {
+                        sfu.handle_leave(&channel_id, &user_id).await;
+                    }
+                }
+            }
+        }
+        ws::hub::HubEvent::VoiceClientGone { client_id, user_id, channel_id } => {
+            tracing::info!(
+                "voice: VoiceClientGone — cleaning up voice for client={} user={} channel={}",
+                client_id,
+                user_id,
+                channel_id
+            );
+            // The specific WS that held the voice session closed
+            // without an explicit voice:leave (tab reload, network
+            // drop, crash). Clean up just THIS channel for this user
+            // — without this the room would still show the user as
+            // present in their pre-reload channel even though they
+            // have no live voice session.
+            if let Some(room_mgr) = &hub.voice_room_manager {
+                room_mgr.remove_peer(&channel_id, &user_id).await;
+            }
+            if let Ok(evt) = ws::events::Event::new(
+                ws::events::EVENT_VOICE_USER_LEFT,
+                ws::events::VoiceUserLeftPayload {
+                    channel_id: channel_id.clone(),
+                    user_id: user_id.clone(),
+                },
+            ) {
+                if let Ok(bytes) = evt.to_bytes() {
+                    hub.broadcast_to_all(bytes).await;
+                }
+            }
+            if let Some(sfu) = &hub.voice_sfu {
+                sfu.handle_leave(&channel_id, &user_id).await;
+            }
         }
         ws::hub::HubEvent::ClientActivity { user_id } => {
             pm.update_activity(&user_id).await;
@@ -449,7 +595,7 @@ mod tests {
         let (db, _tmp) = test_db();
         let pm = PresenceManager::new();
 
-        handle_hub_event(&pm, &db, HubEvent::ClientConnected {
+        handle_hub_event(&pm, &db, &Arc::new(ws::Hub::new(db.clone())), HubEvent::ClientConnected {
             user_id: "u1".to_string(),
         })
         .await;
@@ -464,7 +610,7 @@ mod tests {
         let pm = PresenceManager::new();
 
         pm.set_online("u1").await;
-        handle_hub_event(&pm, &db, HubEvent::ClientDisconnected {
+        handle_hub_event(&pm, &db, &Arc::new(ws::Hub::new(db.clone())), HubEvent::ClientDisconnected {
             user_id: "u1".to_string(),
         })
         .await;
@@ -479,7 +625,7 @@ mod tests {
         let pm = PresenceManager::new();
 
         pm.set_online("u1").await;
-        handle_hub_event(&pm, &db, HubEvent::ClientActivity {
+        handle_hub_event(&pm, &db, &Arc::new(ws::Hub::new(db.clone())), HubEvent::ClientActivity {
             user_id: "u1".to_string(),
         })
         .await;
@@ -495,7 +641,7 @@ mod tests {
         seed_user(&db, "u1");
         let pm = PresenceManager::new();
 
-        handle_hub_event(&pm, &db, HubEvent::PresenceUpdate {
+        handle_hub_event(&pm, &db, &Arc::new(ws::Hub::new(db.clone())), HubEvent::PresenceUpdate {
             user_id: "u1".to_string(),
             status: "dnd".to_string(),
             custom_status: "busy".to_string(),
@@ -512,27 +658,27 @@ mod tests {
         let pm = PresenceManager::new();
 
         // MessageSent, MessageEdited, etc. fall through to _ => {}
-        handle_hub_event(&pm, &db, HubEvent::MessageEdited {
+        handle_hub_event(&pm, &db, &Arc::new(ws::Hub::new(db.clone())), HubEvent::MessageEdited {
             message_id: "m1".to_string(),
             channel_id: "ch1".to_string(),
             content: "edited".to_string(),
         })
         .await;
 
-        handle_hub_event(&pm, &db, HubEvent::MessageDeleted {
+        handle_hub_event(&pm, &db, &Arc::new(ws::Hub::new(db.clone())), HubEvent::MessageDeleted {
             message_id: "m1".to_string(),
             channel_id: "ch1".to_string(),
         })
         .await;
 
-        handle_hub_event(&pm, &db, HubEvent::VoiceJoined {
+        handle_hub_event(&pm, &db, &Arc::new(ws::Hub::new(db.clone())), HubEvent::VoiceJoined {
             channel_id: "v1".to_string(),
             user_id: "u1".to_string(),
             team_id: "t1".to_string(),
         })
         .await;
 
-        handle_hub_event(&pm, &db, HubEvent::VoiceLeft {
+        handle_hub_event(&pm, &db, &Arc::new(ws::Hub::new(db.clone())), HubEvent::VoiceLeft {
             channel_id: "v1".to_string(),
             user_id: "u1".to_string(),
         })
