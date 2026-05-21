@@ -2640,7 +2640,10 @@ img.attach-img {
 .voice-focus:fullscreen {
   position: fixed;
   inset: 0;
-  z-index: 100;
+  /* Beat anything else stacking on the page (settings modal sits at
+     9999; we want to be just under that so global UI like dialogs
+     still wins over the fullscreen). */
+  z-index: 9000;
   background: #000;
   padding: 0;
   margin: 0;
