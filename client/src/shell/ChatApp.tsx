@@ -4022,11 +4022,6 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                     {mineDeaf && <span className="v-badge danger" title="deafened"><Icon.Headphones size={11} off /></span>}
                     {showCam && <span className="v-badge ok" title="camera on"><Icon.Video size={11} /></span>}
                     {showScreen && <span className="v-badge ok" title="sharing screen"><Icon.Screen size={11} /></span>}
-                    <span className="v-badge nq" title="network quality">
-                      {[0,1,2,3].map(i => (
-                        <span key={i} className="nq-bar" style={{ height: 4 + i * 3, opacity: i < 3 ? 1 : 0.4 }} />
-                      ))}
-                    </span>
                   </div>
                 )}
                 {!isMini && p.id !== currentUserId() && (

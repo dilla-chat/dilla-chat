@@ -2356,21 +2356,6 @@ img.attach-img {
   background: rgba(20,40,30,0.7);
   --vctrl-bg: rgba(20,40,30,0.85);
 }
-.v-badge.nq {
-  width: auto;
-  padding: 0 5px;
-  display: inline-flex; align-items: flex-end; gap: 1.5px;
-  background: rgba(0,0,0,0.55);
-  color: var(--accent);
-  height: 22px;
-}
-.nq-bar {
-  display: inline-block;
-  width: 2px;
-  background: currentColor;
-  border-radius: 1px;
-}
-
 /* Per-participant volume slider */
 .v-volume {
   position: absolute;
