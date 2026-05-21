@@ -4375,6 +4375,14 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                       <Avatar member={p} size={isMini ? 32 : 96} />
                     </div>
                   )}
+                  {/* Presence dot overlay — keeps the green/idle/etc.
+                      indicator visible when the avatar is replaced by
+                      a cam / screen tile (the avatar's own dot is
+                      inside it, so it disappears with the avatar).
+                      Skipped on the focused stage. */}
+                  {!focusKind && renderKind !== 'avatar' && (p as any).status && (
+                    <span className={`voice-media-presence presence ${(p as any).status}`} />
+                  )}
                   {/* Clickable swap PIP — only shown in focus mode when
                       the participant has BOTH streams. Click the PIP to
                       swap focus to the other stream. The pip shows the
