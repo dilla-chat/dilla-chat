@@ -3798,6 +3798,16 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
   // (which takes over the entire monitor) — both are useful in
   // different contexts.
   const [tabFs, setTabFs] = useState(false);
+  // Mirror document.fullscreenElement so the browser-fullscreen
+  // button can toggle and reflect external exits (e.g. user pressed
+  // Esc, which is intercepted by the browser before our handler
+  // sees it).
+  const [browserFs, setBrowserFs] = useState(false);
+  useEffect(() => {
+    const onChange = () => setBrowserFs(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
   const [volumes, setVolumes] = useState({}); // memberId -> 0..100
   function vol(id) { return volumes[id] === undefined ? 100 : volumes[id]; }
   const focusedMember = focused ? participants.find(p => p.id === focused.id) : null;
@@ -3847,7 +3857,11 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
   // Fullscreen the focused stage. Uses the browser Fullscreen API and
   // bails silently if the user denies the request or fullscreen isn't
   // available (e.g. iOS Safari which is restrictive on non-video els).
-  function enterFullscreen() {
+  function toggleBrowserFullscreen() {
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch((err) => console.warn('[voice] exit fullscreen failed', err));
+      return;
+    }
     const el = focusRef.current;
     if (!el) return;
     const req = (el as any).requestFullscreen || (el as any).webkitRequestFullscreen;
@@ -4126,17 +4140,17 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
                     )}
                     {focused.kind === 'screen' && (
                       <>
-                        <button className="voice-unfocus" onClick={() => setTabFs(v => !v)} title={tabFs ? 'Exit tab fullscreen (esc)' : 'Fullscreen within tab'}>
+                        <button className="voice-unfocus" onClick={() => setTabFs(v => !v)} title={tabFs ? 'Collapse to grid (esc)' : 'Expand within the tab'}>
                           <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
                             <rect x="2.5" y="2.5" width="11" height="11" rx="1" stroke="currentColor" strokeWidth="1.4" />
                           </svg>
-                          {tabFs ? 'shrink' : 'tab full'}
+                          {tabFs ? 'collapse' : 'expand'}
                         </button>
-                        <button className="voice-unfocus" onClick={enterFullscreen} title="Fullscreen entire screen (f)">
+                        <button className="voice-unfocus" onClick={toggleBrowserFullscreen} title={browserFs ? 'Exit fullscreen' : 'Fullscreen the entire screen'}>
                           <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
                             <path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
                           </svg>
-                          screen full
+                          {browserFs ? 'exit fullscreen' : 'fullscreen'}
                         </button>
                       </>
                     )}
