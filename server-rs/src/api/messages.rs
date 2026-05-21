@@ -49,6 +49,14 @@ pub async fn list(
 
     let enriched = spawn_db(state.db.clone(), move |conn| {
         require_team_member(conn, &user_id, &team_id)?;
+        // VULN-007: REST mirror of the WS-side check. user_can_access_channel
+        // already short-circuits for the team owner and open channels.
+        // InvalidParameterName → AppError::Forbidden via map_db_error.
+        if !db::user_can_access_channel(conn, &user_id, &team_id, &channel_id)? {
+            return Err(rusqlite::Error::InvalidParameterName(
+                "channel access denied".into(),
+            ));
+        }
         let messages = db::get_messages_by_channel(conn, &channel_id, &query.before, limit)?;
         let enriched: Vec<serde_json::Value> = messages
             .into_iter()
@@ -102,6 +110,14 @@ pub async fn create(
             }
         }
 
+        // VULN-007: per-channel ACL — don't 404 (leaks existence),
+        // map to 403 via InvalidParameterName.
+        if !db::user_can_access_channel(conn, &user_id, &team_id, &channel_id)? {
+            return Err(rusqlite::Error::InvalidParameterName(
+                "channel access denied".into(),
+            ));
+        }
+
         let now = db::now_str();
         let msg = db::Message {
             id: db::new_id(),
@@ -139,7 +155,7 @@ pub async fn create(
 pub async fn edit(
     Extension(UserId(user_id)): Extension<UserId>,
     State(state): State<AppState>,
-    Path((team_id, _channel_id, message_id)): Path<(String, String, String)>,
+    Path((team_id, channel_id, message_id)): Path<(String, String, String)>,
     Json(body): Json<EditMessageRequest>,
 ) -> Result<Json<Value>, AppError> {
     if body.content.is_empty() {
@@ -148,6 +164,14 @@ pub async fn edit(
 
     let msg = spawn_db(state.db.clone(), move |conn| {
         require_team_member(conn, &user_id, &team_id)?;
+
+        // VULN-007: a user excluded from the channel can't edit either —
+        // not even their own historical messages once access is revoked.
+        if !db::user_can_access_channel(conn, &user_id, &team_id, &channel_id)? {
+            return Err(rusqlite::Error::InvalidParameterName(
+                "channel access denied".into(),
+            ));
+        }
 
         let msg = db::get_message_by_id(conn, &message_id)?
             .ok_or(rusqlite::Error::QueryReturnedNoRows)?;
@@ -194,7 +218,18 @@ pub async fn delete_msg(
     Path((team_id, channel_id, message_id)): Path<(String, String, String)>,
 ) -> Result<Json<Value>, AppError> {
     let mid = message_id.clone();
+    let cid_check = channel_id.clone();
     spawn_db(state.db.clone(), move |conn| {
+        require_team_member(conn, &user_id, &team_id)?;
+        // VULN-007: same per-channel ACL on delete. Author of an old
+        // message who lost access to the channel must NOT be able to
+        // delete via REST when WS would have blocked it.
+        if !db::user_can_access_channel(conn, &user_id, &team_id, &cid_check)? {
+            return Err(rusqlite::Error::InvalidParameterName(
+                "channel access denied".into(),
+            ));
+        }
+
         let msg = db::get_message_by_id(conn, &mid)?
             .ok_or(rusqlite::Error::QueryReturnedNoRows)?;
 
