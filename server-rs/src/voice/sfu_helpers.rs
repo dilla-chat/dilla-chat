@@ -1,16 +1,101 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::sync::RwLock;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
 use webrtc::peer_connection::RTCPeerConnection;
+use webrtc::rtcp::payload_feedbacks::picture_loss_indication::PictureLossIndication;
 use webrtc::rtp_transceiver::rtp_codec::RTPCodecType;
 use webrtc::track::track_local::track_local_static_rtp::TrackLocalStaticRTP;
 use webrtc::track::track_local::{TrackLocal, TrackLocalWriter};
 use webrtc::track::track_remote::TrackRemote;
 
 use super::signaling::{PeerState, SFUEvent, SfuEventCallback};
+
+/// Send RTCP PictureLossIndication to all incoming video tracks on a peer
+/// connection. Used when a new subscriber joins so the publisher resends a
+/// keyframe immediately instead of waiting for the next periodic one.
+#[cfg(not(tarpaulin_include))]
+pub(crate) async fn request_video_keyframes(pc: &Arc<RTCPeerConnection>) {
+    let receivers = pc.get_receivers().await;
+    for receiver in &receivers {
+        for track in receiver.tracks().await {
+            if track.kind() != RTPCodecType::Video {
+                continue;
+            }
+            let pli = PictureLossIndication {
+                sender_ssrc: 0,
+                media_ssrc: track.ssrc(),
+            };
+            let _ = pc.write_rtcp(&[Box::new(pli)]).await;
+        }
+    }
+}
+
+/// Nudge a SPECIFIC publisher (the user who just started a cam or
+/// screen track) for a fresh keyframe so existing subscribers in
+/// the room start decoding immediately. Without this, when peer A
+/// starts a track that gets added to peer B mid-call, B receives
+/// only P-frames after the last A-side keyframe — bytes pile up
+/// but the decoder produces zero frames until the next periodic
+/// keyframe arrives (multi-second wait, sometimes never if the
+/// stream is steady).
+#[cfg(not(tarpaulin_include))]
+pub(crate) fn spawn_keyframe_burst_for_publisher(
+    rooms: Arc<RwLock<HashMap<String, HashMap<String, PeerState>>>>,
+    channel_id: String,
+    publisher_user_id: String,
+) {
+    tokio::spawn(async move {
+        for delay_ms in [150u64, 500, 1200, 2500] {
+            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+            let pc: Option<Arc<RTCPeerConnection>> = {
+                let rooms_guard = rooms.read().await;
+                rooms_guard
+                    .get(&channel_id)
+                    .and_then(|room| room.get(&publisher_user_id))
+                    .map(|ps| Arc::clone(&ps.pc))
+            };
+            if let Some(pc) = pc {
+                request_video_keyframes(&pc).await;
+            }
+        }
+    });
+}
+
+/// Spawn a task that nudges existing video publishers in the room for fresh
+/// keyframes after a new peer joins, so the new subscriber sees video without
+/// the multi-second wait for the next periodic keyframe.
+#[cfg(not(tarpaulin_include))]
+pub(crate) fn spawn_keyframe_burst(
+    rooms: Arc<RwLock<HashMap<String, HashMap<String, PeerState>>>>,
+    channel_id: String,
+    joining_user_id: String,
+) {
+    tokio::spawn(async move {
+        // Repeat a few times because the first PLI may arrive before the
+        // joining peer's ICE/DTLS is fully established, and we want to cover
+        // the window during which the subscriber is actually ready.
+        for delay_ms in [150u64, 500, 1200, 2500] {
+            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+            let pcs: Vec<Arc<RTCPeerConnection>> = {
+                let rooms_guard = rooms.read().await;
+                let Some(room) = rooms_guard.get(&channel_id) else {
+                    return;
+                };
+                room.iter()
+                    .filter(|(uid, _)| uid.as_str() != joining_user_id)
+                    .map(|(_, ps)| Arc::clone(&ps.pc))
+                    .collect()
+            };
+            for pc in pcs {
+                request_video_keyframes(&pc).await;
+            }
+        }
+    });
+}
 
 /// Create a new offer for an existing peer and emit a Renegotiate event.
 pub(crate) async fn renegotiate_internal(
@@ -118,7 +203,11 @@ pub(crate) async fn handle_leave_internal(
     channel_id: &str,
     user_id: &str,
 ) {
-    let is_empty = {
+    // Remove the peer from the rooms map and capture its state, then drop the
+    // write lock BEFORE closing the PC. pc.close() awaits the
+    // on_peer_connection_state_change handler, which acquires a read lock via
+    // is_active_connection — holding the write lock here would deadlock.
+    let (ps, is_empty) = {
         let mut rooms_guard = rooms.write().await;
         let room = match rooms_guard.get_mut(channel_id) {
             Some(room) => room,
@@ -130,15 +219,39 @@ pub(crate) async fn handle_leave_internal(
             None => return,
         };
 
-        let _ = ps.pc.close().await;
-        remove_peer_tracks_from_room(room, &ps).await;
-
         let empty = room.is_empty();
         if empty {
             rooms_guard.remove(channel_id);
         }
-        empty
+        (ps, empty)
     };
+
+    let _ = ps.pc.close().await;
+
+    if !is_empty {
+        let rooms_guard = rooms.read().await;
+        if let Some(room) = rooms_guard.get(channel_id) {
+            remove_peer_tracks_from_room(room, &ps).await;
+        }
+    }
+
+    // Notify the WS bridge that this peer dropped — used by the
+    // setup_connection_state_handler ICE-failed path so RoomManager
+    // and other clients learn the user is no longer in the room.
+    // (Explicit voice:leave goes through handle_voice_leave which
+    // does its own broadcast; this is the autonomous-drop path.)
+    {
+        let handler = on_event.read().await;
+        if let Some(ref f) = *handler {
+            f(
+                channel_id.to_string(),
+                SFUEvent::PeerDropped {
+                    channel_id: channel_id.to_string(),
+                    user_id: user_id.to_string(),
+                },
+            );
+        }
+    }
 
     if !is_empty {
         renegotiate_all_internal(rooms, on_event, channel_id).await;
