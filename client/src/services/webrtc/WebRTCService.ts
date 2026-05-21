@@ -484,15 +484,19 @@ class WebRTCService {
 
     // Safety net: if `connected` flips to false while we still have
     // a peer connection alive (logout, force-disconnect, etc.), tear
-    // EVERYTHING down. Without this the mic / cam / screen tracks
-    // and the stats poller can outlive the session and the user
-    // sees their browser still flagging "sharing your screen" or
-    // mic-active long after they think they've left voice.
+    // EVERYTHING down. Guarded by `disconnecting` so multiple
+    // subscriptions (HMR / repeat connect cycles) can't fire
+    // overlapping disconnects in a tight loop — log spam was 30+
+    // 'connected → false with live pc' lines in one ms.
     let wasConnected = useVoiceStore.getState().connected;
+    let disconnecting = false;
     const unsubConnected = useVoiceStore.subscribe((state) => {
-      if (wasConnected && !state.connected && this.pc) {
+      if (wasConnected && !state.connected && this.pc && !disconnecting) {
+        disconnecting = true;
         console.warn('[Voice/diag] connected → false with live pc, forcing disconnect');
-        this.disconnect().catch((err) => console.error('[Voice] force-disconnect failed:', err));
+        this.disconnect()
+          .catch((err) => console.error('[Voice] force-disconnect failed:', err))
+          .finally(() => { disconnecting = false; });
       }
       wasConnected = state.connected;
     });
