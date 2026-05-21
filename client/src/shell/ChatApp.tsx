@@ -189,12 +189,15 @@ function MiniMeter() {
 }
 
 // Voice-dock stats sparkline — shared design used for both latency
-// and bitrate. Renders 28 bars left-to-right (oldest → newest); pads
-// the window with idle bars so the chart frame is visible from the
-// first sample. `tone` returns ok/warn/bad based on a metric-specific
-// threshold so the same bar color language reads correctly in both
-// directions (lower-better for latency, higher-better for bitrate).
-const STATS_BARS = 20;
+// and bitrate. Bar count is derived dynamically from the graph's
+// rendered width so the bars + inter-bar gaps always tile the
+// container exactly, with no "looks the same again" fusing in narrow
+// docks or wasted space in wide ones. `tone` returns ok/warn/bad
+// based on a metric-specific threshold so the same color language
+// reads correctly in both directions (lower-better for latency,
+// higher-better for bitrate).
+const SPARK_BAR_PX = 4;   // target bar width
+const SPARK_GAP_PX = 4;   // visual gap between bars (matches .vd-spark-graph gap)
 function StatsSparkline({
   label,
   unit,
@@ -210,11 +213,37 @@ function StatsSparkline({
   tone: (v: number) => 'ok' | 'warn' | 'bad';
   title: (current: number | null) => string;
 }) {
+  const graphRef = useRef<HTMLDivElement | null>(null);
+  const [barCount, setBarCount] = useState(0);
+
+  // Recompute how many (barPx + gapPx) units fit each time the graph
+  // resizes (sidebar resize, dock width changes, font scale shifts).
+  useEffect(() => {
+    const el = graphRef.current;
+    if (!el) return;
+    const recompute = () => {
+      const w = el.clientWidth;
+      if (!w) return;
+      // n bars take n*bar + (n-1)*gap = (bar+gap)*n - gap pixels.
+      // Solve for max n with the inequality (bar+gap)*n - gap <= w.
+      const n = Math.max(1, Math.floor((w + SPARK_GAP_PX) / (SPARK_BAR_PX + SPARK_GAP_PX)));
+      setBarCount(n);
+    };
+    recompute();
+    const ro = new ResizeObserver(recompute);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const current = samples.length ? samples[samples.length - 1] : null;
   const max = Math.max(...samples, floor);
+  // Show only the most recent `barCount` samples; pad the head with
+  // idle slots so the graph fills from the right while still showing
+  // its frame on first paint.
   const display: Array<number | null> = [];
-  for (let i = 0; i < STATS_BARS - samples.length; i++) display.push(null);
-  for (const s of samples) display.push(s);
+  const recent = samples.slice(-barCount);
+  for (let i = 0; i < barCount - recent.length; i++) display.push(null);
+  for (const s of recent) display.push(s);
   return (
     <div className="vd-spark" title={title(current)}>
       <div className="vd-spark-head">
@@ -223,7 +252,7 @@ function StatsSparkline({
           {current != null ? current : 0}<span className="vd-u">{unit}</span>
         </span>
       </div>
-      <div className="vd-spark-graph">
+      <div className="vd-spark-graph" ref={graphRef}>
         {display.map((v, i) => {
           const t = v == null ? 'idle' : tone(v);
           const pct = v == null ? 0 : (v / max) * 100;
@@ -231,7 +260,7 @@ function StatsSparkline({
             <span
               key={i}
               className={'vd-spark-bar vd-spark-' + t}
-              style={{ height: pct ? `${pct}%` : undefined }}
+              style={{ width: `${SPARK_BAR_PX}px`, height: pct ? `${pct}%` : undefined }}
             />
           );
         })}

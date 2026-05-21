@@ -404,15 +404,14 @@
 .vd-spark-graph {
   display: flex;
   align-items: flex-end;
-  gap: 0.125rem;
+  gap: 0.25rem;
   height: 1.5rem;
   width: 100%;
   min-width: 0;
   overflow: hidden;
 }
 .vd-spark-bar {
-  flex: 1 1 0;
-  min-width: 0;
+  flex: 0 0 auto;          /* width set inline to match SPARK_BAR_PX */
   min-height: 0.125rem;
   border-radius: 0.0625rem;
   background: var(--surface-2);
