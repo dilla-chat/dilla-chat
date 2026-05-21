@@ -466,6 +466,13 @@
   background: color-mix(in oklab, var(--accent) 14%, var(--surface-2));
   --vctrl-bg: color-mix(in oklab, var(--accent) 14%, var(--surface-2));
 }
+/* While a stream is on, hover signals the destructive "stop" action.
+   Affects cam and screen-share equally (both use .vctrl.on). */
+.vctrl.on:hover {
+  color: var(--danger);
+  background: color-mix(in oklab, var(--danger) 18%, var(--surface-2));
+  --vctrl-bg: color-mix(in oklab, var(--danger) 18%, var(--surface-2));
+}
 /* Join variant: lit when a voice channel is selected, dimmed
    otherwise so the user knows they need to click a channel first. */
 .vctrl.join {
