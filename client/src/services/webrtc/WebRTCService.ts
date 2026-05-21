@@ -356,6 +356,7 @@ class WebRTCService {
         // Per-stream breakdown for diag logging — see which kind/mid
         // is actually producing bytes vs. silently sitting on zero.
         const perStream: Array<{ kind?: string; mid?: string; bytesSent?: number; packetsSent?: number; targetBitrate?: number }> = [];
+        const perInbound: Array<{ kind?: string; mid?: string; bytesReceived?: number; packetsReceived?: number; framesDecoded?: number; framesDropped?: number; frameWidth?: number; frameHeight?: number }> = [];
         report.forEach((stat) => {
           // currentRoundTripTime lives on the *succeeded* candidate
           // pair. nominated is the one actively in use.
@@ -378,13 +379,36 @@ class WebRTCService {
             bytesSent = (bytesSent ?? 0) + s.bytesSent;
             perStream.push({ kind: s.kind, mid: s.mid, bytesSent: s.bytesSent, packetsSent: s.packetsSent, targetBitrate: s.targetBitrate });
           }
+          if (
+            stat.type === 'inbound-rtp' &&
+            typeof (stat as { bytesReceived?: number }).bytesReceived === 'number'
+          ) {
+            const s = stat as { bytesReceived: number; kind?: string; mid?: string; packetsReceived?: number; framesDecoded?: number; framesDropped?: number; frameWidth?: number; frameHeight?: number };
+            perInbound.push({
+              kind: s.kind, mid: s.mid,
+              bytesReceived: s.bytesReceived,
+              packetsReceived: s.packetsReceived,
+              framesDecoded: s.framesDecoded,
+              framesDropped: s.framesDropped,
+              frameWidth: s.frameWidth,
+              frameHeight: s.frameHeight,
+            });
+          }
         });
-        // Log per-sender breakdown every ~5 ticks (~3s) so the dev
-        // console shows which mid/kind is actually producing bytes
-        // vs. sitting at zero — the smoking gun for "screen attached
-        // but not flowing" type bugs.
-        if (++diagTickCount % 5 === 0 && perStream.length > 0) {
-          console.log('[Voice/diag] outbound-rtp stream breakdown:', perStream);
+        // Log per-sender + per-receiver breakdown every ~5 ticks
+        // (~3s). Outbound shows what WE are sending; inbound shows
+        // what we're receiving from the SFU (the other side's
+        // tracks). Together they reveal: 'I'm sending but they're
+        // not receiving' (server forwarding bug) vs. 'they're
+        // sending but I'm not receiving' (decode failure / NACK
+        // storm / network).
+        if (++diagTickCount % 5 === 0) {
+          if (perStream.length > 0) {
+            console.log('[Voice/diag] outbound-rtp stream breakdown:', perStream);
+          }
+          if (perInbound.length > 0) {
+            console.log('[Voice/diag] inbound-rtp stream breakdown:', perInbound);
+          }
         }
 
         if (rttMs !== null) {
