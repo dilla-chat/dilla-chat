@@ -1391,7 +1391,7 @@ function ThreadPanel({ channelId, messageId, members, onClose, onReact }) {
 // remote camera and screen-share tiles. Falls back to null when no stream
 // is available — callers render the CamTile/ScreenTile placeholder in
 // that case.
-function VideoTile({ stream, fit = 'cover', mirror }: { stream: MediaStream; fit?: 'cover' | 'contain'; mirror?: boolean }) {
+function VideoTile({ stream, fit = 'cover', mirror, showStats = true }: { stream: MediaStream; fit?: 'cover' | 'contain'; mirror?: boolean; showStats?: boolean }) {
   const ref = useRef<HTMLVideoElement | null>(null);
   const [stats, setStats] = useState<{ w: number; h: number; fps: number } | null>(null);
   const [bitrate, setBitrate] = useState<number | null>(null);
@@ -1500,7 +1500,7 @@ function VideoTile({ stream, fit = 'cover', mirror }: { stream: MediaStream; fit
           display: 'block',
         }}
       />
-      {stats && (
+      {showStats && stats && (
         <div
           style={{
             position: 'absolute',
@@ -1732,7 +1732,7 @@ function CamTile({ member, mini }) {
         {/* Webcam tiles: `cover` for the full-size tile (people are used
             to face-cropped video calls), `contain` for the mini PIP so
             the whole frame is visible at a glance. */}
-        <VideoTile stream={stream} fit={mini ? 'contain' : 'cover'} mirror={isSelf} />
+        <VideoTile stream={stream} fit={mini ? 'contain' : 'cover'} mirror={isSelf} showStats={!mini} />
         {!mini && <span className="cam-tile-label">{member.name}</span>}
       </div>
     );
