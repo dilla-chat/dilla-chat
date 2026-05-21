@@ -4085,12 +4085,28 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
   // mode entirely until the sharer stops.
   const channelSharerId = useVoiceStore((s) => s.screenSharingUserId);
   const voicePeers = useVoiceStore((s) => s.peers);
-  // Manual focus + screen-share fallback. Late-joiners landing in a
-  // channel where someone is already sharing should NEVER see the
-  // card grid — derive the focus from the active sharer when no
-  // manual focus is set so the focus branch always wins.
-  const effectiveFocused = focused
-    || (channelSharerId ? { id: channelSharerId, kind: 'screen' as const } : null);
+  const remoteScreenStreamsForFocus = useVoiceStore((s) => s.remoteScreenStreams);
+  // Resolve the effective focus, with a few layered fallbacks:
+  // 1. If the user's manually-focused peer is currently sharing a
+  //    screen, force kind='screen' regardless of what the user picked
+  //    — screen-share always wins over webcam for that peer. Matches
+  //    Discord-style UX where the share IS the call once it's on, so
+  //    a cam-first → screen-second start auto-promotes the screen
+  //    even if the viewer had clicked into the cam already.
+  // 2. Otherwise honour the explicit manual focus.
+  // 3. Otherwise fall back to the channel's active sharer so a
+  //    late-joiner lands on the share instead of the card grid.
+  const effectiveFocused = (() => {
+    if (focused) {
+      const peer = voicePeers?.[focused.id];
+      const hasLiveScreen = !!(peer?.screen_sharing && remoteScreenStreamsForFocus?.[focused.id]);
+      if (hasLiveScreen && focused.kind !== 'screen') {
+        return { id: focused.id, kind: 'screen' as const };
+      }
+      return focused;
+    }
+    return channelSharerId ? { id: channelSharerId, kind: 'screen' as const } : null;
+  })();
   // Resolve the focused user. Prefer the shell's member record (full
   // profile data) but fall back through voiceStore.peers so a late
   // joiner can render the sharer before channel.participants has
