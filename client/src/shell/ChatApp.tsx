@@ -194,7 +194,7 @@ function MiniMeter() {
 // first sample. `tone` returns ok/warn/bad based on a metric-specific
 // threshold so the same bar color language reads correctly in both
 // directions (lower-better for latency, higher-better for bitrate).
-const STATS_BARS = 28;
+const STATS_BARS = 20;
 function StatsSparkline({
   label,
   unit,

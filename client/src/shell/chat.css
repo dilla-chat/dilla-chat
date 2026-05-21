@@ -404,7 +404,7 @@
 .vd-spark-graph {
   display: flex;
   align-items: flex-end;
-  gap: 0.0625rem;
+  gap: 0.125rem;
   height: 1.5rem;
   width: 100%;
   min-width: 0;
