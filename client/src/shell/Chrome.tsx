@@ -107,14 +107,6 @@ function BottomBar({ voiceConnection, peerStatus, federated = true, degraded = f
            onClick={() => window.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'user', tab: 'privacy' } }))}>
         <span className="mb-k">e2e</span> {e2eLabel}
       </div>
-      {voiceConnection ?
-      <div className="mb-chunk mb-voice mb-clickable"
-           title="Click for voice settings"
-           onClick={() => window.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'user', tab: 'voice' } }))}>
-          <span className="mb-k">voice</span> SRTP · OPUS 48kHz @ 96kbps
-          <AudioMeter />
-        </div> :
-
       <div className={'mb-chunk' + (dbEncrypted === false ? ' mb-warn' : '')}
            title={dbEncrypted === false
              ? 'Server is running without DILLA_DB_PASSPHRASE (--insecure). The DB file on disk is plain SQLite.'
@@ -122,7 +114,14 @@ function BottomBar({ voiceConnection, peerStatus, federated = true, degraded = f
              : 'Waiting for server config…'}>
         <span className="mb-k">db</span> {dbLabel}
       </div>
-      }
+      {voiceConnection && (
+        <div className="mb-chunk mb-voice mb-clickable"
+             title="Click for voice settings"
+             onClick={() => window.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'user', tab: 'voice' } }))}>
+          <span className="mb-k">voice</span> SRTP · OPUS 48kHz @ 96kbps
+          <AudioMeter />
+        </div>
+      )}
       <div className="mb-chunk mb-grow"></div>
       <div className="mb-chunk"><span className="mb-k">v</span> {__APP_VERSION__} · build {__GIT_SHA__}</div>
     </div>);
