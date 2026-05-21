@@ -56,8 +56,11 @@ class WebRTCService {
   // the next renegotiation's new transceiver BEFORE createAnswer runs.
   // Without this, the answer m-line lands as a=inactive (Chrome
   // downgrades empty sendonly to inactive) and the encoder never
-  // produces frames.
-  private pendingVideoTrack: { kind: 'cam' | 'screen'; track: MediaStreamTrack } | null = null;
+  // produces frames. Separate slots per kind so a rapid cam-then-
+  // screen sequence doesn't make the second start overwrite the first
+  // (single-slot version did, and cam never got bound).
+  private pendingCamTrack: MediaStreamTrack | null = null;
+  private pendingScreenTrack: MediaStreamTrack | null = null;
 
   // Composed modules
   private readonly vad = new VoiceActivityDetector();
@@ -647,16 +650,23 @@ class WebRTCService {
             // track BEFORE createAnswer, the answer m-line becomes
             // a=inactive (recvonly ∩ recvonly = inactive) and the
             // encoder produces nothing.
-            if (this.pendingVideoTrack) {
-              const pending = this.pendingVideoTrack;
-              // Must be a video transceiver that DIDN'T exist before
-              // this offer arrived. Without the mid-diff a busy room
-              // (14+ accumulated recvonly m-lines for other peers'
-              // tracks) makes find() pick whichever video slot comes
-              // first instead of the one the server just appended
-              // for us — we'd attach our cam to a peer-receive slot,
-              // the real new slot stays inactive in the answer, and
-              // 'pre-bind never landed' fires.
+            // Pre-bind any pending video tracks. Separate slots per
+            // kind so a rapid cam-then-screen sequence can't have
+            // the second start overwrite the first — both can be
+            // queued simultaneously and bind to their own new
+            // transceiver as the offers land.
+            const pendingPairs: Array<{ kind: 'cam' | 'screen'; track: MediaStreamTrack }> = [];
+            if (this.pendingCamTrack) pendingPairs.push({ kind: 'cam', track: this.pendingCamTrack });
+            if (this.pendingScreenTrack) pendingPairs.push({ kind: 'screen', track: this.pendingScreenTrack });
+            for (const pending of pendingPairs) {
+              if (pending.track.readyState !== 'live') {
+                // Caller's stop happened during the await window
+                // (rapid toggle). Drop the stale entry; user will
+                // re-toggle if they actually want it.
+                if (pending.kind === 'cam') this.pendingCamTrack = null;
+                else this.pendingScreenTrack = null;
+                continue;
+              }
               const target = this.pc.getTransceivers().find((tx) => {
                 if (tx.currentDirection === 'stopped') return false;
                 if (tx.sender.track) return false;
@@ -667,13 +677,18 @@ class WebRTCService {
               if (target) {
                 try { target.direction = 'sendonly'; } catch { /* read-only */ }
                 await target.sender.replaceTrack(pending.track);
-                if (pending.kind === 'screen') this.screenSender = target.sender;
-                else this.webcamSender = target.sender;
+                if (pending.kind === 'screen') {
+                  this.screenSender = target.sender;
+                  this.pendingScreenTrack = null;
+                } else {
+                  this.webcamSender = target.sender;
+                  this.pendingCamTrack = null;
+                }
                 console.log('[Voice/diag] pre-bind:', pending.kind, '→ transceiver', { mid: target.mid, dir: target.direction });
-                this.pendingVideoTrack = null;
-              } else {
-                console.warn('[Voice/diag] pre-bind:', pending.kind, '— no NEW video transceiver in this offer');
               }
+              // No warn here for the per-kind miss — the caller
+              // (startWebcam/startScreenShare) emits a clearer
+              // 'pre-bind never landed' after its wait times out.
             }
 
             const answer = await this.pc.createAnswer();
@@ -1166,7 +1181,7 @@ class WebRTCService {
     // new transceiver BEFORE createAnswer (otherwise the answer
     // becomes a=inactive and the encoder never produces frames —
     // see the offer/answer pre-bind logic in setupWSListeners).
-    this.pendingVideoTrack = { kind: 'screen', track: videoTrack };
+    this.pendingScreenTrack = videoTrack;
     ws.voiceScreenStart(this.teamId, this.channelId);
     await this.waitForSignalingStable(3000);
     this.diagSnapshot('startScreenShare: after signaling stable');
@@ -1248,6 +1263,10 @@ class WebRTCService {
 
   async stopScreenShare(): Promise<void> {
     console.log('[Voice/diag] stopScreenShare — track', this.screenStream?.getTracks()[0]?.id ?? 'none', 'sender', !!this.screenSender);
+    // Drop any queued pending track from a start that didn't bind yet
+    // — otherwise a quick start→stop leaves a stale entry that would
+    // get bound on the next unrelated offer.
+    this.pendingScreenTrack = null;
     // Stop the screen track.
     if (this.screenStream) {
       this.screenStream.getTracks().forEach((t) => t.stop());
@@ -1316,7 +1335,7 @@ class WebRTCService {
 
     console.log('[Voice/diag] startWebcam — track', { id: videoTrack.id, kind: videoTrack.kind, label: videoTrack.label, readyState: videoTrack.readyState, enabled: videoTrack.enabled });
     this.diagSnapshot('startWebcam: before voiceWebcamStart');
-    this.pendingVideoTrack = { kind: 'cam', track: videoTrack };
+    this.pendingCamTrack = videoTrack;
     ws.voiceWebcamStart(this.teamId, this.channelId);
     await this.waitForSignalingStable(3000);
     this.diagSnapshot('startWebcam: after signaling stable');
@@ -1362,6 +1381,8 @@ class WebRTCService {
 
   async stopWebcam(): Promise<void> {
     console.log('[Voice/diag] stopWebcam — track', this.webcamStream?.getTracks()[0]?.id ?? 'none', 'sender', !!this.webcamSender);
+    // Drop any queued pending track from a start that didn't bind yet.
+    this.pendingCamTrack = null;
     if (this.webcamStream) {
       this.webcamStream.getTracks().forEach((t) => t.stop());
       this.webcamStream = null;
