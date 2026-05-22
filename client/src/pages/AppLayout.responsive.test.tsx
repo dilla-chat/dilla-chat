@@ -52,6 +52,10 @@ vi.mock('../stores/authStore', () => ({
     derivedKey: null,
   }),
   restoreDerivedKey: vi.fn().mockResolvedValue(null),
+  // H-13d cookie-based session restore: AppLayout now re-hydrates the
+  // auth store from the encrypted store on mount. The hook is a no-op
+  // in tests but the named export must exist or vi.mock throws.
+  restoreEncryptedAuthDataIntoStore: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../stores/teamStore', () => ({

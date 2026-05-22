@@ -79,7 +79,10 @@ describe('MeshBottomBar', () => {
   it('clicking the e2e chunk dispatches mesh:open-privacy', () => {
     const spy = vi.spyOn(window, 'dispatchEvent');
     render(<MeshBottomBar />);
-    fireEvent.click(screen.getByTitle(/encryption/i));
+    // Click the e2e chunk by its label-prefix span — the title copy
+    // depends on e2eState (active/initializing/locked), but the
+    // button itself always renders the "e2e" label-prefix.
+    fireEvent.click(screen.getByText('e2e').closest('button')!);
     expect(
       spy.mock.calls.some(
         (call) =>

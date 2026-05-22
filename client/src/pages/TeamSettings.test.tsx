@@ -88,7 +88,13 @@ async function navigateToInvitesWithList(invites: Array<Record<string, unknown>>
   navigateToTab('invites');
 }
 
-describe('TeamSettings', () => {
+// The mesh redesign turned src/pages/TeamSettings.tsx into a thin
+// redirect shim — Team Settings now lives in the shell modal at
+// shell/Settings.tsx. The tests below still target the legacy
+// implementation that the shim replaced, so they're skipped
+// wholesale. Bodies preserved verbatim so they can be ported to a
+// new test file covering shell/Settings.tsx when that work happens.
+describe.skip('TeamSettings (legacy — superseded by shell/Settings modal)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockNavigate.mockClear();

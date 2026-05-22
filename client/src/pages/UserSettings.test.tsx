@@ -70,7 +70,13 @@ function navigateToTab(tabId: string) {
   fireEvent.click(screen.getByTestId(`nav-${tabId}`));
 }
 
-describe('UserSettings', () => {
+// Same story as TeamSettings.test.tsx: src/pages/UserSettings.tsx is
+// now a redirect-to-modal shim; the in-shell modal at shell/Settings
+// took over the actual UI. The tests below target the legacy
+// component and are skipped wholesale — preserved verbatim so they
+// can be ported to a new test covering shell/Settings.tsx user mode
+// when that work happens.
+describe.skip('UserSettings (legacy — superseded by shell/Settings modal)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockNavigate.mockClear();
