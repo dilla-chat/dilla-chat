@@ -10,14 +10,27 @@
 //! callers (avatar URL fetch, OpenGraph preview, etc.) MUST go through
 //! this helper.
 
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 
 use crate::error::AppError;
 
-/// Validate an outbound URL against the SSRF policy. Returns the URL
-/// unchanged when allowed. Errors return `AppError::BadRequest` so
+/// Result of validating an outbound URL: the URL itself plus the
+/// hostname/port and a pinned `SocketAddr` the caller MUST hand to
+/// `reqwest::Client::builder().resolve(host, sockaddr)` so reqwest
+/// doesn't re-resolve at request time. Without pinning, a malicious
+/// DNS server can flip the resolution between this validation and
+/// reqwest's own lookup (TOCTOU / DNS rebinding).
+pub struct SafeOutbound {
+    pub url: String,
+    pub host: String,
+    pub sockaddr: SocketAddr,
+}
+
+/// Validate an outbound URL against the SSRF policy AND pin the
+/// resolved IP. Returns a `SafeOutbound` the caller can plumb into a
+/// reqwest client builder. Errors return `AppError::BadRequest` so
 /// the caller can surface a 400 without leaking which check failed.
-pub async fn safe_outbound_url(raw_url: &str) -> Result<String, AppError> {
+pub async fn safe_outbound_url(raw_url: &str) -> Result<SafeOutbound, AppError> {
     // (a) Scheme check — require HTTPS. Plain HTTP is rejected so we
     // can't be tricked into POSTing credentials to an attacker-
     // controlled clear-text endpoint, and ftp/gopher/file are
@@ -36,14 +49,16 @@ pub async fn safe_outbound_url(raw_url: &str) -> Result<String, AppError> {
 
     // (b) Resolve hostname to one or more IP addresses. Refuse if
     // ANY resolved address is on the deny list — defends against
-    // DNS rebinding and against records that mix public + private IPs.
+    // records that mix public + private IPs. Then pin the FIRST
+    // public address into the returned SafeOutbound so the caller's
+    // reqwest client can `.resolve()` it and bypass DNS-rebinding
+    // attacks. Net-new #4 from the validation report.
     let host_port = format!("{}:{}", url.host, url.port_or_default());
     let addrs = tokio::net::lookup_host(&host_port)
         .await
         .map_err(|e| AppError::BadRequest(format!("dns lookup failed: {}", e)))?;
-    let mut any = false;
+    let mut pinned: Option<SocketAddr> = None;
     for sa in addrs {
-        any = true;
         let ip = sa.ip();
         if !is_public_ip(&ip) {
             return Err(AppError::BadRequest(format!(
@@ -51,11 +66,17 @@ pub async fn safe_outbound_url(raw_url: &str) -> Result<String, AppError> {
                 ip
             )));
         }
+        if pinned.is_none() {
+            pinned = Some(sa);
+        }
     }
-    if !any {
-        return Err(AppError::BadRequest("dns returned no addresses".into()));
-    }
-    Ok(raw_url.to_string())
+    let sockaddr = pinned
+        .ok_or_else(|| AppError::BadRequest("dns returned no addresses".into()))?;
+    Ok(SafeOutbound {
+        url: raw_url.to_string(),
+        host: url.host.clone(),
+        sockaddr,
+    })
 }
 
 /// True when `ip` is a global, public, routable address.

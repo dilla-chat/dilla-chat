@@ -207,10 +207,11 @@ pub async fn embed(
 
     // OUT-SSRF-1 / H11: belt-and-braces — even though is_giphy_url
     // already pinned to giphy.com, run the network-layer SSRF guard.
-    // Defends against DNS rebinding pointing media.giphy.com at
-    // 127.0.0.1 / 169.254.169.254 / RFC-1918 between this check and
-    // reqwest's own resolution.
-    let safe_url = crate::api::outbound::safe_outbound_url(&body.url).await?;
+    // Net-new #4: the guard now pins the resolved IP into a
+    // SafeOutbound and we feed that to reqwest's `.resolve()` so the
+    // HTTP fetch doesn't re-resolve at request time (DNS rebinding
+    // defense).
+    let safe = crate::api::outbound::safe_outbound_url(&body.url).await?;
 
     // H12 / UPL-DOS-1: cheap pre-check against the per-team quota.
     // The post-fetch enforcement below catches the racy case; this
@@ -236,10 +237,14 @@ pub async fn embed(
     // redirect can't fill the disk.
     let client: reqwest::Client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(8))
+        // Pin the host to the IP we just validated, so reqwest skips
+        // its own DNS lookup and a rebinding attacker can't flip the
+        // address mid-flight.
+        .resolve(&safe.host, safe.sockaddr)
         .build()
         .map_err(|e| AppError::Internal(format!("http client: {}", e)))?;
     let res: reqwest::Response = client
-        .get(&safe_url)
+        .get(&safe.url)
         .send()
         .await
         .map_err(|e| AppError::BadGateway(format!("giphy fetch failed: {}", e)))?;
