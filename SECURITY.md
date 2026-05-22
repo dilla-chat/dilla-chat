@@ -332,8 +332,28 @@ that the X25519 DH + HKDF + AES-GCM derivations run off main
 thread, and (after H-12d.2 drops the main-thread copy) an XSS
 post-init has no way to invoke `crypto.subtle` ops with the key.
 
-**H-12d.2 (open).** X3DH initiate/respond + prekey secrets are
-still main-thread. See `HANDOVER.md` H-12d.2.
+**H-12d.2.** X3DH initiate/respond now run in the worker. A new
+`prekey-vault` IDB store (encrypted by the same KEK as the
+session stores) holds the prekey privates; the X3DH Alice + Bob
+bootstrap ops consume those + the cached identity DH key entirely
+in worker scope. The main thread still keeps a `prekeySecrets`
+shadow copy for the `backend='main'` test path; production
+behavior ships the secrets to the worker once and never reads
+them on main thread afterward.
+
+**Net post-H-12 threat-model surface:**
+- All group session crypto in worker.
+- All pairwise session crypto + X3DH bootstrap in worker.
+- Identity-DH-based wrap/unwrap in worker.
+- Prekey vault in worker.
+
+An XSS in the SPA can still call `cryptoManager.{encrypt,decrypt}DM`
+or `encryptChannel/decryptChannel` and get plaintext for observed
+messages (intrinsic to in-process crypto). It cannot extract the
+identity DH private key (non-extractable + worker-only), the
+prekey privates (worker-vault only), any chain key, any signing
+key, any per-message AES-GCM derive, or any intermediate
+X3DH/HKDF shared-secret bytes — those live only in worker scope.
 
 ## 11. Cross-references
 

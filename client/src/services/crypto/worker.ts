@@ -53,10 +53,19 @@ import {
 } from './pairwiseSessionWorkerImpl';
 import {
   setIdentityDhPrivateKey,
+  setIdentityDhPublicKeyBytes,
   hasIdentityDhPrivateKey,
   opWrapForPeer,
   opUnwrapFromPeer,
 } from './identityWorkerImpl';
+import {
+  savePrekeySecrets,
+  clearPrekeyVault,
+} from './prekeyVaultWorkerImpl';
+import {
+  opPairwiseBootstrapAlice as psBootstrapAlice,
+  opPairwiseBootstrapBob as psBootstrapBob,
+} from './pairwiseSessionWorkerImpl';
 
 interface RpcRequest {
   id: number;
@@ -210,10 +219,20 @@ async function dispatch(op: string, payload: unknown): Promise<unknown> {
     // doesn't expose raw bytes. H-12d.2 will move X3DH initiate +
     // respond + prekey secrets into the worker too.
     case 'identity.init': {
-      const { identityDhPrivateKey } = payload as {
+      const { identityDhPrivateKey, identityDhPublicKeyB64 } = payload as {
         identityDhPrivateKey: CryptoKey | null;
+        identityDhPublicKeyB64?: string;
       };
       setIdentityDhPrivateKey(identityDhPrivateKey);
+      if (identityDhPublicKeyB64) {
+        // base64 → Uint8Array. Worker-local, doesn't need to round-trip.
+        const bin = atob(identityDhPublicKeyB64);
+        const out = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+        setIdentityDhPublicKeyBytes(out);
+      } else {
+        setIdentityDhPublicKeyBytes(null);
+      }
       return null;
     }
     case 'identity.hasKey':
@@ -231,6 +250,34 @@ async function dispatch(op: string, payload: unknown): Promise<unknown> {
         ciphertextB64: string;
       };
       return await opUnwrapFromPeer(peerIdentityDhPubB64, ciphertextB64);
+    }
+    // H-12d.2: prekey vault + X3DH bootstrap ops.
+    case 'prekeyVault.save': {
+      const { signedPrekeyPrivateB64, oneTimePrekeyPrivatesB64 } = payload as {
+        signedPrekeyPrivateB64: string;
+        oneTimePrekeyPrivatesB64: string[];
+      };
+      await savePrekeySecrets(signedPrekeyPrivateB64, oneTimePrekeyPrivatesB64);
+      return null;
+    }
+    case 'prekeyVault.clear': {
+      await clearPrekeyVault();
+      return null;
+    }
+    case 'pairwiseSession.bootstrapAlice': {
+      const { peerId, peerBundle } = payload as {
+        peerId: string;
+        peerBundle: Parameters<typeof psBootstrapAlice>[1];
+      };
+      return await psBootstrapAlice(peerId, peerBundle);
+    }
+    case 'pairwiseSession.bootstrapBob': {
+      const { peerId, bootstrap } = payload as {
+        peerId: string;
+        bootstrap: Parameters<typeof psBootstrapBob>[1];
+      };
+      await psBootstrapBob(peerId, bootstrap);
+      return null;
     }
     case 'ping':
       return 'pong';

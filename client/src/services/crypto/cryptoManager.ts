@@ -29,6 +29,9 @@ import {
   isIdentityInitInWorker,
   wrapForPeerInWorker,
   unwrapFromPeerInWorker,
+  prekeyVaultSaveInWorker,
+  pairwiseSessionBootstrapAliceInWorker,
+  pairwiseSessionBootstrapBobInWorker,
 } from './workerClient';
 import { x25519DH, importX25519PrivateKey } from './x25519';
 import { hkdfDerive } from './hkdf';
@@ -75,13 +78,28 @@ export class CryptoManager {
 
   async initSessionWithBundle(peerId: string, bundle: PrekeyBundle): Promise<void> {
     if (this.pairwiseSessions.has(peerId)) return;
+    // H-12d.2: when the worker path is up, run X3DH initiate +
+    // RatchetSession.initAlice inside the worker. The shared secret
+    // + the new chain key never enter the main heap.
+    if (await this.ensureIdentityInWorker()) {
+      try {
+        await pairwiseSessionBootstrapAliceInWorker(
+          peerId,
+          bundle as unknown as Record<string, unknown>,
+        );
+        // Worker is the source of truth now; we deliberately don't
+        // mirror the session into pairwiseSessions Map (backend
+        // routing in encryptDM/decryptDM already prefers the worker).
+        return;
+      } catch (err) {
+        // Worker failed (e.g. peer bundle malformed, OS-level
+        // postMessage failure) — fall through to the in-thread
+        // path below so the call doesn't hard-fail.
+        console.warn('[crypto] worker X3DH initiate failed; falling back to main thread', err);
+      }
+    }
     const { sharedSecret, ephemeralPublicKey, oneTimePreKeyIndex } =
       await x3dhInitiate(this.identityDhKeyPair.privateKey, bundle);
-    // The first outbound message on this session must carry the X3DH
-    // handshake info so the recipient can derive the same shared
-    // secret via x3dhRespond → initBob, without a pre-existing
-    // session. RatchetSession holds this in `pendingBootstrap` until
-    // encrypt() attaches it to the first message header.
     const bootstrap: X3DHBootstrap = {
       identity_dh_key: Array.from(this.identityDhKeyPair.publicKeyBytes),
       ephemeral_key: Array.from(ephemeralPublicKey),
@@ -93,11 +111,6 @@ export class CryptoManager {
       bootstrap,
     );
     this.pairwiseSessions.set(peerId, session);
-    // H-12c: ship the freshly-bootstrapped session to the worker so
-    // subsequent encryptDM/decryptDM ops can run there without
-    // re-establishing state. X3DH initiate itself still runs on
-    // main thread (uses identity DH private key) — H-12d defers
-    // moving that.
     if (this.useWorkerGroupSession()) {
       await pairwiseSessionSaveInWorker(peerId, session.toJSON()).catch(() => {});
     }
@@ -133,20 +146,38 @@ export class CryptoManager {
   async decryptDM(senderId: string, ciphertext: string): Promise<string> {
     // H-12c: try the worker first. If it reports the message needs
     // an X3DH bootstrap (no session yet, or stale Alice-session),
-    // run the Bob-bootstrap on main thread (still needs prekey
-    // secrets — H-12d will move those), ship the freshly-bootstrapped
-    // session to the worker, and retry decrypt there.
+    // H-12d.2 runs the Bob-bootstrap IN THE WORKER too (via the
+    // prekey vault + identity DH key cached there), then retries.
+    // Falls back to the main-thread bootstrap path on any worker
+    // failure.
     if (this.useWorkerGroupSession()) {
       try {
         const result = await pairwiseSessionDecryptInWorker(senderId, ciphertext);
         if (result.ok) {
           return decoder.decode(fromBase64(result.plaintextB64));
         }
-        // result.ok === false → needsBootstrap. Fall through to the
-        // main-thread bootstrap path below, then retry via worker.
+        // result.ok === false → needsBootstrap. Try the worker-side
+        // Bob bootstrap, then retry decrypt.
+        if (
+          (await this.ensureIdentityInWorker()) &&
+          (await this.ensurePrekeyVaultInWorker())
+        ) {
+          const msg = JSON.parse(decoder.decode(fromBase64(ciphertext))) as RatchetMessage;
+          if (msg.header.x3dh) {
+            try {
+              await pairwiseSessionBootstrapBobInWorker(senderId, msg.header.x3dh);
+              const retry = await pairwiseSessionDecryptInWorker(senderId, ciphertext);
+              if (retry.ok) {
+                return decoder.decode(fromBase64(retry.plaintextB64));
+              }
+            } catch (err) {
+              console.warn('[crypto] worker Bob bootstrap failed; falling back', err);
+            }
+          }
+        }
+        // Worker-side bootstrap unavailable or failed — fall through
+        // to the main-thread path below.
       } catch (err) {
-        // Worker errored on an unrecoverable shape; surface to
-        // caller after the bootstrap fallback below.
         const msg = JSON.parse(decoder.decode(fromBase64(ciphertext))) as RatchetMessage;
         if (!msg.header.x3dh) throw err;
       }
@@ -248,19 +279,55 @@ export class CryptoManager {
     return aesGcmDecrypt(wrapKey, fromBase64(ciphertext));
   }
 
-  /** H-12d.1: lazy ship the identity DH private key to the worker.
-   *  Called on first wrap/unwrap; subsequent calls short-circuit on
-   *  the worker-side init flag. Returns true when the worker path
-   *  is ready (backend='worker', Worker available, init succeeded). */
+  /** H-12d.1 / H-12d.2: lazy ship the identity DH private key + the
+   *  public-key bytes (so the worker's X3DH initiate path can
+   *  stamp them into the bootstrap header) to the worker. Idempotent
+   *  on the worker-side init flag. Returns true when the worker
+   *  path is ready (backend='worker', Worker available, init
+   *  succeeded). */
   private async ensureIdentityInWorker(): Promise<boolean> {
     if (!this.useWorkerGroupSession()) return false;
     if (isIdentityInitInWorker()) return true;
     try {
-      await identityInitInWorker(this.identityDhKeyPair.privateKey);
+      await identityInitInWorker(
+        this.identityDhKeyPair.privateKey,
+        this.identityDhKeyPair.publicKeyBytes,
+      );
       return isIdentityInitInWorker();
     } catch {
       return false;
     }
+  }
+
+  /** H-12d.2: ship the prekey privates to the worker vault once after
+   *  generation. The main thread can then drop its in-memory copy
+   *  (we keep it for the backend='main' fallback). */
+  private async shipPrekeySecretsToWorker(): Promise<void> {
+    if (!this.useWorkerGroupSession() || !this.prekeySecrets) return;
+    try {
+      await prekeyVaultSaveInWorker(
+        this.prekeySecrets.signed_prekey_private,
+        this.prekeySecrets.one_time_prekey_privates,
+      );
+      this.prekeyVaultShipped = true;
+    } catch (err) {
+      console.warn('[crypto] prekey vault ship failed; X3DH respond will fall back', err);
+    }
+  }
+
+  /** True once the prekey privates have been shipped to the worker
+   *  via `shipPrekeySecretsToWorker`. */
+  private prekeyVaultShipped = false;
+
+  /** H-12d.2: ensure the worker has the prekey privates before
+   *  calling pairwiseSession.bootstrapBob. Lazy ship on first need.
+   *  Returns true when the vault is populated worker-side. */
+  private async ensurePrekeyVaultInWorker(): Promise<boolean> {
+    if (this.prekeyVaultShipped) return true;
+    if (!this.useWorkerGroupSession()) return false;
+    if (!this.prekeySecrets) return false;
+    await this.shipPrekeySecretsToWorker();
+    return this.prekeyVaultShipped;
   }
 
   async getOrCreateGroupSession(channelId: string, senderId: string): Promise<GroupSession> {

@@ -283,12 +283,21 @@ export async function pairwiseSessionDecryptInWorker(
 let identityInitDone = false;
 
 /** Ship the user's non-extractable identity DH private CryptoKey to
- *  the worker. Idempotent on the main-thread side (we only call
- *  through to the worker the first time). */
-export async function identityInitInWorker(identityDhPrivateKey: CryptoKey): Promise<void> {
+ *  the worker. The public-key bytes ride alongside so the X3DH
+ *  initiate op inside the worker can include them in the bootstrap
+ *  header without re-deriving. Idempotent on the main-thread side. */
+export async function identityInitInWorker(
+  identityDhPrivateKey: CryptoKey,
+  identityDhPublicKeyBytes?: Uint8Array,
+): Promise<void> {
   if (backend === 'main' || typeof Worker === 'undefined') return;
   if (identityInitDone) return;
-  await call<null>('identity.init', { identityDhPrivateKey });
+  await call<null>('identity.init', {
+    identityDhPrivateKey,
+    identityDhPublicKeyB64: identityDhPublicKeyBytes
+      ? bytesToB64(identityDhPublicKeyBytes)
+      : undefined,
+  });
   identityInitDone = true;
 }
 
@@ -315,6 +324,44 @@ export async function unwrapFromPeerInWorker(
     ciphertextB64: bytesToB64(ciphertext),
   });
   return b64ToBytes(plaintextB64);
+}
+
+// ── H-12d.2: prekey vault + X3DH bootstrap ────────────────────────
+
+export async function prekeyVaultSaveInWorker(
+  signedPrekeyPrivate: Uint8Array,
+  oneTimePrekeyPrivates: Uint8Array[],
+): Promise<void> {
+  await call<null>('prekeyVault.save', {
+    signedPrekeyPrivateB64: bytesToB64(signedPrekeyPrivate),
+    oneTimePrekeyPrivatesB64: oneTimePrekeyPrivates.map(bytesToB64),
+  });
+}
+
+export async function prekeyVaultClearInWorker(): Promise<void> {
+  await call<null>('prekeyVault.clear', null);
+}
+
+// Type that mirrors X3DHBootstrap from ratchet.ts to avoid leaking
+// a cross-bundle import here. Caller stamps these fields in.
+export interface X3DHBootstrapWire {
+  identity_dh_key: number[];
+  ephemeral_key: number[];
+  one_time_prekey_index: number | null;
+}
+
+export async function pairwiseSessionBootstrapAliceInWorker(
+  peerId: string,
+  peerBundle: Record<string, unknown>,
+): Promise<X3DHBootstrapWire> {
+  return call<X3DHBootstrapWire>('pairwiseSession.bootstrapAlice', { peerId, peerBundle });
+}
+
+export async function pairwiseSessionBootstrapBobInWorker(
+  peerId: string,
+  bootstrap: X3DHBootstrapWire,
+): Promise<void> {
+  await call<null>('pairwiseSession.bootstrapBob', { peerId, bootstrap });
 }
 
 function bytesToB64(b: Uint8Array): string {

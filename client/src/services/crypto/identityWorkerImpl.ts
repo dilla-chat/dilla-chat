@@ -21,15 +21,32 @@ import { aesGcmEncrypt, aesGcmDecrypt } from './aesGcm';
 import { encoder, toBase64, fromBase64 } from './helpers';
 
 let identityDhPrivateKey: CryptoKey | null = null;
+let identityDhPublicKeyBytes: Uint8Array | null = null;
 
 /** Called once at worker init from the main thread. Subsequent
- *  init calls replace the cached key (account switch). */
+ *  init calls replace the cached key (account switch).
+ *
+ *  H-12d.2 added `publicKeyBytes` so the X3DH-initiate path inside
+ *  the worker can include them in the bootstrap header without
+ *  re-deriving from the private key. */
 export function setIdentityDhPrivateKey(key: CryptoKey | null): void {
   identityDhPrivateKey = key;
 }
 
+export function setIdentityDhPublicKeyBytes(bytes: Uint8Array | null): void {
+  identityDhPublicKeyBytes = bytes ? new Uint8Array(bytes) : null;
+}
+
 export function hasIdentityDhPrivateKey(): boolean {
   return identityDhPrivateKey !== null;
+}
+
+export function getIdentityDhPrivateKey(): CryptoKey | null {
+  return identityDhPrivateKey;
+}
+
+export function getIdentityDhPublicKeyBytes(): Uint8Array | null {
+  return identityDhPublicKeyBytes;
 }
 
 /** H-12d.1: derive a shared secret with the peer's identity DH public

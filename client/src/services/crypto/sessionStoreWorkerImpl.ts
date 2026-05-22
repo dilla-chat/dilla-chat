@@ -17,7 +17,12 @@
 // after use. Subsequent ops can run without main-thread participation.
 
 const DB_NAME = 'dilla-sessions';
-const DB_VERSION = 1;
+// H-12d.2: bumped to v3 so the shared upgrade handler creates the
+// pairwise-sessions + prekey-vault stores alongside group-sessions.
+// Each module's openDB() registers an upgrade handler that creates
+// every required store idempotently, so whichever module opens first
+// drives the migration end-to-end.
+const DB_VERSION = 3;
 const STORE_NAME = 'group-sessions';
 
 let cachedKey: CryptoKey | null = null;
@@ -57,17 +62,21 @@ async function deriveSessionKey(derivedKey: string): Promise<CryptoKey> {
 export async function initSessionKey(derivedKey: string): Promise<void> {
   cachedKey = await deriveSessionKey(derivedKey);
   // Lazy import avoids the circular-dep complaint when both modules
-  // are imported by worker.ts. The pairwise store module also
-  // imports a marker symbol from this one for the same reason.
+  // are imported by worker.ts.
   const { setPairwiseSessionKey } = await import('./pairwiseSessionStoreWorkerImpl');
   setPairwiseSessionKey(cachedKey);
+  // H-12d.2: seed the prekey vault with the same KEK so the X3DH
+  // bootstrap path can encrypt/decrypt the prekey privates.
+  const { setPrekeyVaultKey } = await import('./prekeyVaultWorkerImpl');
+  setPrekeyVaultKey(cachedKey);
 }
 
 export function resetSessionKey(): void {
   cachedKey = null;
-  // Best-effort: also clear the pairwise store's cached key. Lazy
-  // import for the same circular-dep reason as above.
+  // Best-effort: also clear the pairwise + vault stores' cached
+  // keys. Lazy imports for the same circular-dep reason.
   import('./pairwiseSessionStoreWorkerImpl').then((m) => m.resetPairwiseSessionKey()).catch(() => {});
+  import('./prekeyVaultWorkerImpl').then((m) => m.resetPrekeyVault()).catch(() => {});
 }
 
 async function encryptSession(json: string, key: CryptoKey): Promise<string> {
@@ -105,6 +114,15 @@ function openDB(): Promise<IDBDatabase> {
       const db = request.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME, { keyPath: 'channelId' });
+      }
+      // H-12c / H-12d.2: ensure cross-store invariants — whichever
+      // module wins the open race brings ALL stores online so the
+      // others don't trip the "no such store" path on first use.
+      if (!db.objectStoreNames.contains('pairwise-sessions')) {
+        db.createObjectStore('pairwise-sessions', { keyPath: 'peerId' });
+      }
+      if (!db.objectStoreNames.contains('prekey-vault')) {
+        db.createObjectStore('prekey-vault', { keyPath: 'id' });
       }
     };
     request.onsuccess = () => resolve(request.result);

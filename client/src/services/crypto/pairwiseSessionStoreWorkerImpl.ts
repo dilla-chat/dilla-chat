@@ -20,7 +20,7 @@ import { initSessionKey as _markInitForCompat } from './sessionStoreWorkerImpl';
 void _markInitForCompat;
 
 const DB_NAME = 'dilla-sessions';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const PAIRWISE_STORE = 'pairwise-sessions';
 
 let cachedKey: CryptoKey | null = null;
@@ -70,6 +70,10 @@ function openDB(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(PAIRWISE_STORE)) {
         db.createObjectStore(PAIRWISE_STORE, { keyPath: 'peerId' });
+      }
+      // H-12d.2: same cross-store invariant as sessionStoreWorkerImpl.
+      if (!db.objectStoreNames.contains('prekey-vault')) {
+        db.createObjectStore('prekey-vault', { keyPath: 'id' });
       }
     };
     request.onsuccess = () => resolve(request.result);

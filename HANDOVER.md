@@ -55,36 +55,6 @@ diff is reviewable.
 
 ## Integration tier (release-coordinated, NOT for autonomous patching)
 
-### H-12d.2 — Move X3DH + prekey secrets into the worker (remainder of H-12d)
-
-H-12d.1 (commit follows) moved `wrapForPeer` / `unwrapFromPeer`
-into the worker by adding a worker-side cache for the identity DH
-private CryptoKey + the corresponding ops. The identity-init
-handshake is lazy: first wrap/unwrap call ships the CryptoKey via
-postMessage; subsequent calls short-circuit on a flag.
-
-The remaining migration covers the X3DH session-bootstrap surface:
-
-- `x3dhInitiate` (Alice path) — needs identity DH private key
-  (already cached in worker via H-12d.1 init handshake) +
-  peer's prekey bundle (public, fine to pass).
-- `x3dhRespond` (Bob bootstrap path) — needs identity DH
-  private key + prekey secrets (signed prekey + OTPK privates).
-- New `prekeyVault.*` worker ops: save/load/clear the prekey
-  privates, persisted to IDB via the same KEK as the existing
-  session stores. After
-  `cryptoManager.getOrCreatePrekeyBundle` produces the public
-  bundle + private secrets, ship the secrets to the worker once,
-  then drop the main-thread copy.
-
-After H-12d.2 the main thread has no Signal Protocol secret
-material at all. An XSS post-init can still call
-`cryptoManager.decryptDM` and get plaintext (intrinsic), but
-cannot extract the identity DH private key, prekey secrets, or
-any derived material.
-
-Scope: ~2 days. Touches `cryptoManager.ts` (the X3DH paths),
-`worker.ts` dispatch, new prekey-vault IDB shape.
 
 
 ---
