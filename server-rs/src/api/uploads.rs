@@ -248,10 +248,25 @@ pub async fn download(
                         "attachment is not linked to a message".into(),
                     ));
                 }
-                // In-grace path: team member + path stored under
-                // upload_dir/{team_id}/ is sufficient. The storage_path
-                // check is implicit because get_attachment loaded by id
-                // and we already gate on team membership above.
+                // Net-new #2 from validation report: enforce that the
+                // attachment's owning team (encoded in
+                // storage_path = `{upload_dir}/{team_id}/{aid}`) matches
+                // the URL's team_id. Previously a member of team B could
+                // fetch an unlinked attachment uploaded into team A
+                // during the grace window just by passing team B's id in
+                // the URL. The attachments table doesn't carry an
+                // explicit `team_id` column yet, so we derive it from
+                // the storage_path's parent directory name.
+                let parent_dir = std::path::Path::new(&att.storage_path)
+                    .parent()
+                    .and_then(|p| p.file_name())
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("");
+                if parent_dir != tid {
+                    return Err(rusqlite::Error::InvalidParameterName(
+                        "attachment does not belong to this team".into(),
+                    ));
+                }
                 return Ok(att);
             }
 
