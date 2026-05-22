@@ -106,9 +106,14 @@ export function installTrustedTypesPolicy(): void {
 function stripDangerousMarkup(input: string): string {
   // We deliberately keep this lightweight — react-markdown's `skipHtml`
   // is the main defence. This is the second line: refuse anything that
-  // smells like a script element or javascript: URI in an attribute.
-  // Case-insensitive matches because HTML is case-insensitive.
-  if (/<\s*script[\s>]/i.test(input)) {
+  // smells like a script element. DOMParser is the right tool for the
+  // strip step — regex over HTML is fragile against nesting and
+  // CodeQL flags it as js/bad-tag-filter — so parse the input as a
+  // document, prune every <script> in the tree, and serialize back.
+  // Only kicks in when the cheap regex probe says there might be one.
+  if (!/<\s*script[\s>]/i.test(input)) return input;
+  if (typeof DOMParser === 'undefined') {
+    // SSR / worker contexts: fall back to the multi-pass regex strip.
     const scriptTagPattern = /<\s*script[\s\S]*?<\s*\/\s*script\s*>/gi;
     let previous: string;
     let sanitized = input;
@@ -118,7 +123,9 @@ function stripDangerousMarkup(input: string): string {
     } while (sanitized !== previous);
     return sanitized;
   }
-  return input;
+  const doc = new DOMParser().parseFromString(input, 'text/html');
+  doc.querySelectorAll('script').forEach((el) => el.remove());
+  return doc.body ? doc.body.innerHTML : input;
 }
 
 function assertSafeScriptURL(url: string): boolean {

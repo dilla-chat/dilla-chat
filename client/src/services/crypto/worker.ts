@@ -80,6 +80,13 @@ interface RpcResponse {
   error?: string;
 }
 
+// SonarSource S2819 flags MessageEvent listeners that don't check
+// `ev.origin`. Web Workers don't have a meaningful cross-origin
+// boundary — the spec doesn't even populate ev.origin for worker
+// onmessage, and the only sender is the dedicated parent that
+// instantiated us. The crypto-worker payloads are all RpcRequest
+// shapes from our own services/crypto/workerClient, never wire
+// content. Origin verification doesn't apply here.
 self.addEventListener('message', async (ev: MessageEvent<RpcRequest>) => {
   const { id, op, payload } = ev.data || ({} as RpcRequest);
   try {

@@ -1923,8 +1923,14 @@ function renderText(text, members) {
 }
 
 // Mock unfurl content keyed by hostname — Dilla repo + a couple of others.
+// Match the host exactly (or as a subdomain). Using includes() would
+// accept evilgithub.com / github.com.evil.com etc.; CodeQL flagged it
+// as incomplete-url-substring-sanitization.
+function isHost(host, suffix) {
+  return host === suffix || host.endsWith('.' + suffix);
+}
 function mockUnfurl(host, url) {
-  if (host.includes('github.com')) {
+  if (isHost(host, 'github.com')) {
     if (url.includes('/pull/')) return {
       title: 'PR #47 · voice-dock: tighten audio meter polling',
       desc: 'ada wants to merge 6 commits into main. +112 −38. Reviewers: thim · sven.',
@@ -1938,7 +1944,7 @@ function mockUnfurl(host, url) {
       meta: 'github · rust + react · agpl-3.0',
     };
   }
-  if (host.includes('figma.com')) return {
+  if (isHost(host, 'figma.com')) return {
     title: 'channel-list refinements · v3',
     desc: 'last edited by mira · 4 frames',
     kind: 'figma',
