@@ -73,6 +73,19 @@ pub async fn create(
         return Err(AppError::BadRequest("description too long (max 1024 chars)".into()));
     }
 
+    // Phase 3: a newly-created team's authoritative node is THIS
+    // node. Any future federation peer that tries to forge writes
+    // into this team will be denied by authority::check. Pre-existing
+    // teams that predate migration 030 stay as LegacyTeam — they get
+    // backfilled via a future operator command, not here.
+    let this_node_id = match crate::federation::identity::ensure(&state.db) {
+        Ok(id) => id.node_id,
+        Err(e) => {
+            tracing::error!("federation: ensure node identity failed: {}", e);
+            String::new()
+        }
+    };
+
     let team = spawn_db(state.db.clone(), move |conn| {
         let now = db::now_str();
         let team_id = db::new_id();
@@ -90,6 +103,18 @@ pub async fn create(
             updated_at: now.clone(),
         };
         db::create_team(conn, &team)?;
+
+        // Stamp ourselves as the authoritative node for this team.
+        // Skipped only when identity::ensure failed above (logged); in
+        // that case the team will be LegacyTeam until an operator
+        // backfills via the admin API.
+        if !this_node_id.is_empty() {
+            let _ = crate::federation::authority::record_team_owner(
+                conn,
+                &team_id,
+                &this_node_id,
+            );
+        }
 
         // Add creator as member.
         let member = db::Member {
