@@ -51,26 +51,6 @@ release builds are clean. Suggested approach for the next pass:
 do it in a dedicated branch / PR with no other changes so the
 diff is reviewable.
 
-### H-8b — GeoLite2 country DB wiring (remainder of H-8)
-
-The Tor-exit-list half of H-8 shipped (commit follows). The
-GeoLite2 country half is still open:
-
-- `auth_handlers::derive_country_from_ip` returns the literal
-  string `"unknown"` for non-RFC-1918 IPs. A real country needs
-  MaxMind's GeoLite2-Country.mmdb (free with attribution) and the
-  `maxminddb` crate.
-- Add `geoip_db_path: String` to Config (env
-  `DILLA_GEOIP_DB_PATH`).
-- New `geoip` module mirroring `tor_list::init` / `get` — loads
-  the mmdb file at startup, exposes `country_for(ip) -> Option<String>`.
-- `derive_country_from_ip` consults it when set, falls back to
-  the current `unknown` placeholder otherwise.
-
-**Definition of done:** when the file is present, country signal
-populates correctly on logins; when absent, no regression.
-~80 LoC + the `maxminddb` crate dependency.
-
 ---
 
 ## Integration tier (release-coordinated, NOT for autonomous patching)

@@ -7,6 +7,7 @@ mod federation;
 mod observability;
 mod policy;
 mod presence;
+mod geoip;
 mod telemetry;
 mod tor_list;
 mod voice;
@@ -201,6 +202,11 @@ async fn main() {
     // scorer. Absent path / unreadable file is non-fatal; the
     // global stays None and ip_is_tor_exit returns false.
     tor_list::init(&cfg.tor_exit_list_path);
+
+    // H-8b / A2: optional MaxMind GeoLite2 country lookup. Same
+    // opt-in posture as the Tor list — absent path is non-fatal,
+    // derive_country_from_ip falls back to "unknown".
+    geoip::init(&cfg.geoip_db_path);
 
     // VULN-002 Phase 3 foundation: every install gets a stable
     // Ed25519 node identity, even when federation isn't configured

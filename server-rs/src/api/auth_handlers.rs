@@ -367,6 +367,16 @@ fn derive_country_from_ip(ip: Option<&str>) -> Option<String> {
     {
         return None;
     }
+    // H-8b: when the operator has loaded a GeoLite2-Country mmdb via
+    // DILLA_GEOIP_DB_PATH, prefer that lookup. Falls back to the
+    // legacy "unknown" placeholder so the country-change signal
+    // still fires on the first real login after a reset when no
+    // mmdb is configured.
+    if let Ok(parsed) = ip.parse::<std::net::IpAddr>() {
+        if let Some(iso) = crate::geoip::country_for(&parsed) {
+            return Some(iso);
+        }
+    }
     Some("unknown".to_string())
 }
 

@@ -27,6 +27,11 @@ pub struct Config {
     /// Absent / unset is non-fatal; the file is reloaded once at
     /// startup. H-8.
     pub tor_exit_list_path: String,
+    /// Optional path to a MaxMind GeoLite2-Country.mmdb file. When
+    /// set, `derive_country_from_ip` returns the ISO-3166 country
+    /// code instead of the legacy "unknown" placeholder. Absent /
+    /// unreadable / parse-failure is non-fatal. H-8b.
+    pub geoip_db_path: String,
     pub fed_bind_addr: String,
     pub fed_advert_addr: String,
     pub fed_advert_port: u16,
@@ -154,6 +159,7 @@ impl Config {
             join_secret: env_str("DILLA_JOIN_SECRET", ""),
             require_federation_v3: env_bool("DILLA_FEDERATION_REQUIRE_V3", false),
             tor_exit_list_path: env_str("DILLA_TOR_EXIT_LIST_PATH", ""),
+            geoip_db_path: env_str("DILLA_GEOIP_DB_PATH", ""),
             fed_bind_addr: env_str("DILLA_FED_BIND_ADDR", "0.0.0.0"),
             fed_advert_addr: env_str("DILLA_FED_ADVERTISE_ADDR", ""),
             fed_advert_port: env_u16("DILLA_FED_ADVERTISE_PORT", 0),

@@ -31,6 +31,11 @@ subtle = "2"
 # logging; zeroize on drop covers the dropped-buffer-in-RAM case.
 # DB-MEM-1.
 secrecy = "0.10"
+# Optional, opt-in MaxMind GeoLite2 country lookup for the auth-risk
+# signals. The DB file path is operator-provided via
+# DILLA_GEOIP_DB_PATH; absent → derive_country_from_ip falls back to
+# the legacy "unknown" placeholder. H-8b.
+maxminddb = "0.26"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
