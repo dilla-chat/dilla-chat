@@ -282,7 +282,43 @@ This section will shrink as the Phase 3 redesign lands. Track
 progress against DILLA-VULN-002 / FED-META-1 / FED-AUDIT-1 /
 SFU-IP-1 in `.security-hardening/`.
 
-## 10. Cross-references
+## 10. Client crypto in a Web Worker (H-12)
+
+The Signal Protocol stack runs in a dedicated Web Worker, not on
+the SPA's main thread. The migration is incremental:
+
+**H-12a (commit `b8517af`).** The encrypted IndexedDB session store
++ its AES-GCM/HKDF KEK live in worker scope. Main thread sends
+the user's `derivedKey` ONCE on first use; the worker caches a
+non-extractable `CryptoKey` derived from it and serves every
+subsequent save/load/loadAll/delete op from worker scope. A
+main-thread XSS post-init can no longer read raw session
+ciphertext from IndexedDB or extract the KEK.
+
+**H-12b.** The full group-session crypto path runs in the worker:
+sender-key derivation, AES-GCM encrypt + decrypt, Ed25519 sign +
+verify, chain-key advance, and the on-disk session JSON. The
+main thread sends only the channel id + base64 plaintext (or
+ciphertext) and receives back the base64 wire payload (or
+plaintext). The chain key, signing private key, and the per-
+message AES-GCM derive never touch the main heap.
+
+**Threat-model effect today:** an XSS that lands in the SPA can
+call `cryptoManager.decryptChannel(channelId, ciphertext)` and
+get the plaintext for any received message — that's intrinsic to
+any crypto-in-process model. But it cannot:
+- Extract the chain key, signing key, or any derived
+  per-message key.
+- Read raw IDB ciphertext directly.
+- Synthesize future messages by deriving keys offline (it has to
+  go through `encryptChannel` and let the worker mutate state).
+- Roll the ratchet outside the worker's controlled flow.
+
+**H-12c (open).** 1:1 Double Ratchet + X3DH session establishment
++ prekey secrets are still main-thread. See `HANDOVER.md` H-12c
+for the planned migration.
+
+## 11. Cross-references
 
 - Architecture review (current + target): `.security-hardening/03-architecture-review.md`
 - Critical fixes: `.security-hardening/04-critical-fixes.md`

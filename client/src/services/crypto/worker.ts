@@ -34,6 +34,13 @@ import {
   loadAllSessions,
   deleteSession,
 } from './sessionStoreWorkerImpl';
+import {
+  opEncrypt as gsEncrypt,
+  opDecrypt as gsDecrypt,
+  opProcessDistribution as gsProcessDistribution,
+  opRotateMyKey as gsRotateMyKey,
+  opGetDistribution as gsGetDistribution,
+} from './groupSessionWorkerImpl';
 
 interface RpcRequest {
   id: number;
@@ -98,6 +105,49 @@ async function dispatch(op: string, payload: unknown): Promise<unknown> {
       const { channelId } = payload as { channelId: string };
       await deleteSession(channelId);
       return null;
+    }
+    // H-12b: group-session crypto ops run inside the worker. State
+    // is loaded from the worker-side session store, mutated, and
+    // persisted in one round-trip. The main thread receives only
+    // public results (plaintext bytes, wire ciphertext, distribution
+    // payloads) — never the raw GroupSession state.
+    case 'groupSession.encrypt': {
+      const { channelId, senderId, plaintextB64 } = payload as {
+        channelId: string;
+        senderId: string;
+        plaintextB64: string;
+      };
+      return await gsEncrypt(channelId, senderId, plaintextB64);
+    }
+    case 'groupSession.decrypt': {
+      const { channelId, ciphertextB64 } = payload as {
+        channelId: string;
+        ciphertextB64: string;
+      };
+      return await gsDecrypt(channelId, ciphertextB64);
+    }
+    case 'groupSession.processDistribution': {
+      const { channelId, ownSenderId, distributionJson } = payload as {
+        channelId: string;
+        ownSenderId: string;
+        distributionJson: string;
+      };
+      await gsProcessDistribution(channelId, ownSenderId, distributionJson);
+      return null;
+    }
+    case 'groupSession.rotateMyKey': {
+      const { channelId, removedUserId } = payload as {
+        channelId: string;
+        removedUserId: string;
+      };
+      return await gsRotateMyKey(channelId, removedUserId);
+    }
+    case 'groupSession.getDistribution': {
+      const { channelId, senderId } = payload as {
+        channelId: string;
+        senderId: string;
+      };
+      return await gsGetDistribution(channelId, senderId);
     }
     case 'ping':
       return 'pong';

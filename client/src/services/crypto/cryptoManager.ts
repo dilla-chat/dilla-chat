@@ -14,7 +14,15 @@ import { generateSafetyNumber } from './safetyNumbers';
 // CPU-bound SHA-256 ×5200 doesn't block the main thread, and so the
 // (eventual) ratchet-key consumers in the worker have a battle-tested
 // RPC pipeline to lean on. See architecture review §8.4 bullet 1.
-import { safetyNumberInWorker } from './workerClient';
+import {
+  safetyNumberInWorker,
+  getCryptoBackend,
+  groupSessionEncryptInWorker,
+  groupSessionDecryptInWorker,
+  groupSessionProcessDistributionInWorker,
+  groupSessionRotateMyKeyInWorker,
+  groupSessionGetDistributionInWorker,
+} from './workerClient';
 import { x25519DH, importX25519PrivateKey } from './x25519';
 import { hkdfDerive } from './hkdf';
 import { aesGcmEncrypt, aesGcmDecrypt } from './aesGcm';
@@ -192,14 +200,27 @@ export class CryptoManager {
   }
 
   async encryptChannel(channelId: string, senderId: string, plaintext: string): Promise<string> {
+    // H-12b: when backend='worker', the GroupSession state lives in
+    // worker scope — load, mutate, save all happen there. The main
+    // thread never holds the chain key for this op. Falls back to
+    // the in-thread path for backend='main' (tests).
+    if (this.useWorkerGroupSession()) {
+      const plaintextB64 = toBase64(encoder.encode(plaintext));
+      return groupSessionEncryptInWorker(channelId, senderId, plaintextB64);
+    }
     const session = await this.getOrCreateGroupSession(channelId, senderId);
     const msg = await session.encrypt(encoder.encode(plaintext));
-    // Persist updated chain state after encrypt advances the ratchet
     await saveGroupSession(channelId, session.toJSON()).catch(() => {});
     return toBase64(encoder.encode(JSON.stringify(msg)));
   }
 
   async decryptChannel(channelId: string, _senderId: string, ciphertext: string): Promise<string> {
+    // H-12b: worker path returns the plaintext as base64 so chain
+    // state never enters the main heap.
+    if (this.useWorkerGroupSession()) {
+      const plaintextB64 = await groupSessionDecryptInWorker(channelId, ciphertext);
+      return decoder.decode(fromBase64(plaintextB64));
+    }
     let session = this.groupSessions.get(channelId);
     if (!session) {
       // Try to restore from IndexedDB
@@ -217,15 +238,28 @@ export class CryptoManager {
     }
     const msg: GroupMessageData = JSON.parse(decoder.decode(fromBase64(ciphertext)));
     const plaintext = await session.decrypt(msg);
-    // Persist updated chain state after decrypt advances the ratchet
     await saveGroupSession(channelId, session.toJSON()).catch(() => {});
     return decoder.decode(plaintext);
+  }
+
+  /** H-12b: cached predicate for the worker backend selection. The
+   *  decision must be consistent across one full encrypt → server
+   *  echo → decrypt round-trip; flipping mid-message would diverge
+   *  the worker's session cache from the main-thread one. We snap
+   *  on construction (via the static helper) and don't re-read. */
+  private useWorkerGroupSession(): boolean {
+    return getCryptoBackend() === 'worker' && typeof Worker !== 'undefined';
   }
 
   /** Remove a member from a channel's group session and rotate our sender key.
    *  Returns a new distribution message to send to remaining members, or null
    *  if no group session exists for this channel. */
   async rotateChannelKey(channelId: string, removedUserId: string): Promise<string | null> {
+    // H-12b: rotation happens in worker scope so the freshly-derived
+    // chain key never crosses postMessage.
+    if (this.useWorkerGroupSession()) {
+      return groupSessionRotateMyKeyInWorker(channelId, removedUserId);
+    }
     const session = this.groupSessions.get(channelId);
     if (!session) return null;
     session.removeMember(removedUserId);
@@ -235,6 +269,12 @@ export class CryptoManager {
   }
 
   async processSenderKey(channelId: string, distributionJson: string): Promise<void> {
+    // H-12b: peer's distribution payload is applied in worker scope.
+    const ownSenderId = toBase64(this.identityPublicKeyBytes);
+    if (this.useWorkerGroupSession()) {
+      await groupSessionProcessDistributionInWorker(channelId, ownSenderId, distributionJson);
+      return;
+    }
     const dist: SenderKeyDistribution = JSON.parse(distributionJson);
     // Previously this silently no-op'd when no local session existed yet,
     // which meant a peer's distribute that arrived *before* we'd created
@@ -243,16 +283,18 @@ export class CryptoManager {
     // root cause of "Unable to decrypt — previous session key" errors:
     // either side could miss the other's first distribute, after which
     // they each had a session but didn't have each other's sender key.
-    //
-    // Use our identity public key as the local sender id so the session
-    // we create here matches what getSenderKeyDistribution would create.
-    const ownSenderId = toBase64(this.identityPublicKeyBytes);
     const session = await this.getOrCreateGroupSession(channelId, ownSenderId);
     session.processDistribution(dist);
     await saveGroupSession(channelId, session.toJSON()).catch(() => {});
   }
 
   async getSenderKeyDistribution(channelId: string, senderId: string): Promise<string> {
+    // H-12b: distribution payloads carry the worker-derived public
+    // chain-key + signing pubkey — getting them from the worker
+    // means the corresponding secret half never leaves the worker.
+    if (this.useWorkerGroupSession()) {
+      return groupSessionGetDistributionInWorker(channelId, senderId);
+    }
     const session = await this.getOrCreateGroupSession(channelId, senderId);
     return JSON.stringify(session.createDistributionMessage());
   }

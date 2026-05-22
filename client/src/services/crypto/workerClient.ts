@@ -182,6 +182,55 @@ export async function sessionDeleteInWorker(channelId: string): Promise<void> {
   await call<null>('session.delete', { channelId });
 }
 
+// ── H-12b: group-session crypto via the worker ────────────────────
+//
+// Main-thread shims for the encrypt/decrypt/processDistribution/
+// rotateMyKey/getDistribution ops. Each returns base64-encoded
+// payloads to match the legacy main-thread wire shape so
+// cryptoManager.ts call sites switch backends with a one-line
+// branch.
+
+export async function groupSessionEncryptInWorker(
+  channelId: string,
+  senderId: string,
+  plaintextB64: string,
+): Promise<string> {
+  return call<string>('groupSession.encrypt', { channelId, senderId, plaintextB64 });
+}
+
+export async function groupSessionDecryptInWorker(
+  channelId: string,
+  ciphertextB64: string,
+): Promise<string> {
+  return call<string>('groupSession.decrypt', { channelId, ciphertextB64 });
+}
+
+export async function groupSessionProcessDistributionInWorker(
+  channelId: string,
+  ownSenderId: string,
+  distributionJson: string,
+): Promise<void> {
+  await call<null>('groupSession.processDistribution', {
+    channelId,
+    ownSenderId,
+    distributionJson,
+  });
+}
+
+export async function groupSessionRotateMyKeyInWorker(
+  channelId: string,
+  removedUserId: string,
+): Promise<string | null> {
+  return call<string | null>('groupSession.rotateMyKey', { channelId, removedUserId });
+}
+
+export async function groupSessionGetDistributionInWorker(
+  channelId: string,
+  senderId: string,
+): Promise<string> {
+  return call<string>('groupSession.getDistribution', { channelId, senderId });
+}
+
 /** Test/teardown hook — terminates the worker so subsequent calls respawn. */
 export function __resetCryptoWorkerForTests(): void {
   if (worker) {

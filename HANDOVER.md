@@ -55,28 +55,36 @@ diff is reviewable.
 
 ## Integration tier (release-coordinated, NOT for autonomous patching)
 
-### H-12b — Worker migration for ratchet decrypt + group-session derive (remainder of H-12)
+### H-12c — Worker migration for 1:1 Double Ratchet + X3DH (remainder of H-12)
 
-H-12a (commit follows) moved the encrypted IndexedDB session-store
-into the worker — KEK + IDB handle now live in worker scope, not
-main thread. The remaining migration is the actual crypto
-operations:
+H-12b (commit follows) moved the group-session crypto path into
+the worker — `encrypt`, `decrypt`, `processDistribution`,
+`rotateMyKey`, `getDistribution` all run in worker scope and
+mutate state via the H-12a session store. The remaining migration
+is the 1:1 surface:
 
-- X3DH-initiate / X3DH-respond
-- Double Ratchet encrypt + decrypt (per-message key derivation)
-- Group sender-key derivation + rotation
+- `RatchetSession` (Double Ratchet) per-DM state — currently in
+  `cryptoManager.pairwiseSessions: Map<string, RatchetSession>`.
+- `x3dhInitiate` / `x3dhRespond` session establishment + prekey
+  consumption.
+- `wrapForPeer` / `unwrapFromPeer` (X25519 DH-based wrapping for
+  sender-key distribution).
 
-Today these still run on the main thread, but now they go through
-the worker-mediated session store, so an XSS post-init can no
-longer extract the KEK or read raw IDB ciphertext. Migrating the
-ops themselves into the worker is additional defense — an XSS
-that calls `cryptoManager.decryptMessage` will still get the
-plaintext, but it won't be able to derive future ratchet steps
-out-of-band (because the per-message key derivation runs only in
-the worker).
+The pattern from H-12b applies: each op loads its session from
+worker-side IDB, mutates, saves. Notes:
 
-Scope estimate: ~1 week. Touches `cryptoManager.ts`,
-`ratchet.ts`, `groupSession.ts`, `x3dh.ts` + new worker ops.
+- `pairwiseSessions` cache must move into worker scope too (a
+  Map keyed by peer_id, holding deserialized RatchetSession).
+- Persistence of pairwise sessions doesn't have a `sessionStore`
+  equivalent yet — H-12c adds `pairwiseSession.save/load/loadAll`
+  worker ops mirroring the group flow.
+- X3DH consumes prekey secrets — those live in
+  `CryptoManager.prekeySecrets` on the main thread. Move into
+  worker scope so the secrets never re-enter main heap.
+
+Scope: ~5 days. Touches `cryptoManager.ts` (the pairwise-session
+methods), `ratchet.ts` import into worker, new pairwise-session
+IDB shape + worker ops.
 
 
 ---
