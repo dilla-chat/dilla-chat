@@ -30,6 +30,12 @@ pub struct UpdateTeamRequest {
     pub name: Option<String>,
     pub description: Option<String>,
     pub icon_url: Option<String>,
+    /// SFU-IP-1 mitigation. When true, the client must apply
+    /// `iceTransportPolicy = "relay"` to its voice
+    /// RTCPeerConnections so host/srflx ICE candidates are filtered
+    /// out. Server-side opt-in; client-side enforcement is a
+    /// follow-up diff per HANDOVER.md H-3.
+    pub force_turn_relay: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -99,6 +105,7 @@ pub async fn create(
             max_file_size: 25 * 1024 * 1024,
             allow_member_invites: true,
             federated: false,
+            force_turn_relay: false,
             created_at: now.clone(),
             updated_at: now.clone(),
         };
@@ -236,6 +243,9 @@ pub async fn update(
         if let Some(ref icon) = body.icon_url {
             team.icon_url = icon.clone();
         }
+        if let Some(force_relay) = body.force_turn_relay {
+            team.force_turn_relay = force_relay;
+        }
 
         db::update_team(conn, &team)?;
         let _ = db::insert_audit_event(
@@ -245,7 +255,10 @@ pub async fn update(
             "team.update",
             Some("team"),
             Some(&team_id),
-            Some(&serde_json::json!({ "name": team.name })),
+            Some(&serde_json::json!({
+                "name": team.name,
+                "force_turn_relay": team.force_turn_relay,
+            })),
         );
         Ok(team)
     })

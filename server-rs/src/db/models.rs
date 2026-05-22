@@ -35,6 +35,15 @@ pub struct Team {
     pub allow_member_invites: bool,
     #[serde(default)]
     pub federated: bool,
+    /// SFU-IP-1 mitigation. When true, the client must set
+    /// `RTCConfiguration.iceTransportPolicy = "relay"` for voice
+    /// calls in this team so host/srflx ICE candidates are filtered
+    /// out — only TURN-relayed candidates cross the wire, so peer
+    /// IPs aren't leaked to other channel members. Off by default;
+    /// operator opt-in for high-privacy teams. Surfaced via team
+    /// payloads + voice:rooms-snapshot for client enforcement.
+    #[serde(default)]
+    pub force_turn_relay: bool,
     pub created_at: String,
     pub updated_at: String,
 }

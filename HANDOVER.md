@@ -32,23 +32,6 @@ in-flight work remains.
 
 ## Tractable (in-session-friendly)
 
-### H-3 — SFU-IP-1 mitigation: per-team TURN-only voice mode
-
-Voice ICE candidates leak each speaker's real IP to legitimate
-channel members. Operator-facing fix: a per-team
-`force_turn_relay` flag.
-
-- Migration `031_team_turn_relay.sql` adds
-  `teams.force_turn_relay BOOLEAN DEFAULT 0`.
-- `PATCH /api/v1/teams/{id}` accepts the new flag (gated by
-  `PERM_MANAGE_TEAM`).
-- WS `voice:rooms-snapshot` and team payload carry the flag so
-  the client knows to apply `RTCIceTransportPolicy = "relay"`.
-- Client-side enforcement is a separate diff (a follow-up).
-
-**Definition of done:** migration applied, flag persists, team
-PATCH respects it, snapshot carries it. ~120 LoC server-side.
-
 ### H-4 — Pre-existing test-rot cleanup
 
 `cargo test` doesn't compile because legacy test fixture builders

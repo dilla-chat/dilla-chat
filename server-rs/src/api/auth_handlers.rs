@@ -890,6 +890,7 @@ fn create_bootstrap_team(
         max_file_size: 25 * 1024 * 1024,
         allow_member_invites: true,
         federated: false,
+        force_turn_relay: false,
         created_at: now.clone(),
         updated_at: now,
     };
