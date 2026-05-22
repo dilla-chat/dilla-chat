@@ -80,19 +80,22 @@ that doesn't try to read the token from storage.
 
 ## Product / UX follow-ups
 
-### H-14 — Client-side device-enrollment UI
+### H-14b — Device-enrollment flow (remainder of H-14)
 
-Server-side device APIs ship (`POST /api/v1/devices/enroll-begin`,
-`/enroll-complete`, `/revoke`, `GET /devices`). The Tauri-side
-enrollment flow (QR code + authorizing-device signing) is not
-yet wired.
+The device list + revoke UI shipped in Settings → Devices. The
+"enroll a new device" flow is still open:
 
-- New view under `client/src/pages/` for listing + revoking
-  devices.
-- New flow: scan a QR (or copy a code) from the new device, the
-  authorizing device signs the enroll-complete request.
+- QR code or short-string transfer of an enrollment payload from
+  the new device to an authorizing device.
+- The authorizing device signs the enroll-complete request
+  (server endpoint `POST /api/v1/devices/enroll-complete`
+  already exists).
 - Recovery path when the user has only one device and wants to
-  enroll a second.
+  enroll a second — likely a recovery code / passphrase mechanism
+  separate from the multi-device key trust model.
+
+Real product UX work; should be planned alongside the
+account-recovery story.
 
 ---
 

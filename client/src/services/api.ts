@@ -607,6 +607,37 @@ class ApiService {
     );
   }
 
+  /** H-14: list this user's enrolled devices. Each entry carries the
+   *  device label, last-seen risk signals (IP / UA / country),
+   *  creation + revocation timestamps. */
+  async listDevices(teamId: string): Promise<Array<Record<string, unknown>>> {
+    const conn = this.getConnection(teamId);
+    const data = await this.request(
+      conn.baseUrl,
+      `/api/v1/devices`,
+      { method: 'GET' },
+      conn.token,
+    );
+    if (Array.isArray(data)) return data;
+    if (data && typeof data === 'object' && Array.isArray((data as Record<string, unknown>).devices)) {
+      return (data as Record<string, unknown>).devices as Array<Record<string, unknown>>;
+    }
+    return [];
+  }
+
+  /** H-14: revoke a device by id. Server refuses to revoke the
+   *  user's last active device (returns a 400) — UI surfaces that
+   *  to the caller as a thrown error. */
+  async revokeDevice(teamId: string, deviceId: string): Promise<void> {
+    const conn = this.getConnection(teamId);
+    await this.request(
+      conn.baseUrl,
+      `/api/v1/devices/${deviceId}/revoke`,
+      { method: 'POST' },
+      conn.token,
+    );
+  }
+
   /** User-id list of everyone the caller has blocked. */
   async listBlocks(teamId: string): Promise<string[]> {
     const conn = this.getConnection(teamId);

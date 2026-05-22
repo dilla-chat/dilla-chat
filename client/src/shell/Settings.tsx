@@ -24,7 +24,7 @@ import { startMicTest, stopMicTest, type MicTestSession } from '../services/micT
 import { useAudioSettingsStore } from '../stores/audioSettingsStore';
 import { resolvePermissions } from '../hooks/usePermissions';
 
-const { useState: useStateS, useEffect: useEffectS, useRef: useRefS, useMemo } = React;
+const { useState: useStateS, useEffect: useEffectS, useRef: useRefS, useMemo, useCallback: useCallbackS } = React;
 
 // Debounced save helper for autosaved text fields. The handler clears any
 // in-flight timer and schedules a new one — keeps API traffic to one POST
@@ -48,6 +48,7 @@ function useActiveTeamAuth(): { baseUrl: string; token: string; teamId: string }
 
 const USER_TABS = [
   { id: 'account',  name: 'Account' },
+  { id: 'devices',  name: 'Devices' },
   { id: 'notif',    name: 'Notifications' },
   { id: 'voice',    name: 'Voice & video' },
   { id: 'appear',   name: 'Appearance' },
@@ -195,6 +196,7 @@ function Settings({ open, mode, defaultTab, onClose }) {
           </header>
           <div className="set-body">
             {mode === 'user'  && active === 'account'   && <UserAccount />}
+            {mode === 'user'  && active === 'devices'   && <UserDevices />}
             {mode === 'user'  && active === 'notif'     && <UserNotif />}
             {mode === 'user'  && active === 'voice'     && <UserVoice />}
             {mode === 'user'  && active === 'appear'    && <UserAppear />}
@@ -642,6 +644,130 @@ function UserAccount() {
     </>
   );
 }
+
+// H-14: per-user device list + revoke. Lists every device this user
+// has enrolled (multi-device auth from commit 0d55d30). Operators
+// can revoke a stolen / unrecognized device from any other still-
+// trusted device. Server refuses to revoke the user's LAST active
+// device with a 400 — surfaced via an error toast.
+function UserDevices() {
+  const auth = useActiveTeamAuth();
+  const [devices, setDevices] = useStateS<Array<Record<string, unknown>>>([]);
+  const [loading, setLoading] = useStateS(true);
+  const [err, setErr] = useStateS('');
+  const [revokingId, setRevokingId] = useStateS<string | null>(null);
+
+  const refresh = useCallbackS(async () => {
+    if (!auth) { setLoading(false); return; }
+    setErr('');
+    setLoading(true);
+    try {
+      const list = await api.listDevices(auth.teamId);
+      setDevices(list);
+    } catch (e) {
+      setErr((e as Error).message || 'Failed to load devices');
+    } finally {
+      setLoading(false);
+    }
+  }, [auth?.teamId]);
+
+  useEffectS(() => { refresh(); }, [refresh]);
+
+  async function revoke(deviceId: string, label: string) {
+    if (!auth) return;
+    const ok = await dillaConfirm({
+      title: 'Revoke device?',
+      body: `${label || 'This device'} will be signed out and won't be able to use its current keys to talk to the server. The next login from that device will need to re-enroll.`,
+      confirmLabel: 'Revoke',
+      cancelLabel: 'Cancel',
+      danger: true,
+    });
+    if (!ok) return;
+    setRevokingId(deviceId);
+    try {
+      await api.revokeDevice(auth.teamId, deviceId);
+      await refresh();
+    } catch (e) {
+      setErr((e as Error).message || 'Revoke failed (server may have refused the last-device guard)');
+    } finally {
+      setRevokingId(null);
+    }
+  }
+
+  if (!auth) {
+    return (
+      <Group title="Devices">
+        <div className="set-hint">Sign in to manage devices.</div>
+      </Group>
+    );
+  }
+  if (loading) {
+    return (
+      <Group title="Devices">
+        <div className="set-hint">Loading…</div>
+      </Group>
+    );
+  }
+  if (err) {
+    return (
+      <Group title="Devices">
+        <div className="set-hint" style={{ color: 'var(--danger)' }}>{err}</div>
+      </Group>
+    );
+  }
+
+  return (
+    <Group
+      title="Devices"
+      hint="Each device that talks to this server uses its own Ed25519 keypair. Revoking a device immediately invalidates its sessions."
+    >
+      {devices.length === 0 && (
+        <div className="set-hint">No devices enrolled yet.</div>
+      )}
+      {devices.map((d) => {
+        const id = String(d.id ?? d.device_id ?? '');
+        const label = String(d.device_label ?? d.label ?? 'Unlabelled device');
+        const revokedAt = d.revoked_at ? String(d.revoked_at) : '';
+        const lastSeenIp = d.last_seen_ip ? String(d.last_seen_ip) : '';
+        const lastSeenCountry = d.last_seen_country ? String(d.last_seen_country) : '';
+        const lastSeenAt = d.last_seen_at ? String(d.last_seen_at) : '';
+        const createdAt = d.created_at ? String(d.created_at) : '';
+        const active = !revokedAt;
+        return (
+          <div key={id} className="set-row" style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '0.75rem 0',
+            borderBottom: '1px solid var(--hairline)',
+            opacity: active ? 1 : 0.55,
+          }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontWeight: 600 }}>{label}</div>
+              <div className="set-hint" style={{ fontSize: '0.75rem', marginTop: '0.25rem' }}>
+                {lastSeenAt && <>Last seen {lastSeenAt}</>}
+                {lastSeenIp && <> · {lastSeenIp}</>}
+                {lastSeenCountry && <> · {lastSeenCountry}</>}
+                {!lastSeenAt && createdAt && <>Enrolled {createdAt}</>}
+                {!active && revokedAt && <> · revoked {revokedAt}</>}
+              </div>
+            </div>
+            {active && (
+              <button
+                className="btn btn--danger btn--sm"
+                disabled={revokingId === id}
+                onClick={() => revoke(id, label)}
+              >
+                {revokingId === id ? 'Revoking…' : 'Revoke'}
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </Group>
+  );
+}
+
 function UserNotif() {
   // Notify mode is derived from desktopNotifications + a per-channel filter
   // we don't track yet. For now: desktop on = all, desktop off + sound on =
