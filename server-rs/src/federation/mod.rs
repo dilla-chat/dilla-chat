@@ -1,3 +1,4 @@
+pub mod authority;
 pub mod identity;
 pub mod join;
 pub mod peers;
