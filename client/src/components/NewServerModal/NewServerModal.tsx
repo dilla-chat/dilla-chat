@@ -73,6 +73,7 @@ export default function NewServerModal({
         aria-label="Add team"
         className="new-server-modal"
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
       >
         <header className="new-server-modal-header">
           <div className="new-server-modal-eyebrow">TEAM</div>

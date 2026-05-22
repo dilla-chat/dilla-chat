@@ -67,6 +67,7 @@ export default function SafetyCompare({
         aria-label="Safety number comparison"
         className="safety-compare"
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
       >
         <header className="safety-compare-header">
           <div className="safety-compare-eyebrow">SECURITY</div>

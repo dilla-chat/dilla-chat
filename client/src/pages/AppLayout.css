@@ -119,9 +119,10 @@
   background: var(--bg-secondary);
   display: flex;
   flex-direction: column;
-  flex-shrink: 0;
   min-height: 0;
   overflow: hidden;
+  /* Single flex shorthand — listing flex-shrink: 0 before flex: 1
+     made the shorthand silently override it (CSS S4657). */
   flex: 1;
 }
 

@@ -2200,8 +2200,8 @@ function TeamMembers() {
 
   const dirty = useMemo(() => {
     for (const m of members) {
-      const cur = (m.roleIds ?? []).slice().sort().join('|');
-      const nxt = (draft[m.userId] ?? []).slice().sort().join('|');
+      const cur = (m.roleIds ?? []).slice().sort((a, b) => a.localeCompare(b)).join('|');
+      const nxt = (draft[m.userId] ?? []).slice().sort((a, b) => a.localeCompare(b)).join('|');
       if (cur !== nxt) return true;
     }
     return false;
@@ -2231,8 +2231,8 @@ function TeamMembers() {
       const PERM_ADMIN = 1 << 0;
       const updates: Array<{ memberId: string; roleIds: string[] }> = [];
       for (const m of members) {
-        const cur = (m.roleIds ?? []).slice().sort().join('|');
-        const nxt = (draft[m.userId] ?? []).slice().sort().join('|');
+        const cur = (m.roleIds ?? []).slice().sort((a, b) => a.localeCompare(b)).join('|');
+        const nxt = (draft[m.userId] ?? []).slice().sort((a, b) => a.localeCompare(b)).join('|');
         if (cur !== nxt) updates.push({ memberId: m.userId, roleIds: draft[m.userId] ?? [] });
       }
       for (const u of updates) {

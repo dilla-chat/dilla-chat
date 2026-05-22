@@ -3537,7 +3537,6 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
             members={members}
             onClose={() => setForwardId(null)}
             onForward={(target) => {
-              const ch = (members.byId[target.slice(3)] && target.startsWith('dm-')) ? target : target;
               const name = target.startsWith('dm-') ? members.byId[target.slice(3)]?.name : ('#' + target);
               window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: target.startsWith('dm-') ? null : target, author: 'system', text: 'Forwarded message to ' + name + '.', duration: 3000 } }));
               setForwardId(null);
@@ -3855,7 +3854,10 @@ function detectUnfurls(text) {
   if (!text) return [];
   // Skip URLs inside triple-backtick code fences
   const stripped = text.replace(/```[\s\S]*?```/g, '');
-  const re = /https?:\/\/([^\s/?#)]+)([^\s)]*)?/g;
+  // The host group is mandatory; the path/query suffix is optional but
+  // the inner group requires at least one allowed char (no empty-match
+  // alternatives — S5842).
+  const re = /https?:\/\/([^\s/?#)]+)([^\s)]+)?/g;
   const out = [];
   let m;
   while ((m = re.exec(stripped)) !== null) {
@@ -3945,7 +3947,7 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
     const ids = Object.values(voicePeers ?? {})
       .filter((p) => p.webcam_sharing && p.user_id !== currentUserId())
       .map((p) => p.user_id)
-      .sort();
+      .sort((a, b) => a.localeCompare(b));
     return ids[0] ?? null;
   }, [voicePeers]);
   const effectiveFocused = (() => {

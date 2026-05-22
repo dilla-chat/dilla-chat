@@ -975,7 +975,7 @@ class WebRTCService {
             const stillSharing = Object.values(s.peers)
               .filter((p) => p.screen_sharing && p.user_id !== payload.user_id)
               .map((p) => p.user_id)
-              .sort();
+              .sort((a, b) => a.localeCompare(b));
             s.setScreenSharingUserId(stillSharing[0] ?? null);
           }
         }
@@ -1409,7 +1409,7 @@ class WebRTCService {
       const stillSharing = Object.values(store.peers)
         .filter((p) => p.screen_sharing && p.user_id !== this.localUserId)
         .map((p) => p.user_id)
-        .sort();
+        .sort((a, b) => a.localeCompare(b));
       store.setScreenSharingUserId(stillSharing[0] ?? null);
     }
   }

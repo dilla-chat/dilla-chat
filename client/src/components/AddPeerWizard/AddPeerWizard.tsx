@@ -106,6 +106,7 @@ export default function AddPeerWizard({ open, onClose, onComplete }: Readonly<Pr
         aria-label="Add federation peer"
         className="add-peer"
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
       >
         <header className="add-peer-header">
           <div className="add-peer-eyebrow">FEDERATION</div>

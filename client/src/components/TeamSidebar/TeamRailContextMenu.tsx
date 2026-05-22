@@ -41,6 +41,7 @@ export default function TeamRailContextMenu({
       role="menu"
       style={{ left: x, top: y }}
       onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
     >
       <button role="menuitem" onClick={wrap(onSettings)}>Settings</button>
       <button role="menuitem" onClick={wrap(onInvites)}>Invites</button>

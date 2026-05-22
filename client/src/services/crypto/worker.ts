@@ -86,9 +86,8 @@ interface RpcResponse {
 // onmessage, and the only sender is the dedicated parent that
 // instantiated us. The crypto-worker payloads are all RpcRequest
 // shapes from our own services/crypto/workerClient, never wire
-// content. Origin verification doesn't apply here.
-// NOSONAR(typescript:S2819)
-self.addEventListener('message', async (ev: MessageEvent<RpcRequest>) => {
+// content. Origin verification doesn't apply here. NOSONAR
+self.addEventListener('message', async (ev: MessageEvent<RpcRequest>) => { // NOSONAR(typescript:S2819)
   const { id, op, payload } = ev.data || ({} as RpcRequest);
   try {
     const result = await dispatch(op, payload);
