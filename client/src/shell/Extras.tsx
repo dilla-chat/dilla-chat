@@ -7,6 +7,7 @@
 import React from 'react';
 import { useShellDataContext } from './ShellDataContext';
 import { useVerifiedContacts } from '../stores/verifiedContactsStore';
+import { shortId } from '../utils/randomId';
 
 const { useState: useT2, useEffect: useT2E, useRef: useT2R } = React;
 
@@ -20,7 +21,7 @@ function NotificationStack({ teaserOnly = false }) {
   const timers = useT2R<Record<string, ReturnType<typeof setTimeout>>>({});
   useT2E(() => {
     function add(e) {
-      const id = 't-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+      const id = shortId('t');
       const t = { id, ...e.detail };
       setToasts(prev => [...prev.slice(-3), t]);
       const dur = e.detail.duration || 5500;

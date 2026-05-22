@@ -11,6 +11,7 @@ import { THEMES } from './themes';
 import { useShellDataContext } from './ShellDataContext';
 import { MiniMeter, VoiceDockLatency, VoiceDockBitrate } from './VoiceDockStats';
 import { Avatar, PlainAvatar, memberAvatarStyle, memberAvatarClass } from './Avatar';
+import { shortId } from '../utils/randomId';
 import { useAuthStore } from '../stores/authStore';
 import { useTeamStore } from '../stores/teamStore';
 import { useUnreadStore } from '../stores/unreadStore';
@@ -2545,7 +2546,7 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
       // Animated upload-progress strip — visual stub; actual progress isn't
       // exposed by api.uploadFile yet so we show the staged phases until
       // the await resolves, then hide the row.
-      const id = 'up-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+      const id = shortId('up');
       const upload = { id, name: file.name, size: file.size, progress: 0, phase: 'reading' };
       setUploads(prev => [...prev, upload]);
       const phases = [

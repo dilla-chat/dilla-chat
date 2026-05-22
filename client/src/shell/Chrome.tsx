@@ -8,6 +8,7 @@ import { useVoiceStore } from '../stores/voiceStore';
 import { useAuthStore } from '../stores/authStore';
 import { useServerConfig } from '../hooks/useServerConfig';
 import { isCryptoInitialized } from '../services/crypto';
+import { randomInt } from '../utils/randomId';
 
 const { useState: useStateMC, useEffect: useEffectMC, useRef: useRefMC, useMemo: useMemoMC } = React;
 
@@ -72,8 +73,8 @@ function BottomBar({ voiceConnection, peerStatus, federated = true, degraded = f
     : e2eState === 'initializing' ? 'INITIALIZING…' : 'LOCKED';
   useEffectMC(() => {
     const id = setInterval(() => {
-      setLamport((l) => l + Math.floor(Math.random() * 4));
-      setLatency(() => 12 + Math.floor(Math.random() * 6));
+      setLamport((l) => l + randomInt(4));
+      setLatency(() => 12 + randomInt(6));
     }, 1400);
     return () => clearInterval(id);
   }, []);

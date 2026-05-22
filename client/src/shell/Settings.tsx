@@ -7,6 +7,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Icon } from './icons';
+import { randomTail } from '../utils/randomId';
 import { useAuthStore } from '../stores/authStore';
 import { useTeamStore } from '../stores/teamStore';
 import { useUserSettingsStore } from '../stores/userSettingsStore';
@@ -1714,7 +1715,7 @@ function TeamInvites() {
     if (!auth) {
       // Mock fallback: keep the prior demo behavior so /mesh has something
       // to show.
-      const code = 'dilla/invite/' + Math.random().toString(16).slice(2, 6).toUpperCase();
+      const code = 'dilla/invite/' + randomTail(4).toUpperCase();
       setRows((prev) => [...prev, { code, uses: '0 / ∞', expires: '—', who: myLabel }]);
       navigator.clipboard?.writeText(code);
       window.dispatchEvent(
