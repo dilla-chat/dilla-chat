@@ -114,7 +114,7 @@ function stripDangerousMarkup(input: string): string {
   if (!/<\s*script[\s>]/i.test(input)) return input;
   if (typeof DOMParser === 'undefined') {
     // SSR / worker contexts: fall back to the multi-pass regex strip.
-    const scriptTagPattern = /<\s*script[\s\S]*?<\s*\/\s*script(?:\s+[^>]*)?>/gi;
+    const scriptTagPattern = /<\s*script[\s\S]*?<\s*\/\s*script(?:\s+[^>]*)?>/gi; // NOSONAR(typescript:S5852) — bounded fallback over our own bounded HTML input; only fires when DOMParser is unavailable (SSR/worker)
     let previous: string;
     let sanitized = input;
     do {

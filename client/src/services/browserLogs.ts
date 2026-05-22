@@ -50,8 +50,13 @@ let suppressed = false;
 
 function genSession(): string {
   // Short, human-readable per-tab identifier so server logs from
-  // different browsers/tabs are easy to disentangle.
-  const r = Math.random().toString(36).slice(2, 8);
+  // different browsers/tabs are easy to disentangle. Uses
+  // crypto.getRandomValues so Sonar's S2245 (insecure PRNG)
+  // doesn't fire — collision tolerance is high (a single tab
+  // worth of log lines) but we may as well source from CSPRNG.
+  const bytes = new Uint8Array(4);
+  (globalThis.crypto ?? window.crypto).getRandomValues(bytes);
+  const r = Array.from(bytes, (b) => b.toString(36).padStart(2, '0')).join('').slice(0, 6);
   const t = Date.now().toString(36).slice(-4);
   return `${r}-${t}`;
 }

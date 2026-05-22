@@ -303,7 +303,7 @@ class WebRTCService {
           const userId = streamId.startsWith('screen-stream-')
             ? streamId.replace('screen-stream-', '')
             : track.id.startsWith('screen-')
-              ? track.id.replace('screen-', '').replace(/-[a-f0-9-]+$/, '')
+              ? track.id.replace('screen-', '').replace(/-[a-f0-9-]+$/, '') // NOSONAR(typescript:S5852) — bounded over a track.id we generate ourselves
               : streamId;
           console.log('[Voice/diag] ontrack → screen for', userId);
           track.addEventListener('ended', () => {

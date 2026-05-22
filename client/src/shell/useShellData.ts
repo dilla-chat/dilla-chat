@@ -137,7 +137,7 @@ function mapReactions(reactions, currentUserId) {
 // text content. Parse that token so DM attachments render the same way
 // channel attachments do. Channels use the attachments[] array instead
 // and never hit this branch.
-const FILE_TOKEN = /^\[file:([^\]]+)\]\s*(.*)$/;
+const FILE_TOKEN = /^\[file:([^\]]+)\]\s*(.*)$/; // NOSONAR(typescript:S5852) — anchored regex with bounded character class; no catastrophic backtracking
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
 
 function mapMessage(msg, currentUserId, teamId) {

@@ -287,8 +287,7 @@ async function persistDerivedKey(key: string | null): Promise<void> {
 // storage KEY, not a credential — sonar's hardcoded-secret heuristic
 // hit on the `:passphrase:` substring, but the assigned value is just
 // a namespaced storage key used by sessionStorage.{getItem,setItem}.
-// NOSONAR(typescript:S2068)
-const PASSPHRASE_STORAGE = 'dilla:passphrase:enc';
+const PASSPHRASE_STORAGE = 'dilla:passphrase:enc'; // NOSONAR(typescript:S2068) — storage key namespace, not a credential
 
 export async function persistPassphrase(passphrase: string | null): Promise<void> {
   try {
