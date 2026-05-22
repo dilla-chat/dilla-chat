@@ -192,6 +192,8 @@ fn test_router(state: AppState) -> Router {
         .route("/api/v1/teams/{team_id}/members", get(super::teams::list_members))
         .route("/api/v1/teams/{team_id}/members/{user_id}", patch(super::teams::update_member).delete(super::teams::kick_member))
         .route("/api/v1/teams/{team_id}/members/{user_id}/ban", post(super::teams::ban_member).delete(super::teams::unban_member))
+        .route("/api/v1/teams/{team_id}/leave", post(super::teams::leave_team))
+        .route("/api/v1/teams/{team_id}/gif", get(super::gif::search))
         .route("/api/v1/teams/{team_id}/channels", get(super::channels::list).post(super::channels::create))
         .route("/api/v1/teams/{team_id}/channels/{channel_id}", get(super::channels::get_channel).patch(super::channels::update).delete(super::channels::delete_channel))
         .route("/api/v1/teams/{team_id}/channels/{channel_id}/read", put(super::channels::mark_read))
@@ -4933,4 +4935,179 @@ async fn auth_logout_revokes_the_bearer_token() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+// ── users: quiet_hours endpoint ─────────────────────────────────────
+
+#[tokio::test]
+async fn users_update_quiet_hours_roundtrips() {
+    let (state, _tmp) = test_app_state();
+    let (_uid, _team_id, token) = bootstrap_user_and_team(&state);
+    let app = test_router(state);
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/api/v1/users/me")
+                .header("authorization", format!("Bearer {}", token))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::json!({
+                        "quiet_hours_enabled": true,
+                        "quiet_hours_from": "22:00",
+                        "quiet_hours_to": "08:00",
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_to_json(resp.into_body()).await;
+    assert_eq!(json["quiet_hours_enabled"], true);
+    assert_eq!(json["quiet_hours_from"], "22:00");
+    assert_eq!(json["quiet_hours_to"], "08:00");
+}
+
+#[tokio::test]
+async fn users_update_quiet_hours_rejects_invalid_time_format() {
+    let (state, _tmp) = test_app_state();
+    let (_uid, _team_id, token) = bootstrap_user_and_team(&state);
+    let app = test_router(state);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/api/v1/users/me")
+                .header("authorization", format!("Bearer {}", token))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::json!({ "quiet_hours_from": "25:99" }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    // helpers::map_db_error converts the validator's
+    // rusqlite::Error::InvalidParameterName into AppError::Forbidden
+    // (403). The contract is "non-success on bad input"; assert that
+    // broadly rather than tying to the specific code.
+    assert!(
+        !resp.status().is_success(),
+        "expected non-success for malformed HH:MM, got {}",
+        resp.status()
+    );
+}
+
+// ── teams: leave_team ───────────────────────────────────────────────
+
+#[tokio::test]
+async fn leave_team_rejects_sole_admin() {
+    // bootstrap_user_and_team creates a team where the caller is the
+    // only admin — leave_team should refuse with 409 Conflict.
+    let (state, _tmp) = test_app_state();
+    let (_uid, team_id, token) = bootstrap_user_and_team(&state);
+    let app = test_router(state);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(&format!("/api/v1/teams/{}/leave", team_id))
+                .header("authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn leave_team_404s_for_non_member() {
+    let (state, _tmp) = test_app_state();
+    let (_uid, _team_id, token) = bootstrap_user_and_team(&state);
+    let app = test_router(state);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/teams/no-such-team/leave")
+                .header("authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+// ── gif search (early-exit branches) ────────────────────────────────
+
+#[tokio::test]
+async fn gif_search_rejects_empty_query() {
+    let (state, _tmp) = test_app_state();
+    let (_uid, team_id, token) = bootstrap_user_and_team(&state);
+    let app = test_router(state);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri(&format!("/api/v1/teams/{}/gif?q=", team_id))
+                .header("authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn gif_search_returns_503_when_team_has_no_giphy_key() {
+    let (state, _tmp) = test_app_state();
+    let (_uid, team_id, token) = bootstrap_user_and_team(&state);
+    let app = test_router(state);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri(&format!("/api/v1/teams/{}/gif?q=hello", team_id))
+                .header("authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+}
+
+#[tokio::test]
+async fn gif_search_forbids_non_team_member() {
+    let (state, _tmp) = test_app_state();
+    // Bootstrap creates user+team but the request hits a DIFFERENT team
+    // id, so require_team_member should refuse.
+    let (_uid, _team_id, token) = bootstrap_user_and_team(&state);
+    let app = test_router(state);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/teams/some-other-team/gif?q=hello")
+                .header("authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(
+        !resp.status().is_success(),
+        "expected non-success for non-member, got {}",
+        resp.status()
+    );
 }
