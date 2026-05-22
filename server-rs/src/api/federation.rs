@@ -142,3 +142,242 @@ pub async fn get_join_info(
 
     Ok(Json(json!(info)))
 }
+
+// ── Phase 3 peer-management endpoints ─────────────────────────────
+//
+// All four endpoints require PERM_MANAGE_FEDERATION (same gate as the
+// existing join-token mint). Federation is node-wide, so we sweep
+// the caller's memberships and pass if any one of them grants the
+// bit — identical pattern to create_join_token above.
+
+async fn require_manage_federation(
+    state: &AppState,
+    user_id: &str,
+) -> Result<(), AppError> {
+    let db = state.db.clone();
+    let uid = user_id.to_string();
+    let permitted = tokio::task::spawn_blocking(move || {
+        db.with_conn(|conn| {
+            if let Some(u) = db::get_user_by_id(conn, &uid)? {
+                if u.is_admin {
+                    return Ok(true);
+                }
+            }
+            for team_id in db::list_user_teams(conn, &uid)? {
+                if db::user_has_permission(conn, &uid, &team_id, db::PERM_MANAGE_FEDERATION)? {
+                    return Ok(true);
+                }
+            }
+            Ok::<bool, rusqlite::Error>(false)
+        })
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("task join: {}", e)))?
+    .map_err(|e| AppError::Internal(format!("db: {}", e)))?;
+    if !permitted {
+        return Err(AppError::Forbidden(
+            "PERM_MANAGE_FEDERATION required".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// GET /api/v1/federation/identity
+///
+/// Returns this node's stable Ed25519 identity (node_id + public key)
+/// so an operator can copy the public material to a remote node and
+/// pin it via `POST /api/v1/federation/pinned-peers` there. The
+/// private key never crosses this boundary.
+pub async fn get_node_identity(
+    Extension(UserId(user_id)): Extension<UserId>,
+    State(state): State<AppState>,
+) -> Result<Json<Value>, AppError> {
+    require_manage_federation(&state, &user_id).await?;
+    let db = state.db.clone();
+    let identity = tokio::task::spawn_blocking(move || {
+        crate::federation::identity::ensure(&db)
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("task join: {}", e)))?
+    .map_err(|e| AppError::Internal(format!("db: {}", e)))?;
+    use base64::Engine as _;
+    Ok(Json(json!({
+        "node_id": identity.node_id,
+        "public_key_b64": base64::engine::general_purpose::STANDARD
+            .encode(identity.public_key_bytes()),
+        "public_key_hex": identity
+            .public_key_bytes()
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect::<String>(),
+    })))
+}
+
+/// GET /api/v1/federation/pinned-peers
+///
+/// List the pinned-peer registry (different from
+/// `/api/v1/federation/peers`, which reflects the live MeshNode
+/// connection state). Revoked peers are included with `revoked_at`
+/// set so the operator can see who used to be in.
+pub async fn list_pinned_peers(
+    Extension(UserId(user_id)): Extension<UserId>,
+    State(state): State<AppState>,
+) -> Result<Json<Value>, AppError> {
+    require_manage_federation(&state, &user_id).await?;
+    let db = state.db.clone();
+    let rows = tokio::task::spawn_blocking(move || {
+        db.with_conn(|conn| crate::federation::peers::list_all(conn))
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("task join: {}", e)))?
+    .map_err(|e| AppError::Internal(format!("db: {}", e)))?;
+    use base64::Engine as _;
+    let view: Vec<Value> = rows
+        .into_iter()
+        .map(|p| {
+            json!({
+                "node_id": p.node_id,
+                "public_key_b64": base64::engine::general_purpose::STANDARD
+                    .encode(p.public_key.to_bytes()),
+                "hostname": p.hostname,
+                "pinned_at": p.pinned_at,
+                "revoked_at": p.revoked_at,
+                "active": p.is_active(),
+            })
+        })
+        .collect();
+    Ok(Json(json!(view)))
+}
+
+#[derive(Deserialize)]
+pub struct PinPeerRequest {
+    pub node_id: String,
+    pub public_key_b64: String,
+    pub hostname: String,
+}
+
+/// POST /api/v1/federation/pinned-peers
+///
+/// Pin (or re-pin) a remote peer. Body carries the peer's node_id,
+/// base64 Ed25519 public key, and hostname — values an operator
+/// copies out-of-band from `GET /api/v1/federation/identity` on the
+/// remote node. Re-pinning a revoked peer un-revokes it.
+pub async fn pin_peer(
+    Extension(UserId(user_id)): Extension<UserId>,
+    State(state): State<AppState>,
+    Json(body): Json<PinPeerRequest>,
+) -> Result<Json<Value>, AppError> {
+    require_manage_federation(&state, &user_id).await?;
+
+    // Trim+sanity-check inputs before touching the DB.
+    let node_id = body.node_id.trim().to_string();
+    let hostname = body.hostname.trim().to_string();
+    if node_id.is_empty() {
+        return Err(AppError::BadRequest("node_id is required".into()));
+    }
+    if hostname.is_empty() {
+        return Err(AppError::BadRequest("hostname is required".into()));
+    }
+    if node_id.len() > 128 || hostname.len() > 253 {
+        return Err(AppError::BadRequest("node_id or hostname too long".into()));
+    }
+
+    use base64::Engine as _;
+    let pk_bytes = base64::engine::general_purpose::STANDARD
+        .decode(body.public_key_b64.trim())
+        .map_err(|e| AppError::BadRequest(format!("public_key_b64 not valid base64: {e}")))?;
+    let pk_arr: [u8; 32] = pk_bytes
+        .as_slice()
+        .try_into()
+        .map_err(|_| AppError::BadRequest("public_key_b64 must decode to 32 bytes".into()))?;
+    let public_key = ed25519_dalek::VerifyingKey::from_bytes(&pk_arr)
+        .map_err(|e| AppError::BadRequest(format!("public_key not a valid Ed25519 key: {e}")))?;
+
+    let db = state.db.clone();
+    let nid_log = node_id.clone();
+    let host_log = hostname.clone();
+    let pinned = tokio::task::spawn_blocking(move || {
+        db.with_conn(|conn| {
+            let peer = crate::federation::peers::pin(conn, &node_id, &public_key, &hostname)?;
+            // Audit-log the federation-level action. No team_id (this
+            // is node-scoped), so route through every team the actor
+            // is in — same pattern as the device-revoke audit hook.
+            let actor_teams = db::list_user_teams(conn, &user_id).unwrap_or_default();
+            for tid in actor_teams {
+                let _ = db::insert_audit_event(
+                    conn,
+                    &tid,
+                    Some(&user_id),
+                    "federation.peer.pinned",
+                    Some("federation_peer"),
+                    Some(&peer.node_id),
+                    Some(&json!({
+                        "hostname": peer.hostname,
+                    })),
+                );
+            }
+            Ok::<_, rusqlite::Error>(peer)
+        })
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("task join: {}", e)))?
+    .map_err(|e| AppError::Internal(format!("db: {}", e)))?;
+
+    tracing::info!(
+        node_id = %nid_log,
+        hostname = %host_log,
+        "FEDERATION: peer pinned"
+    );
+
+    Ok(Json(json!({
+        "node_id": pinned.node_id,
+        "hostname": pinned.hostname,
+        "pinned_at": pinned.pinned_at,
+        "active": pinned.is_active(),
+    })))
+}
+
+/// DELETE /api/v1/federation/pinned-peers/:node_id
+///
+/// Revoke a pinned peer. Future inbound `SignedFederationEvent`s from
+/// this `node_id` are dropped at the verify step. The row stays in
+/// `federation_peers` for forensics; re-pinning un-revokes.
+pub async fn revoke_peer(
+    Extension(UserId(user_id)): Extension<UserId>,
+    State(state): State<AppState>,
+    Path(node_id): Path<String>,
+) -> Result<Json<Value>, AppError> {
+    require_manage_federation(&state, &user_id).await?;
+    let db = state.db.clone();
+    let nid = node_id.clone();
+    let uid = user_id.clone();
+    tokio::task::spawn_blocking(move || {
+        db.with_conn(|conn| {
+            crate::federation::peers::revoke(conn, &nid)?;
+            let actor_teams = db::list_user_teams(conn, &uid).unwrap_or_default();
+            for tid in actor_teams {
+                let _ = db::insert_audit_event(
+                    conn,
+                    &tid,
+                    Some(&uid),
+                    "federation.peer.revoked",
+                    Some("federation_peer"),
+                    Some(&nid),
+                    None,
+                );
+            }
+            Ok::<_, rusqlite::Error>(())
+        })
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("task join: {}", e)))?
+    .map_err(|e| match e {
+        rusqlite::Error::InvalidParameterName(s) if s.contains("not found") => {
+            AppError::NotFound(s)
+        }
+        other => AppError::Internal(format!("db: {}", other)),
+    })?;
+
+    tracing::info!(node_id = %node_id, "FEDERATION: peer revoked");
+    Ok(Json(json!({ "ok": true })))
+}

@@ -428,6 +428,23 @@ pub fn create_router(state: AppState) -> Router {
             "/api/v1/federation/join-token",
             post(federation::create_join_token),
         )
+        // Phase 3: per-node Ed25519 identity (publish to remote peers).
+        .route(
+            "/api/v1/federation/identity",
+            get(federation::get_node_identity),
+        )
+        // Phase 3: pinned-peer registry. List + pin + revoke. All gated
+        // by PERM_MANAGE_FEDERATION via the in-handler check (admins +
+        // bootstrap user pass). Distinct from `/federation/peers`,
+        // which reflects live MeshNode connection state.
+        .route(
+            "/api/v1/federation/pinned-peers",
+            get(federation::list_pinned_peers).post(federation::pin_peer),
+        )
+        .route(
+            "/api/v1/federation/pinned-peers/{node_id}",
+            axum::routing::delete(federation::revoke_peer),
+        )
         // WebSocket ticket (returns a single-use ticket for WS connection)
         .route("/api/v1/auth/ws-ticket", post(ws_ticket))
         // H2 / VULN-012: logout revokes the bearer token via the
