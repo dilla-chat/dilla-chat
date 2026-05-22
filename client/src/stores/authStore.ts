@@ -25,17 +25,13 @@ export interface ServerEntry {
 
 interface AuthState {
   isAuthenticated: boolean;
-  /** @deprecated Use derivedKey instead. Kept for legacy migration. */
-  passphrase: string | null;
-  /** Base64-encoded 32-byte key derived from passkey PRF (or passphrase for legacy) */
+  /** Base64-encoded 32-byte key derived from passkey PRF (or passphrase). */
   derivedKey: string | null;
   publicKey: string | null;
   credentialIds: string[];
   teams: Map<string, TeamEntry>;
   servers: Map<string, ServerEntry>;
 
-  /** @deprecated Use setDerivedKey instead */
-  setPassphrase: (passphrase: string) => void;
   setDerivedKey: (key: string) => void;
   setPublicKey: (key: string) => void;
   setCredentialIds: (ids: string[]) => void;
@@ -313,21 +309,15 @@ export async function restorePassphrase(): Promise<string | null> {
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   isAuthenticated: false,
-  passphrase: null,
   derivedKey: loadPersistedDerivedKey(),
   publicKey: null,
   credentialIds: [],
   teams: loadPersistedTeams(),
   servers: loadPersistedServers(),
 
-  setPassphrase: (passphrase: string) => {
-    void persistDerivedKey(passphrase);
-    set({ passphrase, derivedKey: passphrase, isAuthenticated: true });
-  },
-
   setDerivedKey: (key: string) => {
     void persistDerivedKey(key);
-    set({ derivedKey: key, passphrase: key, isAuthenticated: true });
+    set({ derivedKey: key, isAuthenticated: true });
   },
 
   setPublicKey: (key: string) => set({ publicKey: key }),
@@ -466,7 +456,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     void persistPassphrase(null);
     set({
       isAuthenticated: false,
-      passphrase: null,
       derivedKey: null,
       publicKey: null,
       credentialIds: [],

@@ -54,7 +54,8 @@ function NotificationStack({ teaserOnly = false }) {
              onMouseEnter={() => pauseDismiss(t.id)}
              onClick={() => {
                // Prefer the real channel id (set by mention notifications);
-               // fall back to channel name for legacy /demo-mode events.
+               // fall back to the channel name for notify events from
+               // older code paths that only pass the human label.
                const target = t.channelId || t.channel;
                if (target) {
                  window.dispatchEvent(new CustomEvent('dilla:pickchannel', { detail: target }));

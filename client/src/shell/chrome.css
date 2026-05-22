@@ -482,25 +482,3 @@
 }
 .chat[data-style="mesh"] .voice-card.speaking::before { color: var(--accent); }
 
-/* Tweaks panel — when used in mesh page, give it a darker glassmorphism */
-.mesh-page .twk-panel {
-  background: color-mix(in oklab, #0c0d0f 86%, transparent);
-  color: #e8ece8;
-  border: 1px solid rgba(124,255,142,0.25);
-  box-shadow: 0 0 0 1px rgba(124,255,142,0.10), 0 16px 40px rgba(0,0,0,0.6);
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
-}
-.mesh-page .twk-hd b { color: #7CFF8E; letter-spacing: 0.08em; text-transform: uppercase; }
-.mesh-page .twk-x { color: rgba(232,236,232,.5); }
-.mesh-page .twk-x:hover { background: rgba(124,255,142,.1); color: #7CFF8E; }
-.mesh-page .twk-lbl { color: rgba(232,236,232,.7); }
-.mesh-page .twk-val { color: rgba(232,236,232,.5); }
-.mesh-page .twk-sect { color: rgba(124,255,142,.6); }
-.mesh-page .twk-field { background: rgba(0,0,0,.4); border-color: rgba(124,255,142,.2); color: #e8ece8; }
-.mesh-page .twk-seg { background: rgba(0,0,0,.4); }
-.mesh-page .twk-seg-thumb { background: rgba(124,255,142,.18); box-shadow: 0 0 0 1px rgba(124,255,142,.4); }
-.mesh-page .twk-slider { background: rgba(124,255,142,.15); }
-.mesh-page .twk-slider::-webkit-slider-thumb { background: #7CFF8E; border: 0; box-shadow: 0 0 8px rgba(124,255,142,.6); }
-.mesh-page .twk-toggle { background: rgba(255,255,255,.1); }
-.mesh-page .twk-toggle[data-on="1"] { background: #7CFF8E; }
-.mesh-page .twk-num { background: rgba(0,0,0,.4); border-color: rgba(124,255,142,.2); }

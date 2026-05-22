@@ -143,16 +143,6 @@ describe('logout', () => {
   });
 });
 
-describe('setPassphrase (legacy)', () => {
-  it('sets derivedKey in memory without persisting', () => {
-    getState().setPassphrase('my-passphrase');
-    expect(getState().derivedKey).toBe('my-passphrase');
-    expect(getState().passphrase).toBe('my-passphrase');
-    expect(getState().isAuthenticated).toBe(true);
-    expect(sessionStorage.getItem('dilla_derived_key')).toBeNull();
-  });
-});
-
 describe('setPublicKey', () => {
   it('sets public key', () => {
     getState().setPublicKey('pub-key-hex');
