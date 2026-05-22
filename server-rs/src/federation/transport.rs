@@ -232,8 +232,23 @@ impl Transport {
         let (sink, mut stream) = ws_stream.split();
         let sink = Arc::new(tokio::sync::Mutex::new(sink));
 
-        // Authenticate: expect a join_token as the first message within AUTH_TIMEOUT_SECS.
-        if requires_auth(&self.join_secret) {
+        // Authenticate. With a non-empty secret we wait for a join_token
+        // within AUTH_TIMEOUT_SECS. With an empty secret we either refuse
+        // outright (default — closes the edge case where a node with no
+        // outbound peers but federation listener up would silently accept
+        // anonymous inbound) OR allow when explicitly `insecure=true`
+        // (dev pattern). The old code short-circuited on
+        // `requires_auth(empty) == false` and never consulted the
+        // insecure flag.
+        if self.join_secret.is_empty() {
+            if !self.insecure {
+                tracing::warn!(peer = %peer_addr, "federation peer refused: empty join_secret and insecure=false");
+                let mut s = sink.lock().await;
+                let _ = s.send(Message::Close(None)).await;
+                return;
+            }
+            // insecure=true → fall through, accept anonymously (dev only)
+        } else {
             let auth_result = tokio::time::timeout(
                 tokio::time::Duration::from_secs(AUTH_TIMEOUT_SECS),
                 stream.next(),
@@ -241,7 +256,9 @@ impl Transport {
             .await;
 
             let authenticated = match auth_result {
-                Ok(Some(Ok(Message::Text(text)))) => validate_auth_message(&text, &self.join_secret),
+                Ok(Some(Ok(Message::Text(text)))) => {
+                    validate_auth_message_with_insecure(&text, &self.join_secret, self.insecure)
+                }
                 _ => false,
             };
 
@@ -550,8 +567,13 @@ mod tests {
     #[test]
     fn test_validate_auth_message_empty_token() {
         let msg = r#"{"join_token":""}"#;
+        // Empty token against non-empty configured secret → refuse.
         assert!(!validate_auth_message(msg, "secret"));
-        assert!(validate_auth_message(msg, ""));
+        // Empty configured secret without insecure flag → refuse
+        // (closes the federation listener empty-secret edge case).
+        assert!(!validate_auth_message(msg, ""));
+        // Empty configured secret WITH insecure=true → accept (dev).
+        assert!(validate_auth_message_with_insecure(msg, "", true));
     }
 
     #[test]
