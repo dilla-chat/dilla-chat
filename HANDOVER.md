@@ -78,13 +78,20 @@ the worker).
 Scope estimate: ~1 week. Touches `cryptoManager.ts`,
 `ratchet.ts`, `groupSession.ts`, `x3dh.ts` + new worker ops.
 
-### H-13 — httpOnly cookie token migration
+### H-13b — Client switch to credentials: 'include' (remainder of H-13)
 
-Encrypted-at-rest sessionStorage closes most of the JWT-theft
-window, but httpOnly cookies are the gold standard for browser
-auth tokens. Requires server-side cookie issuance (Set-Cookie with
-SameSite=Strict + Secure + HttpOnly) and matching client logic
-that doesn't try to read the token from storage.
+H-13a (commit follows) added server-side httpOnly cookie issuance
+on `/auth/verify` / `/auth/refresh` / `/auth/logout`. The
+`auth_middleware` now accepts the cookie as a fallback when
+`Authorization: Bearer` is absent.
+
+The remaining work is the client migration: every fetch() call in
+`client/src/services/api.ts` switches from manually attaching
+`Authorization: Bearer` to `credentials: 'include'`. The
+sessionStorage / `authStore.token` paths can be dropped (or kept
+only for the WS-ticket bootstrap, which can't carry cookies
+through the WS upgrade handshake). Scope: ~50 call sites,
+careful CORS verification, deprecation note in `SECURITY.md`.
 
 ---
 
@@ -111,10 +118,6 @@ account-recovery story.
 
 ## Architectural deferrals (documented; not for in-session work)
 
-### H-17 — FED-META-1 (federation metadata is inherently shared)
-
-Already documented in `SECURITY.md` §9 — no further action.
-Stays here as a reference pointer only.
 
 ---
 

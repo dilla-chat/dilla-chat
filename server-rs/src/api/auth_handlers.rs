@@ -101,7 +101,8 @@ pub async fn challenge(
 pub async fn verify(
     State(state): State<AppState>,
     req: Request,
-) -> Result<Json<Value>, AppError> {
+) -> Result<axum::response::Response, AppError> {
+    use axum::response::IntoResponse;
     // We took ownership of `Request` instead of the prior
     // `Json<VerifyRequest>` so we can inspect headers for risk-signal
     // recording. Body extraction happens explicitly below.
@@ -319,12 +320,16 @@ pub async fn verify(
     })
     .await;
 
-    Ok(Json(json!({
+    // H-13a: issue an httpOnly cookie alongside the JSON body. Cookie
+    // max-age matches the 1 h access-token expiry; clients that
+    // continue to use Authorization: Bearer ignore the cookie.
+    let body = json!({
         "token": token,
         "refresh_token": refresh_token,
         "user": user,
         "device_id": device_id,
-    })))
+    });
+    Ok(json_with_cookie(body, build_auth_cookie(&token, 3600)).into_response())
 }
 
 // ── A2 risk-scoring helpers ─────────────────────────────────────────────
@@ -640,7 +645,8 @@ pub async fn bootstrap(
 pub async fn refresh(
     State(state): State<AppState>,
     Json(body): Json<RefreshRequest>,
-) -> Result<Json<Value>, AppError> {
+) -> Result<axum::response::Response, AppError> {
+    use axum::response::IntoResponse;
     if body.refresh_token.is_empty() {
         return Err(AppError::BadRequest("refresh_token is required".into()));
     }
@@ -675,11 +681,15 @@ pub async fn refresh(
         .await;
     }
 
-    Ok(Json(json!({
+    // H-13a: refresh re-issues the cookie with the new (or rotated)
+    // access token. Body still carries the tokens for current
+    // clients.
+    let body_value = json!({
         "token": access,
         "refresh_token": refresh,
         "rotated": rotated,
-    })))
+    });
+    Ok(json_with_cookie(body_value, build_auth_cookie(&access, 3600)).into_response())
 }
 
 #[derive(Deserialize)]
@@ -695,7 +705,8 @@ pub struct RefreshRequest {
 pub async fn logout(
     State(state): State<AppState>,
     req: Request,
-) -> Result<Json<Value>, AppError> {
+) -> Result<axum::response::Response, AppError> {
+    use axum::response::IntoResponse;
     let token = req
         .headers()
         .get(axum::http::header::AUTHORIZATION)
@@ -736,7 +747,53 @@ pub async fn logout(
         .await;
     }
 
-    Ok(Json(json!({ "ok": true })))
+    // H-13a: clear the auth cookie on logout so a downstream gateway /
+    // browser-side helper that was relying on the cookie pathway gets
+    // an explicit revoke signal.
+    Ok(json_with_cookie(json!({ "ok": true }), clear_auth_cookie()).into_response())
+}
+
+// --- H-13a httpOnly cookie helpers --------------------------------
+//
+// Additive: we keep the JSON body (token / refresh_token) so current
+// clients keep working with `Authorization: Bearer …`. Cookies are
+// the second pathway for clients that want to switch to the
+// HttpOnly model — they'll be picked up by `auth_middleware` when
+// the Authorization header is absent. Full client migration is
+// H-13b.
+
+/// Name of the cookie the server issues for the bearer JWT.
+const AUTH_COOKIE_NAME: &str = "__dilla_jwt";
+
+/// Build a `Set-Cookie` header value for the given JWT. SameSite=Strict
+/// keeps the cookie off cross-site requests entirely; HttpOnly hides
+/// it from JS (and therefore from XSS); Secure restricts to TLS
+/// transport. Path scope is `/api/v1` so non-API routes (static SPA
+/// shell, theme CSS, voice models) don't carry the credential.
+fn build_auth_cookie(token: &str, max_age_secs: u64) -> String {
+    format!(
+        "{}={}; HttpOnly; SameSite=Strict; Secure; Path=/api/v1; Max-Age={}",
+        AUTH_COOKIE_NAME, token, max_age_secs
+    )
+}
+
+fn clear_auth_cookie() -> String {
+    // Max-Age=0 is the RFC 6265 way to clear an existing cookie.
+    format!(
+        "{}=; HttpOnly; SameSite=Strict; Secure; Path=/api/v1; Max-Age=0",
+        AUTH_COOKIE_NAME
+    )
+}
+
+/// Attach a `Set-Cookie` header to a JSON response. axum lets us
+/// return a tuple of (HeaderMap, Json) when we want headers; this is
+/// the smallest abstraction over that.
+fn json_with_cookie(value: Value, cookie: String) -> impl axum::response::IntoResponse {
+    let mut headers = axum::http::HeaderMap::new();
+    if let Ok(hv) = axum::http::HeaderValue::from_str(&cookie) {
+        headers.insert(axum::http::header::SET_COOKIE, hv);
+    }
+    (headers, Json(value))
 }
 
 // --- Shared helper functions ---

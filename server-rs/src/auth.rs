@@ -605,26 +605,57 @@ impl AuthService {
     }
 }
 
-/// Axum middleware that validates JWT from Authorization header.
+/// Axum middleware that validates JWT from the `Authorization: Bearer`
+/// header. H-13a: when the header is absent, also accept the
+/// `__dilla_jwt` httpOnly cookie issued by `verify` / `refresh`. The
+/// header path wins when both are present (lets clients explicitly
+/// pin a non-cookie token, e.g. for cross-origin requests where the
+/// cookie wouldn't travel anyway).
 pub async fn auth_middleware(
     auth: axum::extract::Extension<Arc<AuthService>>,
     mut req: Request,
     next: Next,
 ) -> Result<Response, AppError> {
-    let auth_header = req
-        .headers()
-        .get(http::header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| AppError::Unauthorized("missing authorization header".into()))?;
+    let token = if let Some(hv) = req.headers().get(http::header::AUTHORIZATION) {
+        let raw = hv
+            .to_str()
+            .map_err(|_| AppError::Unauthorized("invalid authorization format".into()))?;
+        raw.strip_prefix("Bearer ")
+            .ok_or_else(|| AppError::Unauthorized("invalid authorization format".into()))?
+            .to_string()
+    } else if let Some(tok) = extract_auth_cookie(req.headers()) {
+        tok
+    } else {
+        return Err(AppError::Unauthorized(
+            "missing authorization header".into(),
+        ));
+    };
 
-    let token = auth_header
-        .strip_prefix("Bearer ")
-        .ok_or_else(|| AppError::Unauthorized("invalid authorization format".into()))?;
-
-    let user_id = auth.validate_jwt(token)?;
+    let user_id = auth.validate_jwt(&token)?;
 
     req.extensions_mut().insert(UserId(user_id));
     Ok(next.run(req).await)
+}
+
+/// H-13a: extract the `__dilla_jwt` token from the request's Cookie
+/// header, if any. Returns None when the cookie is missing or the
+/// header is malformed. Tolerant of multiple cookies and arbitrary
+/// whitespace per RFC 6265 §5.4.
+fn extract_auth_cookie(headers: &http::HeaderMap) -> Option<String> {
+    const COOKIE_NAME: &str = "__dilla_jwt";
+    let raw = headers.get(http::header::COOKIE)?.to_str().ok()?;
+    for pair in raw.split(';') {
+        let pair = pair.trim();
+        if let Some(rest) = pair.strip_prefix(COOKIE_NAME) {
+            if let Some(value) = rest.strip_prefix('=') {
+                if value.is_empty() {
+                    return None;
+                }
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
 }
 
 #[derive(Debug, Clone)]
