@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, isSameOriginAsApi } from './api';
 import { useAuthStore, type TeamEntry } from '../stores/authStore';
 import { getIdentityKeys } from './crypto';
 import { exportIdentityBlob, signChallenge } from './keyStore';
@@ -54,10 +54,16 @@ export async function refreshServerTokens(
         .filter((url): url is string => Boolean(url));
 
       try {
+        // H-13d: bearer header only when not same-origin (Tauri /
+        // cross-origin still needs it; same-origin SPA rides the
+        // cookie alone).
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (!isSameOriginAsApi(baseUrl)) {
+          headers.Authorization = `Bearer ${token}`;
+        }
         await fetch(`${baseUrl}/api/v1/identity/blob`, {
           method: 'PUT',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          // H-13b.1: cookie pathway alongside bearer.
+          headers,
           credentials: 'include',
           body: JSON.stringify({ blob, servers: allServers }),
         });

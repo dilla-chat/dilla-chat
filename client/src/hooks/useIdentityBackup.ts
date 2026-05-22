@@ -1,6 +1,6 @@
 import { useEffect, useRef, type RefObject } from 'react';
 import { useAuthStore } from '../stores/authStore';
-import { api } from '../services/api';
+import { api, isSameOriginAsApi } from '../services/api';
 
 /**
  * Uploads the identity blob to all servers once per session for cross-device recovery.
@@ -31,10 +31,15 @@ export function useIdentityBackup(
           if (!baseUrl || !token) continue;
           const jwt = api.getConnectionInfo(teamId)?.token || token;
           try {
+            // H-13d: drop bearer when same-origin; cookie alone
+            // carries auth then. Tauri / cross-origin still attach.
+            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+            if (!isSameOriginAsApi(baseUrl)) {
+              headers.Authorization = `Bearer ${jwt}`;
+            }
             await fetch(`${baseUrl}/api/v1/identity/blob`, {
               method: 'PUT',
-              headers: { 'Authorization': `Bearer ${jwt}`, 'Content-Type': 'application/json' },
-              // H-13b.1: cookie pathway alongside bearer.
+              headers,
               credentials: 'include',
               body: JSON.stringify({ blob, servers: allServers }),
             });

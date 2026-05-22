@@ -1,6 +1,43 @@
 import type { User } from '../stores/authStore';
 import { fetchWithTimeout } from './fetchWithTimeout';
 
+/**
+ * H-13d: returns true when `baseUrl`'s origin matches the page's
+ * own origin AND the page is on a real-network protocol (http/https).
+ *
+ * When true, the `__dilla_jwt` cookie set by `/auth/verify` will
+ * travel automatically on subsequent fetches, so we can safely drop
+ * the manual `Authorization: Bearer` header — eliminating the JS-
+ * reachable JWT surface for any XSS that lands in the SPA.
+ *
+ * Returns false for:
+ *   - Cross-origin requests (cross-team flows targeting a different
+ *     baseUrl than the page's origin).
+ *   - Tauri desktop, where the page loads from `tauri://localhost`
+ *     (or platform equivalent) and doesn't share a cookie jar with
+ *     the https:// API origin.
+ *   - Unparseable URLs / SSR contexts (no globalThis.location).
+ */
+export function isSameOriginAsApi(baseUrl: string): boolean {
+  try {
+    const pageOrigin = globalThis.location?.origin ?? '';
+    if (!pageOrigin) return false;
+    // Tauri's custom protocol (tauri:, app:, asset:, http://tauri.localhost
+    // on Windows, etc.) doesn't share a cookie jar with the API's
+    // https:// origin even when baseUrl looks the same.
+    if (pageOrigin.startsWith('tauri:') || pageOrigin.startsWith('app:')) {
+      return false;
+    }
+    // Same-origin relative URL (baseUrl is empty string or starts with /)
+    // → definitely same origin.
+    if (!baseUrl || baseUrl.startsWith('/')) return true;
+    const apiOrigin = new URL(baseUrl).origin;
+    return apiOrigin === pageOrigin;
+  } catch {
+    return false;
+  }
+}
+
 export interface VoicePeer {
   user_id: string;
   username: string;
@@ -91,16 +128,17 @@ class ApiService {
       'Content-Type': 'application/json',
       ...(options.headers as Record<string, string>),
     };
-    if (token) {
+    // H-13d: drop the bearer header when the cookie is guaranteed to
+    // travel (same-origin SPA on the rust-embed-served origin).
+    // Keep the bearer for cross-origin (cross-team requests hitting
+    // a different baseUrl, and Tauri where the page origin is a
+    // custom protocol like tauri://localhost that doesn't share a
+    // cookie jar with the https:// API origin).
+    if (token && !isSameOriginAsApi(baseUrl)) {
       headers['Authorization'] = `Bearer ${token}`;
     }
-    // H-13b.1: send the httpOnly __dilla_jwt cookie alongside the
-    // Authorization header during the transition. Server's
-    // auth_middleware prefers the header when both are present, so
-    // this is additive — current behavior unchanged for callers that
-    // pass a token. Future H-13c can drop the bearer entirely and
-    // rely on the cookie alone, eliminating the JS-reachable JWT
-    // surface for XSS.
+    // H-13b.1: send the httpOnly __dilla_jwt cookie. Server's
+    // auth_middleware prefers the header when both are present.
     const res = await fetchWithTimeout(`${baseUrl}${path}`, { ...options, headers, credentials: 'include', timeout: 15000 });
     if (!res.ok) {
       // Only trigger auth error for authenticated requests (bearer token was sent).
@@ -1051,7 +1089,8 @@ class ApiService {
     formData.append('file', file);
 
     const headers: Record<string, string> = {};
-    if (conn.token) {
+    // H-13d: drop bearer when same-origin (cookie carries auth).
+    if (conn.token && !isSameOriginAsApi(conn.baseUrl)) {
       headers['Authorization'] = `Bearer ${conn.token}`;
     }
 
@@ -1059,8 +1098,7 @@ class ApiService {
       method: 'POST',
       headers,
       body: formData,
-      // H-13b.1: cookie pathway alongside the bearer header. Same
-      // additive transition as the request() helper.
+      // H-13b.1: cookie travels in lockstep with any bearer header.
       credentials: 'include',
     });
     if (!res.ok) {

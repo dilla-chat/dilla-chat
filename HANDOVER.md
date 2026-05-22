@@ -78,35 +78,6 @@ the worker).
 Scope estimate: ~1 week. Touches `cryptoManager.ts`,
 `ratchet.ts`, `groupSession.ts`, `x3dh.ts` + new worker ops.
 
-### H-13d — Drop bearer header from same-origin client paths (remainder of H-13)
-
-H-13a (`d028953`) shipped server-side cookie issuance.
-H-13b (`f95a0e9`) added `credentials: 'include'` to every client
-fetch path so the cookie travels alongside the bearer header.
-H-13c (commit follows) tightened the CORS layer with explicit
-method + header allow-lists so `allow_credentials(true)` is legal
-per the tower-http runtime check — cross-origin operators using
-`DILLA_ALLOWED_ORIGINS` now get the cookie too.
-
-The remaining work is the bearer-header drop on the same-origin
-SPA path:
-
-- Audit every `Authorization: Bearer` attachment in
-  `client/src/services/api.ts`, `authReconnect.ts`,
-  `useIdentityBackup.ts`. Drop the header when the cookie is
-  guaranteed to travel (same-origin SPA on the
-  embedded-by-rust-embed origin).
-- Cross-team auth flow + WS-ticket bootstrap must keep the bearer:
-  - cross-team requests hit different baseUrls (different
-    origins from the SPA's perspective);
-  - the WS upgrade handshake can't carry cookies reliably across
-    reverse-proxies.
-- F4 sessionStorage encryption layer becomes redundant for the
-  primary access token — keep only for refresh tokens or remove
-  entirely depending on the WS-ticket-bootstrap design.
-
-Scope: real client refactor (~30 bearer-attaching call sites) +
-dependent test updates + Settings → Sign-out flow review.
 
 ---
 

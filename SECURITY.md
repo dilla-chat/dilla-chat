@@ -100,13 +100,29 @@ Future H-13c will drop the bearer header entirely so the cookie
 becomes the only credential — at which point an XSS post-init has
 no way to extract or replay the JWT.
 
-**Cross-origin caveat:** when `DILLA_ALLOWED_ORIGINS` is set, the
-CORS layer currently uses `allow_methods(Any) + allow_headers(Any)`,
-which the spec + tower-http both require be paired with NO
-credentials. Cross-origin clients still need to ship the bearer
-header in `Authorization` for now. Same-origin (the embedded SPA)
-works with the cookie out of the box. Tightening the CORS
-config to support cross-origin credentials is part of H-13c.
+**Cross-origin support (H-13c).** Operators who set
+`DILLA_ALLOWED_ORIGINS` get a CORS layer that emits
+`Access-Control-Allow-Credentials: true` against explicit method
+and header allow-lists. Cross-origin clients can now ride the
+cookie too; the bearer header isn't required just because the
+client lives on a different origin.
+
+**Client bearer drop (H-13d).** The client now decides per-call:
+when the request's `baseUrl` matches the page's own origin AND
+the page isn't on a Tauri custom protocol, the
+`Authorization: Bearer` header is dropped and the cookie alone
+authenticates the call. For cross-team flows (different
+baseUrls) and Tauri desktop (where the SPA origin is
+`tauri://localhost` etc. and doesn't share a cookie jar with the
+https:// API), the bearer header still ships alongside.
+
+**Threat-model effect after H-13d:** an XSS in the same-origin
+SPA can no longer read the bearer token off the fetch surface —
+the cookie isn't reachable from JS (HttpOnly), and the header
+is no longer attached. XSS still can't replay the cookie from
+a different origin (SameSite=Strict). The encrypted-at-rest
+sessionStorage layer (F4) remains useful for the refresh token
+and for cross-team / Tauri flows that still attach the bearer.
 
 ## 4. Permission model
 
