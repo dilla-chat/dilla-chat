@@ -125,6 +125,7 @@ function assertSafeScriptURL(url: string): boolean {
   // Reject obvious nasties.
   const lowered = url.trim().toLowerCase();
   if (lowered.startsWith('javascript:')) return false;
+  if (lowered.startsWith('vbscript:')) return false;
   if (lowered.startsWith('data:') && lowered.includes('text/html')) return false;
   // Relative URLs and same-origin absolute URLs are fine. We don't try
   // to parse the URL completely here because the CSP `script-src 'self'`
