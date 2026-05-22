@@ -32,24 +32,6 @@ in-flight work remains.
 
 ## Tractable (in-session-friendly)
 
-### H-1 — Operator backfill API for pre-existing team_authority rows
-
-Teams created before migration 030 have no `team_authority` row and
-are treated as `LegacyTeam` by `authority::check`. Operators need
-an admin endpoint to assert "this node owns these legacy teams"
-during the rolling-upgrade window.
-
-- New route: `PUT /api/v1/federation/team-authority/{team_id}` —
-  body `{ owner_node_id }`. Gated by `PERM_MANAGE_FEDERATION` via
-  the existing `require_manage_federation` helper.
-- Validates that the team exists locally and that `owner_node_id`
-  is either this node's id or a pinned peer's id.
-- Audit-logs `federation.team_authority.set` across the actor's
-  teams.
-
-**Definition of done:** route registered, audit row written,
-manual curl smoke test succeeds. ~80 LoC server-side.
-
 ### H-2 — `DILLA_FEDERATION_REQUIRE_V3` config flag scaffolding
 
 The Phase 3 design (§6) calls for a two-release rolling upgrade.

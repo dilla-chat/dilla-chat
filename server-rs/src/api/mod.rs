@@ -445,6 +445,14 @@ pub fn create_router(state: AppState) -> Router {
             "/api/v1/federation/pinned-peers/{node_id}",
             axum::routing::delete(federation::revoke_peer),
         )
+        // Phase 3 H-1: backfill / transfer team authority. Operators
+        // use this to stamp pre-existing teams that predate
+        // migration 030 with a real owner_node_id so they stop being
+        // treated as LegacyTeam by authority::check.
+        .route(
+            "/api/v1/federation/team-authority/{team_id}",
+            axum::routing::put(federation::set_team_authority),
+        )
         // WebSocket ticket (returns a single-use ticket for WS connection)
         .route("/api/v1/auth/ws-ticket", post(ws_ticket))
         // H2 / VULN-012: logout revokes the bearer token via the

@@ -337,6 +337,104 @@ pub async fn pin_peer(
     })))
 }
 
+/// PUT /api/v1/federation/team-authority/{team_id}
+///
+/// Backfill (or transfer) the authoritative node for a team. Used
+/// during the Phase 3 rolling upgrade so operators can stamp
+/// pre-existing teams (which predate migration 030 and otherwise
+/// fall through to `LegacyTeam`) with a real owner. Body carries the
+/// target `owner_node_id`, which must be either this node's id
+/// (from `GET /api/v1/federation/identity`) or a currently-active
+/// pinned peer (from `GET /api/v1/federation/pinned-peers`).
+#[derive(Deserialize)]
+pub struct SetTeamAuthorityRequest {
+    pub owner_node_id: String,
+}
+
+pub async fn set_team_authority(
+    Extension(UserId(user_id)): Extension<UserId>,
+    State(state): State<AppState>,
+    Path(team_id): Path<String>,
+    Json(body): Json<SetTeamAuthorityRequest>,
+) -> Result<Json<Value>, AppError> {
+    require_manage_federation(&state, &user_id).await?;
+
+    let owner_node_id = body.owner_node_id.trim().to_string();
+    if owner_node_id.is_empty() {
+        return Err(AppError::BadRequest("owner_node_id is required".into()));
+    }
+    if owner_node_id.len() > 128 {
+        return Err(AppError::BadRequest("owner_node_id too long".into()));
+    }
+
+    let db = state.db.clone();
+    let tid = team_id.clone();
+    let owner = owner_node_id.clone();
+    let uid = user_id.clone();
+    tokio::task::spawn_blocking(move || {
+        db.with_conn(|conn| {
+            // (a) Team must exist locally.
+            if db::get_team(conn, &tid)?.is_none() {
+                return Err(rusqlite::Error::InvalidParameterName(
+                    "team not found".into(),
+                ));
+            }
+            // (b) owner_node_id must be either us or a currently-
+            // active pinned peer. This prevents an operator from
+            // accidentally handing authority to an unpinned (and
+            // therefore not-yet-trusted) node, which the
+            // authority::check would then accept but wire::verify
+            // would reject — confusing state. Read the local
+            // node_id directly via the same connection.
+            let local_node_id: Option<String> = conn
+                .query_row(
+                    "SELECT node_id FROM node_identity WHERE id = 1",
+                    [],
+                    |r| r.get::<_, String>(0),
+                )
+                .ok();
+            let is_self = local_node_id.as_deref() == Some(owner.as_str());
+            let is_pinned_peer = crate::federation::peers::active_public_key(conn, &owner)
+                .map(|opt| opt.is_some())
+                .unwrap_or(false);
+            if !is_self && !is_pinned_peer {
+                return Err(rusqlite::Error::InvalidParameterName(
+                    "owner_node_id is not this node and not a pinned peer".into(),
+                ));
+            }
+
+            crate::federation::authority::record_team_owner(conn, &tid, &owner)?;
+            let _ = db::insert_audit_event(
+                conn,
+                &tid,
+                Some(&uid),
+                "federation.team_authority.set",
+                Some("team"),
+                Some(&tid),
+                Some(&json!({ "owner_node_id": owner })),
+            );
+            Ok::<_, rusqlite::Error>(())
+        })
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("task join: {}", e)))?
+    .map_err(|e| match e {
+        rusqlite::Error::InvalidParameterName(s) if s == "team not found" => AppError::NotFound(s),
+        rusqlite::Error::InvalidParameterName(s) => AppError::BadRequest(s),
+        other => AppError::Internal(format!("db: {}", other)),
+    })?;
+
+    tracing::info!(
+        team_id = %team_id,
+        owner_node_id = %owner_node_id,
+        "FEDERATION: team authority set"
+    );
+    Ok(Json(json!({
+        "team_id": team_id,
+        "owner_node_id": owner_node_id,
+    })))
+}
+
 /// DELETE /api/v1/federation/pinned-peers/:node_id
 ///
 /// Revoke a pinned peer. Future inbound `SignedFederationEvent`s from
