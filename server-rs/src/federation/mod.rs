@@ -1,5 +1,6 @@
 pub mod identity;
 pub mod join;
+pub mod peers;
 pub mod sync;
 pub mod transport;
 
