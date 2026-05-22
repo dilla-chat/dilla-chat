@@ -5,6 +5,8 @@ import { IconPlus } from '@tabler/icons-react';
 import { useAuthStore } from '../../stores/authStore';
 import { useTeamStore } from '../../stores/teamStore';
 import { useUnreadStore } from '../../stores/unreadStore';
+import { dillaConfirm } from '../../stores/confirmStore';
+import { api } from '../../services/api';
 import NewServerModal from '../NewServerModal/NewServerModal';
 import TeamRailContextMenu from './TeamRailContextMenu';
 import './TeamSidebar.css';
@@ -197,8 +199,42 @@ export default function TeamSidebar() {
           onSettings={() => navigate('/app/settings')}
           onInvites={() => navigate('/app/settings')}
           onFederation={() => navigate('/app/settings')}
-          onMarkAllRead={() => console.warn('TODO: mark-all-read for team', menu.teamId)}
-          onLeave={() => console.warn('TODO: leave team', menu.teamId)}
+          onMarkAllRead={() => {
+            // H-15: iterate every channel in this team and zero its
+            // unread count locally. Server-side persistence of the
+            // read-cursor is best-effort via the existing
+            // PUT /channels/:id/read endpoint — fired one channel at a
+            // time so a single failure doesn't block the others.
+            const channels = teamChannels.get(menu.teamId) ?? [];
+            const { markRead } = useUnreadStore.getState();
+            for (const ch of channels) {
+              markRead(ch.id);
+              api.markChannelRead(menu.teamId, ch.id).catch((err) => {
+                console.warn('[teams] mark-read persist failed', ch.id, err);
+              });
+            }
+          }}
+          onLeave={async () => {
+            // H-15: leave-team flow. In-app confirm via dillaConfirm
+            // (project rule: never window.confirm). On success, remove
+            // the team from the local store + navigate away.
+            const teamName = teamMap.get(menu.teamId)?.name ?? 'this team';
+            const ok = await dillaConfirm({
+              title: 'Leave team?',
+              body: `You'll be removed from ${teamName}. To rejoin you'll need a new invite.`,
+              confirmLabel: 'Leave',
+              cancelLabel: 'Cancel',
+              danger: true,
+            });
+            if (!ok) return;
+            try {
+              await api.leaveTeam(menu.teamId);
+              useAuthStore.getState().removeTeam(menu.teamId);
+              navigate('/app');
+            } catch (err) {
+              console.error('[teams] leave failed', err);
+            }
+          }}
         />
       )}
     </div>

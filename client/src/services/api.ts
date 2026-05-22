@@ -593,6 +593,20 @@ class ApiService {
     );
   }
 
+  /** Mark a channel as read up to its current head. Server persists
+   *  the read-cursor so the unread count stays at zero across
+   *  reloads + other devices. Best-effort: callers should still
+   *  update the local unread store regardless of the response. */
+  async markChannelRead(teamId: string, channelId: string): Promise<void> {
+    const conn = this.getConnection(teamId);
+    await this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/channels/${channelId}/read`,
+      { method: 'PUT' },
+      conn.token,
+    );
+  }
+
   /** User-id list of everyone the caller has blocked. */
   async listBlocks(teamId: string): Promise<string[]> {
     const conn = this.getConnection(teamId);

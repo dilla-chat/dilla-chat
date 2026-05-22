@@ -115,6 +115,9 @@ export function useShellSync() {
             detail: {
               callerName: data.caller_username,
               channelName: data.channel_name,
+              // H-16: carry channel_id so the accept handler can
+              // actually switch into the voice channel.
+              channelId: data.channel_id,
             },
           }),
         );

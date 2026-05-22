@@ -152,22 +152,6 @@ yet wired.
 - Recovery path when the user has only one device and wants to
   enroll a second.
 
-### H-15 — TeamSidebar stubs
-
-`client/src/components/TeamSidebar/TeamSidebar.tsx:200-201`:
-- `onMarkAllRead` — currently `console.warn('TODO')`
-- `onLeave` — currently `console.warn('TODO')`
-
-Both need to call into the existing REST endpoints (mark-all-read
-on channel reads; leave-team is `POST /api/v1/teams/{id}/leave`).
-
-### H-16 — Incoming-call accept wiring
-
-`client/src/pages/AppLayout.tsx:826` notes a TODO: "actually join
-the call once voice signaling exposes incoming-call accept". The
-voice signaling now exists; the accept button just needs hooking
-up.
-
 ---
 
 ## Architectural deferrals (documented; not for in-session work)

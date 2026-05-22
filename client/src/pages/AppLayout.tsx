@@ -139,6 +139,7 @@ export default function AppLayout() {
   const [incomingCall, setIncomingCall] = useState<{
     callerName: string;
     channelName?: string;
+    channelId?: string;
   } | null>(null);
 
   // Listen for mesh:* events from the top bar, bottom bar, and other components
@@ -152,7 +153,7 @@ export default function AppLayout() {
       if (detail) setForwardSource(detail);
     };
     const openIncoming = (e: Event) => {
-      const detail = (e as CustomEvent<{ callerName: string; channelName?: string }>).detail;
+      const detail = (e as CustomEvent<{ callerName: string; channelName?: string; channelId?: string }>).detail;
       if (detail) setIncomingCall(detail);
     };
     window.addEventListener('mesh:open-command-palette', openCmd);
@@ -822,8 +823,17 @@ export default function AppLayout() {
         callerName={incomingCall?.callerName ?? ''}
         channelName={incomingCall?.channelName}
         onAccept={() => {
+          // H-16: voice signaling now carries channel_id through the
+          // voice:incoming-call event. Switching to the channel via the
+          // existing dilla:pickchannel pathway pulls the user into the
+          // ChatApp where the voice-dock join button is reachable.
+          // (Auto-joining the SFU here would skip the dock's mic/cam
+          // pre-flight — best left to the user.)
+          const cid = incomingCall?.channelId;
+          if (cid) {
+            window.dispatchEvent(new CustomEvent('dilla:pickchannel', { detail: cid }));
+          }
           setIncomingCall(null);
-          // TODO: actually join the call once voice signaling exposes incoming-call accept
         }}
         onDecline={() => setIncomingCall(null)}
       />
