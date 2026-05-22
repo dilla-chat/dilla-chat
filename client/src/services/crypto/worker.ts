@@ -41,6 +41,16 @@ import {
   opRotateMyKey as gsRotateMyKey,
   opGetDistribution as gsGetDistribution,
 } from './groupSessionWorkerImpl';
+import {
+  savePairwiseSession,
+  loadPairwiseSession,
+  loadAllPairwiseSessions,
+  deletePairwiseSession,
+} from './pairwiseSessionStoreWorkerImpl';
+import {
+  opPairwiseEncrypt as psEncrypt,
+  opPairwiseDecrypt as psDecrypt,
+} from './pairwiseSessionWorkerImpl';
 
 interface RpcRequest {
   id: number;
@@ -148,6 +158,45 @@ async function dispatch(op: string, payload: unknown): Promise<unknown> {
         senderId: string;
       };
       return await gsGetDistribution(channelId, senderId);
+    }
+    // H-12c: pairwise (1:1 Double Ratchet) session ops. Sessions are
+    // created on the main thread (X3DH initiate/respond uses prekey
+    // secrets that still live there for now — H-12d moves those
+    // too). After creation, main thread ships the session JSON via
+    // pairwiseSession.save; from then on encrypt/decrypt run in
+    // the worker.
+    case 'pairwiseSession.save': {
+      const { peerId, sessionJson } = payload as {
+        peerId: string;
+        sessionJson: Record<string, unknown>;
+      };
+      await savePairwiseSession(peerId, sessionJson);
+      return null;
+    }
+    case 'pairwiseSession.load': {
+      const { peerId } = payload as { peerId: string };
+      return await loadPairwiseSession(peerId);
+    }
+    case 'pairwiseSession.loadAll':
+      return await loadAllPairwiseSessions();
+    case 'pairwiseSession.delete': {
+      const { peerId } = payload as { peerId: string };
+      await deletePairwiseSession(peerId);
+      return null;
+    }
+    case 'pairwiseSession.encrypt': {
+      const { peerId, plaintextB64 } = payload as {
+        peerId: string;
+        plaintextB64: string;
+      };
+      return await psEncrypt(peerId, plaintextB64);
+    }
+    case 'pairwiseSession.decrypt': {
+      const { peerId, ciphertextB64 } = payload as {
+        peerId: string;
+        ciphertextB64: string;
+      };
+      return await psDecrypt(peerId, ciphertextB64);
     }
     case 'ping':
       return 'pong';

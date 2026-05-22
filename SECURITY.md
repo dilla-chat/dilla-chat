@@ -314,9 +314,18 @@ any crypto-in-process model. But it cannot:
   go through `encryptChannel` and let the worker mutate state).
 - Roll the ratchet outside the worker's controlled flow.
 
-**H-12c (open).** 1:1 Double Ratchet + X3DH session establishment
-+ prekey secrets are still main-thread. See `HANDOVER.md` H-12c
-for the planned migration.
+**H-12c.** 1:1 Double Ratchet encrypt/decrypt + the pairwise IDB
+store now run in worker scope. After X3DH bootstraps a session
+(main thread still), the freshly-derived state ships to the worker
+via `pairwiseSession.save` and from then on all chain advances +
+per-message keys live exclusively in the worker. The `decryptDM`
+path round-trips back to main thread only when the worker reports
+the message needs a Bob-bootstrap, then ships the new session
+back.
+
+**H-12d (open).** X3DH initiate/respond, `wrapForPeer`/`unwrapFromPeer`,
+identity DH private key, and prekey secrets are still main-thread.
+See `HANDOVER.md` H-12d.
 
 ## 11. Cross-references
 

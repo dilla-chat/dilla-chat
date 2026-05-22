@@ -22,6 +22,9 @@ import {
   groupSessionProcessDistributionInWorker,
   groupSessionRotateMyKeyInWorker,
   groupSessionGetDistributionInWorker,
+  pairwiseSessionSaveInWorker,
+  pairwiseSessionEncryptInWorker,
+  pairwiseSessionDecryptInWorker,
 } from './workerClient';
 import { x25519DH, importX25519PrivateKey } from './x25519';
 import { hkdfDerive } from './hkdf';
@@ -86,9 +89,37 @@ export class CryptoManager {
       bootstrap,
     );
     this.pairwiseSessions.set(peerId, session);
+    // H-12c: ship the freshly-bootstrapped session to the worker so
+    // subsequent encryptDM/decryptDM ops can run there without
+    // re-establishing state. X3DH initiate itself still runs on
+    // main thread (uses identity DH private key) — H-12d defers
+    // moving that.
+    if (this.useWorkerGroupSession()) {
+      await pairwiseSessionSaveInWorker(peerId, session.toJSON()).catch(() => {});
+    }
   }
 
   async encryptDM(peerId: string, plaintext: string): Promise<string> {
+    // H-12c: encrypt in the worker when backend='worker'. The
+    // chain key + per-message AES-GCM derive never touch main heap.
+    if (this.useWorkerGroupSession()) {
+      const plaintextB64 = toBase64(encoder.encode(plaintext));
+      try {
+        return await pairwiseSessionEncryptInWorker(peerId, plaintextB64);
+      } catch (err) {
+        // The worker may not have this session yet (e.g. it was
+        // created via X3DH respond inside decryptDM but never
+        // pushed; or the worker spawned after the session was
+        // bootstrapped). Fall through to the in-thread path with a
+        // best-effort save back to the worker so future encrypts
+        // catch up.
+        const session = this.pairwiseSessions.get(peerId);
+        if (!session) throw err;
+        const msg = await session.encrypt(encoder.encode(plaintext));
+        pairwiseSessionSaveInWorker(peerId, session.toJSON()).catch(() => {});
+        return toBase64(encoder.encode(JSON.stringify(msg)));
+      }
+    }
     const session = this.pairwiseSessions.get(peerId);
     if (!session) throw new Error(`No session for peer ${peerId}`);
     const msg = await session.encrypt(encoder.encode(plaintext));
@@ -96,6 +127,27 @@ export class CryptoManager {
   }
 
   async decryptDM(senderId: string, ciphertext: string): Promise<string> {
+    // H-12c: try the worker first. If it reports the message needs
+    // an X3DH bootstrap (no session yet, or stale Alice-session),
+    // run the Bob-bootstrap on main thread (still needs prekey
+    // secrets — H-12d will move those), ship the freshly-bootstrapped
+    // session to the worker, and retry decrypt there.
+    if (this.useWorkerGroupSession()) {
+      try {
+        const result = await pairwiseSessionDecryptInWorker(senderId, ciphertext);
+        if (result.ok) {
+          return decoder.decode(fromBase64(result.plaintextB64));
+        }
+        // result.ok === false → needsBootstrap. Fall through to the
+        // main-thread bootstrap path below, then retry via worker.
+      } catch (err) {
+        // Worker errored on an unrecoverable shape; surface to
+        // caller after the bootstrap fallback below.
+        const msg = JSON.parse(decoder.decode(fromBase64(ciphertext))) as RatchetMessage;
+        if (!msg.header.x3dh) throw err;
+      }
+    }
+
     const msg: RatchetMessage = JSON.parse(decoder.decode(fromBase64(ciphertext)));
     const existing = this.pairwiseSessions.get(senderId);
 
@@ -123,6 +175,11 @@ export class CryptoManager {
     const session = await this.bootstrapBobSession(msg.header.x3dh);
     this.pairwiseSessions.set(senderId, session);
     const plaintext = await session.decrypt(msg);
+    // H-12c: ship the newly-bootstrapped session to the worker so
+    // subsequent encrypt/decrypt ride the worker path.
+    if (this.useWorkerGroupSession()) {
+      pairwiseSessionSaveInWorker(senderId, session.toJSON()).catch(() => {});
+    }
     return decoder.decode(plaintext);
   }
 

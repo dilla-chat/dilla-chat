@@ -47,13 +47,27 @@ async function deriveSessionKey(derivedKey: string): Promise<CryptoKey> {
 
 /** Called once with the user's derivedKey. Idempotent — re-init with
  *  the same key is a no-op; with a different key the cache is
- *  replaced (account switch / re-login scenario). */
+ *  replaced (account switch / re-login scenario).
+ *
+ *  H-12c.1: also seeds the pairwise-session store's KEK so the same
+ *  init op covers both stores. The pairwise store is in a separate
+ *  IDB object store but shares the KEK via HKDF on the same
+ *  derivedKey input.
+ */
 export async function initSessionKey(derivedKey: string): Promise<void> {
   cachedKey = await deriveSessionKey(derivedKey);
+  // Lazy import avoids the circular-dep complaint when both modules
+  // are imported by worker.ts. The pairwise store module also
+  // imports a marker symbol from this one for the same reason.
+  const { setPairwiseSessionKey } = await import('./pairwiseSessionStoreWorkerImpl');
+  setPairwiseSessionKey(cachedKey);
 }
 
 export function resetSessionKey(): void {
   cachedKey = null;
+  // Best-effort: also clear the pairwise store's cached key. Lazy
+  // import for the same circular-dep reason as above.
+  import('./pairwiseSessionStoreWorkerImpl').then((m) => m.resetPairwiseSessionKey()).catch(() => {});
 }
 
 async function encryptSession(json: string, key: CryptoKey): Promise<string> {

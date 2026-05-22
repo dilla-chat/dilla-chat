@@ -231,6 +231,53 @@ export async function groupSessionGetDistributionInWorker(
   return call<string>('groupSession.getDistribution', { channelId, senderId });
 }
 
+// ── H-12c: pairwise (1:1 Double Ratchet) session ops ──────────────
+
+export async function pairwiseSessionSaveInWorker(
+  peerId: string,
+  sessionJson: object,
+): Promise<void> {
+  await call<null>('pairwiseSession.save', { peerId, sessionJson });
+}
+
+export async function pairwiseSessionLoadInWorker(
+  peerId: string,
+): Promise<Record<string, unknown> | null> {
+  return call<Record<string, unknown> | null>('pairwiseSession.load', { peerId });
+}
+
+export async function pairwiseSessionLoadAllInWorker(): Promise<
+  Map<string, Record<string, unknown>>
+> {
+  const entries = await call<Array<[string, Record<string, unknown>]>>(
+    'pairwiseSession.loadAll',
+    null,
+  );
+  return new Map(entries);
+}
+
+export async function pairwiseSessionDeleteInWorker(peerId: string): Promise<void> {
+  await call<null>('pairwiseSession.delete', { peerId });
+}
+
+export async function pairwiseSessionEncryptInWorker(
+  peerId: string,
+  plaintextB64: string,
+): Promise<string> {
+  return call<string>('pairwiseSession.encrypt', { peerId, plaintextB64 });
+}
+
+export type PairwiseDecryptResult =
+  | { ok: true; plaintextB64: string }
+  | { ok: false; needsBootstrap: boolean };
+
+export async function pairwiseSessionDecryptInWorker(
+  peerId: string,
+  ciphertextB64: string,
+): Promise<PairwiseDecryptResult> {
+  return call<PairwiseDecryptResult>('pairwiseSession.decrypt', { peerId, ciphertextB64 });
+}
+
 /** Test/teardown hook — terminates the worker so subsequent calls respawn. */
 export function __resetCryptoWorkerForTests(): void {
   if (worker) {

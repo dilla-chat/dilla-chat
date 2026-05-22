@@ -55,36 +55,41 @@ diff is reviewable.
 
 ## Integration tier (release-coordinated, NOT for autonomous patching)
 
-### H-12c — Worker migration for 1:1 Double Ratchet + X3DH (remainder of H-12)
+### H-12d — Move X3DH + prekey secrets into the worker (remainder of H-12)
 
-H-12b (commit follows) moved the group-session crypto path into
-the worker — `encrypt`, `decrypt`, `processDistribution`,
-`rotateMyKey`, `getDistribution` all run in worker scope and
-mutate state via the H-12a session store. The remaining migration
-is the 1:1 surface:
+H-12c (commit follows) put pairwise Double Ratchet
+encrypt/decrypt + the new pairwise IDB store into the worker.
+After session creation, the chain key + per-message AES-GCM derive
+live entirely in worker scope. What remains on the main thread:
 
-- `RatchetSession` (Double Ratchet) per-DM state — currently in
-  `cryptoManager.pairwiseSessions: Map<string, RatchetSession>`.
-- `x3dhInitiate` / `x3dhRespond` session establishment + prekey
-  consumption.
-- `wrapForPeer` / `unwrapFromPeer` (X25519 DH-based wrapping for
-  sender-key distribution).
+- `x3dhInitiate` (Alice path) — uses the identity DH private key.
+- `x3dhRespond` (Bob bootstrap path) — uses the identity DH
+  private key + prekey secrets (signed prekey + one-time prekey
+  privates).
+- `wrapForPeer` / `unwrapFromPeer` — static-static ECDH wrapping
+  for sender-key distribution. Uses identity DH private key.
 
-The pattern from H-12b applies: each op loads its session from
-worker-side IDB, mutates, saves. Notes:
+H-12d moves all three into the worker:
 
-- `pairwiseSessions` cache must move into worker scope too (a
-  Map keyed by peer_id, holding deserialized RatchetSession).
-- Persistence of pairwise sessions doesn't have a `sessionStore`
-  equivalent yet — H-12c adds `pairwiseSession.save/load/loadAll`
-  worker ops mirroring the group flow.
-- X3DH consumes prekey secrets — those live in
-  `CryptoManager.prekeySecrets` on the main thread. Move into
-  worker scope so the secrets never re-enter main heap.
+- Identity DH private key (CryptoKey, non-extractable) ships via
+  structured-clone postMessage at worker init. Tests need to
+  switch to backend='main' for this path.
+- `prekeySecrets` (Uint8Array bytes for signed-prekey + OTPK
+  privates) move into the worker via a new `prekeyVault.*`
+  worker op set, persisted to IDB via the same KEK as the
+  session stores.
+- X3DH initiate/respond + wrap/unwrap become worker ops that
+  consume the worker-side keys.
 
-Scope: ~5 days. Touches `cryptoManager.ts` (the pairwise-session
-methods), `ratchet.ts` import into worker, new pairwise-session
-IDB shape + worker ops.
+After H-12d the main thread has no Signal Protocol secret material
+at all — an XSS post-init can still call cryptoManager.encryptDM
+and get plaintext echoed back (intrinsic), but it can't extract
+the identity DH private key, prekey secrets, or any derived
+material.
+
+Scope: ~3 days. Touches `cryptoManager.ts` (constructor + the
+three remaining methods), worker ops for x3dh, new prekey-vault
+IDB shape.
 
 
 ---
