@@ -55,16 +55,6 @@ diff is reviewable.
 
 ## Integration tier (release-coordinated, NOT for autonomous patching)
 
-### H-9 — Transport handshake change (Phase 3 §4.1)
-
-Switch peer auth from shared `DILLA_JOIN_SECRET` HMAC to per-node
-Ed25519 challenge-response, using `node_identity` + `peers` from
-Phase 3 steps 1–2.
-
-Touches `transport.rs::handle_incoming` + peer-dial path. **Needs:**
-H-2 in place + a backward-compat window where both v1 (HMAC) and
-v3 (Ed25519) auth styles are accepted.
-
 ### H-10 — `sync.rs` / `mod.rs` plumb signing/verifying into merge paths
 
 Every outbound replication wraps the `FederationEvent` in

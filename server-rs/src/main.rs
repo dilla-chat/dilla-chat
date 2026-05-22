@@ -707,6 +707,7 @@ async fn init_federation_mesh(
         tls_key: cfg.tls_key.clone(),
         join_secret: cfg.join_secret.clone(),
         insecure: cfg.insecure,
+        require_v3: cfg.require_federation_v3,
     };
 
     // VULN-021 final / H7: warn loudly every startup when the

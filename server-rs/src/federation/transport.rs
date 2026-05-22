@@ -66,6 +66,88 @@ fn build_auth_message(join_secret: &str) -> String {
     serde_json::json!({ "join_token": join_secret }).to_string()
 }
 
+/// H-9: cheap shape-sniff for the v3 handshake wire format. We can't
+/// route on the full envelope until we know which dispatch to run;
+/// looking for the `"v":3` discriminator + `"node_id"` is sufficient
+/// to disambiguate from the legacy v1 `{"join_token": "..."}` form.
+fn looks_like_v3(text: &str) -> bool {
+    let v: serde_json::Value = match serde_json::from_str(text) {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+    let is_v3 = v.get("v").and_then(|v| v.as_u64()) == Some(super::wire::WIRE_VERSION as u64);
+    is_v3 && v.get("node_id").and_then(|v| v.as_str()).is_some()
+}
+
+/// H-9: shape of the v3 handshake on the wire. The originator (the
+/// peer dialing in) signs `node_id || nonce` with its Ed25519 secret
+/// and we verify against the pinned-peer registry. Mutual signing
+/// (so the dialer can verify us too) lives in a follow-up — for now
+/// the inbound side is the asymmetric trust hop.
+#[derive(serde::Deserialize)]
+struct V3Handshake {
+    #[serde(rename = "v")]
+    _version: u32,
+    node_id: String,
+    nonce: String,
+    signature: String,
+}
+
+impl Transport {
+    /// Parse + verify a v3 handshake. On success returns the peer's
+    /// `node_id`; on failure returns a static reason string suitable
+    /// for an audit / `tracing::warn!`.
+    fn validate_v3_handshake(&self, text: &str) -> Result<String, &'static str> {
+        let hs: V3Handshake = serde_json::from_str(text).map_err(|_| "v3 handshake malformed")?;
+
+        // node_identity isn't used in this verify path directly —
+        // it's a marker that the operator has opted into v3 by
+        // running through identity::ensure at boot. Mutual handshake
+        // (using identity to sign back to the dialer) lands later.
+        if self.node_identity.is_none() {
+            return Err("v3 handshake unsupported: no local node identity");
+        }
+        let db = self
+            .db
+            .as_ref()
+            .ok_or("v3 verify path needs the transport's DB handle")?;
+
+        use base64::Engine as _;
+        let nonce_bytes = base64::engine::general_purpose::STANDARD
+            .decode(hs.nonce.as_str())
+            .map_err(|_| "v3 nonce not valid base64")?;
+        if nonce_bytes.len() < 16 {
+            return Err("v3 nonce too short");
+        }
+        let sig_bytes = base64::engine::general_purpose::STANDARD
+            .decode(hs.signature.as_str())
+            .map_err(|_| "v3 signature not valid base64")?;
+        let sig_arr: [u8; 64] = sig_bytes
+            .as_slice()
+            .try_into()
+            .map_err(|_| "v3 signature wrong length")?;
+        let signature = ed25519_dalek::Signature::from_bytes(&sig_arr);
+
+        // Look up the originator's pinned public key via the
+        // federation_peers table.
+        let pk_opt = db
+            .with_read(|conn| super::peers::active_public_key(conn, &hs.node_id))
+            .map_err(|_| "v3 pinned-peer lookup failed")?;
+        let pk = pk_opt.ok_or("v3 origin peer not pinned")?;
+
+        // Signing input is `node_id || nonce`. Minimal challenge for
+        // step 1 of H-9; mutual + receiver-id binding lands in H-11
+        // follow-up.
+        let mut signing_bytes = hs.node_id.as_bytes().to_vec();
+        signing_bytes.extend_from_slice(&nonce_bytes);
+        use ed25519_dalek::Verifier;
+        pk.verify(&signing_bytes, &signature)
+            .map_err(|_| "v3 signature invalid")?;
+
+        Ok(hs.node_id)
+    }
+}
+
 /// Check if federation authentication is required (non-empty secret).
 fn requires_auth(join_secret: &str) -> bool {
     !join_secret.is_empty()
@@ -96,6 +178,21 @@ pub struct Transport {
     /// VULN-014 / H7: when false, refuse to connect to plain ws:// peer
     /// URLs and disable the "any peer accepted" empty-secret fallback.
     insecure: bool,
+    /// H-9 Phase 3 transport handshake. Optional Ed25519 identity for
+    /// the local node — when set, `handle_incoming` accepts a v3
+    /// signed handshake alongside the legacy v1 (`join_token`) one.
+    /// Outbound dial stays on v1 today; flipping outbound to v3 lands
+    /// once every peer has been re-pinned with its public key.
+    node_identity: Option<Arc<super::identity::NodeIdentity>>,
+    /// H-9 / H-11 strictness gate. When `true`, reject v1 inbound
+    /// handshakes outright — only v3 is accepted. Maps from the
+    /// `DILLA_FEDERATION_REQUIRE_V3` env var. Default false during
+    /// the rolling-upgrade window so v1-only peers keep working.
+    require_v3: bool,
+    /// H-9 DB handle for the v3 handshake's pinned-peer lookup. None
+    /// when Transport is constructed in test contexts; v3 is only
+    /// available when this is Some.
+    db: Option<crate::db::Database>,
     stop_tx: tokio::sync::watch::Sender<bool>,
     stop_rx: tokio::sync::watch::Receiver<bool>,
 }
@@ -146,6 +243,20 @@ impl Transport {
     }
 
     pub fn with_settings(join_secret: String, insecure: bool) -> Self {
+        Self::with_settings_full(join_secret, insecure, None, false, None)
+    }
+
+    /// H-9 Phase 3 constructor: supplies the local node's Ed25519
+    /// identity (so the v3 inbound handshake can verify peer
+    /// signatures against the pinned-peer table), the `require_v3`
+    /// strictness gate, and a DB handle for the pinned-peer lookup.
+    pub fn with_settings_full(
+        join_secret: String,
+        insecure: bool,
+        node_identity: Option<Arc<super::identity::NodeIdentity>>,
+        require_v3: bool,
+        db: Option<crate::db::Database>,
+    ) -> Self {
         let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
         Transport {
             conns: Arc::new(RwLock::new(HashMap::new())),
@@ -153,6 +264,9 @@ impl Transport {
             on_event: Arc::new(RwLock::new(None)),
             join_secret,
             insecure,
+            node_identity,
+            require_v3,
+            db,
             stop_tx,
             stop_rx,
         }
@@ -255,9 +369,31 @@ impl Transport {
             )
             .await;
 
+            // H-9: dispatch on the wire shape. If the first text frame
+            // parses as a v3 handshake ({"v": 3, "node_id": ..., ...})
+            // run the Ed25519 verifier against the pinned-peers
+            // registry. Otherwise fall back to the legacy v1
+            // shared-secret check, unless require_v3=true in which
+            // case we refuse outright.
             let authenticated = match auth_result {
                 Ok(Some(Ok(Message::Text(text)))) => {
-                    validate_auth_message_with_insecure(&text, &self.join_secret, self.insecure)
+                    if looks_like_v3(&text) {
+                        match self.validate_v3_handshake(&text) {
+                            Ok(node_id) => {
+                                tracing::info!(peer = %peer_addr, node_id = %node_id, "federation peer authenticated (v3)");
+                                true
+                            }
+                            Err(reason) => {
+                                tracing::warn!(peer = %peer_addr, %reason, "federation v3 handshake rejected");
+                                false
+                            }
+                        }
+                    } else if self.require_v3 {
+                        tracing::warn!(peer = %peer_addr, "federation peer sent v1 handshake but require_v3=true — refusing");
+                        false
+                    } else {
+                        validate_auth_message_with_insecure(&text, &self.join_secret, self.insecure)
+                    }
                 }
                 _ => false,
             };

@@ -90,6 +90,12 @@ pub struct MeshConfig {
     /// VULN-014 / H7: when true, accept plain ws:// peer URLs and the
     /// "empty join secret = accept anyone" fallback. Defaults to false.
     pub insecure: bool,
+    /// H-9 / H-11: when true, the federation transport refuses v1
+    /// (shared-secret) inbound handshakes and accepts only the v3
+    /// Ed25519-signed form. Threaded from
+    /// `Config::require_federation_v3` / `DILLA_FEDERATION_REQUIRE_V3`.
+    /// Default false during the rolling-upgrade window.
+    pub require_v3: bool,
 }
 
 // ── MeshNode ───────────────────────────────────────────────────────────────
@@ -116,9 +122,21 @@ pub struct MeshNode {
 impl MeshNode {
     /// Create a new MeshNode with the given configuration, database, and hub references.
     pub fn new(config: MeshConfig, db: Database, hub: Arc<Hub>) -> Self {
-        let transport = Arc::new(Transport::with_settings(
+        // H-9: thread the local Ed25519 identity + the require_v3
+        // flag into Transport so handle_incoming can verify v3
+        // signed handshakes against the pinned-peer registry.
+        // identity::ensure is idempotent — by the time MeshNode is
+        // constructed main.rs has already called it, so this just
+        // loads the singleton.
+        let node_identity = identity::ensure(&db)
+            .ok()
+            .map(Arc::new);
+        let transport = Arc::new(Transport::with_settings_full(
             config.join_secret.clone(),
             config.insecure,
+            node_identity,
+            config.require_v3,
+            Some(db.clone()),
         ));
         let sync_mgr = Arc::new(SyncManager::new(
             db.clone(),
