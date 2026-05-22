@@ -840,15 +840,22 @@ fn validate_bootstrap_token(
     }
 
     if !bt.expires_at.is_empty() {
-        let parsed = chrono::NaiveDateTime::parse_from_str(&bt.expires_at, "%Y-%m-%d %H:%M:%S")
+        // Fail-closed on a malformed `expires_at`. Migration 026 always
+        // writes a parseable `%Y-%m-%d %H:%M:%S` value, but a future
+        // migration that produced garbage here would otherwise let a
+        // bootstrap token live forever — that's the exact regression
+        // VULN-009 was supposed to close.
+        let exp = chrono::NaiveDateTime::parse_from_str(&bt.expires_at, "%Y-%m-%d %H:%M:%S")
             .map(|n| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(n, chrono::Utc))
-            .ok();
-        if let Some(exp) = parsed {
-            if chrono::Utc::now() > exp {
-                return Err(rusqlite::Error::InvalidParameterName(
-                    "bootstrap token expired".into(),
-                ));
-            }
+            .map_err(|_| {
+                rusqlite::Error::InvalidParameterName(
+                    "bootstrap token has malformed expires_at".into(),
+                )
+            })?;
+        if chrono::Utc::now() > exp {
+            return Err(rusqlite::Error::InvalidParameterName(
+                "bootstrap token expired".into(),
+            ));
         }
     }
 
