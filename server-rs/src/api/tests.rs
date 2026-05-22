@@ -186,7 +186,8 @@ fn test_router(state: AppState) -> Router {
         .route("/api/v1/auth/refresh", post(super::auth_handlers::refresh));
 
     let protected = Router::new()
-        .route("/api/v1/users/me", get(super::users::get_me).patch(super::users::update_me))
+        .route("/api/v1/users/me", get(super::users::get_me).patch(super::users::update_me).delete(super::users::delete_me))
+        .route("/api/v1/identity/blob", get(super::users::get_identity_blob).put(super::users::put_identity_blob))
         .route("/api/v1/teams", get(super::teams::list).post(super::teams::create))
         .route("/api/v1/teams/{team_id}", get(super::teams::get_team).patch(super::teams::update))
         .route("/api/v1/teams/{team_id}/members", get(super::teams::list_members))
@@ -220,6 +221,17 @@ fn test_router(state: AppState) -> Router {
         .route("/api/v1/teams/{team_id}/presence", get(super::presence::get_all).put(super::presence::update_own))
         .route("/api/v1/teams/{team_id}/presence/{user_id}", get(super::presence::get_user))
         .route("/api/v1/teams/{team_id}/voice/{channel_id}", get(super::voice::get_room))
+        .route("/api/v1/users/me/blocks", get(super::blocks::list))
+        .route(
+            "/api/v1/users/me/blocks/{blocked_id}",
+            post(super::blocks::block).delete(super::blocks::unblock),
+        )
+        .route("/api/v1/me/muted-channels", get(super::channel_mutes::list))
+        .route(
+            "/api/v1/me/muted-channels/{channel_id}",
+            put(super::channel_mutes::mute).delete(super::channel_mutes::unmute),
+        )
+        .route("/api/v1/teams/{team_id}/audit", get(super::audit::list))
         .route("/api/v1/auth/ws-ticket", post(super::ws_ticket))
         .route("/api/v1/auth/logout", post(super::auth_handlers::logout))
         .route("/api/v1/federation/status", get(super::federation::get_status))
@@ -5110,4 +5122,314 @@ async fn gif_search_forbids_non_team_member() {
         "expected non-success for non-member, got {}",
         resp.status()
     );
+}
+
+// ── identity/blob + delete_me ──────────────────────────────────────
+
+#[tokio::test]
+async fn identity_blob_get_empty_when_never_uploaded() {
+    let (state, _tmp) = test_app_state();
+    let (_uid, _team_id, token) = bootstrap_user_and_team(&state);
+    let app = test_router(state);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/identity/blob")
+                .header("authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_to_json(resp.into_body()).await;
+    // Default for a fresh user: empty string (not null).
+    assert_eq!(json["blob"], "");
+}
+
+#[tokio::test]
+async fn identity_blob_put_and_get_roundtrip() {
+    let (state, _tmp) = test_app_state();
+    let (_uid, _team_id, token) = bootstrap_user_and_team(&state);
+    let app = test_router(state);
+
+    // PUT a small blob.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/v1/identity/blob")
+                .header("authorization", format!("Bearer {}", token))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::json!({ "blob": "encrypted-blob-bytes" }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // GET it back.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/identity/blob")
+                .header("authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let json = body_to_json(resp.into_body()).await;
+    assert_eq!(json["blob"], "encrypted-blob-bytes");
+}
+
+#[tokio::test]
+async fn identity_blob_put_413_when_too_large() {
+    let (state, _tmp) = test_app_state();
+    let (_uid, _team_id, token) = bootstrap_user_and_team(&state);
+    let app = test_router(state);
+
+    // 65 KiB blob — just over MAX_IDENTITY_BLOB_BYTES.
+    let big = "x".repeat(65 * 1024);
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/v1/identity/blob")
+                .header("authorization", format!("Bearer {}", token))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::json!({ "blob": big }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+}
+
+#[tokio::test]
+async fn delete_me_fails_when_user_is_sole_admin_of_a_team() {
+    // bootstrap_user_and_team creates a team where the caller is the
+    // only admin. delete_me should refuse — same protection as
+    // leave_team's sole-admin guard.
+    let (state, _tmp) = test_app_state();
+    let (_uid, _team_id, token) = bootstrap_user_and_team(&state);
+    let app = test_router(state);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/v1/users/me")
+                .header("authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    // delete_user maps InvalidParameterName to BadRequest. Either way
+    // non-success.
+    assert!(
+        !resp.status().is_success(),
+        "expected non-success when user is sole admin, got {}",
+        resp.status()
+    );
+}
+
+// ── blocks / channel-mutes / audit ─────────────────────────────────
+
+#[tokio::test]
+async fn blocks_list_starts_empty() {
+    let (state, _tmp) = test_app_state();
+    let (_uid, _team_id, token) = bootstrap_user_and_team(&state);
+    let app = test_router(state);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/users/me/blocks")
+                .header("authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_to_json(resp.into_body()).await;
+    // Wire shape: { user_ids: [...] }
+    assert!(json["user_ids"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn blocks_block_then_list_then_unblock() {
+    let (state, _tmp) = test_app_state();
+    let (_uid, _team_id, token) = bootstrap_user_and_team(&state);
+    // Seed a second user so we have someone to block.
+    state.db.with_conn(|conn| {
+        db::create_user(conn, &db::User {
+            id: "other".into(),
+            username: "other".into(),
+            display_name: "Other".into(),
+            public_key: vec![9u8; 32],
+            avatar_url: String::new(),
+            status_text: String::new(),
+            status_type: "online".into(),
+            is_admin: false,
+            created_at: db::now_str(),
+            updated_at: db::now_str(),
+            ..Default::default()
+        })
+    }).unwrap();
+    let app = test_router(state);
+
+    // Block.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/users/me/blocks/other")
+                .header("authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // List — should contain "other".
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/users/me/blocks")
+                .header("authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let json = body_to_json(resp.into_body()).await;
+    let arr = json["user_ids"].as_array().unwrap();
+    assert!(arr.iter().any(|v| v.as_str() == Some("other")));
+
+    // Unblock.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/v1/users/me/blocks/other")
+                .header("authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn channel_mutes_list_starts_empty() {
+    let (state, _tmp) = test_app_state();
+    let (_uid, _team_id, token) = bootstrap_user_and_team(&state);
+    let app = test_router(state);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/me/muted-channels")
+                .header("authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_to_json(resp.into_body()).await;
+    assert!(json.as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn channel_mutes_mute_then_list_then_unmute() {
+    let (state, _tmp) = test_app_state();
+    let (_uid, team_id, token) = bootstrap_user_and_team(&state);
+    let app = test_router(state);
+    let channel_id = create_channel_via_api(&app, &team_id, &token, "general").await;
+
+    // PUT mute (no expiry = indefinite).
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(&format!("/api/v1/me/muted-channels/{}", channel_id))
+                .header("authorization", format!("Bearer {}", token))
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::json!({}).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // List — should contain the channel.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/me/muted-channels")
+                .header("authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let json = body_to_json(resp.into_body()).await;
+    let arr = json.as_array().unwrap();
+    assert!(!arr.is_empty());
+
+    // DELETE unmute.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(&format!("/api/v1/me/muted-channels/{}", channel_id))
+                .header("authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn audit_list_for_team_returns_array() {
+    let (state, _tmp) = test_app_state();
+    let (_uid, team_id, token) = bootstrap_user_and_team(&state);
+    let app = test_router(state);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri(&format!("/api/v1/teams/{}/audit", team_id))
+                .header("authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_to_json(resp.into_body()).await;
+    // audit_events table is empty on a fresh bootstrap until an action
+    // runs — the response shape is still an array (or object with array).
+    assert!(json.is_array() || json.is_object());
 }
