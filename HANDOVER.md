@@ -32,37 +32,24 @@ in-flight work remains.
 
 ## Tractable (in-session-friendly)
 
-### H-4 — Pre-existing test-rot cleanup
+### H-4 — Pre-existing test-rot cleanup (parked)
 
-`cargo test` doesn't compile because legacy test fixture builders
-construct `db::User` and `db::Channel` with the old field set —
-missing `quiet_hours_*`, `locked`, `hidden_if_restricted`,
-`slow_mode_seconds`, `group_id`.
+`cargo test` doesn't compile because legacy test fixture struct
+literals construct `db::User` / `db::Channel` / `Team` / `Message`
+/ `UpdateChannelRequest` with old field sets — missing
+`quiet_hours_*`, `locked`, `hidden_if_restricted`,
+`slow_mode_seconds`, `group_id`, `reply_to_message_id`,
+`force_turn_relay`.
 
-- Audit every `tests` module under `server-rs/src/` for struct
-  literals over `db::User` / `db::Channel` / `UpdateChannelRequest`
-  / others.
-- Add the missing fields with sensible defaults (`String::new()`,
-  `false`, `0`, `None`).
-- Make `cargo test --bin dilla-server` compile end-to-end.
-
-**Definition of done:** `cargo test` runs end-to-end (pass/fail
-per-test irrelevant — just needs to compile). ~150 LoC across ~6
-files. No production code changes.
-
-### H-5 — Sliding-refresh client awareness
-
-Server-side sliding refresh ships (commit `85db447`). Client isn't
-reading the `rotated: true` response flag, so the next refresh
-after rotation fails with "refresh token revoked".
-
-- `client/src/services/api.ts` — read `rotated` from
-  `POST /api/v1/auth/refresh` response, store the new
-  `refresh_token` when present, replacing the old one. Re-encrypt
-  at rest via the existing step-6-F4 wrap key.
-
-**Definition of done:** rotation roundtrip works without forcing
-re-login. ~30 LoC.
+**Parked.** Attempted bulk-patch via a Python script in this
+session over-edited (gutted production struct definitions in
+`models.rs` and elsewhere) and was reverted. The fix needs a
+surgical per-site approach — open each `#[cfg(test)]` block,
+inspect the literal, append the missing fields by hand. Scope is
+~30 files of test code. Production code does not depend on this;
+release builds are clean. Suggested approach for the next pass:
+do it in a dedicated branch / PR with no other changes so the
+diff is reviewable.
 
 ### H-6 — Per-device JWT revocation table
 
