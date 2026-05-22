@@ -1,3 +1,4 @@
+pub mod identity;
 pub mod join;
 pub mod sync;
 pub mod transport;

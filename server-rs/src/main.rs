@@ -196,6 +196,20 @@ async fn main() {
     let presence_mgr = init_presence_manager(&hub).await;
     spawn_hub_event_handler(&hub, &presence_mgr, &database);
 
+    // VULN-002 Phase 3 foundation: every install gets a stable
+    // Ed25519 node identity, even when federation isn't configured
+    // yet. Once the wire format moves to signed FederationEvents
+    // (see .security-hardening/14-federation-phase3-design.md) the
+    // keypair persisted here is what signs outbound events. Today
+    // it's a no-op for non-federated nodes.
+    match federation::identity::ensure(&database) {
+        Ok(id) => tracing::info!(
+            node_id = %id.node_id,
+            "FEDERATION: node identity ready"
+        ),
+        Err(e) => tracing::error!("FEDERATION: failed to ensure node identity: {}", e),
+    }
+
     let mesh = init_federation_mesh(&cfg, &database, &hub).await;
 
     // Load custom theme CSS from disk once at startup.
