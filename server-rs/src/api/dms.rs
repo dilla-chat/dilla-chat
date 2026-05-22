@@ -5,7 +5,9 @@ use axum::{
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::api::helpers::{json_ok, json_ok_true, require_team_member, spawn_db};
+use crate::api::helpers::{json_ok, json_ok_true, spawn_db};
+// A6 migration tail: route authz through policy::*.
+use crate::policy::require_team_member;
 use crate::api::AppState;
 use crate::auth::UserId;
 use crate::db;

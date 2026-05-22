@@ -16,7 +16,9 @@ use rusqlite::OptionalExtension;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::api::helpers::{json_ok, json_ok_true, require_permission, require_team_member, spawn_db};
+use crate::api::helpers::{json_ok, json_ok_true, spawn_db};
+// A6 migration tail: route every authz decision through policy::*.
+use crate::policy::{require_permission, require_team_member};
 use crate::api::AppState;
 use crate::auth::UserId;
 use crate::db;

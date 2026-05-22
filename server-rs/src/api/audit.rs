@@ -3,7 +3,10 @@ use axum::{Extension, Json};
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::api::helpers::{json_ok, require_permission, spawn_db};
+use crate::api::helpers::{json_ok, spawn_db};
+// A6 migration tail: route every authz decision through policy::*
+// so deny telemetry flows through log_decision.
+use crate::policy::require_permission;
 use crate::api::AppState;
 use crate::auth::UserId;
 use crate::db;
