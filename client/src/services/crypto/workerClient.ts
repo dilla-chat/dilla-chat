@@ -278,6 +278,58 @@ export async function pairwiseSessionDecryptInWorker(
   return call<PairwiseDecryptResult>('pairwiseSession.decrypt', { peerId, ciphertextB64 });
 }
 
+// ── H-12d.1: identity DH wrap/unwrap via worker ───────────────────
+
+let identityInitDone = false;
+
+/** Ship the user's non-extractable identity DH private CryptoKey to
+ *  the worker. Idempotent on the main-thread side (we only call
+ *  through to the worker the first time). */
+export async function identityInitInWorker(identityDhPrivateKey: CryptoKey): Promise<void> {
+  if (backend === 'main' || typeof Worker === 'undefined') return;
+  if (identityInitDone) return;
+  await call<null>('identity.init', { identityDhPrivateKey });
+  identityInitDone = true;
+}
+
+export function isIdentityInitInWorker(): boolean {
+  return identityInitDone;
+}
+
+export async function wrapForPeerInWorker(
+  peerIdentityDhPub: Uint8Array,
+  plaintext: Uint8Array,
+): Promise<string> {
+  return call<string>('identity.wrapForPeer', {
+    peerIdentityDhPubB64: bytesToB64(peerIdentityDhPub),
+    plaintextB64: bytesToB64(plaintext),
+  });
+}
+
+export async function unwrapFromPeerInWorker(
+  peerIdentityDhPub: Uint8Array,
+  ciphertext: Uint8Array,
+): Promise<Uint8Array> {
+  const plaintextB64 = await call<string>('identity.unwrapFromPeer', {
+    peerIdentityDhPubB64: bytesToB64(peerIdentityDhPub),
+    ciphertextB64: bytesToB64(ciphertext),
+  });
+  return b64ToBytes(plaintextB64);
+}
+
+function bytesToB64(b: Uint8Array): string {
+  let s = '';
+  for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
+  return btoa(s);
+}
+
+function b64ToBytes(s: string): Uint8Array {
+  const bin = atob(s);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
 /** Test/teardown hook — terminates the worker so subsequent calls respawn. */
 export function __resetCryptoWorkerForTests(): void {
   if (worker) {
@@ -291,4 +343,5 @@ export function __resetCryptoWorkerForTests(): void {
   pending.clear();
   nextId = 1;
   sessionInitDone = false;
+  identityInitDone = false;
 }

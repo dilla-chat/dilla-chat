@@ -323,9 +323,17 @@ path round-trips back to main thread only when the worker reports
 the message needs a Bob-bootstrap, then ships the new session
 back.
 
-**H-12d (open).** X3DH initiate/respond, `wrapForPeer`/`unwrapFromPeer`,
-identity DH private key, and prekey secrets are still main-thread.
-See `HANDOVER.md` H-12d.
+**H-12d.1.** `wrapForPeer` / `unwrapFromPeer` now run in the worker.
+The identity DH private CryptoKey is shipped to the worker via a
+one-time `identity.init` postMessage on the first wrap/unwrap call.
+The CryptoKey is non-extractable so even when both threads hold a
+reference the raw bytes never enter JS — the migration's value is
+that the X25519 DH + HKDF + AES-GCM derivations run off main
+thread, and (after H-12d.2 drops the main-thread copy) an XSS
+post-init has no way to invoke `crypto.subtle` ops with the key.
+
+**H-12d.2 (open).** X3DH initiate/respond + prekey secrets are
+still main-thread. See `HANDOVER.md` H-12d.2.
 
 ## 11. Cross-references
 

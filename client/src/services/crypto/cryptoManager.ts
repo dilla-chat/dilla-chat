@@ -25,6 +25,10 @@ import {
   pairwiseSessionSaveInWorker,
   pairwiseSessionEncryptInWorker,
   pairwiseSessionDecryptInWorker,
+  identityInitInWorker,
+  isIdentityInitInWorker,
+  wrapForPeerInWorker,
+  unwrapFromPeerInWorker,
 } from './workerClient';
 import { x25519DH, importX25519PrivateKey } from './x25519';
 import { hkdfDerive } from './hkdf';
@@ -219,6 +223,16 @@ export class CryptoManager {
    *  (regenerated per voice join) so the practical security envelope
    *  is the same. Used for voice:key-distribute. */
   async wrapForPeer(peerIdentityDhPub: Uint8Array, plaintext: Uint8Array): Promise<string> {
+    // H-12d.1: when backend='worker', the identity DH private key
+    // has been postMessage'd to the worker once and the wrap op
+    // runs there. The CryptoKey is non-extractable so even though
+    // both threads still hold a reference, the raw bytes never
+    // become JS-readable. Main thread keeps its copy for
+    // backend='main' fallback + the X3DH paths that haven't
+    // migrated yet (H-12d.2).
+    if (await this.ensureIdentityInWorker()) {
+      return wrapForPeerInWorker(peerIdentityDhPub, plaintext);
+    }
     const shared = await x25519DH(this.identityDhKeyPair.privateKey, peerIdentityDhPub);
     const wrapKey = await hkdfDerive(shared, encoder.encode('DillaPeerWrap'), 32, new Uint8Array(32));
     const ct = await aesGcmEncrypt(wrapKey, plaintext);
@@ -226,9 +240,27 @@ export class CryptoManager {
   }
 
   async unwrapFromPeer(peerIdentityDhPub: Uint8Array, ciphertext: string): Promise<Uint8Array> {
+    if (await this.ensureIdentityInWorker()) {
+      return unwrapFromPeerInWorker(peerIdentityDhPub, fromBase64(ciphertext));
+    }
     const shared = await x25519DH(this.identityDhKeyPair.privateKey, peerIdentityDhPub);
     const wrapKey = await hkdfDerive(shared, encoder.encode('DillaPeerWrap'), 32, new Uint8Array(32));
     return aesGcmDecrypt(wrapKey, fromBase64(ciphertext));
+  }
+
+  /** H-12d.1: lazy ship the identity DH private key to the worker.
+   *  Called on first wrap/unwrap; subsequent calls short-circuit on
+   *  the worker-side init flag. Returns true when the worker path
+   *  is ready (backend='worker', Worker available, init succeeded). */
+  private async ensureIdentityInWorker(): Promise<boolean> {
+    if (!this.useWorkerGroupSession()) return false;
+    if (isIdentityInitInWorker()) return true;
+    try {
+      await identityInitInWorker(this.identityDhKeyPair.privateKey);
+      return isIdentityInitInWorker();
+    } catch {
+      return false;
+    }
   }
 
   async getOrCreateGroupSession(channelId: string, senderId: string): Promise<GroupSession> {

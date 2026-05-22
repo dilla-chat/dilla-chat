@@ -51,6 +51,12 @@ import {
   opPairwiseEncrypt as psEncrypt,
   opPairwiseDecrypt as psDecrypt,
 } from './pairwiseSessionWorkerImpl';
+import {
+  setIdentityDhPrivateKey,
+  hasIdentityDhPrivateKey,
+  opWrapForPeer,
+  opUnwrapFromPeer,
+} from './identityWorkerImpl';
 
 interface RpcRequest {
   id: number;
@@ -197,6 +203,34 @@ async function dispatch(op: string, payload: unknown): Promise<unknown> {
         ciphertextB64: string;
       };
       return await psDecrypt(peerId, ciphertextB64);
+    }
+    // H-12d.1: cache the user's identity DH private CryptoKey in
+    // worker scope and expose wrap/unwrap ops that consume it. The
+    // CryptoKey is non-extractable so cloning it across postMessage
+    // doesn't expose raw bytes. H-12d.2 will move X3DH initiate +
+    // respond + prekey secrets into the worker too.
+    case 'identity.init': {
+      const { identityDhPrivateKey } = payload as {
+        identityDhPrivateKey: CryptoKey | null;
+      };
+      setIdentityDhPrivateKey(identityDhPrivateKey);
+      return null;
+    }
+    case 'identity.hasKey':
+      return hasIdentityDhPrivateKey();
+    case 'identity.wrapForPeer': {
+      const { peerIdentityDhPubB64, plaintextB64 } = payload as {
+        peerIdentityDhPubB64: string;
+        plaintextB64: string;
+      };
+      return await opWrapForPeer(peerIdentityDhPubB64, plaintextB64);
+    }
+    case 'identity.unwrapFromPeer': {
+      const { peerIdentityDhPubB64, ciphertextB64 } = payload as {
+        peerIdentityDhPubB64: string;
+        ciphertextB64: string;
+      };
+      return await opUnwrapFromPeer(peerIdentityDhPubB64, ciphertextB64);
     }
     case 'ping':
       return 'pong';
