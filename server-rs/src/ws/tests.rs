@@ -123,6 +123,8 @@ fn seed_team_channel(db: &Database, team_id: &str, user_id: &str, channel_id: &s
                 federated: false,
                 created_at: db::now_str(),
                 updated_at: db::now_str(),
+            
+                ..Default::default()
             },
         )?;
         db::create_channel(
@@ -138,6 +140,8 @@ fn seed_team_channel(db: &Database, team_id: &str, user_id: &str, channel_id: &s
                 created_by: user_id.to_string(),
                 created_at: db::now_str(),
                 updated_at: db::now_str(),
+            
+                ..Default::default()
             },
         )?;
         db::create_member(
@@ -211,6 +215,8 @@ fn make_test_user(id: &str, username: &str, display_name: &str, public_key: &[u8
         is_admin: false,
         created_at: db::now_str(),
         updated_at: db::now_str(),
+    
+        ..Default::default()
     }
 }
 
@@ -228,6 +234,8 @@ fn make_test_msg(id: &str, channel_id: &str, dm_channel_id: &str, author_id: &st
         deleted: false,
         lamport_ts: 0,
         created_at: db::now_str(),
+    
+        ..Default::default()
     }
 }
 
@@ -1768,6 +1776,11 @@ async fn dispatch_handle_event_message_delete() {
 async fn dispatch_handle_event_channel_join() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
+    // channel:join now runs through user_can_subscribe_to_channel,
+    // which requires the channel + team to exist in the DB and the
+    // user to be a member. Seed them so the gate lets the request
+    // through.
+    seed_team_channel(&hub.db, "t1", "u1", "dispatched-chan");
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
     register(&hub, c1).await;
@@ -1806,6 +1819,9 @@ async fn dispatch_handle_event_channel_leave() {
 async fn dispatch_handle_event_typing_start() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
+    // typing:start runs through user_can_subscribe_to_channel so the
+    // user must be a team member of a channel that actually exists.
+    seed_team_channel(&hub.db, "t1", "u1", "ch1");
 
     let (c1, _rx1) = make_client("c1", "u1", "alice", "t1");
     let (c2, mut rx2) = make_client("c2", "u2", "bob", "t1");
@@ -1932,6 +1948,8 @@ async fn seed_open_channel(hub: &Arc<Hub>, team_id: &str, channel_id: &str, user
                 federated: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             crate::db::create_member(conn, &crate::db::Member {
                 id: crate::db::new_id(),

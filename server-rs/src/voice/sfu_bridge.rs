@@ -311,7 +311,9 @@ mod tests {
         assert!(result.is_ok());
         let sdp_str = result.unwrap();
         assert!(!sdp_str.is_empty());
-        // Should be valid JSON.
-        let _: serde_json::Value = serde_json::from_str(&sdp_str).unwrap();
+        // The trait returns the raw SDP body (no JSON envelope) — the
+        // client wraps it in `RTCSessionDescription` on the receiving
+        // side. SDP always starts with `v=0`.
+        assert!(sdp_str.starts_with("v=0"), "expected raw SDP, got: {}", sdp_str);
     }
 }

@@ -62,6 +62,8 @@ fn test_config() -> Config {
         otel_api_header: String::new(),
         seed_demo: false,
         browser_log_forward: false,
+    
+        ..Default::default()
     }
 }
 
@@ -102,6 +104,8 @@ fn bootstrap_user_and_team(state: &AppState) -> (String, String, String) {
             is_admin: true,
             created_at: now.clone(),
             updated_at: now.clone(),
+        
+            ..Default::default()
         })?;
         db::create_team(conn, &db::Team {
             id: team_id.clone(),
@@ -114,6 +118,8 @@ fn bootstrap_user_and_team(state: &AppState) -> (String, String, String) {
             federated: false,
             created_at: now.clone(),
             updated_at: now.clone(),
+        
+            ..Default::default()
         })?;
         db::create_member(conn, &db::Member {
             id: db::new_id(),
@@ -789,6 +795,8 @@ async fn delete_channel_works() {
             created_by: _user_id.clone(),
             created_at: now.clone(),
             updated_at: now,
+        
+            ..Default::default()
         })
     })
     .unwrap();
@@ -833,6 +841,8 @@ async fn create_and_list_messages() {
             created_by: _user_id.clone(),
             created_at: now.clone(),
             updated_at: now,
+        
+            ..Default::default()
         })
     })
     .unwrap();
@@ -947,6 +957,8 @@ async fn create_message_empty_content_returns_400() {
             created_by: _user_id.clone(),
             created_at: now.clone(),
             updated_at: now,
+        
+            ..Default::default()
         })
     })
     .unwrap();
@@ -1071,6 +1083,8 @@ async fn create_and_list_dms() {
             is_admin: false,
             created_at: now.clone(),
             updated_at: now.clone(),
+        
+            ..Default::default()
         })?;
         db::create_member(conn, &db::Member {
             id: db::new_id(),
@@ -1248,6 +1262,8 @@ async fn update_channel_changes_topic() {
             created_by: _user_id.clone(),
             created_at: now.clone(),
             updated_at: now,
+        
+            ..Default::default()
         })
     })
     .unwrap();
@@ -1298,6 +1314,8 @@ async fn non_member_cannot_access_team() {
             is_admin: false,
             created_at: now.clone(),
             updated_at: now,
+        
+            ..Default::default()
         })
     })
     .unwrap();
@@ -1658,6 +1676,8 @@ fn setup_dm(state: &AppState, user_id: &str, team_id: &str) -> (String, String) 
             is_admin: false,
             created_at: now.clone(),
             updated_at: now.clone(),
+        
+            ..Default::default()
         })?;
         db::create_member(conn, &db::Member {
             id: db::new_id(),
@@ -1846,6 +1866,8 @@ async fn dm_edit_empty_content_returns_400() {
             deleted: false,
             lamport_ts: 0,
             created_at: db::now_str(),
+        
+            ..Default::default()
         })
     }).unwrap();
 
@@ -1889,6 +1911,8 @@ async fn dm_add_and_remove_members() {
             is_admin: false,
             created_at: now.clone(),
             updated_at: now,
+        
+            ..Default::default()
         })
     })
     .unwrap();
@@ -2147,6 +2171,8 @@ async fn get_voice_room() {
             created_by: _user_id.clone(),
             created_at: now.clone(),
             updated_at: now,
+        
+            ..Default::default()
         })
     })
     .unwrap();
@@ -2501,6 +2527,8 @@ fn add_team_member(state: &AppState, team_id: &str, admin_id: &str) -> String {
             is_admin: false,
             created_at: now.clone(),
             updated_at: now.clone(),
+        
+            ..Default::default()
         })?;
         db::create_member(conn, &db::Member {
             id: db::new_id(),
@@ -2677,6 +2705,8 @@ async fn create_and_list_threads() {
             created_by: _user_id.clone(),
             created_at: now.clone(),
             updated_at: now.clone(),
+        
+            ..Default::default()
         })?;
         db::create_message(conn, &db::Message {
             id: message_id.clone(),
@@ -2690,6 +2720,8 @@ async fn create_and_list_threads() {
             deleted: false,
             lamport_ts: 0,
             created_at: now.clone(),
+        
+            ..Default::default()
         })
     })
     .unwrap();
@@ -2758,6 +2790,8 @@ async fn thread_get_update_delete_and_messages() {
             created_by: _user_id.clone(),
             created_at: now.clone(),
             updated_at: now.clone(),
+        
+            ..Default::default()
         })?;
         db::create_message(conn, &db::Message {
             id: message_id.clone(),
@@ -2771,6 +2805,8 @@ async fn thread_get_update_delete_and_messages() {
             deleted: false,
             lamport_ts: 0,
             created_at: now,
+        
+            ..Default::default()
         })
     })
     .unwrap();
@@ -2910,6 +2946,8 @@ async fn add_and_list_reactions() {
             created_by: _user_id.clone(),
             created_at: now.clone(),
             updated_at: now.clone(),
+        
+            ..Default::default()
         })?;
         db::create_message(conn, &db::Message {
             id: message_id.clone(),
@@ -2923,6 +2961,8 @@ async fn add_and_list_reactions() {
             deleted: false,
             lamport_ts: 0,
             created_at: now,
+        
+            ..Default::default()
         })
     })
     .unwrap();
@@ -3013,6 +3053,8 @@ async fn verify_with_valid_user_returns_token() {
             is_admin: false,
             created_at: now.clone(),
             updated_at: now,
+        
+            ..Default::default()
         })
     }).unwrap();
 
@@ -3094,12 +3136,16 @@ async fn api_route_without_auth_returns_unauthorized() {
     let app = create_router(state);
 
     // Protected API route without a token should return 401.
+    // SmartIpKeyExtractor in the rate-limit layer needs *some* client IP
+    // signal; in production it's the socket peer address (ConnectInfo).
+    // In tower's oneshot() there's no ConnectInfo, so feed X-Forwarded-For
+    // so the rate-limit middleware doesn't 500 before auth runs.
     let req = Request::builder()
         .uri("/api/v1/users/me")
+        .header("x-forwarded-for", "127.0.0.1")
         .body(Body::empty())
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
-
     assert_eq!(
         resp.status(),
         StatusCode::UNAUTHORIZED,
@@ -3278,6 +3324,8 @@ async fn update_channel_long_topic_returns_400() {
             created_by: user_id.clone(),
             created_at: db::now_str(),
             updated_at: db::now_str(),
+        
+            ..Default::default()
         })
     }).unwrap();
 
@@ -3339,6 +3387,8 @@ async fn download_cross_team_attachment_returns_404() {
             topic: "".into(), channel_type: "text".into(), position: 0,
             category: "".into(), created_by: user_id.clone(),
             created_at: now.clone(), updated_at: now.clone(),
+        
+            ..Default::default()
         })?;
         db::create_message(conn, &db::Message {
             id: message_id.clone(), channel_id: channel_id.clone(),
@@ -3346,12 +3396,16 @@ async fn download_cross_team_attachment_returns_404() {
             content: "test".into(), msg_type: "text".into(),
             thread_id: "".into(), edited_at: None, deleted: false,
             lamport_ts: 0, created_at: now.clone(),
+        
+            ..Default::default()
         })?;
         db::create_attachment(conn, &db::Attachment {
             id: attachment_id.clone(), message_id: message_id.clone(),
             filename_encrypted: vec![1, 2, 3], content_type_encrypted: vec![4, 5, 6],
             size: 4, storage_path: "/tmp/nonexistent".into(),
             created_at: now.clone(),
+        
+            ..Default::default()
         })
     }).unwrap();
 
@@ -3364,6 +3418,8 @@ async fn download_cross_team_attachment_returns_404() {
             max_file_size: 1024, allow_member_invites: true,
 federated: false,
             created_at: now.clone(), updated_at: now.clone(),
+        
+            ..Default::default()
         })?;
         db::create_member(conn, &db::Member {
             id: db::new_id(), team_id: team2_id.clone(), user_id: user_id.clone(),
@@ -3413,6 +3469,8 @@ async fn mark_channel_read_succeeds() {
             created_by: _user_id.clone(),
             created_at: now.clone(),
             updated_at: now.clone(),
+        
+            ..Default::default()
         })?;
         db::create_message(conn, &db::Message {
             id: msg_id.clone(),
@@ -3426,6 +3484,8 @@ async fn mark_channel_read_succeeds() {
             deleted: false,
             lamport_ts: 0,
             created_at: now.clone(),
+        
+            ..Default::default()
         })
     })
     .unwrap();
@@ -3494,6 +3554,8 @@ async fn mark_channel_read_empty_channel_returns_ok() {
             created_by: _user_id.clone(),
             created_at: now.clone(),
             updated_at: now,
+        
+            ..Default::default()
         })
     })
     .unwrap();

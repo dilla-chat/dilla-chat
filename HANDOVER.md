@@ -25,31 +25,13 @@ in-flight work remains.
 - Dev pattern `DILLA_INSECURE=true …` works.
 - Client builds clean (`npm run build`).
 - `npm audit` reports 0 vulnerabilities.
-- `cargo test` does **not** compile due to pre-existing test rot
-  (see H-4 below).
+- `cargo test --release`: **803 passed, 0 failed** (H-4 closed).
 
 ---
 
 ## Tractable (in-session-friendly)
 
-### H-4 — Pre-existing test-rot cleanup (parked)
-
-`cargo test` doesn't compile because legacy test fixture struct
-literals construct `db::User` / `db::Channel` / `Team` / `Message`
-/ `UpdateChannelRequest` with old field sets — missing
-`quiet_hours_*`, `locked`, `hidden_if_restricted`,
-`slow_mode_seconds`, `group_id`, `reply_to_message_id`,
-`force_turn_relay`.
-
-**Parked.** Attempted bulk-patch via a Python script in this
-session over-edited (gutted production struct definitions in
-`models.rs` and elsewhere) and was reverted. The fix needs a
-surgical per-site approach — open each `#[cfg(test)]` block,
-inspect the literal, append the missing fields by hand. Scope is
-~30 files of test code. Production code does not depend on this;
-release builds are clean. Suggested approach for the next pass:
-do it in a dedicated branch / PR with no other changes so the
-diff is reviewable.
+(none — H-4 closed)
 
 ---
 

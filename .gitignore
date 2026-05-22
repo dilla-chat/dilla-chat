@@ -74,3 +74,8 @@ mine.png
 mine*.png
 handoff.png
 tmp-dev-data/
+
+# Server bootstrap-token files — written to disk on first start when
+# DILLA_SEED_DEMO isn't on. Local-only by definition.
+server-rs/BOOTSTRAP_TOKEN
+**/BOOTSTRAP_TOKEN

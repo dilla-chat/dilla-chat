@@ -321,6 +321,8 @@ mod tests {
                 is_admin: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_team(conn, &db::Team {
                 id: "t1".into(),
@@ -333,6 +335,8 @@ mod tests {
                 federated: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_role(conn, &make_role("r1", "t1"))
         })
@@ -514,6 +518,8 @@ mod tests {
                 federated: false,
                 created_at: now.clone(),
                 updated_at: now,
+            
+                ..Default::default()
             })
         })
         .unwrap();

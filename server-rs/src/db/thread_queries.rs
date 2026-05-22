@@ -169,6 +169,8 @@ mod tests {
             public_key: vec![1u8; 32], avatar_url: String::new(), status_text: String::new(),
             status_type: "online".into(), is_admin: false,
             created_at: now.clone(), updated_at: now.clone(),
+        
+            ..Default::default()
         };
         db.with_conn(|c| crate::db::create_user(c, &user)).unwrap();
 
@@ -176,6 +178,8 @@ mod tests {
             id: "t1".into(), name: "Team".into(), description: String::new(),
             icon_url: String::new(), created_by: "u1".into(), max_file_size: 1024,
             allow_member_invites: true, federated: false, created_at: now.clone(), updated_at: now.clone(),
+        
+            ..Default::default()
         };
         db.with_conn(|c| crate::db::create_team(c, &team)).unwrap();
 
@@ -184,6 +188,8 @@ mod tests {
             topic: String::new(), channel_type: "text".into(), position: 0,
             category: String::new(), created_by: "u1".into(),
             created_at: now.clone(), updated_at: now.clone(),
+        
+            ..Default::default()
         };
         db.with_conn(|c| crate::db::create_channel(c, &channel)).unwrap();
 
@@ -193,6 +199,8 @@ mod tests {
             author_id: "u1".into(), content: "parent".into(), msg_type: "text".into(),
             thread_id: String::new(), edited_at: None, deleted: false,
             lamport_ts: 0, created_at: now,
+        
+            ..Default::default()
         };
         db.with_conn(|c| crate::db::create_message(c, &msg)).unwrap();
     }
@@ -243,6 +251,8 @@ mod tests {
             author_id: "u1".into(), content: "parent2".into(), msg_type: "text".into(),
             thread_id: String::new(), edited_at: None, deleted: false,
             lamport_ts: 1, created_at: now.clone(),
+        
+            ..Default::default()
         };
         db.with_conn(|c| crate::db::create_message(c, &msg2)).unwrap();
 
@@ -303,6 +313,8 @@ mod tests {
             author_id: "u1".into(), content: "reply".into(), msg_type: "text".into(),
             thread_id: "thr1".into(), edited_at: None, deleted: false,
             lamport_ts: 1, created_at: crate::db::now_str(),
+        
+            ..Default::default()
         };
         db.with_conn(|c| create_thread_message(c, &reply)).unwrap();
 
@@ -329,6 +341,8 @@ mod tests {
                 author_id: "u1".into(), content: format!("reply {}", i), msg_type: "text".into(),
                 thread_id: "thr1".into(), edited_at: None, deleted: false,
                 lamport_ts: i as i64, created_at: format!("2024-01-01 00:00:0{}", i),
+            
+                ..Default::default()
             };
             db.with_conn(|c| create_thread_message(c, &reply)).unwrap();
         }
@@ -356,6 +370,8 @@ mod tests {
             author_id: "u1".into(), content: "reply".into(), msg_type: "text".into(),
             thread_id: "thr1".into(), edited_at: None, deleted: false,
             lamport_ts: 1, created_at: crate::db::now_str(),
+        
+            ..Default::default()
         };
         db.with_conn(|c| create_thread_message(c, &reply)).unwrap();
 

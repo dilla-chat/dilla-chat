@@ -1134,6 +1134,8 @@ mod tests {
                 is_admin: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })
         })
         .unwrap();
@@ -1161,6 +1163,8 @@ mod tests {
                 is_admin: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })
         })
         .unwrap();
@@ -1189,6 +1193,8 @@ mod tests {
                 is_admin: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_team(conn, &db::Team {
                 id: "t1".into(),
@@ -1201,6 +1207,8 @@ mod tests {
                 federated: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_invite(conn, &db::Invite {
                 id: "inv1".into(),
@@ -1244,6 +1252,8 @@ mod tests {
                 is_admin: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_team(conn, &db::Team {
                 id: "t1".into(),
@@ -1256,6 +1266,8 @@ mod tests {
                 federated: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_invite(conn, &db::Invite {
                 id: "inv1".into(),
@@ -1295,6 +1307,8 @@ mod tests {
                 is_admin: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_team(conn, &db::Team {
                 id: "t1".into(),
@@ -1307,6 +1321,8 @@ mod tests {
                 federated: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_invite(conn, &db::Invite {
                 id: "inv1".into(),
@@ -1346,6 +1362,8 @@ mod tests {
                 is_admin: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_team(conn, &db::Team {
                 id: "t1".into(),
@@ -1358,6 +1376,8 @@ mod tests {
                 federated: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_invite(conn, &db::Invite {
                 id: "inv1".into(),
@@ -1471,6 +1491,8 @@ mod tests {
                 is_admin: true,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })
         })
         .unwrap();
@@ -1505,6 +1527,8 @@ mod tests {
                 is_admin: true,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             let team_id = create_bootstrap_team(conn, "Server", "u1")?;
             create_bootstrap_defaults(conn, &team_id, "u1", false)?;
@@ -1542,6 +1566,8 @@ mod tests {
                 is_admin: true,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             let team_id = create_bootstrap_team(conn, "Demo", "u1")?;
             create_bootstrap_defaults(conn, &team_id, "u1", true)?;

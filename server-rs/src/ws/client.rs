@@ -643,12 +643,19 @@ mod tests {
         owner_id: &str,
     ) -> String {
         let role_id = db::new_id();
+        // Per-owner public_key so multiple seed calls in the same test
+        // don't trip the users.public_key UNIQUE index.
+        let mut pk = [0u8; 32];
+        for (i, b) in owner_id.as_bytes().iter().enumerate().take(32) {
+            pk[i] = *b;
+        }
+        let pk = pk.to_vec();
         db.with_conn(|conn| {
             db::create_user(conn, &db::User {
                 id: owner_id.into(),
                 username: format!("user-{}", owner_id),
                 display_name: owner_id.into(),
-                public_key: vec![1u8; 32],
+                public_key: pk,
                 avatar_url: String::new(),
                 status_text: String::new(),
                 status_type: "online".into(),
@@ -670,6 +677,8 @@ mod tests {
                 federated: false,
                 created_at: now(),
                 updated_at: now(),
+            
+                ..Default::default()
             })?;
             db::create_member(conn, &db::Member {
                 id: db::new_id(),

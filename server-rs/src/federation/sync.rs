@@ -494,6 +494,8 @@ mod tests {
                 created_by: "u1".into(),
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             }],
             messages: vec![db::Message {
                 id: "m1".into(),
@@ -507,6 +509,8 @@ mod tests {
                 deleted: false,
                 lamport_ts: 5,
                 created_at: now.clone(),
+            
+                ..Default::default()
             }],
             members: vec![db::Member {
                 id: "mem1".into(),
@@ -567,6 +571,8 @@ mod tests {
                 federated: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_user(conn, &db::User {
                 id: user_id.clone(),
@@ -579,6 +585,8 @@ mod tests {
                 is_admin: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })
         })
         .unwrap();
@@ -595,6 +603,8 @@ mod tests {
                 created_by: user_id.clone(),
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             }],
             messages: vec![db::Message {
                 id: db::new_id(),
@@ -608,6 +618,8 @@ mod tests {
                 deleted: false,
                 lamport_ts: 1,
                 created_at: now.clone(),
+            
+                ..Default::default()
             }],
             members: vec![db::Member {
                 id: db::new_id(),
@@ -675,6 +687,8 @@ mod tests {
                 federated: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_user(conn, &db::User {
                 id: user_id.clone(),
@@ -687,6 +701,8 @@ mod tests {
                 is_admin: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_channel(conn, &db::Channel {
                 id: channel_id.clone(),
@@ -699,6 +715,8 @@ mod tests {
                 created_by: user_id.clone(),
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })
         })
         .unwrap();
@@ -716,6 +734,8 @@ mod tests {
                 created_by: user_id.clone(),
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             }],
             messages: Vec::new(),
             members: Vec::new(),
@@ -785,6 +805,8 @@ mod tests {
                 is_admin: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_team(conn, &db::Team {
                 id: team_id.clone(),
@@ -797,6 +819,8 @@ mod tests {
                 federated: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })
         })
         .unwrap();
@@ -827,6 +851,8 @@ mod tests {
                 created_by: user_id.clone(),
                 created_at: old_time.clone(),
                 updated_at: old_time.clone(),
+            
+                ..Default::default()
             })
         })
         .unwrap();
@@ -844,6 +870,8 @@ mod tests {
                 created_by: user_id.clone(),
                 created_at: old_time.clone(),
                 updated_at: new_time.clone(),
+            
+                ..Default::default()
             }],
             messages: Vec::new(),
             members: Vec::new(),
@@ -889,6 +917,8 @@ mod tests {
                 created_by: user_id.clone(),
                 created_at: old_time.clone(),
                 updated_at: new_time.clone(),
+            
+                ..Default::default()
             })
         })
         .unwrap();
@@ -906,6 +936,8 @@ mod tests {
                 created_by: user_id.clone(),
                 created_at: old_time.clone(),
                 updated_at: old_time.clone(),
+            
+                ..Default::default()
             }],
             messages: Vec::new(),
             members: Vec::new(),
@@ -1010,6 +1042,8 @@ mod tests {
                     created_by: user_id.clone(),
                     created_at: now.clone(),
                     updated_at: now.clone(),
+                
+                    ..Default::default()
                 },
                 db::Channel {
                     id: ch2_id.clone(),
@@ -1022,6 +1056,8 @@ mod tests {
                     created_by: user_id.clone(),
                     created_at: now.clone(),
                     updated_at: now.clone(),
+                
+                    ..Default::default()
                 },
             ],
             messages: Vec::new(),
@@ -1068,6 +1104,8 @@ mod tests {
                 created_by: user_id.clone(),
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_message(conn, &db::Message {
                 id: message_id.clone(),
@@ -1081,6 +1119,8 @@ mod tests {
                 deleted: false,
                 lamport_ts: 1,
                 created_at: now.clone(),
+            
+                ..Default::default()
             })
         })
         .unwrap();
@@ -1100,6 +1140,8 @@ mod tests {
                 deleted: true,
                 lamport_ts: 1,
                 created_at: now.clone(),
+            
+                ..Default::default()
             }],
             members: Vec::new(),
             roles: Vec::new(),

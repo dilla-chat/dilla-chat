@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct User {
     pub id: String,
     pub username: String,
@@ -24,7 +24,7 @@ pub struct User {
     pub quiet_hours_to: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Team {
     pub id: String,
     pub name: String,
@@ -74,7 +74,7 @@ pub struct Member {
     pub updated_at: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Channel {
     pub id: String,
     pub team_id: String,
@@ -104,7 +104,7 @@ pub struct Channel {
     pub group_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Message {
     pub id: String,
     pub channel_id: String,
@@ -144,7 +144,7 @@ pub struct ReactionGroup {
     pub users: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Attachment {
     pub id: String,
     pub message_id: String,

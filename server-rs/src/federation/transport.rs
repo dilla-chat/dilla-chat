@@ -944,7 +944,9 @@ mod tests {
     #[tokio::test]
     async fn test_connect_to_peer_sends_auth_token() {
         let (listener, port) = start_tcp_listener().await;
-        let transport = Transport::with_join_secret("outbound-secret".to_string());
+        // insecure=true so the test loopback ws:// connection isn't
+        // refused by the production-mode plain-WebSocket guard.
+        let transport = Transport::with_settings("outbound-secret".to_string(), true);
 
         // Spawn a server that accepts and reads the first message.
         let server_handle = tokio::spawn(async move {
@@ -973,7 +975,11 @@ mod tests {
     #[tokio::test]
     async fn test_handle_incoming_no_auth_when_empty_secret() {
         let (listener, port) = start_tcp_listener().await;
-        let transport = Transport::with_join_secret(String::new());
+        // VULN-005/-021: empty join_secret in production mode refuses
+        // anonymous peers. The test is exercising the "operator
+        // explicitly opted into anonymous federation" path — i.e.,
+        // insecure=true.
+        let transport = Transport::with_settings(String::new(), true);
 
         // Spawn a client that connects but sends NO auth message.
         let client_handle = tokio::spawn(async move {

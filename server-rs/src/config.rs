@@ -1,7 +1,7 @@
 use std::env;
 use std::fmt;
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 #[allow(dead_code)]
 pub struct Config {
     pub port: u16,

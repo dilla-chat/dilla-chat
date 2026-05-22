@@ -32,7 +32,7 @@ fn default_channel_type() -> String {
     "text".into()
 }
 
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
 pub struct UpdateChannelRequest {
     pub name: Option<String>,
     pub topic: Option<String>,
@@ -568,6 +568,8 @@ mod tests {
             created_by: "u1".into(),
             created_at: now.clone(),
             updated_at: now,
+        
+            ..Default::default()
         }
     }
 
@@ -585,6 +587,8 @@ mod tests {
                 is_admin: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_team(conn, &db::Team {
                 id: "t1".into(),
@@ -597,6 +601,8 @@ mod tests {
                 federated: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_channel(conn, &make_channel("c1", "t1"))
         })
@@ -656,6 +662,8 @@ mod tests {
             topic: Some("new topic".into()),
             position: Some(5),
             category: Some("voice".into()),
+        
+            ..Default::default()
         };
 
         apply_channel_updates(&mut channel, &body);
@@ -678,6 +686,8 @@ mod tests {
             topic: None,
             position: None,
             category: None,
+        
+            ..Default::default()
         };
 
         apply_channel_updates(&mut channel, &body);
@@ -696,6 +706,8 @@ mod tests {
             topic: None,
             position: None,
             category: None,
+        
+            ..Default::default()
         };
 
         apply_channel_updates(&mut channel, &body);

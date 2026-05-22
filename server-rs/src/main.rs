@@ -956,6 +956,8 @@ mod tests {
                 is_admin: false,
                 created_at: now.clone(),
                 updated_at: now,
+            
+                ..Default::default()
             })
         })
         .unwrap();
@@ -1149,7 +1151,7 @@ mod tests {
 
         // Should not panic and should not generate a bootstrap token
         // (the Ok(true) branch that does nothing).
-        check_first_start(&db, &auth_svc, 8080);
+        check_first_start(&db, &auth_svc, &Config::default());
     }
 
     #[tokio::test]
@@ -1158,7 +1160,7 @@ mod tests {
         let auth_svc = AuthService::new(db.clone(), "");
 
         // No users -> first start path.
-        check_first_start(&db, &auth_svc, 8080);
+        check_first_start(&db, &auth_svc, &Config::default());
         // Should have printed bootstrap info and created a token.
     }
 }

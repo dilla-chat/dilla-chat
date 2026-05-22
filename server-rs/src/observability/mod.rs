@@ -580,6 +580,8 @@ mod tests {
             otel_api_header: "".into(),
             seed_demo: false,
             browser_log_forward: false,
+        
+            ..Default::default()
         }
     }
 

@@ -75,7 +75,7 @@ pub struct PeerInfo {
 // ── MeshNode configuration ────────────────────────────────────────────────
 
 /// Configuration for a federation mesh node.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 #[allow(dead_code)]
 pub struct MeshConfig {
     pub node_name: String,
@@ -1018,6 +1018,8 @@ mod tests {
             tls_cert: String::new(),
             tls_key: String::new(),
             join_secret: "secret".into(),
+        
+            ..Default::default()
         };
 
         assert_eq!(config.node_name, "my-node");
@@ -1038,6 +1040,8 @@ mod tests {
             tls_cert: String::new(),
             tls_key: String::new(),
             join_secret: String::new(),
+        
+            ..Default::default()
         };
         let cloned = config.clone();
         assert_eq!(config.node_name, cloned.node_name);
@@ -1055,6 +1059,8 @@ mod tests {
             tls_cert: String::new(),
             tls_key: String::new(),
             join_secret: String::new(),
+        
+            ..Default::default()
         };
         assert!(config.peers.is_empty());
     }
@@ -1081,6 +1087,8 @@ mod tests {
             tls_cert: String::new(),
             tls_key: String::new(),
             join_secret: "secret".into(),
+        
+            ..Default::default()
         };
 
         let node = MeshNode::new(config, db, hub);
@@ -1107,6 +1115,8 @@ mod tests {
             tls_cert: String::new(),
             tls_key: String::new(),
             join_secret: "s".into(),
+        
+            ..Default::default()
         };
 
         let node = MeshNode::new(config, db, hub);

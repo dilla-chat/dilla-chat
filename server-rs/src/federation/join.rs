@@ -272,6 +272,8 @@ mod tests {
                 federated: false,
                 created_at: now.clone(),
                 updated_at: now,
+            
+                ..Default::default()
             })
         })
         .unwrap();
@@ -284,8 +286,15 @@ mod tests {
 
     #[test]
     fn new_with_explicit_secret() {
+        // The raw operator-supplied secret is never stored verbatim;
+        // we HKDF-expand it to a fixed 32-byte key. Same input must
+        // yield the same derived key (deterministic), and the derived
+        // key must NOT be the raw bytes.
         let mgr = test_join_manager("my-secret");
-        assert_eq!(mgr.secret, b"my-secret");
+        assert_eq!(mgr.secret.len(), 32, "derived secret is always 32 bytes");
+        assert_ne!(mgr.secret, b"my-secret", "raw secret must not be stored");
+        let mgr2 = test_join_manager("my-secret");
+        assert_eq!(mgr.secret, mgr2.secret, "derivation must be deterministic");
     }
 
     #[test]
@@ -370,6 +379,8 @@ mod tests {
                 federated: false,
                 created_at: now.clone(),
                 updated_at: now,
+            
+                ..Default::default()
             })
         })
         .unwrap();

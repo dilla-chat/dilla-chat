@@ -244,6 +244,10 @@ mod tests {
 
     #[test]
     fn test_user_has_permission_admin_user() {
+        // Behavior note: users.is_admin no longer short-circuits
+        // team-scoped permissions — it's a server-operator flag, not
+        // a team-admin one. An admin who isn't a member of the team
+        // gets no permission bits on that team's resources.
         let db = test_db();
         let mut user = make_user("u1", "admin", &[1u8; 32]);
         user.is_admin = true;
@@ -255,7 +259,7 @@ mod tests {
         db.with_conn(|c| crate::db::create_team(c, &team)).unwrap();
 
         let has = db.with_conn(|c| user_has_permission(c, "u1", "t1", PERM_MANAGE_CHANNELS)).unwrap();
-        assert!(has);
+        assert!(!has, "global admin must not bypass team-scoped perms");
     }
 
     #[test]
