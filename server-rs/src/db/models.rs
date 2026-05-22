@@ -153,6 +153,13 @@ pub struct Attachment {
     pub content_type_encrypted: Vec<u8>,
     pub size: i64,
     pub storage_path: String,
+    /// H-7: uploader provenance. Populated on every new upload so
+    /// the in-grace (unlinked) download window can scope to the
+    /// actual uploader rather than the storage_path team trick.
+    /// Pre-existing rows are NULL; download falls back to the
+    /// storage_path check for those.
+    #[serde(default)]
+    pub uploader_id: Option<String>,
     pub created_at: String,
 }
 

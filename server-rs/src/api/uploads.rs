@@ -160,6 +160,7 @@ pub async fn upload(
     let size = data.len() as i64;
 
     let tid_for_quota = tid.clone();
+    let uploader_for_att = user_id.clone();
     let attachment = tokio::task::spawn_blocking(move || {
         db.with_conn(|conn| {
             let att = db::Attachment {
@@ -169,6 +170,10 @@ pub async fn upload(
                 content_type_encrypted,
                 size,
                 storage_path,
+                // H-7: bind every new upload to its caller so the
+                // in-grace download path can match against this
+                // rather than the storage_path team trick.
+                uploader_id: Some(uploader_for_att.clone()),
                 created_at: db::now_str(),
             };
             db::create_attachment(conn, &att)?;
@@ -248,24 +253,32 @@ pub async fn download(
                         "attachment is not linked to a message".into(),
                     ));
                 }
-                // Net-new #2 from validation report: enforce that the
-                // attachment's owning team (encoded in
-                // storage_path = `{upload_dir}/{team_id}/{aid}`) matches
-                // the URL's team_id. Previously a member of team B could
-                // fetch an unlinked attachment uploaded into team A
-                // during the grace window just by passing team B's id in
-                // the URL. The attachments table doesn't carry an
-                // explicit `team_id` column yet, so we derive it from
-                // the storage_path's parent directory name.
-                let parent_dir = std::path::Path::new(&att.storage_path)
-                    .parent()
-                    .and_then(|p| p.file_name())
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("");
-                if parent_dir != tid {
-                    return Err(rusqlite::Error::InvalidParameterName(
-                        "attachment does not belong to this team".into(),
-                    ));
+                // H-7: when the attachment carries an uploader_id
+                // (set on every new upload after migration 032), scope
+                // the in-grace fetch to that uploader. Falls back to
+                // the storage_path team-segment check from net-new #2
+                // for pre-migration rows that don't have uploader_id.
+                if let Some(ref upid) = att.uploader_id {
+                    if upid != &uid {
+                        return Err(rusqlite::Error::InvalidParameterName(
+                            "attachment does not belong to caller".into(),
+                        ));
+                    }
+                } else {
+                    // Legacy row — fall through to the
+                    // storage_path = '{upload_dir}/{team_id}/{aid}'
+                    // team-segment match. Same semantics as before
+                    // H-7 landed.
+                    let parent_dir = std::path::Path::new(&att.storage_path)
+                        .parent()
+                        .and_then(|p| p.file_name())
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("");
+                    if parent_dir != tid {
+                        return Err(rusqlite::Error::InvalidParameterName(
+                            "attachment does not belong to this team".into(),
+                        ));
+                    }
                 }
                 return Ok(att);
             }

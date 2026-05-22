@@ -325,6 +325,7 @@ pub async fn embed(
     let aid = attachment_id.clone();
     let size = bytes.len() as i64;
     let tid_for_quota = team_id.clone();
+    let uploader_for_att = user_id.clone();
     let attachment = spawn_db(state.db.clone(), move |conn| {
         let att = db::Attachment {
             id: aid,
@@ -333,6 +334,9 @@ pub async fn embed(
             content_type_encrypted: content_type.into_bytes(),
             size,
             storage_path,
+            // H-7: bind every gif-embed upload to its caller, same
+            // as the regular upload path.
+            uploader_id: Some(uploader_for_att.clone()),
             created_at: db::now_str(),
         };
         db::create_attachment(conn, &att)?;

@@ -51,40 +51,6 @@ release builds are clean. Suggested approach for the next pass:
 do it in a dedicated branch / PR with no other changes so the
 diff is reviewable.
 
-### H-6 — Per-device JWT revocation table
-
-Today device revocation invalidates the user's outstanding JWTs
-broadly via `tokens_invalidated_after`. A per-device revocation
-table lets operators kill one device's sessions without forcing
-everyone else to re-login.
-
-- Migration `032_device_jwt_revocations.sql` — table
-  `device_jwt_revocations(jti, device_id, revoked_at, expires_at)`.
-- `revoke_device` writes a row tagged with the device_id;
-  `validate_jwt_full` checks both global jti revocation AND the
-  per-device table.
-- Index on `(device_id, revoked_at)` for hot-path lookup.
-
-**Definition of done:** revoking device A doesn't log out device B
-on the same user. ~120 LoC.
-
-### H-7 — Unlinked-attachment `uploader_id` column
-
-`server-rs/src/api/uploads.rs:221` calls out that the unlinked
-attachment cross-team check is implemented by parsing
-`storage_path`, but a proper fix needs an `uploader_id` column
-on the `attachments` table.
-
-- Migration `033_attachments_uploader_id.sql` — add
-  `uploader_id TEXT` (NULL for pre-existing rows; populated on new
-  uploads).
-- `create_attachment` sets it from the upload handler's `user_id`.
-- Download path checks `uploader_id == caller_id` in the in-grace
-  window instead of falling back to the storage-path team trick.
-
-**Definition of done:** migration applied, new uploads carry
-`uploader_id`, in-grace path uses it. ~60 LoC.
-
 ### H-8 — Tor exit-list + GeoLite2 wiring for risk scoring
 
 `auth_handlers::compute_risk_score` (commit `0d55d30`) records

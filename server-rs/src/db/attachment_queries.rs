@@ -4,8 +4,8 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 pub fn create_attachment(conn: &Connection, att: &Attachment) -> Result<(), rusqlite::Error> {
     conn.execute(
-        "INSERT INTO attachments (id, message_id, filename_encrypted, content_type_encrypted, size, storage_path, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        "INSERT INTO attachments (id, message_id, filename_encrypted, content_type_encrypted, size, storage_path, uploader_id, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         params![
             att.id,
             nullable(&att.message_id),
@@ -13,6 +13,7 @@ pub fn create_attachment(conn: &Connection, att: &Attachment) -> Result<(), rusq
             att.content_type_encrypted,
             att.size,
             att.storage_path,
+            att.uploader_id.as_deref(),
             att.created_at,
         ],
     )?;
@@ -24,7 +25,7 @@ pub fn get_attachment(
     id: &str,
 ) -> Result<Option<Attachment>, rusqlite::Error> {
     conn.query_row(
-        "SELECT id, message_id, filename_encrypted, content_type_encrypted, size, storage_path, created_at
+        "SELECT id, message_id, filename_encrypted, content_type_encrypted, size, storage_path, uploader_id, created_at
          FROM attachments WHERE id = ?1",
         [id],
         row_to_attachment,
@@ -38,7 +39,7 @@ pub fn get_message_attachments(
     message_id: &str,
 ) -> Result<Vec<Attachment>, rusqlite::Error> {
     let mut stmt = conn.prepare(
-        "SELECT id, message_id, filename_encrypted, content_type_encrypted, size, storage_path, created_at
+        "SELECT id, message_id, filename_encrypted, content_type_encrypted, size, storage_path, uploader_id, created_at
          FROM attachments WHERE message_id = ?1",
     )?;
     let rows = stmt.query_map([message_id], row_to_attachment)?;
@@ -58,7 +59,8 @@ fn row_to_attachment(row: &rusqlite::Row) -> Result<Attachment, rusqlite::Error>
         content_type_encrypted: row.get::<_, Option<Vec<u8>>>(3)?.unwrap_or_default(),
         size: row.get(4)?,
         storage_path: row.get(5)?,
-        created_at: row.get(6)?,
+        uploader_id: row.get::<_, Option<String>>(6)?,
+        created_at: row.get(7)?,
     })
 }
 
