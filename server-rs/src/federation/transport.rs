@@ -161,9 +161,21 @@ struct PeerConnection {
     connected: bool,
 }
 
+/// H-11: provenance carried alongside each inbound event. When the
+/// frame was a v3 signed envelope, all three fields are populated and
+/// downstream `mesh.handle_federation_event` can run authority
+/// + seq-watermark checks before applying the merge. For legacy v1
+/// frames, every field is None.
+#[derive(Debug, Clone, Default)]
+pub struct EventProvenance {
+    pub origin_node_id: Option<String>,
+    pub seq: Option<u64>,
+    pub event_id: Option<String>,
+}
+
 /// Callback invoked when a federation event arrives from a peer.
 pub type OnEventFn =
-    Arc<dyn Fn(String, FederationEvent) + Send + Sync>;
+    Arc<dyn Fn(String, FederationEvent, EventProvenance) + Send + Sync>;
 
 /// WebSocket transport for peer-to-peer federation communication.
 ///
@@ -634,68 +646,76 @@ impl Transport {
                         // wire::verify enforces signature + pinned
                         // peer. authority::check + seq watermark land
                         // with the merge-side hardening follow-up.
-                        let event_opt = if text.contains("\"v\":3") || text.contains("\"v\": 3") {
-                            match serde_json::from_str::<super::wire::SignedFederationEvent>(&text) {
-                                Ok(signed) => {
-                                    let verify_result = match db.as_ref() {
-                                        Some(d) => d
-                                            .with_read(|conn| {
-                                                Ok::<_, rusqlite::Error>(
-                                                    super::wire::verify(conn, &signed).err(),
-                                                )
-                                            })
-                                            .ok()
-                                            .flatten(),
-                                        None => Some(super::wire::WireError::Db(
-                                            rusqlite::Error::InvalidParameterName(
-                                                "transport has no db".into(),
-                                            ),
-                                        )),
-                                    };
-                                    if let Some(err) = verify_result {
+                        let dispatched: Option<(FederationEvent, EventProvenance)> =
+                            if text.contains("\"v\":3") || text.contains("\"v\": 3") {
+                                match serde_json::from_str::<super::wire::SignedFederationEvent>(&text) {
+                                    Ok(signed) => {
+                                        let verify_result = match db.as_ref() {
+                                            Some(d) => d
+                                                .with_read(|conn| {
+                                                    Ok::<_, rusqlite::Error>(
+                                                        super::wire::verify(conn, &signed).err(),
+                                                    )
+                                                })
+                                                .ok()
+                                                .flatten(),
+                                            None => Some(super::wire::WireError::Db(
+                                                rusqlite::Error::InvalidParameterName(
+                                                    "transport has no db".into(),
+                                                ),
+                                            )),
+                                        };
+                                        if let Some(err) = verify_result {
+                                            tracing::warn!(
+                                                peer = %peer_addr,
+                                                origin = %signed.origin_node_id,
+                                                error = %err,
+                                                "federation v3 event rejected at verify"
+                                            );
+                                            None
+                                        } else {
+                                            // H-11: surface provenance so the merge side can
+                                            // run authority::check + seq watermark.
+                                            let prov = EventProvenance {
+                                                origin_node_id: Some(signed.origin_node_id.clone()),
+                                                seq: Some(signed.seq),
+                                                event_id: Some(signed.event_id.clone()),
+                                            };
+                                            Some((signed.event, prov))
+                                        }
+                                    }
+                                    Err(e) => {
                                         tracing::warn!(
                                             peer = %peer_addr,
-                                            origin = %signed.origin_node_id,
-                                            error = %err,
-                                            "federation v3 event rejected at verify"
+                                            "failed to parse v3 signed event: {}",
+                                            e
                                         );
                                         None
-                                    } else {
-                                        Some(signed.event)
                                     }
                                 }
-                                Err(e) => {
-                                    tracing::warn!(
-                                        peer = %peer_addr,
-                                        "failed to parse v3 signed event: {}",
-                                        e
-                                    );
-                                    None
+                            } else if require_v3 {
+                                tracing::warn!(
+                                    peer = %peer_addr,
+                                    "federation event rejected — require_v3=true but received legacy v1 frame"
+                                );
+                                None
+                            } else {
+                                match serde_json::from_str::<FederationEvent>(&text) {
+                                    Ok(event) => Some((event, EventProvenance::default())),
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            peer = %peer_addr,
+                                            "failed to parse federation event: {}",
+                                            e
+                                        );
+                                        None
+                                    }
                                 }
-                            }
-                        } else if require_v3 {
-                            tracing::warn!(
-                                peer = %peer_addr,
-                                "federation event rejected — require_v3=true but received legacy v1 frame"
-                            );
-                            None
-                        } else {
-                            match serde_json::from_str::<FederationEvent>(&text) {
-                                Ok(event) => Some(event),
-                                Err(e) => {
-                                    tracing::warn!(
-                                        peer = %peer_addr,
-                                        "failed to parse federation event: {}",
-                                        e
-                                    );
-                                    None
-                                }
-                            }
-                        };
-                        if let Some(event) = event_opt {
+                            };
+                        if let Some((event, prov)) = dispatched {
                             let handler = on_event.read().await;
                             if let Some(ref cb) = *handler {
-                                cb(peer_addr.clone(), event);
+                                cb(peer_addr.clone(), event, prov);
                             }
                         }
                     }

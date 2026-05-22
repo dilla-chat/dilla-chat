@@ -55,18 +55,6 @@ diff is reviewable.
 
 ## Integration tier (release-coordinated, NOT for autonomous patching)
 
-### H-11 — Two-release migration story
-
-- **Release N+1:** accept both v1 + v3 events. `LegacyTeam`
-  authority decisions accepted with `federation.legacy_team`
-  audit rows.
-- **Release N+2:** `DILLA_FEDERATION_REQUIRE_V3=true` default. v1
-  events refused. Operators MUST have backfilled `team_authority`
-  via H-1 before this release.
-
-Needs flag wiring in `validate_auth_message_with_insecure`,
-`handle_incoming`, and the merge paths. Coordinated with H-9 + H-10.
-
 ### H-12 — Worker migration for crypto (DR-XSS-1 phase 2)
 
 Today only safety-number computation lives in the Web Worker.

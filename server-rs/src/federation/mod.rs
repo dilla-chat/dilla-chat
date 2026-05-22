@@ -176,10 +176,13 @@ impl MeshNode {
         // Wire up the event handler on the transport.
         let mesh = Arc::clone(self);
         self.transport
-            .set_on_event(Arc::new(move |peer_addr, event| {
+            .set_on_event(Arc::new(move |peer_addr, event, prov| {
                 let mesh = Arc::clone(&mesh);
                 tokio::spawn(async move {
-                    if let Err(e) = mesh.handle_federation_event(&peer_addr, event).await {
+                    if let Err(e) = mesh
+                        .handle_federation_event(&peer_addr, event, prov)
+                        .await
+                    {
                         tracing::error!(
                             peer = %peer_addr,
                             "error handling federation event: {}",
@@ -382,9 +385,128 @@ impl MeshNode {
         &self,
         peer_addr: &str,
         event: FederationEvent,
+        prov: transport::EventProvenance,
     ) -> Result<(), String> {
         // Update Lamport clock.
         self.sync_mgr.update(event.timestamp);
+
+        // H-11: when the event arrived inside a v3 signed envelope,
+        // run the authority + seq-watermark gate BEFORE applying any
+        // merge. Legacy v1 frames (prov empty) skip these checks for
+        // backward compatibility during the rolling-upgrade window.
+        // Authority denial / seq replay → drop the event with an audit
+        // breadcrumb.
+        if let Some(origin) = prov.origin_node_id.clone() {
+            let signed_preview = wire::SignedFederationEvent {
+                v: wire::WIRE_VERSION,
+                event: event.clone(),
+                origin_node_id: origin.clone(),
+                seq: prov.seq.unwrap_or(0),
+                event_id: prov.event_id.clone().unwrap_or_default(),
+                // signature already verified by transport read pump;
+                // authority::check + seq_watermark only consume the
+                // metadata fields, so an empty signature here is safe.
+                signature: String::new(),
+            };
+            let db = self.db.clone();
+            let decision_res = tokio::task::spawn_blocking(move || {
+                db.with_read(|conn| authority::check(conn, &signed_preview))
+            })
+            .await
+            .map_err(|e| format!("task join: {}", e))?;
+            match decision_res {
+                Ok(authority::Decision::Allow) | Ok(authority::Decision::LegacyTeam) => {
+                    // Allow / LegacyTeam both pass during the
+                    // rolling-upgrade window. LegacyTeam fires an
+                    // audit breadcrumb so the operator can see
+                    // pre-migration-030 teams flowing through.
+                }
+                Ok(authority::Decision::Denied(reason)) => {
+                    tracing::warn!(
+                        peer = %peer_addr,
+                        origin = %origin,
+                        event_type = %event.event_type,
+                        reason,
+                        "federation event denied at authority::check"
+                    );
+                    return Ok(());
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        peer = %peer_addr,
+                        origin = %origin,
+                        error = %e,
+                        "authority lookup failed; dropping event"
+                    );
+                    return Ok(());
+                }
+            }
+
+            // Seq watermark: events MUST arrive in strictly increasing
+            // seq per (origin, team). Out-of-order or duplicate frames
+            // are dropped. Team scope: the team_id field on the event
+            // payload when present; empty otherwise (per-origin
+            // sequencing only).
+            if let Some(seq) = prov.seq {
+                let team_id = event
+                    .payload
+                    .get("team_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let origin_q = origin.clone();
+                let db = self.db.clone();
+                let watermark_res = tokio::task::spawn_blocking(move || {
+                    db.with_write(|conn| {
+                        let prev: Option<i64> = conn
+                            .query_row(
+                                "SELECT last_seq FROM federation_seq_watermark
+                                 WHERE origin_node_id = ?1 AND team_id = ?2",
+                                rusqlite::params![origin_q, team_id],
+                                |r| r.get(0),
+                            )
+                            .ok();
+                        let prev_seq = prev.unwrap_or(0) as u64;
+                        if seq <= prev_seq {
+                            return Ok::<bool, rusqlite::Error>(false);
+                        }
+                        conn.execute(
+                            "INSERT INTO federation_seq_watermark
+                                (origin_node_id, team_id, last_seq, updated_at)
+                              VALUES (?1, ?2, ?3, datetime('now'))
+                              ON CONFLICT(origin_node_id, team_id)
+                              DO UPDATE SET last_seq = excluded.last_seq,
+                                            updated_at = excluded.updated_at",
+                            rusqlite::params![origin_q, team_id, seq as i64],
+                        )?;
+                        Ok(true)
+                    })
+                })
+                .await
+                .map_err(|e| format!("task join: {}", e))?;
+                match watermark_res {
+                    Ok(true) => { /* monotonic — apply */ }
+                    Ok(false) => {
+                        tracing::warn!(
+                            peer = %peer_addr,
+                            origin = %origin,
+                            seq,
+                            "federation event dropped — non-monotonic seq (replay or out-of-order)"
+                        );
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            peer = %peer_addr,
+                            origin = %origin,
+                            error = %e,
+                            "seq watermark update failed; dropping event"
+                        );
+                        return Ok(());
+                    }
+                }
+            }
+        }
 
         // Update peer info.
         {
