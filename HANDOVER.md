@@ -78,20 +78,34 @@ the worker).
 Scope estimate: ~1 week. Touches `cryptoManager.ts`,
 `ratchet.ts`, `groupSession.ts`, `x3dh.ts` + new worker ops.
 
-### H-13b — Client switch to credentials: 'include' (remainder of H-13)
+### H-13c — Drop bearer header + tighten CORS (remainder of H-13)
 
-H-13a (commit follows) added server-side httpOnly cookie issuance
-on `/auth/verify` / `/auth/refresh` / `/auth/logout`. The
-`auth_middleware` now accepts the cookie as a fallback when
-`Authorization: Bearer` is absent.
+H-13a (commit `d028953`) shipped server-side cookie issuance.
+H-13b (commit follows) added `credentials: 'include'` to every
+client fetch path so the cookie travels alongside the bearer
+header. SECURITY.md §3 now documents the dual pathway.
 
-The remaining work is the client migration: every fetch() call in
-`client/src/services/api.ts` switches from manually attaching
-`Authorization: Bearer` to `credentials: 'include'`. The
-sessionStorage / `authStore.token` paths can be dropped (or kept
-only for the WS-ticket bootstrap, which can't carry cookies
-through the WS upgrade handshake). Scope: ~50 call sites,
-careful CORS verification, deprecation note in `SECURITY.md`.
+The remaining migration is the bearer-header drop + cross-origin
+CORS tightening:
+
+- Audit every `Authorization: Bearer` attachment in
+  `client/src/services/api.ts`, `authReconnect.ts`,
+  `useIdentityBackup.ts`. Drop the header when the cookie is
+  guaranteed to travel (same-origin, post-`/auth/verify`).
+- Cross-team auth flow + WS-ticket bootstrap must keep the bearer
+  because (a) cross-team requests hit different baseUrls and (b)
+  the WS upgrade handshake can't carry cookies reliably across
+  reverse-proxies.
+- Server-side CORS: switch `allow_methods(Any) + allow_headers(Any)`
+  to explicit allow-lists so `allow_credentials(true)` becomes
+  legal per the tower-http runtime check. Cross-origin operators
+  then get the cookie too.
+- F4 sessionStorage encryption layer becomes redundant for the
+  primary access token — keep only for refresh tokens or remove
+  entirely depending on the WS-ticket bootstrap decision above.
+
+Scope: real client refactor (~30 bearer-attaching call sites) +
+CORS reconfiguration + dependent test updates.
 
 ---
 

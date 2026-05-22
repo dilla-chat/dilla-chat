@@ -57,6 +57,8 @@ export async function refreshServerTokens(
         await fetch(`${baseUrl}/api/v1/identity/blob`, {
           method: 'PUT',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          // H-13b.1: cookie pathway alongside bearer.
+          credentials: 'include',
           body: JSON.stringify({ blob, servers: allServers }),
         });
       } catch {

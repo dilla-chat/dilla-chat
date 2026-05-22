@@ -79,6 +79,35 @@ is bumped to "now". `validate_jwt` rejects any token with
 `iat < tokens_invalidated_after` — in-flight access tokens
 immediately stop honoring stale permissions.
 
+**Cookie + bearer dual pathway (H-13).** Server issues an
+httpOnly `__dilla_jwt` cookie on `/auth/verify` and
+`/auth/refresh`, and clears it on `/auth/logout`:
+
+```
+Set-Cookie: __dilla_jwt=<jwt>; HttpOnly; SameSite=Strict;
+            Secure; Path=/api/v1; Max-Age=3600
+```
+
+`Secure` is dropped only when `DILLA_INSECURE=true` (dev pattern
+over plaintext HTTP). The client always sends the bearer header
+AND `credentials: 'include'` so the cookie travels alongside.
+`auth_middleware` prefers the header when both are present.
+
+**Threat-model effect:** an XSS in the SPA can read the bearer
+token from the encrypted-at-rest sessionStorage (F4 wrap key is
+also reachable from JS), but it cannot read the cookie at all.
+Future H-13c will drop the bearer header entirely so the cookie
+becomes the only credential — at which point an XSS post-init has
+no way to extract or replay the JWT.
+
+**Cross-origin caveat:** when `DILLA_ALLOWED_ORIGINS` is set, the
+CORS layer currently uses `allow_methods(Any) + allow_headers(Any)`,
+which the spec + tower-http both require be paired with NO
+credentials. Cross-origin clients still need to ship the bearer
+header in `Authorization` for now. Same-origin (the embedded SPA)
+works with the cookie out of the box. Tightening the CORS
+config to support cross-origin credentials is part of H-13c.
+
 ## 4. Permission model
 
 Dilla uses a bitmask per role. PERM_ADMIN (1<<0) short-circuits to

@@ -94,7 +94,14 @@ class ApiService {
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
-    const res = await fetchWithTimeout(`${baseUrl}${path}`, { ...options, headers, timeout: 15000 });
+    // H-13b.1: send the httpOnly __dilla_jwt cookie alongside the
+    // Authorization header during the transition. Server's
+    // auth_middleware prefers the header when both are present, so
+    // this is additive — current behavior unchanged for callers that
+    // pass a token. Future H-13c can drop the bearer entirely and
+    // rely on the cookie alone, eliminating the JS-reachable JWT
+    // surface for XSS.
+    const res = await fetchWithTimeout(`${baseUrl}${path}`, { ...options, headers, credentials: 'include', timeout: 15000 });
     if (!res.ok) {
       // Only trigger auth error for authenticated requests (bearer token was sent).
       // Public endpoints like /auth/verify return 401 for bad credentials — that's
@@ -1052,6 +1059,9 @@ class ApiService {
       method: 'POST',
       headers,
       body: formData,
+      // H-13b.1: cookie pathway alongside the bearer header. Same
+      // additive transition as the request() helper.
+      credentials: 'include',
     });
     if (!res.ok) {
       const body = await res.text();

@@ -34,6 +34,8 @@ export function useIdentityBackup(
             await fetch(`${baseUrl}/api/v1/identity/blob`, {
               method: 'PUT',
               headers: { 'Authorization': `Bearer ${jwt}`, 'Content-Type': 'application/json' },
+              // H-13b.1: cookie pathway alongside bearer.
+              credentials: 'include',
               body: JSON.stringify({ blob, servers: allServers }),
             });
             console.log(`[AppLayout] Identity blob uploaded to ${baseUrl}`);
