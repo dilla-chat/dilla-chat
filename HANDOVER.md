@@ -55,22 +55,6 @@ diff is reviewable.
 
 ## Integration tier (release-coordinated, NOT for autonomous patching)
 
-### H-10 — `sync.rs` / `mod.rs` plumb signing/verifying into merge paths
-
-Every outbound replication wraps the `FederationEvent` in
-`wire::sign`. Every inbound runs:
-1. `wire::verify(conn, signed)` — signature + pinned-peer OK
-2. `authority::check(conn, &signed)` — origin authoritative for
-   this event variant
-3. seq-watermark check against `federation_seq_watermark`
-4. apply the merge
-5. write the audit row with `federation_origin_node_id` +
-   `federation_event_id`
-
-Touches `mod.rs::handle_message_*`, `sync.rs::merge_*`,
-`sync.rs::handle_state_sync_response`. **Needs:** H-9 in place
-first.
-
 ### H-11 — Two-release migration story
 
 - **Release N+1:** accept both v1 + v3 events. `LegacyTeam`

@@ -453,13 +453,17 @@ impl Transport {
     }
 
     /// Broadcast a federation event to all connected peers.
+    ///
+    /// H-10: when this transport carries a `node_identity`, we wrap
+    /// the event in a `SignedFederationEvent` envelope so receivers
+    /// running with `require_v3=true` accept it. The seq number is a
+    /// monotonic per-process counter (per-(node, team) seq lands with
+    /// the watermark integration in a follow-up). Without an identity,
+    /// the legacy bare-event form is sent — same as before.
     pub async fn broadcast(&self, event: &FederationEvent) {
-        let data = match serde_json::to_string(event) {
-            Ok(d) => d,
-            Err(e) => {
-                tracing::error!("failed to serialize federation event: {}", e);
-                return;
-            }
+        let data = match self.serialize_for_wire(event) {
+            Some(s) => s,
+            None => return,
         };
 
         let conns = self.conns.read().await;
@@ -470,6 +474,42 @@ impl Transport {
             let mut sink = conn.sink.lock().await;
             if let Err(e) = sink.send(Message::Text(data.clone().into())).await {
                 tracing::warn!(peer = %addr, "failed to broadcast to peer: {}", e);
+            }
+        }
+    }
+
+    /// H-10: pick the wire form for outbound events. When we have a
+    /// `node_identity`, sign via `wire::sign` + emit the
+    /// `SignedFederationEvent` JSON. Otherwise (and during the
+    /// rolling-upgrade window when peers may still be v1-only),
+    /// emit the raw `FederationEvent` JSON.
+    fn serialize_for_wire(&self, event: &FederationEvent) -> Option<String> {
+        if let Some(identity) = self.node_identity.as_ref() {
+            // Per-process monotonic counter. Real per-(origin, team)
+            // sequencing rides federation_seq_watermark; that ties
+            // into the merge-side verifier landing later.
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static SEQ: AtomicU64 = AtomicU64::new(1);
+            let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+            match super::wire::sign(identity.as_ref(), event.clone(), seq) {
+                Ok(signed) => match serde_json::to_string(&signed) {
+                    Ok(s) => return Some(s),
+                    Err(e) => {
+                        tracing::error!("failed to serialize signed event: {}", e);
+                        // Fall through to legacy form below.
+                    }
+                },
+                Err(e) => {
+                    tracing::error!("failed to sign federation event: {}", e);
+                    // Fall through.
+                }
+            }
+        }
+        match serde_json::to_string(event) {
+            Ok(d) => Some(d),
+            Err(e) => {
+                tracing::error!("failed to serialize federation event: {}", e);
+                None
             }
         }
     }
@@ -578,24 +618,84 @@ impl Transport {
     ) {
         let conns = Arc::clone(&self.conns);
         let on_event = Arc::clone(&self.on_event);
+        // H-10: capture the verification context (db + require_v3) so
+        // the read pump can dispatch on the wire shape.
+        let db = self.db.clone();
+        let require_v3 = self.require_v3;
 
         tokio::spawn(async move {
             loop {
                 match stream.next().await {
                     Some(Ok(Message::Text(text))) => {
-                        match serde_json::from_str::<FederationEvent>(&text) {
-                            Ok(event) => {
-                                let handler = on_event.read().await;
-                                if let Some(ref cb) = *handler {
-                                    cb(peer_addr.clone(), event);
+                        // H-10: dispatch on wire shape. v3 envelopes
+                        // are SignedFederationEvent ({ v: 3, event,
+                        // origin_node_id, seq, event_id, signature });
+                        // legacy v1 is the bare FederationEvent.
+                        // wire::verify enforces signature + pinned
+                        // peer. authority::check + seq watermark land
+                        // with the merge-side hardening follow-up.
+                        let event_opt = if text.contains("\"v\":3") || text.contains("\"v\": 3") {
+                            match serde_json::from_str::<super::wire::SignedFederationEvent>(&text) {
+                                Ok(signed) => {
+                                    let verify_result = match db.as_ref() {
+                                        Some(d) => d
+                                            .with_read(|conn| {
+                                                Ok::<_, rusqlite::Error>(
+                                                    super::wire::verify(conn, &signed).err(),
+                                                )
+                                            })
+                                            .ok()
+                                            .flatten(),
+                                        None => Some(super::wire::WireError::Db(
+                                            rusqlite::Error::InvalidParameterName(
+                                                "transport has no db".into(),
+                                            ),
+                                        )),
+                                    };
+                                    if let Some(err) = verify_result {
+                                        tracing::warn!(
+                                            peer = %peer_addr,
+                                            origin = %signed.origin_node_id,
+                                            error = %err,
+                                            "federation v3 event rejected at verify"
+                                        );
+                                        None
+                                    } else {
+                                        Some(signed.event)
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        peer = %peer_addr,
+                                        "failed to parse v3 signed event: {}",
+                                        e
+                                    );
+                                    None
                                 }
                             }
-                            Err(e) => {
-                                tracing::warn!(
-                                    peer = %peer_addr,
-                                    "failed to parse federation event: {}",
-                                    e
-                                );
+                        } else if require_v3 {
+                            tracing::warn!(
+                                peer = %peer_addr,
+                                "federation event rejected — require_v3=true but received legacy v1 frame"
+                            );
+                            None
+                        } else {
+                            match serde_json::from_str::<FederationEvent>(&text) {
+                                Ok(event) => Some(event),
+                                Err(e) => {
+                                    tracing::warn!(
+                                        peer = %peer_addr,
+                                        "failed to parse federation event: {}",
+                                        e
+                                    );
+                                    None
+                                }
+                            }
+                        };
+                        if let Some(event) = event_opt {
+                            let handler = on_event.read().await;
+                            if let Some(ref cb) = *handler {
+                                cb(peer_addr.clone(), event);
                             }
                         }
                     }
