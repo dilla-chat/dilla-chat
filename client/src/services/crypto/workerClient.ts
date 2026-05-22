@@ -129,6 +129,59 @@ export async function safetyNumberInWorker(
   });
 }
 
+// ── H-12: encrypted IndexedDB session store via the worker ────────
+//
+// Mirrors the legacy main-thread `sessionStore.ts` API but routes
+// every call through the worker so the AES-GCM KEK + IndexedDB
+// handle never sit on the main heap after init. A main-thread XSS
+// post-init can't extract the KEK (it lives only in the worker's
+// CryptoKey cache) or read raw ciphertext rows from IDB directly.
+//
+// Init: send the derivedKey ONCE at boot. The worker caches a
+// non-extractable CryptoKey derived from it; the raw string can be
+// dropped by the caller afterward.
+
+let sessionInitDone = false;
+
+export async function sessionInitInWorker(derivedKey: string): Promise<void> {
+  if (backend === 'main' || typeof Worker === 'undefined') {
+    return;
+  }
+  await call<null>('session.init', { derivedKey });
+  sessionInitDone = true;
+}
+
+export function isSessionInitInWorker(): boolean {
+  return sessionInitDone;
+}
+
+export async function sessionSaveInWorker(
+  channelId: string,
+  sessionJson: object,
+): Promise<void> {
+  await call<null>('session.save', { channelId, sessionJson });
+}
+
+export async function sessionLoadInWorker(
+  channelId: string,
+): Promise<Record<string, unknown> | null> {
+  return call<Record<string, unknown> | null>('session.load', { channelId });
+}
+
+export async function sessionLoadAllInWorker(): Promise<
+  Map<string, Record<string, unknown>>
+> {
+  const entries = await call<Array<[string, Record<string, unknown>]>>(
+    'session.loadAll',
+    null,
+  );
+  return new Map(entries);
+}
+
+export async function sessionDeleteInWorker(channelId: string): Promise<void> {
+  await call<null>('session.delete', { channelId });
+}
+
 /** Test/teardown hook — terminates the worker so subsequent calls respawn. */
 export function __resetCryptoWorkerForTests(): void {
   if (worker) {
@@ -141,4 +194,5 @@ export function __resetCryptoWorkerForTests(): void {
   }
   pending.clear();
   nextId = 1;
+  sessionInitDone = false;
 }

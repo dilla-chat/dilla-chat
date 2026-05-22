@@ -55,18 +55,28 @@ diff is reviewable.
 
 ## Integration tier (release-coordinated, NOT for autonomous patching)
 
-### H-12 — Worker migration for crypto (DR-XSS-1 phase 2)
+### H-12b — Worker migration for ratchet decrypt + group-session derive (remainder of H-12)
 
-Today only safety-number computation lives in the Web Worker.
-Migrate X3DH-initiate / Double-Ratchet decrypt / GroupSession
-derive into the worker so a WebView XSS can't reach the ratchet
-keys via the main-thread IndexedDB handle.
+H-12a (commit follows) moved the encrypted IndexedDB session-store
+into the worker — KEK + IDB handle now live in worker scope, not
+main thread. The remaining migration is the actual crypto
+operations:
 
-**Needs:** IndexedDB session-store handle to move into the worker
-scope first (currently the main thread owns the store + posts
-state blobs back). Real architectural work — should be its own
-project. Files: `client/src/services/crypto/worker.ts:19` calls
-this out as TODO follow-up.
+- X3DH-initiate / X3DH-respond
+- Double Ratchet encrypt + decrypt (per-message key derivation)
+- Group sender-key derivation + rotation
+
+Today these still run on the main thread, but now they go through
+the worker-mediated session store, so an XSS post-init can no
+longer extract the KEK or read raw IDB ciphertext. Migrating the
+ops themselves into the worker is additional defense — an XSS
+that calls `cryptoManager.decryptMessage` will still get the
+plaintext, but it won't be able to derive future ratchet steps
+out-of-band (because the per-message key derivation runs only in
+the worker).
+
+Scope estimate: ~1 week. Touches `cryptoManager.ts`,
+`ratchet.ts`, `groupSession.ts`, `x3dh.ts` + new worker ops.
 
 ### H-13 — httpOnly cookie token migration
 

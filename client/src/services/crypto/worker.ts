@@ -26,6 +26,14 @@
 
 import { generateSafetyNumber } from './safetyNumbers';
 import { fromBase64 } from './helpers';
+import {
+  initSessionKey,
+  resetSessionKey,
+  saveSession,
+  loadSession,
+  loadAllSessions,
+  deleteSession,
+} from './sessionStoreWorkerImpl';
 
 interface RpcRequest {
   id: number;
@@ -60,6 +68,37 @@ async function dispatch(op: string, payload: unknown): Promise<unknown> {
   switch (op) {
     case 'safetyNumber.compute':
       return await opSafetyNumber(payload as SafetyNumberRequest);
+    // H-12: encrypted IndexedDB session store ops. The worker holds
+    // the derivedKey + the DB handle so a main-thread XSS can't read
+    // raw session ciphertext or extract the KEK after init.
+    case 'session.init': {
+      const { derivedKey } = payload as { derivedKey: string };
+      await initSessionKey(derivedKey);
+      return null;
+    }
+    case 'session.reset': {
+      resetSessionKey();
+      return null;
+    }
+    case 'session.save': {
+      const { channelId, sessionJson } = payload as {
+        channelId: string;
+        sessionJson: Record<string, unknown>;
+      };
+      await saveSession(channelId, sessionJson);
+      return null;
+    }
+    case 'session.load': {
+      const { channelId } = payload as { channelId: string };
+      return await loadSession(channelId);
+    }
+    case 'session.loadAll':
+      return await loadAllSessions();
+    case 'session.delete': {
+      const { channelId } = payload as { channelId: string };
+      await deleteSession(channelId);
+      return null;
+    }
     case 'ping':
       return 'pong';
     default:
