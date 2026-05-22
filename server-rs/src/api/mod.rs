@@ -574,13 +574,30 @@ async fn ws_handler(
         }
     };
 
-    // Look up username.
+    // Look up username, and verify team membership if a team was
+    // requested. VULN-020: the `team` query param used to be trusted
+    // blindly — handle_ws_connection sends a voice:rooms-snapshot for
+    // it, which leaks which voice rooms exist and who is in them. Now
+    // we strip the team_id when the caller isn't a member, so the
+    // snapshot is suppressed downstream.
     let db = state.db.clone();
     let uid_clone = user_id.clone();
-    let username = tokio::task::spawn_blocking(move || {
+    let team_id_clone = team_id.clone();
+    let (username, scoped_team_id) = tokio::task::spawn_blocking(move || {
         db.with_conn(|conn| {
-            crate::db::get_user_by_id(conn, &uid_clone)
+            let username = crate::db::get_user_by_id(conn, &uid_clone)
                 .map(|u| u.map(|u| u.username).unwrap_or_default())
+                .unwrap_or_default();
+            let scoped = if !team_id_clone.is_empty()
+                && crate::db::get_member_by_user_and_team(conn, &uid_clone, &team_id_clone)
+                    .map(|m| m.is_some())
+                    .unwrap_or(false)
+            {
+                team_id_clone
+            } else {
+                String::new()
+            };
+            Ok::<_, rusqlite::Error>((username, scoped))
         })
     })
     .await
@@ -589,7 +606,7 @@ async fn ws_handler(
 
     let hub = state.hub.clone();
     ws.on_upgrade(move |socket| {
-        crate::ws::client::handle_ws_connection(socket, hub, user_id, username, team_id)
+        crate::ws::client::handle_ws_connection(socket, hub, user_id, username, scoped_team_id)
     })
     .into_response()
 }
