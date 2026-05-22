@@ -42,7 +42,8 @@ use axum::{
 };
 use std::sync::{Arc, OnceLock};
 use tower_governor::{governor::GovernorConfigBuilder, key_extractor::SmartIpKeyExtractor, GovernorLayer};
-use tower_http::cors::{Any, CorsLayer};
+use axum::http::{HeaderName, Method};
+use tower_http::cors::CorsLayer;
 use tower_http::set_header::SetResponseHeaderLayer;
 
 pub static VERSION: OnceLock<String> = OnceLock::new();
@@ -129,10 +130,35 @@ pub fn create_router(state: AppState) -> Router {
             .iter()
             .filter_map(|o| o.parse().ok())
             .collect();
+        // H-13c.1: enable Access-Control-Allow-Credentials so the
+        // __dilla_jwt cookie travels on cross-origin requests. The
+        // CORS spec (and tower-http's runtime check) prohibit
+        // pairing allow_credentials(true) with allow_origin(Any) /
+        // allow_methods(Any) / allow_headers(Any), so we switch to
+        // explicit allow-lists here. The methods + headers covered
+        // are exactly what the client actually emits: standard verbs
+        // for REST + the bearer header for the transition window.
         CorsLayer::new()
             .allow_origin(origins)
-            .allow_methods(Any)
-            .allow_headers(Any)
+            .allow_credentials(true)
+            .allow_methods([
+                Method::GET,
+                Method::POST,
+                Method::PUT,
+                Method::PATCH,
+                Method::DELETE,
+                Method::OPTIONS,
+            ])
+            .allow_headers([
+                axum::http::header::AUTHORIZATION,
+                axum::http::header::CONTENT_TYPE,
+                axum::http::header::ACCEPT,
+                axum::http::header::CACHE_CONTROL,
+                // The client occasionally sets a request id for
+                // correlation; allow-list it explicitly so the
+                // preflight passes.
+                HeaderName::from_static("x-request-id"),
+            ])
     };
 
     // Public routes (no auth required).
