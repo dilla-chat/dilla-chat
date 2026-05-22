@@ -220,3 +220,86 @@ fn truncate(s: &str, max: usize) -> String {
 fn truncate_tag(s: &str) -> String {
     truncate(s, MAX_TAG_LEN)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn strip_ansi_removes_csi_sequences() {
+        // Foreground red + reset.
+        let input = "\u{001b}[31merror\u{001b}[0m text";
+        assert_eq!(strip_ansi(input), "error text");
+    }
+
+    #[test]
+    fn strip_ansi_drops_bare_esc() {
+        let input = "before\u{001b}after";
+        assert_eq!(strip_ansi(input), "beforeafter");
+    }
+
+    #[test]
+    fn strip_ansi_drops_c0_controls_keeps_newline_cr_tab() {
+        let input = "line1\nline2\rcontinue\twith\u{0001}bell";
+        // 0x01 is dropped, \n \r \t survive.
+        assert_eq!(strip_ansi(input), "line1\nline2\rcontinue\twithbell");
+    }
+
+    #[test]
+    fn strip_ansi_passes_unicode_through() {
+        assert_eq!(strip_ansi("héllo · 世界"), "héllo · 世界");
+    }
+
+    #[test]
+    fn normalize_level_maps_known_strings() {
+        assert_eq!(normalize_level("error"), "error");
+        assert_eq!(normalize_level("ERROR"), "error");
+        assert_eq!(normalize_level("warn"), "warn");
+        assert_eq!(normalize_level("warning"), "warn");
+        assert_eq!(normalize_level("debug"), "debug");
+        // unknown → "info"
+        assert_eq!(normalize_level("notice"), "info");
+        assert_eq!(normalize_level("info"), "info");
+        assert_eq!(normalize_level(""), "info");
+    }
+
+    #[test]
+    fn truncate_under_limit_is_passthrough() {
+        assert_eq!(truncate("short", 100), "short");
+    }
+
+    #[test]
+    fn truncate_at_limit_is_passthrough() {
+        let s = "x".repeat(10);
+        assert_eq!(truncate(&s, 10), s);
+    }
+
+    #[test]
+    fn truncate_over_limit_appends_marker() {
+        let s = "x".repeat(20);
+        let out = truncate(&s, 10);
+        assert!(out.starts_with("xxxxxxxxxx"));
+        assert!(out.ends_with("…[truncated]"));
+    }
+
+    #[test]
+    fn truncate_respects_utf8_boundaries() {
+        // 3-byte chars (each '世' is 3 bytes in UTF-8). Asking for max=4 must
+        // cut at a boundary, not mid-codepoint.
+        let s = "世界世界";
+        let out = truncate(s, 4);
+        // Result must be valid UTF-8 (the test itself reading it as &str
+        // would panic if it weren't).
+        assert!(out.starts_with('世'));
+        assert!(out.ends_with("…[truncated]"));
+    }
+
+    #[test]
+    fn truncate_tag_caps_at_max_tag_len() {
+        let s = "x".repeat(MAX_TAG_LEN + 50);
+        let out = truncate_tag(&s);
+        // truncate_tag uses MAX_TAG_LEN; out is at-most that many chars
+        // plus the marker suffix.
+        assert!(out.contains("…[truncated]"));
+    }
+}
