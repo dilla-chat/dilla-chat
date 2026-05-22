@@ -329,7 +329,7 @@ pub async fn verify(
         "user": user,
         "device_id": device_id,
     });
-    Ok(json_with_cookie(body, build_auth_cookie(&token, 3600)).into_response())
+    Ok(json_with_cookie(body, build_auth_cookie(&token, 3600, state.config.insecure)).into_response())
 }
 
 // ── A2 risk-scoring helpers ─────────────────────────────────────────────
@@ -689,7 +689,7 @@ pub async fn refresh(
         "refresh_token": refresh,
         "rotated": rotated,
     });
-    Ok(json_with_cookie(body_value, build_auth_cookie(&access, 3600)).into_response())
+    Ok(json_with_cookie(body_value, build_auth_cookie(&access, 3600, state.config.insecure)).into_response())
 }
 
 #[derive(Deserialize)]
@@ -750,7 +750,7 @@ pub async fn logout(
     // H-13a: clear the auth cookie on logout so a downstream gateway /
     // browser-side helper that was relying on the cookie pathway gets
     // an explicit revoke signal.
-    Ok(json_with_cookie(json!({ "ok": true }), clear_auth_cookie()).into_response())
+    Ok(json_with_cookie(json!({ "ok": true }), clear_auth_cookie(state.config.insecure)).into_response())
 }
 
 // --- H-13a httpOnly cookie helpers --------------------------------
@@ -768,20 +768,24 @@ const AUTH_COOKIE_NAME: &str = "__dilla_jwt";
 /// Build a `Set-Cookie` header value for the given JWT. SameSite=Strict
 /// keeps the cookie off cross-site requests entirely; HttpOnly hides
 /// it from JS (and therefore from XSS); Secure restricts to TLS
-/// transport. Path scope is `/api/v1` so non-API routes (static SPA
-/// shell, theme CSS, voice models) don't carry the credential.
-fn build_auth_cookie(token: &str, max_age_secs: u64) -> String {
+/// transport (dropped only when `insecure=true` so the dev pattern
+/// over plain HTTP can still round-trip the cookie). Path scope is
+/// `/api/v1` so non-API routes (static SPA shell, theme CSS, voice
+/// models) don't carry the credential.
+fn build_auth_cookie(token: &str, max_age_secs: u64, insecure: bool) -> String {
+    let secure = if insecure { "" } else { " Secure;" };
     format!(
-        "{}={}; HttpOnly; SameSite=Strict; Secure; Path=/api/v1; Max-Age={}",
-        AUTH_COOKIE_NAME, token, max_age_secs
+        "{}={}; HttpOnly; SameSite=Strict;{} Path=/api/v1; Max-Age={}",
+        AUTH_COOKIE_NAME, token, secure, max_age_secs
     )
 }
 
-fn clear_auth_cookie() -> String {
+fn clear_auth_cookie(insecure: bool) -> String {
     // Max-Age=0 is the RFC 6265 way to clear an existing cookie.
+    let secure = if insecure { "" } else { " Secure;" };
     format!(
-        "{}=; HttpOnly; SameSite=Strict; Secure; Path=/api/v1; Max-Age=0",
-        AUTH_COOKIE_NAME
+        "{}=; HttpOnly; SameSite=Strict;{} Path=/api/v1; Max-Age=0",
+        AUTH_COOKIE_NAME, secure
     )
 }
 
