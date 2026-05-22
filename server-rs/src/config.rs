@@ -14,6 +14,14 @@ pub struct Config {
     pub federation_port: u16,
     pub node_name: String,
     pub join_secret: String,
+    /// Phase 3 rolling-upgrade flag. When true, federation peers
+    /// MUST use the v3 signed-event wire format (Ed25519 challenge-
+    /// response handshake + signed `FederationEvent` envelopes per
+    /// `.security-hardening/14-federation-phase3-design.md`). When
+    /// false (default), both v1 and v3 are accepted with audit. The
+    /// flag is scaffolded here in advance; call sites land with H-9
+    /// (transport flip) and H-10 (sync/mod plumbing).
+    pub require_federation_v3: bool,
     pub fed_bind_addr: String,
     pub fed_advert_addr: String,
     pub fed_advert_port: u16,
@@ -139,6 +147,7 @@ impl Config {
             federation_port,
             node_name: env_str("DILLA_NODE_NAME", ""),
             join_secret: env_str("DILLA_JOIN_SECRET", ""),
+            require_federation_v3: env_bool("DILLA_FEDERATION_REQUIRE_V3", false),
             fed_bind_addr: env_str("DILLA_FED_BIND_ADDR", "0.0.0.0"),
             fed_advert_addr: env_str("DILLA_FED_ADVERTISE_ADDR", ""),
             fed_advert_port: env_u16("DILLA_FED_ADVERTISE_PORT", 0),

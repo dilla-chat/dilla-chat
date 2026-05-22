@@ -32,19 +32,6 @@ in-flight work remains.
 
 ## Tractable (in-session-friendly)
 
-### H-2 — `DILLA_FEDERATION_REQUIRE_V3` config flag scaffolding
-
-The Phase 3 design (§6) calls for a two-release rolling upgrade.
-This commit lays the flag without flipping any wire path:
-
-- Add `require_federation_v3: bool` to `server-rs/src/config.rs`
-  (env `DILLA_FEDERATION_REQUIRE_V3`, default `false`).
-- Document in `.env.example` + `deploy/secrets/CHECKLIST.md`.
-- No call sites yet — those land with H-7/H-8/H-9.
-
-**Definition of done:** flag readable from env, default false,
-documented. ~30 LoC.
-
 ### H-3 — SFU-IP-1 mitigation: per-team TURN-only voice mode
 
 Voice ICE candidates leak each speaker's real IP to legitimate
