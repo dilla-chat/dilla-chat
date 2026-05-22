@@ -3,7 +3,6 @@
 // design_handoff_dilla_mesh/mesh-chrome.jsx. Strict TS types come later.
 
 import React from 'react';
-import { Icon } from './icons';
 import { useShellDataContext } from './ShellDataContext';
 import { useVoiceStore } from '../stores/voiceStore';
 import { useAuthStore } from '../stores/authStore';
@@ -22,7 +21,7 @@ const FINGERPRINTS = {};
 
 // ───────── top bar ─────────
 function TopBar({ onCmdK, onSearch, onHelp, federated = true, degraded = false, teamName = '', nodeName = 'local' }) {
-  const [tick, setTick] = useStateMC(0);
+  const [_tick, setTick] = useStateMC(0);
   useEffectMC(() => {
     const id = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(id);

@@ -5,7 +5,6 @@
 // All small, theme-aware, listen for window events.
 
 import React from 'react';
-import { Icon } from './icons';
 import { useShellDataContext } from './ShellDataContext';
 import { useVerifiedContacts } from '../stores/verifiedContactsStore';
 
