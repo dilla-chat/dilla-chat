@@ -87,6 +87,7 @@ interface RpcResponse {
 // instantiated us. The crypto-worker payloads are all RpcRequest
 // shapes from our own services/crypto/workerClient, never wire
 // content. Origin verification doesn't apply here.
+// NOSONAR(typescript:S2819)
 self.addEventListener('message', async (ev: MessageEvent<RpcRequest>) => {
   const { id, op, payload } = ev.data || ({} as RpcRequest);
   try {

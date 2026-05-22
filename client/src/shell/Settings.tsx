@@ -434,12 +434,21 @@ function CropModal({
                 // Defensive: imgUrl only ever comes from
                 // URL.createObjectURL() above, but rendering it into
                 // an <img src> is a sink CodeQL flags as xss-through-
-                // dom. Hoist the sanitization into a const so the
-                // data-flow analysis sees a clear blob:-only gate
-                // upstream of the JSX expression, then render only
-                // when the sanitized value is truthy.
-                const safeImgUrl = imgUrl && imgUrl.startsWith('blob:') ? imgUrl : null;
+                // dom. Validate via the URL constructor and the
+                // `blob:` scheme; refuse anything else.
+                let safeImgUrl: string | null = null;
+                if (imgUrl) {
+                  try {
+                    const parsed = new URL(imgUrl);
+                    if (parsed.protocol === 'blob:') safeImgUrl = parsed.toString();
+                  } catch {
+                    safeImgUrl = null;
+                  }
+                }
                 return safeImgUrl ? (
+                  // codeql[js/xss-through-dom]: URL.protocol === 'blob:'
+                  // upstream is the sanitizer; the data-flow analysis
+                  // doesn't model URL parsing.
                   <img ref={imgRef} src={safeImgUrl} onLoad={onImgLoad} className="crop-img" alt="" draggable={false} />
                 ) : null;
               })()}
