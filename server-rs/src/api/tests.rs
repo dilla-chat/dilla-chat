@@ -182,7 +182,8 @@ fn test_router(state: AppState) -> Router {
         .route("/api/v1/auth/bootstrap", post(super::auth_handlers::bootstrap))
         .route("/api/v1/invites/{token}/info", get(super::invites::get_invite_info))
         .route("/api/v1/federation/join/{token}", get(super::federation::get_join_info))
-        .route("/api/v1/debug/browser-log", post(super::debug::ingest));
+        .route("/api/v1/debug/browser-log", post(super::debug::ingest))
+        .route("/api/v1/auth/refresh", post(super::auth_handlers::refresh));
 
     let protected = Router::new()
         .route("/api/v1/users/me", get(super::users::get_me).patch(super::users::update_me))
@@ -218,6 +219,7 @@ fn test_router(state: AppState) -> Router {
         .route("/api/v1/teams/{team_id}/presence/{user_id}", get(super::presence::get_user))
         .route("/api/v1/teams/{team_id}/voice/{channel_id}", get(super::voice::get_room))
         .route("/api/v1/auth/ws-ticket", post(super::ws_ticket))
+        .route("/api/v1/auth/logout", post(super::auth_handlers::logout))
         .route("/api/v1/federation/status", get(super::federation::get_status))
         .route("/api/v1/federation/peers", get(super::federation::get_peers))
         .route("/api/v1/federation/join-token", post(super::federation::create_join_token))
@@ -4813,4 +4815,122 @@ async fn federation_join_info_returns_400_when_disabled() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+// ── auth / refresh / logout ─────────────────────────────────────────
+
+#[tokio::test]
+async fn auth_refresh_rejects_empty_refresh_token() {
+    let (state, _tmp) = test_app_state();
+    let app = test_router(state);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/refresh")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::json!({ "refresh_token": "" }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn auth_refresh_rejects_garbage_token() {
+    let (state, _tmp) = test_app_state();
+    let app = test_router(state);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/refresh")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::json!({ "refresh_token": "not.a.real.token" })
+                        .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    // Some non-2xx — Unauthorized / BadRequest / Internal all signal "no".
+    assert!(
+        !resp.status().is_success(),
+        "expected non-success for invalid refresh token, got {}",
+        resp.status()
+    );
+}
+
+#[tokio::test]
+async fn auth_logout_without_bearer_returns_401() {
+    let (state, _tmp) = test_app_state();
+    let app = test_router(state);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/logout")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn auth_logout_revokes_the_bearer_token() {
+    let (state, _tmp) = test_app_state();
+    let (_uid, _team_id, token) = bootstrap_user_and_team(&state);
+    let app = test_router(state.clone());
+
+    // First request should succeed.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/users/me")
+                .header("authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Log out.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/logout")
+                .header("authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Same token now revoked → 401.
+    let app2 = test_router(state);
+    let resp = app2
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/users/me")
+                .header("authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
