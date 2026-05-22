@@ -10,6 +10,7 @@ import { EMPTY_SHELL_DATA } from './data';
 import { THEMES } from './themes';
 import { useShellDataContext } from './ShellDataContext';
 import { MiniMeter, VoiceDockLatency, VoiceDockBitrate } from './VoiceDockStats';
+import { Avatar, PlainAvatar, memberAvatarStyle, memberAvatarClass } from './Avatar';
 import { useAuthStore } from '../stores/authStore';
 import { useTeamStore } from '../stores/teamStore';
 import { useUnreadStore } from '../stores/unreadStore';
@@ -125,55 +126,11 @@ function groupMessages(msgs) {
 }
 
 // ───────────── small bits ─────────────
-// Single source of truth for rendering an avatar tile (image OR initials).
-// Used by Avatar/PlainAvatar below AND by the half-dozen custom avatar
-// sites (mention picker, voice peer, new-DM picker, etc.) so a profile
-// picture set in User Settings shows up everywhere immediately.
-//
-// Uses backgroundColor (longhand) NOT background (shorthand) — the
-// shorthand resets background-size to `auto` inline, which beats the
-// .has-image { background-size: cover } CSS rule on specificity and
-// the image ended up cropped to its top-left corner.
-export function memberAvatarStyle(member: { color?: string; avatarUrl?: string }, size?: number): React.CSSProperties {
-  const style: React.CSSProperties = {};
-  if (size) {
-    style.width = size;
-    style.height = size;
-    style.fontSize = size * 0.4;
-  }
-  if (member.avatarUrl) {
-    style.backgroundImage = `url(${member.avatarUrl})`;
-    style.backgroundSize = 'cover';
-    style.backgroundPosition = 'center';
-    style.backgroundRepeat = 'no-repeat';
-    style.color = 'transparent';
-  } else {
-    style.backgroundColor = member.color || 'var(--muted)';
-  }
-  return style;
-}
-export function memberAvatarClass(member: { avatarUrl?: string }, base: string): string {
-  return member.avatarUrl ? base + ' has-image' : base;
-}
-
-function Avatar({ member, size }) {
-  // Render the uploaded image when present; otherwise the username-coloured
-  // initials tile. Either way the presence dot lives on top.
-  return (
-    <div className={memberAvatarClass(member, 'avatar')} style={memberAvatarStyle(member, size)}>
-      {!member.avatarUrl && member.initials}
-      {member.status && <span className={`presence ${member.status}`}></span>}
-    </div>
-  );
-}
-
-function PlainAvatar({ member, size }) {
-  return (
-    <div className={memberAvatarClass(member, 'avatar')} style={memberAvatarStyle(member, size)}>
-      {!member.avatarUrl && member.initials}
-    </div>
-  );
-}
+// Avatar / PlainAvatar + memberAvatarStyle / memberAvatarClass moved
+// to ./Avatar. The helpers stay exported through ChatApp via the
+// re-export below so any in-flight diffs that imported them from
+// here keep building.
+export { memberAvatarStyle, memberAvatarClass } from './Avatar';
 
 // MiniMeter / StatsSparkline / VoiceDockLatency / VoiceDockBitrate
 // moved to ./VoiceDockStats. They were all private to this file,
