@@ -103,6 +103,13 @@ export function installTrustedTypesPolicy(): void {
   }
 }
 
+// Hard ceiling on the input length we'll try to strip. The Trusted
+// Types createHTML hook can in principle receive anything in the
+// page; capping the input is what actually defangs the
+// regex-backtracking concern that Sonar S5852 raises. 64 KiB is
+// well above any honest hydration payload react-markdown produces.
+const TRUSTED_HTML_MAX_LEN = 64 * 1024;
+
 function stripDangerousMarkup(input: string): string {
   // We deliberately keep this lightweight — react-markdown's `skipHtml`
   // is the main defence. This is the second line: refuse anything that
@@ -111,10 +118,14 @@ function stripDangerousMarkup(input: string): string {
   // CodeQL flags it as js/bad-tag-filter — so parse the input as a
   // document, prune every <script> in the tree, and serialize back.
   // Only kicks in when the cheap regex probe says there might be one.
+  if (input.length > TRUSTED_HTML_MAX_LEN) return '';
   if (!/<\s*script[\s>]/i.test(input)) return input;
   if (typeof DOMParser === 'undefined') {
-    // SSR / worker contexts: fall back to the multi-pass regex strip.
-    const scriptTagPattern = /<\s*script[\s\S]*?<\s*\/\s*script(?:\s+[^>]*)?>/gi; // NOSONAR(typescript:S5852) — bounded fallback over our own bounded HTML input; only fires when DOMParser is unavailable (SSR/worker)
+    // SSR / worker contexts: fall back to a regex strip. The
+    // TRUSTED_HTML_MAX_LEN gate above caps the input size so the
+    // non-greedy `[\s\S]*?` can't backtrack catastrophically — that
+    // closes the S5852 / ReDoS concern without a NOSONAR.
+    const scriptTagPattern = /<\s*script[\s\S]*?<\s*\/\s*script(?:\s+[^>]*)?>/gi;
     let previous: string;
     let sanitized = input;
     do {
