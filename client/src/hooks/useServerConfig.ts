@@ -20,10 +20,10 @@ export function useServerConfig(): ServerConfig | null {
   const [config, setConfig] = useState<ServerConfig | null>(cache);
 
   useEffect(() => {
-    if (cache) {
-      setConfig(cache);
-      return;
-    }
+    // useState above already seeds with `cache`, so a warm cache
+    // needs no setState here — calling it would be a synchronous-
+    // setState-in-effect that triggers a redundant render.
+    if (cache) return;
     if (!inflight) {
       inflight = fetch('/api/v1/config')
         .then((res) => (res.ok ? (res.json() as Promise<ServerConfig>) : null))

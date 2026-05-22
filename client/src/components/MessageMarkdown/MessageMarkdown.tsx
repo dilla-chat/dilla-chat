@@ -62,8 +62,10 @@ export default function MessageMarkdown({
   currentUserId,
   currentUserHandle,
 }: Props): React.ReactElement | null {
-  if (!text) return null;
-  const prepared = React.useMemo(() => injectMentionLinks(text), [text]);
+  // Hooks must run unconditionally — the `if (!text) return null` early
+  // return below has to come AFTER every hook call, not before, or
+  // React's rules-of-hooks fires.
+  const prepared = React.useMemo(() => injectMentionLinks(text ?? ''), [text]);
 
   const components: Components = React.useMemo(() => ({
     a({ href, children, ...rest }) {
@@ -141,6 +143,8 @@ export default function MessageMarkdown({
       );
     },
   }), [currentUserId, currentUserHandle]);
+
+  if (!text) return null;
 
   return (
     <div className="mm-root">

@@ -41,10 +41,27 @@ export const usePollStore = create<PollStore>((set) => ({
   clear: () => set({ polls: new Map() }),
 }));
 
+// Shape of the raw server-side poll wire payload. Matches REST GET
+// response, ws poll:new and ws poll:update — all three send the same
+// snake_case JSON.
+interface ServerPoll {
+  id: string;
+  channel_id: string;
+  question: string;
+  options?: string[];
+  tallies?: number[];
+  // Per-option voters — `voters[i]` is the list of user ids who
+  // selected `options[i]`. Server sends an empty outer array on a
+  // poll with no votes.
+  voters?: string[][];
+  created_by?: string | null;
+  created_at?: string;
+}
+
 /** Convert a server poll payload to the store shape. Accepts either the
  *  REST GET response or a WS poll:new / poll:update event — both share the
  *  same field set. */
-export function normalizePoll(p: any): PollState {
+export function normalizePoll(p: ServerPoll): PollState {
   return {
     id: p.id,
     channelId: p.channel_id,

@@ -587,7 +587,7 @@ class WebRTCService {
         const nextList = list.map((p) => {
           if (p.user_id !== userId) return p;
           for (const k of Object.keys(patch) as Array<keyof typeof patch>) {
-            if ((p as any)[k] !== patch[k]) {
+            if ((p as unknown as Record<string, unknown>)[k as string] !== patch[k]) {
               listChanged = true;
               break;
             }
