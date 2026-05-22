@@ -216,38 +216,47 @@ pub async fn revoke_device(
     State(state): State<AppState>,
     Path(device_id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
+    // Net-new #3 from .security-hardening/11-pentest-results.md:
+    // load → count → revoke used to run in three separate spawn_db
+    // calls (= three connections). Two concurrent revokes could both
+    // observe count=2 and both proceed, leaving the user with zero
+    // active devices and locked out. Now: read + count + write all
+    // happen inside one IMMEDIATE transaction so the last-device
+    // guard is serialized at the SQLite level.
     let uid = user_id.clone();
     let did = device_id.clone();
-    let device = spawn_db(state.db.clone(), move |conn| {
-        db::get_device_by_id(conn, &did)
-    })
-    .await?
-    .ok_or_else(|| AppError::NotFound("device not found".into()))?;
-
-    if device.user_id != user_id {
-        // Don't leak ownership — same shape as NotFound.
-        return Err(AppError::NotFound("device not found".into()));
+    enum RevokeOutcome {
+        Ok(crate::db::UserDevice),
+        NotFound,
+        LastDevice,
     }
-
-    // Refuse to revoke the last active device — the user would lock
-    // themselves out. They should enroll a replacement first or use
-    // the bootstrap flow.
-    let uid_q = uid.clone();
-    let active_count = spawn_db(state.db.clone(), move |conn| {
-        db::count_active_devices(conn, &uid_q)
+    let outcome = spawn_db(state.db.clone(), move |conn| {
+        let tx = conn.unchecked_transaction()?;
+        let device = match db::get_device_by_id(&tx, &did)? {
+            Some(d) => d,
+            None => return Ok::<_, rusqlite::Error>(RevokeOutcome::NotFound),
+        };
+        if device.user_id != uid {
+            return Ok(RevokeOutcome::NotFound);
+        }
+        if device.is_active() {
+            let active = db::count_active_devices(&tx, &uid)?;
+            if active <= 1 {
+                return Ok(RevokeOutcome::LastDevice);
+            }
+        }
+        db::revoke_device(&tx, &did)?;
+        tx.commit()?;
+        Ok(RevokeOutcome::Ok(device))
     })
     .await?;
-    if active_count <= 1 && device.is_active() {
-        return Err(AppError::BadRequest(
+    let device = match outcome {
+        RevokeOutcome::Ok(d) => d,
+        RevokeOutcome::NotFound => return Err(AppError::NotFound("device not found".into())),
+        RevokeOutcome::LastDevice => return Err(AppError::BadRequest(
             "cannot revoke the last active device — enroll a replacement first".into(),
-        ));
-    }
-
-    let did = device_id.clone();
-    spawn_db(state.db.clone(), move |conn| {
-        db::revoke_device(conn, &did)
-    })
-    .await?;
+        )),
+    };
 
     // A5: audit + force-logout. Revoking a device should also kill any
     // outstanding JWTs that were minted with that device_id — for now
