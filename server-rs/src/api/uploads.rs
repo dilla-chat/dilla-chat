@@ -222,14 +222,13 @@ pub async fn download(
             if att.message_id.is_empty() {
                 // Unlinked window: only the uploader (or a caller who
                 // can prove uploader-ness) can fetch, and only for a
-                // limited time. Today the attachments table doesn't
-                // store an uploader_id (TODO), so we fall back to
-                // restricting by the per-team upload directory + the
-                // grace window. This still kills the
-                // anonymous-bulk-download exposure of VULN-003 because
-                // (a) the caller must be a team member, and (b) the
-                // uploader's own session is the only one with the
-                // attachment_id during the grace period.
+                // limited time. H-7 added attachments.uploader_id so
+                // new uploads pin to the caller; pre-migration rows
+                // (uploader_id IS NULL) fall back to a per-team
+                // upload-directory match against storage_path. Both
+                // paths kill the anonymous-bulk-download exposure of
+                // VULN-003 because the caller must already be a team
+                // member.
                 // db::now_str() format is "%Y-%m-%d %H:%M:%S" UTC.
                 // Treat unparseable timestamps as out-of-grace.
                 let still_in_grace = chrono::NaiveDateTime::parse_from_str(
