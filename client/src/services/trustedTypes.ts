@@ -121,22 +121,63 @@ function stripDangerousMarkup(input: string): string {
   if (input.length > TRUSTED_HTML_MAX_LEN) return '';
   if (!/<\s*script[\s>]/i.test(input)) return input;
   if (typeof DOMParser === 'undefined') {
-    // SSR / worker contexts: fall back to a regex strip. The
-    // TRUSTED_HTML_MAX_LEN gate above caps the input size so the
-    // non-greedy `[\s\S]*?` can't backtrack catastrophically — that
-    // closes the S5852 / ReDoS concern without a NOSONAR.
-    const scriptTagPattern = /<\s*script[\s\S]*?<\s*\/\s*script(?:\s+[^>]*)?>/gi;
-    let previous: string;
-    let sanitized = input;
-    do {
-      previous = sanitized;
-      sanitized = sanitized.replace(scriptTagPattern, '');
-    } while (sanitized !== previous);
-    return sanitized;
+    // SSR / worker contexts: fall back to a non-regex linear strip.
+    // Avoids S5852 (regex backtracking) entirely — pure indexOf /
+    // slice, every iteration advances `i`, worst case O(n).
+    return stripScriptTagsLinear(input);
   }
   const doc = new DOMParser().parseFromString(input, 'text/html');
   doc.querySelectorAll('script').forEach((el) => el.remove());
   return doc.body ? doc.body.innerHTML : input;
+}
+
+/**
+ * SSR / worker fallback for stripDangerousMarkup. Removes every
+ * `<script ...>...</script>` (case-insensitive) without using regex —
+ * Sonar S5852 flags the multi-quantifier shape the obvious regex would
+ * need, and a length cap alone doesn't satisfy the pattern matcher.
+ * A linear indexOf scan is provably O(n) with no backtracking surface,
+ * which is the actual property the rule wants.
+ *
+ * The `<script` open is matched as a tag boundary (followed by `>`,
+ * whitespace, `/`, etc.) so identifiers like `<scripted-foo>` don't
+ * trigger the strip.
+ */
+function stripScriptTagsLinear(input: string): string {
+  const lower = input.toLowerCase();
+  let out = '';
+  let i = 0;
+  while (i < input.length) {
+    const openIdx = lower.indexOf('<script', i);
+    if (openIdx === -1) {
+      out += input.slice(i);
+      break;
+    }
+    const after = lower.charCodeAt(openIdx + 7);
+    // Tag boundary: `>` (0x3e), `/` (0x2f), space (0x20), tab (0x09),
+    // newline (0x0a), CR (0x0d). NaN (end-of-string) also counts —
+    // truncated `<script` is malformed; treat it as a tag start so we
+    // skip past the dangling open.
+    const isTagBoundary =
+      after === 0x3e || after === 0x2f || after === 0x20 ||
+      after === 0x09 || after === 0x0a || after === 0x0d ||
+      Number.isNaN(after);
+    if (!isTagBoundary) {
+      out += input.slice(i, openIdx + 7);
+      i = openIdx + 7;
+      continue;
+    }
+    out += input.slice(i, openIdx);
+    const closeIdx = lower.indexOf('</script', openIdx + 7);
+    if (closeIdx === -1) {
+      // Unclosed <script> — drop everything from here. Mirrors what
+      // browsers do (the rest of the document is ignored).
+      break;
+    }
+    const endGt = input.indexOf('>', closeIdx);
+    i = endGt === -1 ? input.length : endGt + 1;
+  }
+  return out;
 }
 
 function assertSafeScriptURL(url: string): boolean {
