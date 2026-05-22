@@ -3,6 +3,7 @@ pub mod join;
 pub mod peers;
 pub mod sync;
 pub mod transport;
+pub mod wire;
 
 use std::collections::HashMap;
 use std::sync::Arc;
