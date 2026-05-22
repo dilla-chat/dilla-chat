@@ -1,12 +1,13 @@
 // @ts-nocheck
-// Live binding for the shell/ChatApp. Produces a MOCK_DATA-shaped
-// object whose SERVERS + CHANNELS come from our real useTeamStore, and
-// whose remaining fields (MEMBERS, MESSAGES, byId, DMS, DM_MESSAGES,
-// THREAD_REPLIES) still come from the seeded mocks until later migration
-// steps replace them.
+// Live binding for the shell/ChatApp. Produces a shell-data object —
+// SERVERS / CHANNELS / MEMBERS / MESSAGES / byId / DMS / DM_MESSAGES /
+// THREAD_REPLIES — from real stores (teamStore, presenceStore,
+// messageStore, dmStore, threadStore). The shape mirrors the original
+// design-handoff `MOCK_DATA` fixture so ChatApp's reads didn't have
+// to change during the migration; the fixture itself is now retired
+// (see EMPTY_SHELL_DATA in data.ts for the empty fallback shape).
 
 import { useMemo } from 'react';
-import { useLocation } from 'react-router-dom';
 import { useTeamStore } from '../stores/teamStore';
 import { useAuthStore } from '../stores/authStore';
 import { usePresenceStore } from '../stores/presenceStore';
@@ -19,15 +20,14 @@ import { useVoiceStore } from '../stores/voiceStore';
 import { useUnreadStore } from '../stores/unreadStore';
 import { api } from '../services/api';
 import { usernameColor } from '../utils/colors';
-import { MOCK_DATA } from './data';
-
 // Empty shape used by /app while team data hasn't loaded yet. We do NOT
-// spread MOCK_DATA here: that has historically been the source of every
-// "mock content briefly visible on /app" regression — any field we forgot
-// to override would leak BERRALITOS / ada / mira / mock channels. This
-// shape only has what ChatApp actually reads, and reads are all empty.
-// One blank server keeps `team.name` / `team.node` accesses from crashing
-// while sync:init is in flight; the empty strings render as nothing.
+// spread the historical MOCK_DATA fixture here: that was the source of
+// every "mock content briefly visible on /app" regression — any field we
+// forgot to override would leak BERRALITOS / ada / mira / mock channels.
+// This shape only has what ChatApp actually reads, and reads are all
+// empty. One blank server keeps `team.name` / `team.node` accesses from
+// crashing while sync:init is in flight; the empty strings render as
+// nothing.
 const EMPTY_DATA = {
   SERVERS: [{ id: '', name: '', description: '', short: '', node: '', federated: false, members: 0 }],
   CHANNELS: [],
@@ -284,16 +284,14 @@ export function useShellData() {
   // invalidates the memo below. `window.location.pathname` outside the
   // deps array would leave a stale cached result after route changes,
   // which is the original cause of "mock content shown on /app".
-  const pathname = useLocation().pathname;
-  const isMesh = pathname.startsWith('/mesh');
-
   return useMemo(() => {
-    // Pre-bootstrap fallback. On /mesh the handoff fixtures stand in
-    // until ensureMockSession() finishes seeding the stores; on /app
-    // we must NEVER show mock content, so return an empty shell while
-    // sync:init is in flight.
+    // Pre-bootstrap fallback for BOTH /mesh and /app — return the
+    // empty shape and let ensureMockSession() (on /mesh) or sync:init
+    // (on /app) populate the stores. The historical /mesh branch
+    // returned a populated MOCK_DATA fixture; that's now a dead
+    // empty alias since client-side mock data was retired.
     if (!activeTeamId || teams.size === 0) {
-      return isMesh ? MOCK_DATA : EMPTY_DATA;
+      return EMPTY_DATA;
     }
 
     // Per-team federation + node info from authStore.baseUrl. We don't track
@@ -423,9 +421,9 @@ export function useShellData() {
       activeChannelId,
       currentUserId: myId,
     };
-  }, [teams, channels, members, presences, activeTeamId, authTeams, messages, dmChannels, dmMessages, threads, threadMessages, voiceOccupants, unreadCounts, isMesh, channelPollsBy, blockedSet]);
+  }, [teams, channels, members, presences, activeTeamId, authTeams, messages, dmChannels, dmMessages, threads, threadMessages, voiceOccupants, unreadCounts, channelPollsBy, blockedSet]);
 }
 
-// Re-export for callers that want to hand the produced data directly to
-// window.MOCK_DATA before ChatApp renders.
+// Re-export for callers that want to hand the produced data directly
+// to window.SHELL_DATA before ChatApp renders.
 export { initialsOf };

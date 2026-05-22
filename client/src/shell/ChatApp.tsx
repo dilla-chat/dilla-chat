@@ -6,7 +6,7 @@
 import React from 'react';
 import { Icon } from './icons';
 import MessageMarkdown from '../components/MessageMarkdown/MessageMarkdown';
-import { MOCK_DATA } from './data';
+import { EMPTY_SHELL_DATA } from './data';
 import { THEMES } from './themes';
 import { useShellDataContext } from './ShellDataContext';
 import { useAuthStore } from '../stores/authStore';
@@ -46,8 +46,11 @@ interface StagedAttachment {
 }
 // chat-app.jsx originally read window.SHELL_DATA / window.THEMES / window.Icon
 // — keep that contract until the bindings get rewired through Zustand.
+// AppShell overwrites window.SHELL_DATA with the live `useShellData()`
+// on every render, so this initial write is just the pre-mount
+// placeholder shape (empty arrays/maps; never mock content).
 const w = window as unknown as Record<string, unknown>;
-w.SHELL_DATA = MOCK_DATA;
+w.SHELL_DATA = EMPTY_SHELL_DATA;
 w.THEMES = THEMES;
 w.Icon = Icon;
 
@@ -304,7 +307,7 @@ function VoiceDockBitrate() {
 
 // Modal: forward a message to another channel or DM
 function ForwardModal({ sourceMsg, members, onClose, onForward }) {
-  const data = (useShellDataContext() as any) || MOCK_DATA;
+  const data = (useShellDataContext() as any) || EMPTY_SHELL_DATA;
   const [q, setQ] = useState('');
   useEffect(() => {
     function onKey(e) { if (e.key === 'Escape') onClose(); }
@@ -511,7 +514,7 @@ function GiphyPicker({
 }
 
 function NewChannelModal({ onClose, onCreate }) {
-  const data = (useShellDataContext() as any) || MOCK_DATA;
+  const data = (useShellDataContext() as any) || EMPTY_SHELL_DATA;
   const nodeHost = data?.SERVERS?.[0]?.node || 'local';
   const [name, setName] = useState('');
   const [kind, setKind] = useState('text');
@@ -875,7 +878,7 @@ function GroupSettingsModal({ group, onClose }: { group: { id: string; name: str
 }
 
 function ChannelSettingsModal({ channel, onClose }) {
-  const data = (useShellDataContext() as any) || MOCK_DATA;
+  const data = (useShellDataContext() as any) || EMPTY_SHELL_DATA;
   const [topic, setTopic] = useState(channel?.topic ?? '');
   const [slow, setSlow] = useState(String(channel?.slowModeSeconds ?? channel?.slow_mode_seconds ?? 0));
   const [group, setGroup] = useState(channel?.category ?? '');
@@ -1098,7 +1101,7 @@ function EmptyFeed({ channel, dmPartner }) {
 
 // Profile popover — anchored to click coords.
 function ProfilePopover({ pop, onClose, onDM, federated }) {
-  const data = (useShellDataContext() as any) || MOCK_DATA;
+  const data = (useShellDataContext() as any) || EMPTY_SHELL_DATA;
   const ref = useRef(null);
   useEffect(() => {
     if (!pop) return;
@@ -1228,7 +1231,7 @@ function ResizeHandle({ kind, value, onResize, min = 180, max = 380 }) {
 
 // Thread panel — opens when clicking a thread-preview on a message.
 function ThreadPanel({ channelId, messageId, members, onClose, onReact }) {
-  const data = (useShellDataContext() as any) || MOCK_DATA;
+  const data = (useShellDataContext() as any) || EMPTY_SHELL_DATA;
   const channel = data?.CHANNELS?.find(c => c.id === channelId);
   const original = (data?.MESSAGES?.[channelId] || []).find(m => m.id === messageId);
   const liveReplies = data?.THREAD_REPLIES?.[messageId] || [];
@@ -1908,7 +1911,7 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
                           voiceConnection, members, dms, activeDM, onPickDM,
                           onLeaveVoice, onJoinVoice, mute, setMute, deaf, setDeaf, cam, setCam, screen, setScreen,
                           mutedChannels = new Set(), toggleMuteChannel, onNewDm }) {
-  const data = (useShellDataContext() as any) || MOCK_DATA;
+  const data = (useShellDataContext() as any) || EMPTY_SHELL_DATA;
   const nodeHost = data?.SERVERS?.[0]?.node || 'local';
   // Local user's VAD-driven speaking flag, scoped subscription so the
   // re-render is contained to this sidebar component only.
@@ -2567,7 +2570,7 @@ function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, o
     () => resolvePermissions(tcTeamMembers, currentUserId()),
     [tcTeamMembers],
   );
-  const data = (useShellDataContext() as any) || MOCK_DATA;
+  const data = (useShellDataContext() as any) || EMPTY_SHELL_DATA;
   const groups = useMemo(() => groupMessages(messages), [messages]);
   const feedRef = useRef(null);
   // Scroll-up to fetch older messages. The hook is a no-op on /mesh
@@ -4552,7 +4555,7 @@ function MemberList({ members, voiceConnection, rich, federated }) {
     () => resolvePermissions(memberListTeamMembers, currentUserId()),
     [memberListTeamMembers],
   );
-  const data = (useShellDataContext() as any) || MOCK_DATA;
+  const data = (useShellDataContext() as any) || EMPTY_SHELL_DATA;
   const teamName = data?.SERVERS?.[0]?.name || '';
   const MC = window.MeshChrome || {};
   const nodes = MC.MEMBER_NODES || {};
@@ -4743,7 +4746,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   // global read so re-renders are React-driven and tests can inject a
   // provider without monkey-patching window. Handlers below close over
   // this binding instead of re-reading the global.
-  const data = (useShellDataContext() as any) || MOCK_DATA;
+  const data = (useShellDataContext() as any) || EMPTY_SHELL_DATA;
   // Live store selectors used by the outbound write paths (send/edit/delete).
   // activeTeamId routes WS messages to the right per-team socket; derivedKey
   // is required by tryEncrypt for channel-message E2E encryption.

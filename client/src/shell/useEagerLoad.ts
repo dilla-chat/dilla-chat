@@ -1,10 +1,11 @@
-// Eager loader for the shell. ChatApp captures the full MOCK_DATA snapshot
-// on first render — it doesn't lazy-load per-channel like the legacy
-// ChannelView does. So once useTeamSync has populated channels via
-// sync:init, walk every channel and prefetch messages, threads, thread
-// replies, and DMs. Each fetch goes through the real api singleton (which
-// the mock has swapped in on /mesh), so the load flow is identical to
-// prod — just kicked off eagerly instead of on-click.
+// Eager loader for the shell. ChatApp reads the full shell-data
+// snapshot on first render — it doesn't lazy-load per-channel like the
+// legacy ChannelView did. So once useTeamSync has populated channels
+// via sync:init, walk every channel and prefetch messages, threads,
+// thread replies, and DMs. Each fetch goes through the real api
+// singleton (which the mock has swapped in on /mesh), so the load
+// flow is identical to prod — just kicked off eagerly instead of
+// on-click.
 //
 // Returns `ready` so MockShell / App can gate ChatApp's first render until
 // all fixtures have landed (otherwise ChatApp's useState captures empty
