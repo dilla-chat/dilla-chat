@@ -109,7 +109,14 @@ function stripDangerousMarkup(input: string): string {
   // smells like a script element or javascript: URI in an attribute.
   // Case-insensitive matches because HTML is case-insensitive.
   if (/<\s*script[\s>]/i.test(input)) {
-    return input.replace(/<\s*script[\s\S]*?<\s*\/\s*script\s*>/gi, '');
+    const scriptTagPattern = /<\s*script[\s\S]*?<\s*\/\s*script\s*>/gi;
+    let previous: string;
+    let sanitized = input;
+    do {
+      previous = sanitized;
+      sanitized = sanitized.replace(scriptTagPattern, '');
+    } while (sanitized !== previous);
+    return sanitized;
   }
   return input;
 }
