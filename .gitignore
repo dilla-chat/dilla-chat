@@ -79,3 +79,10 @@ tmp-dev-data/
 # DILLA_SEED_DEMO isn't on. Local-only by definition.
 server-rs/BOOTSTRAP_TOKEN
 **/BOOTSTRAP_TOKEN
+
+# vitest --coverage output. Auto-generated HTML + lcov; checking it
+# in just churned the diff and gave CodeQL hundreds of files of
+# coverage HTML to scan (and it flagged js/xss-through-dom on the
+# istanbul template's `sorter.js`).
+client/coverage/
+coverage/

@@ -430,7 +430,13 @@ function CropModal({
                 only travel within the image-sized area — anywhere past
                 the image edge clamped early on the right and bottom. */}
             <div className="crop-frame" style={imgSize ? { width: imgSize.w, height: imgSize.h } : undefined}>
-              {imgUrl && (
+              {imgUrl && imgUrl.startsWith('blob:') && (
+                // Defensive: imgUrl only ever comes from
+                // URL.createObjectURL() above, but rendering it into
+                // an <img src> is a sink CodeQL flags as xss-through-
+                // dom. Pin the prefix so a future code change that
+                // accidentally feeds a non-blob URL into setImgUrl
+                // can't open the door to javascript:/data: schemes.
                 <img ref={imgRef} src={imgUrl} onLoad={onImgLoad} className="crop-img" alt="" draggable={false} />
               )}
               {crop && (
