@@ -167,7 +167,77 @@ For production deployments:
       transport refuses `ws://` outside `DILLA_INSECURE=true`
       (H7 / VULN-014).
 
-## 9. Cross-references
+## 9. Federation trust model — known limitations
+
+Dilla nodes federate over WebSocket. The current implementation
+delivers **Phase 1** of the federation security model — enough to
+defeat anonymous attackers and on-path MITM, but **not** enough to
+defeat a malicious *authenticated* peer. Operators must understand
+this trade-off before federating with peers they don't fully trust.
+
+### What today's controls cover
+
+- **Transport.** Plaintext `ws://` peers are refused outside
+  `DILLA_INSECURE=true`. `wss://` peers ride TLS with the system
+  trust store.
+- **Peer authentication.** A shared `DILLA_JOIN_SECRET` (HKDF-SHA256
+  derived, ≥32 bytes enforced) gates inbound peer auth. Empty
+  secret is refused at startup unless `DILLA_INSECURE=true`. The
+  auth comparison is constant-time.
+- **Rate limiting.** Per-peer state-sync volume is bounded; floods
+  trigger alert rule 5 in `deploy/monitoring/correlation-rules.yaml`.
+
+### What today's controls do NOT cover
+
+Once a peer authenticates, it is treated as fully trusted on state
+merge. A peer that holds the `join_secret` — or that you federate
+with intentionally — can:
+
+- **Forge channels, roles, members, messages** on every other node
+  via last-writer-wins merge. Tracked as DILLA-VULN-002. The full
+  fix (per-node Ed25519 signed `FederationEvent` envelopes with
+  authority validation) is **Phase 3** architectural work and not
+  yet shipped. See `.security-hardening/03-architecture-review.md`
+  §7 for the redesign sketch.
+- **Read all replicated metadata** — ciphertext, sender IDs,
+  timing, reply graph, attachment IDs, reaction counts. Message
+  *bodies* remain end-to-end encrypted (Signal Protocol), but the
+  full social graph is inherent to a federated chat. Tracked as
+  FED-META-1 in `.security-hardening/02-threat-model.md`.
+- **Replicate without provenance.** Audit rows for federation-merged
+  state don't carry the originating peer ID. Tracked as FED-AUDIT-1;
+  depends on the Phase 3 redesign.
+
+### Voice IP leakage (SFU-IP-1)
+
+WebRTC ICE candidates exchanged in voice channels include each
+speaker's real IP. The pre-existing fix for VULN-004 (WS subscribe
+ACL) closed the cross-channel leak path — only legitimate channel
+members see ICE candidates today — but a member who joins a voice
+channel will see every other speaker's IP. Operators who need IP
+privacy should configure clients to force TURN-only mode; the
+relay strips peer-to-peer candidates.
+
+### Operator guidance
+
+- **Federate only with peers you'd trust as a co-administrator.**
+  The shared `join_secret` is currently a single point of full
+  federation compromise.
+- **Rotate `DILLA_JOIN_SECRET` whenever a peer leaves the
+  federation.** Outstanding join JWTs become invalid by design
+  after HKDF rotation.
+- **Don't federate across organizational trust boundaries** until
+  the Phase 3 redesign ships. Run separate Dilla deployments
+  bridged at the user level instead.
+- **Monitor federation peer message volume** via the alert rules
+  shipped in `deploy/monitoring/`. A peer flooding state-sync is
+  the visible signal of either a bug or a malicious peer.
+
+This section will shrink as the Phase 3 redesign lands. Track
+progress against DILLA-VULN-002 / FED-META-1 / FED-AUDIT-1 /
+SFU-IP-1 in `.security-hardening/`.
+
+## 10. Cross-references
 
 - Architecture review (current + target): `.security-hardening/03-architecture-review.md`
 - Critical fixes: `.security-hardening/04-critical-fixes.md`
