@@ -100,22 +100,8 @@ yet wired.
 
 ### H-17 — FED-META-1 (federation metadata is inherently shared)
 
-Federation peers see ciphertext + the full social graph for every
-replicated team. This is inherent to a federated chat — operators
-federate because they want to share messages. Documented as a
-known limitation in `SECURITY.md` §9. Mitigating it would require
-either per-peer pseudonymous IDs or fundamentally rethinking how
-federation works. Out of scope for hardening; revisit only if
-strategically prioritized.
-
-### H-18 — Hidden-Service / Tor deploy guide for high-anonymity ops
-
-`deploy/docker/compose.yml` has a commented-out
-`tor-hidden-service` block. A real guide would explain how to run
-Dilla as a `.onion` service — bridging operator anonymity over a
-federated chat. Not security-critical for the typical operator;
-documentation-only effort, but coordinated with H-3 (TURN-only)
-+ H-13 (cookies) for a full anonymity story.
+Already documented in `SECURITY.md` §9 — no further action.
+Stays here as a reference pointer only.
 
 ---
 
