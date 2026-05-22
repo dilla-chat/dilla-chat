@@ -8,6 +8,7 @@ mod observability;
 mod policy;
 mod presence;
 mod telemetry;
+mod tor_list;
 mod voice;
 mod webapp;
 mod ws;
@@ -195,6 +196,11 @@ async fn main() {
 
     let presence_mgr = init_presence_manager(&hub).await;
     spawn_hub_event_handler(&hub, &presence_mgr, &database);
+
+    // H-8 / A2: optional Tor exit-node list for the auth risk
+    // scorer. Absent path / unreadable file is non-fatal; the
+    // global stays None and ip_is_tor_exit returns false.
+    tor_list::init(&cfg.tor_exit_list_path);
 
     // VULN-002 Phase 3 foundation: every install gets a stable
     // Ed25519 node identity, even when federation isn't configured

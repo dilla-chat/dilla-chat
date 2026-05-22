@@ -22,6 +22,11 @@ pub struct Config {
     /// flag is scaffolded here in advance; call sites land with H-9
     /// (transport flip) and H-10 (sync/mod plumbing).
     pub require_federation_v3: bool,
+    /// Optional path to a newline-delimited file of Tor exit-node IPs.
+    /// When set, the auth-risk scorer flags logins from listed IPs.
+    /// Absent / unset is non-fatal; the file is reloaded once at
+    /// startup. H-8.
+    pub tor_exit_list_path: String,
     pub fed_bind_addr: String,
     pub fed_advert_addr: String,
     pub fed_advert_port: u16,
@@ -148,6 +153,7 @@ impl Config {
             node_name: env_str("DILLA_NODE_NAME", ""),
             join_secret: env_str("DILLA_JOIN_SECRET", ""),
             require_federation_v3: env_bool("DILLA_FEDERATION_REQUIRE_V3", false),
+            tor_exit_list_path: env_str("DILLA_TOR_EXIT_LIST_PATH", ""),
             fed_bind_addr: env_str("DILLA_FED_BIND_ADDR", "0.0.0.0"),
             fed_advert_addr: env_str("DILLA_FED_ADVERTISE_ADDR", ""),
             fed_advert_port: env_u16("DILLA_FED_ADVERTISE_PORT", 0),

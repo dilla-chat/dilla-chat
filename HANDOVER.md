@@ -51,24 +51,25 @@ release builds are clean. Suggested approach for the next pass:
 do it in a dedicated branch / PR with no other changes so the
 diff is reviewable.
 
-### H-8 — Tor exit-list + GeoLite2 wiring for risk scoring
+### H-8b — GeoLite2 country DB wiring (remainder of H-8)
 
-`auth_handlers::compute_risk_score` (commit `0d55d30`) records
-risk signals but the Tor lookup is stubbed and country resolution
-returns `"unknown"`.
+The Tor-exit-list half of H-8 shipped (commit follows). The
+GeoLite2 country half is still open:
 
-- Optional `data/tor-exit-nodes.txt` reader at startup; populates
-  an `Arc<HashSet<IpAddr>>` checked in `compute_risk_score`.
-- Optional `data/GeoLite2-Country.mmdb` reader; populates the
-  `country` field on `user_devices.last_seen_country` when
-  present.
-- Both opt-in via env vars (`DILLA_TOR_EXIT_LIST_PATH`,
-  `DILLA_GEOIP_DB_PATH`); absence is non-fatal.
+- `auth_handlers::derive_country_from_ip` returns the literal
+  string `"unknown"` for non-RFC-1918 IPs. A real country needs
+  MaxMind's GeoLite2-Country.mmdb (free with attribution) and the
+  `maxminddb` crate.
+- Add `geoip_db_path: String` to Config (env
+  `DILLA_GEOIP_DB_PATH`).
+- New `geoip` module mirroring `tor_list::init` / `get` — loads
+  the mmdb file at startup, exposes `country_for(ip) -> Option<String>`.
+- `derive_country_from_ip` consults it when set, falls back to
+  the current `unknown` placeholder otherwise.
 
-**Definition of done:** when the files are present, risk events
-fire correctly; when absent, no regression. ~80 LoC + a small
-binary-file deserializer for MMDB or a thin wrapper around the
-`maxminddb` crate.
+**Definition of done:** when the file is present, country signal
+populates correctly on logins; when absent, no regression.
+~80 LoC + the `maxminddb` crate dependency.
 
 ---
 

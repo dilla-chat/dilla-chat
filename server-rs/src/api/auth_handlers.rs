@@ -334,12 +334,21 @@ pub async fn verify(
 /// 50-point bonus on Tor traffic; absence is logged and silently
 /// skipped. Each line is a single IP (comments starting with `#`
 /// are ignored).
-fn ip_is_tor_exit(_ip: &str) -> bool {
-    // The list lives on disk; reading it on every login would amplify
-    // the syscall cost. We deliberately keep this a stub for the
-    // skeleton — the file plumbing is documented in the report so a
-    // future commit can wire it in. See 08-auth-enhancement.md A2.
-    false
+///
+/// H-8: backed by a process-global `OnceLock<HashSet<IpAddr>>`. The
+/// list is loaded once at startup from `DILLA_TOR_EXIT_LIST_PATH`
+/// when set; absent / parse-failure → empty set (function returns
+/// false unconditionally, matches the previous stub behavior).
+/// Lookup is O(1) hash on the hot path.
+fn ip_is_tor_exit(ip: &str) -> bool {
+    let parsed = match ip.parse::<std::net::IpAddr>() {
+        Ok(p) => p,
+        Err(_) => return false,
+    };
+    match crate::tor_list::get() {
+        Some(set) => set.contains(&parsed),
+        None => false,
+    }
 }
 
 /// Crude country derivation. We do NOT call out to a third-party geo
