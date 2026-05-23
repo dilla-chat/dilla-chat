@@ -319,3 +319,113 @@ mod base64_bytes {
 pub mod base64_bytes_pub {
     pub use super::base64_bytes::*;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn permission_bits_are_distinct_powers_of_two() {
+        let bits = [
+            PERM_ADMIN,
+            PERM_MANAGE_CHANNELS,
+            PERM_MANAGE_MEMBERS,
+            PERM_MANAGE_ROLES,
+            PERM_SEND_MESSAGES,
+            PERM_MANAGE_MESSAGES,
+            PERM_CREATE_INVITES,
+            PERM_MANAGE_TEAM,
+            PERM_BYPASS_SLOW_MODE,
+            PERM_MUTE_VOICE,
+            PERM_MANAGE_FEDERATION,
+            PERM_VIEW_AUDIT_LOG,
+        ];
+        for &b in &bits {
+            assert!(b > 0 && (b & (b - 1)) == 0, "bit {b} is not a power of two");
+        }
+        // No two share a value.
+        for i in 0..bits.len() {
+            for j in (i + 1)..bits.len() {
+                assert_ne!(bits[i], bits[j], "duplicate permission bit");
+            }
+        }
+    }
+
+    #[test]
+    fn permission_bits_are_in_ascending_order() {
+        // The constants are declared in PERM_* order — keeping them in
+        // ascending bit order matches the canonical table that the
+        // client mirrors in TeamSettings/types.ts.
+        assert!(PERM_ADMIN < PERM_MANAGE_CHANNELS);
+        assert!(PERM_MANAGE_CHANNELS < PERM_MANAGE_MEMBERS);
+        assert!(PERM_MANAGE_MEMBERS < PERM_MANAGE_ROLES);
+        assert!(PERM_MANAGE_ROLES < PERM_SEND_MESSAGES);
+        assert!(PERM_SEND_MESSAGES < PERM_MANAGE_MESSAGES);
+        assert!(PERM_MANAGE_MESSAGES < PERM_CREATE_INVITES);
+        assert!(PERM_CREATE_INVITES < PERM_MANAGE_TEAM);
+        assert!(PERM_MANAGE_TEAM < PERM_BYPASS_SLOW_MODE);
+        assert!(PERM_BYPASS_SLOW_MODE < PERM_MUTE_VOICE);
+        assert!(PERM_MUTE_VOICE < PERM_MANAGE_FEDERATION);
+        assert!(PERM_MANAGE_FEDERATION < PERM_VIEW_AUDIT_LOG);
+    }
+
+    #[test]
+    fn base64_bytes_roundtrip() {
+        // Serialise+deserialise a User with non-trivial public_key bytes
+        // through the base64_bytes serde adapter.
+        let u = User {
+            id: "u1".into(),
+            username: "alice".into(),
+            display_name: "Alice".into(),
+            public_key: vec![0xde, 0xad, 0xbe, 0xef],
+            ..Default::default()
+        };
+        let s = serde_json::to_string(&u).unwrap();
+        assert!(s.contains("\"3q2+7w==\""), "expected base64 of DEADBEEF, got {s}");
+        let back: User = serde_json::from_str(&s).unwrap();
+        assert_eq!(back.public_key, vec![0xde, 0xad, 0xbe, 0xef]);
+    }
+
+    #[test]
+    fn base64_bytes_rejects_invalid_input() {
+        let bad = r#"{"id":"u","username":"u","display_name":"u","public_key":"@@@not base64@@@","avatar_url":"","status_text":"","status_type":"","is_admin":false,"created_at":"","updated_at":""}"#;
+        assert!(serde_json::from_str::<User>(bad).is_err());
+    }
+
+    #[test]
+    fn team_force_turn_relay_defaults_to_false_on_deserialize() {
+        // Older Team payloads without `force_turn_relay` must still
+        // deserialise (#[serde(default)]) to preserve forward-compat.
+        let s = r#"{"id":"t1","name":"T","description":"","icon_url":"","created_by":"u","max_file_size":0,"allow_member_invites":true,"created_at":"","updated_at":""}"#;
+        let t: Team = serde_json::from_str(s).unwrap();
+        assert_eq!(t.force_turn_relay, false);
+        assert_eq!(t.federated, false);
+    }
+
+    #[test]
+    fn user_default_quiet_hours_disabled() {
+        let u = User::default();
+        assert_eq!(u.quiet_hours_enabled, false);
+        assert_eq!(u.quiet_hours_from, "");
+        assert_eq!(u.quiet_hours_to, "");
+    }
+
+    #[test]
+    fn full_admin_mask_covers_all_12_perm_bits() {
+        // The "every permission" mask is the OR of all known bits.
+        // Keeps as a single contiguous block 0..=11.
+        let mask = PERM_ADMIN
+            | PERM_MANAGE_CHANNELS
+            | PERM_MANAGE_MEMBERS
+            | PERM_MANAGE_ROLES
+            | PERM_SEND_MESSAGES
+            | PERM_MANAGE_MESSAGES
+            | PERM_CREATE_INVITES
+            | PERM_MANAGE_TEAM
+            | PERM_BYPASS_SLOW_MODE
+            | PERM_MUTE_VOICE
+            | PERM_MANAGE_FEDERATION
+            | PERM_VIEW_AUDIT_LOG;
+        assert_eq!(mask, 0x0FFF);
+    }
+}
