@@ -119,3 +119,126 @@ fn row_to_poll(row: &rusqlite::Row) -> Result<Poll, rusqlite::Error> {
         created_at: row.get(6)?,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::test_helpers::*;
+
+    fn seed(db: &crate::db::Database) {
+        db.with_conn(|c| crate::db::create_user(c, &make_user("u1", "alice", &[1u8; 32]))).unwrap();
+        db.with_conn(|c| crate::db::create_team(c, &make_team("t1", "Team", "u1"))).unwrap();
+        db.with_conn(|c| crate::db::create_channel(c, &make_channel("c1", "t1", "general", "u1"))).unwrap();
+    }
+
+    fn poll(id: &str) -> Poll {
+        Poll {
+            id: id.into(),
+            team_id: "t1".into(),
+            channel_id: "c1".into(),
+            question: "lunch?".into(),
+            options: r#"["pizza","sushi"]"#.into(),
+            created_by: Some("u1".into()),
+            created_at: crate::db::now_str(),
+        }
+    }
+
+    #[test]
+    fn create_then_get_by_id_roundtrip() {
+        let db = test_db();
+        seed(&db);
+        db.with_conn(|c| {
+            create_poll(c, &poll("p1"))?;
+            let got = get_poll_by_id(c, "p1")?.unwrap();
+            assert_eq!(got.id, "p1");
+            assert_eq!(got.question, "lunch?");
+            assert_eq!(got.created_by.as_deref(), Some("u1"));
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn get_polls_by_channel_returns_in_creation_order() {
+        let db = test_db();
+        seed(&db);
+        db.with_conn(|c| {
+            create_poll(c, &poll("p-a"))?;
+            std::thread::sleep(std::time::Duration::from_millis(1100));
+            let mut p_b = poll("p-b");
+            p_b.created_at = crate::db::now_str();
+            create_poll(c, &p_b)?;
+            let polls = get_polls_by_channel(c, "c1")?;
+            // ORDER BY created_at ASC.
+            assert_eq!(polls[0].id, "p-a");
+            assert_eq!(polls[1].id, "p-b");
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn get_poll_by_id_returns_none_for_unknown() {
+        let db = test_db();
+        seed(&db);
+        db.with_conn(|c| {
+            assert!(get_poll_by_id(c, "never")?.is_none());
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn upsert_poll_vote_replaces_existing_choice() {
+        let db = test_db();
+        seed(&db);
+        db.with_conn(|c| {
+            create_poll(c, &poll("p1"))?;
+            upsert_poll_vote(c, "p1", "u1", 0)?;
+            upsert_poll_vote(c, "p1", "u1", 1)?;
+            let votes = get_votes_for_poll(c, "p1")?;
+            assert_eq!(votes.len(), 1);
+            assert_eq!(votes[0].option_index, 1);
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn clear_poll_vote_removes_user_choice() {
+        let db = test_db();
+        seed(&db);
+        db.with_conn(|c| {
+            create_poll(c, &poll("p1"))?;
+            upsert_poll_vote(c, "p1", "u1", 0)?;
+            clear_poll_vote(c, "p1", "u1")?;
+            assert!(get_votes_for_poll(c, "p1")?.is_empty());
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn clear_unknown_vote_is_noop() {
+        let db = test_db();
+        seed(&db);
+        db.with_conn(|c| {
+            create_poll(c, &poll("p1"))?;
+            // No vote cast — clear should not throw.
+            assert!(clear_poll_vote(c, "p1", "u1").is_ok());
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn get_votes_for_poll_returns_empty_for_unknown_poll() {
+        let db = test_db();
+        seed(&db);
+        db.with_conn(|c| {
+            assert!(get_votes_for_poll(c, "no-poll")?.is_empty());
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+}

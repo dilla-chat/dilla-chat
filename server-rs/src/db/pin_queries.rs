@@ -79,3 +79,123 @@ pub fn get_pins_by_team(
     })?;
     rows.collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::test_helpers::*;
+
+    fn seed(db: &crate::db::Database) {
+        db.with_conn(|c| crate::db::create_user(c, &make_user("u1", "alice", &[1u8; 32]))).unwrap();
+        db.with_conn(|c| crate::db::create_team(c, &make_team("t1", "Team", "u1"))).unwrap();
+        db.with_conn(|c| crate::db::create_channel(c, &make_channel("c1", "t1", "general", "u1"))).unwrap();
+    }
+
+    fn seed_message(db: &crate::db::Database, id: &str) {
+        db.with_conn(|c| {
+            c.execute(
+                "INSERT INTO messages (id, channel_id, dm_channel_id, author_id, content, type, deleted, lamport_ts, created_at)
+                 VALUES (?1, 'c1', '', 'u1', 'hi', 'text', 0, 1, datetime('now'))",
+                [id],
+            )?;
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn pin_then_is_pinned_then_unpin_roundtrip() {
+        let db = test_db();
+        seed(&db);
+        seed_message(&db, "m1");
+        db.with_conn(|c| {
+            assert!(!is_pinned(c, "m1")?);
+            pin_message(c, "m1", "c1", "t1", "u1")?;
+            assert!(is_pinned(c, "m1")?);
+            unpin_message(c, "m1")?;
+            assert!(!is_pinned(c, "m1")?);
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn pin_is_idempotent_via_or_ignore() {
+        let db = test_db();
+        seed(&db);
+        seed_message(&db, "m1");
+        db.with_conn(|c| {
+            pin_message(c, "m1", "c1", "t1", "u1")?;
+            pin_message(c, "m1", "c1", "t1", "u1")?;
+            let ids = get_pinned_ids_by_channel(c, "c1")?;
+            assert_eq!(ids.len(), 1);
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn unpin_unknown_message_is_a_noop() {
+        let db = test_db();
+        seed(&db);
+        db.with_conn(|c| {
+            assert!(unpin_message(c, "no-such-message").is_ok());
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn get_pinned_ids_by_channel_returns_only_that_channel() {
+        let db = test_db();
+        seed(&db);
+        // Second channel + message in the same team.
+        db.with_conn(|c| crate::db::create_channel(c, &make_channel("c2", "t1", "ops", "u1"))).unwrap();
+        seed_message(&db, "m1");
+        // m2 belongs to c2.
+        db.with_conn(|c| {
+            c.execute(
+                "INSERT INTO messages (id, channel_id, dm_channel_id, author_id, content, type, deleted, lamport_ts, created_at)
+                 VALUES ('m2', 'c2', '', 'u1', 'hi', 'text', 0, 2, datetime('now'))",
+                [],
+            )?;
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+        db.with_conn(|c| {
+            pin_message(c, "m1", "c1", "t1", "u1")?;
+            pin_message(c, "m2", "c2", "t1", "u1")?;
+            let c1_pins = get_pinned_ids_by_channel(c, "c1")?;
+            let c2_pins = get_pinned_ids_by_channel(c, "c2")?;
+            assert_eq!(c1_pins, vec!["m1"]);
+            assert_eq!(c2_pins, vec!["m2"]);
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn get_pins_by_team_includes_every_channel() {
+        let db = test_db();
+        seed(&db);
+        db.with_conn(|c| crate::db::create_channel(c, &make_channel("c2", "t1", "ops", "u1"))).unwrap();
+        seed_message(&db, "m1");
+        db.with_conn(|c| {
+            c.execute(
+                "INSERT INTO messages (id, channel_id, dm_channel_id, author_id, content, type, deleted, lamport_ts, created_at)
+                 VALUES ('m2', 'c2', '', 'u1', 'hi', 'text', 0, 2, datetime('now'))",
+                [],
+            )?;
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+        db.with_conn(|c| {
+            pin_message(c, "m1", "c1", "t1", "u1")?;
+            pin_message(c, "m2", "c2", "t1", "u1")?;
+            let team_pins = get_pins_by_team(c, "t1")?;
+            assert_eq!(team_pins.len(), 2);
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+}

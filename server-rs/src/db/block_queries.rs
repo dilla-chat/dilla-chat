@@ -53,3 +53,81 @@ pub fn is_blocked(
     )?;
     stmt.exists(params![blocker_id, blocked_id])
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::test_helpers::*;
+
+    #[test]
+    fn block_unblock_roundtrip() {
+        let db = test_db();
+        db.with_conn(|c| crate::db::create_user(c, &make_user("u1", "alice", &[1u8; 32]))).unwrap();
+        db.with_conn(|c| crate::db::create_user(c, &make_user("u2", "bob", &[2u8; 32]))).unwrap();
+
+        db.with_conn(|c| {
+            block_user(c, "u1", "u2")?;
+            assert!(is_blocked(c, "u1", "u2")?);
+            unblock_user(c, "u1", "u2")?;
+            assert!(!is_blocked(c, "u1", "u2")?);
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn block_is_directional() {
+        let db = test_db();
+        db.with_conn(|c| crate::db::create_user(c, &make_user("u1", "alice", &[1u8; 32]))).unwrap();
+        db.with_conn(|c| crate::db::create_user(c, &make_user("u2", "bob", &[2u8; 32]))).unwrap();
+
+        db.with_conn(|c| {
+            block_user(c, "u1", "u2")?;
+            // u1 blocked u2; the reverse direction is NOT implied.
+            assert!(is_blocked(c, "u1", "u2")?);
+            assert!(!is_blocked(c, "u2", "u1")?);
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn block_user_is_idempotent_via_or_ignore() {
+        let db = test_db();
+        db.with_conn(|c| crate::db::create_user(c, &make_user("u1", "alice", &[1u8; 32]))).unwrap();
+        db.with_conn(|c| crate::db::create_user(c, &make_user("u2", "bob", &[2u8; 32]))).unwrap();
+
+        db.with_conn(|c| {
+            block_user(c, "u1", "u2")?;
+            block_user(c, "u1", "u2")?;
+            block_user(c, "u1", "u2")?;
+            let list = list_blocked(c, "u1")?;
+            assert_eq!(list.len(), 1);
+            assert_eq!(list[0], "u2");
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn unblock_unknown_pair_is_a_noop() {
+        let db = test_db();
+        db.with_conn(|c| {
+            assert!(unblock_user(c, "nobody", "nope").is_ok());
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn list_blocked_returns_empty_for_user_with_no_blocks() {
+        let db = test_db();
+        db.with_conn(|c| crate::db::create_user(c, &make_user("u1", "alice", &[1u8; 32]))).unwrap();
+        db.with_conn(|c| {
+            let list = list_blocked(c, "u1")?;
+            assert!(list.is_empty());
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+}

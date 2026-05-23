@@ -61,3 +61,97 @@ pub fn is_channel_muted_for(
         .unwrap_or(0);
     Ok(n > 0)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::test_helpers::*;
+
+    fn seed(db: &crate::db::Database) {
+        db.with_conn(|c| crate::db::create_user(c, &make_user("u1", "alice", &[1u8; 32]))).unwrap();
+        db.with_conn(|c| crate::db::create_team(c, &make_team("t1", "Team", "u1"))).unwrap();
+        db.with_conn(|c| crate::db::create_channel(c, &make_channel("c1", "t1", "general", "u1"))).unwrap();
+    }
+
+    #[test]
+    fn upsert_mute_then_is_muted_then_delete_roundtrip() {
+        let db = test_db();
+        seed(&db);
+        db.with_conn(|c| {
+            assert!(!is_channel_muted_for(c, "u1", "c1")?);
+            upsert_channel_mute(c, "u1", "c1", None)?;
+            assert!(is_channel_muted_for(c, "u1", "c1")?);
+            delete_channel_mute(c, "u1", "c1")?;
+            assert!(!is_channel_muted_for(c, "u1", "c1")?);
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn upsert_replaces_the_muted_until_on_conflict() {
+        let db = test_db();
+        seed(&db);
+        db.with_conn(|c| {
+            upsert_channel_mute(c, "u1", "c1", None)?;
+            // Re-upsert with a future expiry — second value wins.
+            upsert_channel_mute(c, "u1", "c1", Some("2099-12-31 00:00:00"))?;
+            let muted = get_muted_channels(c, "u1")?;
+            assert_eq!(muted.len(), 1);
+            assert_eq!(muted[0].1.as_deref(), Some("2099-12-31 00:00:00"));
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn expired_mute_is_not_returned_as_muted() {
+        let db = test_db();
+        seed(&db);
+        db.with_conn(|c| {
+            upsert_channel_mute(c, "u1", "c1", Some("2000-01-01 00:00:00"))?;
+            assert!(!is_channel_muted_for(c, "u1", "c1")?);
+            let muted = get_muted_channels(c, "u1")?;
+            assert!(muted.is_empty());
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn null_muted_until_means_indefinite() {
+        let db = test_db();
+        seed(&db);
+        db.with_conn(|c| {
+            upsert_channel_mute(c, "u1", "c1", None)?;
+            assert!(is_channel_muted_for(c, "u1", "c1")?);
+            let muted = get_muted_channels(c, "u1")?;
+            assert_eq!(muted.len(), 1);
+            assert!(muted[0].1.is_none());
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn get_muted_channels_returns_empty_for_user_without_mutes() {
+        let db = test_db();
+        seed(&db);
+        db.with_conn(|c| {
+            assert!(get_muted_channels(c, "u1")?.is_empty());
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn delete_channel_mute_unknown_pair_is_noop() {
+        let db = test_db();
+        seed(&db);
+        db.with_conn(|c| {
+            assert!(delete_channel_mute(c, "u1", "no-such-channel").is_ok());
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+}

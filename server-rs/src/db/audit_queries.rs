@@ -62,3 +62,94 @@ pub fn list_audit_events(
     })?;
     rows.collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::test_helpers::*;
+
+    fn seed_team(db: &crate::db::Database) {
+        db.with_conn(|c| crate::db::create_user(c, &make_user("u1", "alice", &[1u8; 32]))).unwrap();
+        db.with_conn(|c| crate::db::create_team(c, &make_team("t1", "Team", "u1"))).unwrap();
+    }
+
+    #[test]
+    fn insert_then_list_roundtrips_the_envelope() {
+        let db = test_db();
+        seed_team(&db);
+        db.with_conn(|c| {
+            insert_audit_event(c, "t1", Some("u1"), "member.join", Some("user"), Some("u1"),
+                Some(&serde_json::json!({"role": "everyone"})))?;
+            let events = list_audit_events(c, "t1", 10)?;
+            assert_eq!(events.len(), 1);
+            assert_eq!(events[0].action, "member.join");
+            assert_eq!(events[0].actor_user_id.as_deref(), Some("u1"));
+            assert_eq!(events[0].target_type.as_deref(), Some("user"));
+            assert_eq!(events[0].target_id.as_deref(), Some("u1"));
+            assert!(events[0].details.as_ref().unwrap().contains("everyone"));
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn insert_tolerates_none_actor_and_target() {
+        let db = test_db();
+        seed_team(&db);
+        db.with_conn(|c| {
+            insert_audit_event(c, "t1", None, "system.boot", None, None, None)?;
+            let events = list_audit_events(c, "t1", 10)?;
+            assert_eq!(events.len(), 1);
+            assert!(events[0].actor_user_id.is_none());
+            assert!(events[0].target_type.is_none());
+            assert!(events[0].details.is_none());
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn list_returns_empty_for_unknown_team() {
+        let db = test_db();
+        db.with_conn(|c| {
+            let events = list_audit_events(c, "no-such-team", 10)?;
+            assert!(events.is_empty());
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn list_honors_the_limit() {
+        let db = test_db();
+        seed_team(&db);
+        db.with_conn(|c| {
+            for i in 0..5 {
+                insert_audit_event(c, "t1", Some("u1"), &format!("evt.{}", i), None, None, None)?;
+            }
+            let events = list_audit_events(c, "t1", 3)?;
+            assert_eq!(events.len(), 3);
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn list_orders_by_created_at_desc() {
+        let db = test_db();
+        seed_team(&db);
+        db.with_conn(|c| {
+            insert_audit_event(c, "t1", Some("u1"), "first", None, None, None)?;
+            // SQLite datetime('now') resolution is 1 second — sleep
+            // briefly so the second insert gets a later timestamp.
+            std::thread::sleep(std::time::Duration::from_millis(1100));
+            insert_audit_event(c, "t1", Some("u1"), "second", None, None, None)?;
+            let events = list_audit_events(c, "t1", 10)?;
+            // Most-recent first.
+            assert_eq!(events[0].action, "second");
+            assert_eq!(events[1].action, "first");
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+}

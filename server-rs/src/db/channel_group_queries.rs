@@ -102,3 +102,128 @@ pub fn group_name_exists(
         .is_some();
     Ok(exists)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::test_helpers::*;
+
+    fn seed(db: &crate::db::Database) {
+        db.with_conn(|c| crate::db::create_user(c, &make_user("u1", "alice", &[1u8; 32]))).unwrap();
+        db.with_conn(|c| crate::db::create_team(c, &make_team("t1", "Team", "u1"))).unwrap();
+    }
+
+    fn group(id: &str, team_id: &str, name: &str) -> ChannelGroup {
+        let now = crate::db::now_str();
+        ChannelGroup {
+            id: id.into(),
+            team_id: team_id.into(),
+            name: name.into(),
+            position: 0,
+            created_at: now.clone(),
+            updated_at: now,
+            hidden_if_restricted: false,
+        }
+    }
+
+    #[test]
+    fn create_then_get_by_id_roundtrips() {
+        let db = test_db();
+        seed(&db);
+        db.with_conn(|c| {
+            create_group(c, &group("g1", "t1", "engineering"))?;
+            let got = get_group_by_id(c, "g1")?.unwrap();
+            assert_eq!(got.id, "g1");
+            assert_eq!(got.name, "engineering");
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn get_groups_by_team_returns_in_position_order() {
+        let db = test_db();
+        seed(&db);
+        db.with_conn(|c| {
+            let mut g_a = group("g-a", "t1", "alpha");
+            g_a.position = 2;
+            let mut g_b = group("g-b", "t1", "bravo");
+            g_b.position = 0;
+            let mut g_c = group("g-c", "t1", "charlie");
+            g_c.position = 1;
+            create_group(c, &g_a)?;
+            create_group(c, &g_b)?;
+            create_group(c, &g_c)?;
+            let groups = get_groups_by_team(c, "t1")?;
+            let names: Vec<&str> = groups.iter().map(|g| g.name.as_str()).collect();
+            assert_eq!(names, vec!["bravo", "charlie", "alpha"]);
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn update_group_changes_name_and_position() {
+        let db = test_db();
+        seed(&db);
+        db.with_conn(|c| {
+            create_group(c, &group("g1", "t1", "old"))?;
+            let mut g = get_group_by_id(c, "g1")?.unwrap();
+            g.name = "new".into();
+            g.position = 7;
+            g.hidden_if_restricted = true;
+            update_group(c, &g)?;
+            let got = get_group_by_id(c, "g1")?.unwrap();
+            assert_eq!(got.name, "new");
+            assert_eq!(got.position, 7);
+            assert!(got.hidden_if_restricted);
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn delete_group_removes_the_row() {
+        let db = test_db();
+        seed(&db);
+        db.with_conn(|c| {
+            create_group(c, &group("g1", "t1", "doomed"))?;
+            delete_group(c, "g1")?;
+            assert!(get_group_by_id(c, "g1")?.is_none());
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn group_name_exists_is_case_insensitive_and_trim_aware() {
+        let db = test_db();
+        seed(&db);
+        db.with_conn(|c| {
+            create_group(c, &group("g1", "t1", "Engineering"))?;
+            assert!(group_name_exists(c, "t1", "engineering", None)?);
+            assert!(group_name_exists(c, "t1", "  ENGINEERING  ", None)?);
+            assert!(!group_name_exists(c, "t1", "design", None)?);
+            // ignore_id excludes the matching row — useful for rename
+            // pre-flight checks.
+            assert!(!group_name_exists(c, "t1", "engineering", Some("g1"))?);
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn group_name_exists_is_team_scoped() {
+        let db = test_db();
+        seed(&db);
+        // Second team also called Team
+        db.with_conn(|c| crate::db::create_team(c, &make_team("t2", "Team Two", "u1"))).unwrap();
+        db.with_conn(|c| {
+            create_group(c, &group("g1", "t1", "Engineering"))?;
+            assert!(group_name_exists(c, "t1", "Engineering", None)?);
+            assert!(!group_name_exists(c, "t2", "Engineering", None)?);
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+}
