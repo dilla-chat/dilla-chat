@@ -1163,4 +1163,76 @@ mod tests {
         check_first_start(&db, &auth_svc, &Config::default());
         // Should have printed bootstrap info and created a token.
     }
+
+    // ── secret-file helpers ───────────────────────────────────────────
+
+    #[test]
+    fn read_secret_file_returns_content_with_trimmed_trailing_whitespace() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("secret");
+        std::fs::write(&path, "supersecret\n").unwrap();
+        let val = read_secret_file("LABEL", path.to_str().unwrap()).unwrap();
+        assert_eq!(val, "supersecret");
+    }
+
+    #[test]
+    fn read_secret_file_trims_carriage_return_and_tab() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("secret");
+        std::fs::write(&path, "value\t\r\n  ").unwrap();
+        let val = read_secret_file("LABEL", path.to_str().unwrap()).unwrap();
+        assert_eq!(val, "value");
+    }
+
+    #[test]
+    fn read_secret_file_returns_err_for_empty_after_trim() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("secret");
+        std::fs::write(&path, "   \n").unwrap();
+        let err = read_secret_file("LABEL", path.to_str().unwrap()).unwrap_err();
+        assert!(err.contains("empty"));
+        assert!(err.contains("LABEL"));
+    }
+
+    #[test]
+    fn read_secret_file_returns_err_for_missing_file() {
+        let err = read_secret_file("LABEL", "/no/such/file/12345").unwrap_err();
+        assert!(err.contains("LABEL"));
+        assert!(err.contains("read"));
+    }
+
+    #[test]
+    fn load_secrets_from_files_overrides_db_passphrase_from_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("db.pw");
+        std::fs::write(&path, "from-the-file").unwrap();
+
+        let mut cfg = Config::default();
+        cfg.db_passphrase = "in-config".into();
+        cfg.db_passphrase_file = path.to_str().unwrap().to_string();
+        load_secrets_from_files(&mut cfg).unwrap();
+        assert_eq!(cfg.db_passphrase, "from-the-file");
+    }
+
+    #[test]
+    fn load_secrets_from_files_noops_when_no_file_paths_set() {
+        let mut cfg = Config::default();
+        cfg.db_passphrase = "kept".into();
+        load_secrets_from_files(&mut cfg).unwrap();
+        assert_eq!(cfg.db_passphrase, "kept");
+    }
+
+    #[test]
+    fn load_secrets_from_files_returns_err_on_missing_file() {
+        let mut cfg = Config::default();
+        cfg.db_passphrase_file = "/no/such/file/abc".into();
+        assert!(load_secrets_from_files(&mut cfg).is_err());
+    }
+
+    // ── JWT-secret strength enforcement (success branches only) ───────
+
+    // enforce_jwt_secret_strength has std::process::exit(1) calls in
+    // its failure modes, which can't be tested in-process. The success
+    // branches mutate std::env globally and race with parallel tests,
+    // so they're left for an integration-test pass instead.
 }
