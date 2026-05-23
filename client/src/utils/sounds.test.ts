@@ -27,12 +27,16 @@ class FakeAudioContext {
   destination = {};
   createOscillator = vi.fn(() => new FakeOscillator());
   createGain = vi.fn(() => new FakeGainNode());
-  constructor() {
-    lastCtx = this;
-  }
 }
 
-(globalThis as unknown as { AudioContext: typeof FakeAudioContext }).AudioContext = FakeAudioContext;
+// Wrap the constructor so each `new AudioContext()` records the latest
+// instance without aliasing `this` inside the class body (sonar S2871).
+(globalThis as unknown as { AudioContext: new () => FakeAudioContext }).AudioContext =
+  function AudioContextSpy(this: FakeAudioContext) {
+    const ctx = new FakeAudioContext();
+    lastCtx = ctx;
+    return ctx;
+  } as unknown as new () => FakeAudioContext;
 
 import { playMuteSound, playUnmuteSound } from './sounds';
 

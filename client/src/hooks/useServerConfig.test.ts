@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
-import { useServerConfig } from './useServerConfig';
+// useServerConfig is imported dynamically inside each test via
+// `await import('./useServerConfig')` so the module-level cache resets
+// between tests (we call vi.resetModules() first).
 
 describe('useServerConfig', () => {
   let fetchSpy: ReturnType<typeof vi.spyOn>;
