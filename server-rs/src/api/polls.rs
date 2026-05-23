@@ -192,3 +192,25 @@ async fn broadcast_to_channel(state: &AppState, channel_id: &str, kind: &str, pa
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_poll_request_requires_both_fields() {
+        let r: CreatePollRequest = serde_json::from_str(r#"{"question":"q?","options":["a","b"]}"#).unwrap();
+        assert_eq!(r.question, "q?");
+        assert_eq!(r.options, vec!["a".to_string(), "b".to_string()]);
+        assert!(serde_json::from_str::<CreatePollRequest>(r#"{"question":"q"}"#).is_err());
+        assert!(serde_json::from_str::<CreatePollRequest>(r#"{"options":[]}"#).is_err());
+    }
+
+    #[test]
+    fn vote_request_parses_signed_index() {
+        let r: VoteRequest = serde_json::from_str(r#"{"option_index":0}"#).unwrap();
+        assert_eq!(r.option_index, 0);
+        let r: VoteRequest = serde_json::from_str(r#"{"option_index":-1}"#).unwrap();
+        assert_eq!(r.option_index, -1);
+    }
+}

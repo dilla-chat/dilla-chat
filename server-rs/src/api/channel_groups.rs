@@ -347,3 +347,43 @@ async fn broadcast(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_group_request_requires_name() {
+        let r: CreateGroupRequest = serde_json::from_str(r#"{"name":"voice"}"#).unwrap();
+        assert_eq!(r.name, "voice");
+        assert!(serde_json::from_str::<CreateGroupRequest>("{}").is_err());
+    }
+
+    #[test]
+    fn update_group_request_treats_all_fields_as_optional() {
+        let r: UpdateGroupRequest = serde_json::from_str("{}").unwrap();
+        assert!(r.name.is_none());
+        assert!(r.position.is_none());
+        assert!(r.hidden_if_restricted.is_none());
+    }
+
+    #[test]
+    fn update_group_request_position_is_signed() {
+        let r: UpdateGroupRequest = serde_json::from_str(r#"{"position":-3}"#).unwrap();
+        assert_eq!(r.position, Some(-3));
+    }
+
+    #[test]
+    fn set_access_request_role_ids_required_hidden_default_none() {
+        let r: SetAccessRequest =
+            serde_json::from_str(r#"{"role_ids":["r1","r2"]}"#).unwrap();
+        assert_eq!(r.role_ids, vec!["r1".to_string(), "r2".to_string()]);
+        assert!(r.hidden_if_restricted.is_none());
+    }
+
+    #[test]
+    fn set_access_request_accepts_empty_role_ids() {
+        let r: SetAccessRequest = serde_json::from_str(r#"{"role_ids":[]}"#).unwrap();
+        assert!(r.role_ids.is_empty());
+    }
+}

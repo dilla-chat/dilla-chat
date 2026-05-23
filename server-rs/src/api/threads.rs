@@ -267,3 +267,46 @@ pub async fn list_messages(
 
     json_ok(messages)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_thread_request_title_defaults_empty() {
+        let r: CreateThreadRequest =
+            serde_json::from_str(r#"{"parent_message_id":"m1"}"#).unwrap();
+        assert_eq!(r.parent_message_id, "m1");
+        assert_eq!(r.title, "");
+    }
+
+    #[test]
+    fn update_thread_request_only_field_is_optional_title() {
+        let r: UpdateThreadRequest = serde_json::from_str("{}").unwrap();
+        assert!(r.title.is_none());
+        let r: UpdateThreadRequest = serde_json::from_str(r#"{"title":"x"}"#).unwrap();
+        assert_eq!(r.title.as_deref(), Some("x"));
+    }
+
+    #[test]
+    fn create_message_request_default_msg_type_is_text() {
+        let r: CreateMessageRequest = serde_json::from_str(r#"{"content":"hi"}"#).unwrap();
+        assert_eq!(r.msg_type, "text");
+    }
+
+    #[test]
+    fn create_message_request_renames_type_to_msg_type() {
+        let r: CreateMessageRequest =
+            serde_json::from_str(r#"{"content":"x","type":"system"}"#).unwrap();
+        assert_eq!(r.msg_type, "system");
+    }
+
+    #[test]
+    fn list_messages_query_defaults_match_messages_handler() {
+        // Threads list endpoint mirrors the channel list endpoint
+        // defaults — keep them in sync.
+        let q: ListMessagesQuery = serde_json::from_str("{}").unwrap();
+        assert_eq!(q.before, "");
+        assert_eq!(q.limit, 50);
+    }
+}
