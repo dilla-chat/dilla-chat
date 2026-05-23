@@ -1586,4 +1586,107 @@ mod tests {
         })
         .unwrap();
     }
+
+    // ── pure-helper coverage for the risk-scoring path ───────────────
+
+    #[test]
+    fn user_agent_family_classifies_known_browsers() {
+        assert_eq!(user_agent_family(Some("Mozilla/5.0 Firefox/120.0")), "firefox");
+        assert_eq!(user_agent_family(Some("Mozilla/5.0 Edg/120.0")), "edge");
+        assert_eq!(user_agent_family(Some("Mozilla/5.0 Chrome/120.0")), "chrome");
+        // Safari without "Chrome" elsewhere — note Edge and Chrome
+        // tokens take priority because Safari strings include "Safari".
+        assert_eq!(user_agent_family(Some("Mozilla/5.0 Version/17 Safari/605")), "safari");
+        assert_eq!(user_agent_family(Some("dilla-tauri/0.1.0")), "tauri");
+        assert_eq!(user_agent_family(Some("MyCustomBot/1.0")), "other");
+    }
+
+    #[test]
+    fn user_agent_family_returns_unknown_when_absent() {
+        assert_eq!(user_agent_family(None), "unknown");
+    }
+
+    #[test]
+    fn ip_hint_masks_last_octet_of_ipv4() {
+        assert_eq!(ip_hint("203.0.113.42"), "203.0.113.x");
+    }
+
+    #[test]
+    fn ip_hint_masks_last_hextet_of_ipv6() {
+        assert_eq!(ip_hint("2001:db8::1"), "2001:db8:::x");
+    }
+
+    #[test]
+    fn ip_hint_returns_x_for_unusable_input() {
+        assert_eq!(ip_hint("not-an-ip"), "x");
+    }
+
+    #[test]
+    fn derive_country_from_ip_returns_none_for_private_ranges() {
+        assert!(derive_country_from_ip(Some("10.0.0.1")).is_none());
+        assert!(derive_country_from_ip(Some("192.168.1.1")).is_none());
+        assert!(derive_country_from_ip(Some("172.16.0.1")).is_none());
+        assert!(derive_country_from_ip(Some("127.0.0.1")).is_none());
+        assert!(derive_country_from_ip(Some("::1")).is_none());
+    }
+
+    #[test]
+    fn derive_country_from_ip_returns_some_for_public_ip_without_geoip_db() {
+        // Without a configured mmdb the fallback is "unknown".
+        let out = derive_country_from_ip(Some("8.8.8.8"));
+        assert!(out.is_some());
+    }
+
+    #[test]
+    fn derive_country_from_ip_none_input_returns_none() {
+        assert!(derive_country_from_ip(None).is_none());
+    }
+
+    #[test]
+    fn ip_is_tor_exit_returns_false_for_unparseable_ip() {
+        assert!(!ip_is_tor_exit("not-an-ip"));
+    }
+
+    #[test]
+    fn ip_is_tor_exit_returns_false_when_no_list_loaded() {
+        // The exit list is only populated by init() with a real file path.
+        // In tests, the OnceLock is either None or empty depending on
+        // ordering — `false` is the correct expectation either way.
+        assert!(!ip_is_tor_exit("203.0.113.1"));
+    }
+
+    #[test]
+    fn compute_risk_score_zero_when_no_previous_context() {
+        let score = compute_risk_score(None, Some("8.8.8.8"), Some("Mozilla/5.0 Chrome/120"), Some("US"));
+        assert_eq!(score, 0);
+    }
+
+    #[test]
+    fn compute_risk_score_country_change_adds_30() {
+        let prev = (Some("203.0.113.1".to_string()), Some("Mozilla/5.0 Chrome/120".to_string()), Some("US".to_string()));
+        let score = compute_risk_score(Some(&prev), Some("203.0.113.1"), Some("Mozilla/5.0 Chrome/120"), Some("DE"));
+        assert_eq!(score, 30);
+    }
+
+    #[test]
+    fn compute_risk_score_ua_family_change_adds_20() {
+        let prev = (Some("8.8.8.8".to_string()), Some("Mozilla/5.0 Chrome/120".to_string()), Some("US".to_string()));
+        let score = compute_risk_score(Some(&prev), Some("8.8.8.8"), Some("Mozilla/5.0 Firefox/120"), Some("US"));
+        assert_eq!(score, 20);
+    }
+
+    #[test]
+    fn compute_risk_score_same_signals_zero() {
+        let prev = (Some("8.8.8.8".to_string()), Some("Mozilla/5.0 Chrome/120".to_string()), Some("US".to_string()));
+        let score = compute_risk_score(Some(&prev), Some("8.8.8.8"), Some("Mozilla/5.0 Chrome/120"), Some("US"));
+        assert_eq!(score, 0);
+    }
+
+    #[test]
+    fn compute_risk_score_combines_country_and_ua_change() {
+        let prev = (Some("1.1.1.1".to_string()), Some("Mozilla/5.0 Safari/605".to_string()), Some("US".to_string()));
+        let score = compute_risk_score(Some(&prev), Some("1.1.1.1"), Some("Mozilla/5.0 Chrome/120"), Some("JP"));
+        // 30 (country) + 20 (UA family)
+        assert_eq!(score, 50);
+    }
 }
