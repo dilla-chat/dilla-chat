@@ -60,3 +60,29 @@ pub async fn update_own(
         "custom_status": body.custom_status,
     })))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn update_presence_requires_status_but_custom_status_defaults_empty() {
+        let r: UpdatePresenceRequest = serde_json::from_str(r#"{"status":"online"}"#).unwrap();
+        assert_eq!(r.status, "online");
+        assert_eq!(r.custom_status, "");
+    }
+
+    #[test]
+    fn update_presence_rejects_missing_status() {
+        assert!(serde_json::from_str::<UpdatePresenceRequest>("{}").is_err());
+    }
+
+    #[test]
+    fn update_presence_accepts_dnd_idle_offline() {
+        for s in ["online", "idle", "dnd", "offline"] {
+            let body = format!(r#"{{"status":"{s}"}}"#);
+            let r: UpdatePresenceRequest = serde_json::from_str(&body).unwrap();
+            assert_eq!(r.status, s);
+        }
+    }
+}

@@ -72,3 +72,24 @@ pub async fn set_giphy(
     .await?;
     json_ok(serde_json::json!({ "configured": !trimmed.is_empty() }))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn set_giphy_request_requires_api_key() {
+        let r: SetGiphyRequest = serde_json::from_str(r#"{"api_key":"k"}"#).unwrap();
+        assert_eq!(r.api_key, "k");
+        assert!(serde_json::from_str::<SetGiphyRequest>("{}").is_err());
+    }
+
+    #[test]
+    fn set_giphy_request_empty_key_clears_existing() {
+        // Per the doc comment on api_key: empty string clears the
+        // existing key. We test that the parser accepts an empty
+        // string without rejecting it.
+        let r: SetGiphyRequest = serde_json::from_str(r#"{"api_key":""}"#).unwrap();
+        assert_eq!(r.api_key, "");
+    }
+}
