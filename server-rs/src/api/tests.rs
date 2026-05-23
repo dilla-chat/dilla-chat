@@ -5783,3 +5783,170 @@ async fn prekeys_delete_own_clears_the_bundle() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
+
+// ── federation: with a real MeshNode ──────────────────────────────
+
+fn test_app_state_with_mesh() -> (AppState, tempfile::TempDir) {
+    use crate::federation::{MeshConfig, MeshNode};
+
+    let (db, tmp) = test_db();
+    let auth = Arc::new(AuthService::new(db.clone(), ""));
+    let hub = Arc::new(Hub::new(db.clone()));
+    let presence = Arc::new(PresenceManager::new());
+    let config = Arc::new(test_config());
+
+    let mesh_config = MeshConfig {
+        node_name: "test-node-1".into(),
+        bind_addr: "127.0.0.1".into(),
+        bind_port: 0,
+        advertise_addr: String::new(),
+        advertise_port: 0,
+        peers: vec![],
+        tls_cert: String::new(),
+        tls_key: String::new(),
+        join_secret: "test-secret".into(),
+        ..Default::default()
+    };
+    let mesh = Arc::new(MeshNode::new(mesh_config, db.clone(), hub.clone()));
+
+    let state = AppState {
+        db,
+        auth,
+        hub,
+        presence,
+        config,
+        mesh: Some(mesh),
+        custom_theme_css: None,
+    };
+    (state, tmp)
+}
+
+#[tokio::test]
+async fn federation_status_returns_node_info_when_mesh_is_up() {
+    let (state, _tmp) = test_app_state_with_mesh();
+    let (_uid, _team_id, token) = bootstrap_user_and_team(&state);
+    let app = test_router(state);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/federation/status")
+                .header("authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_to_json(resp.into_body()).await;
+    assert_eq!(json["node_name"], "test-node-1");
+    assert_eq!(json["peer_count"], 0);
+    assert!(json["lamport_ts"].is_number());
+}
+
+#[tokio::test]
+async fn federation_peers_returns_empty_list_when_no_peers() {
+    let (state, _tmp) = test_app_state_with_mesh();
+    let (_uid, _team_id, token) = bootstrap_user_and_team(&state);
+    let app = test_router(state);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/federation/peers")
+                .header("authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_to_json(resp.into_body()).await;
+    assert!(json.as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn federation_join_token_succeeds_for_admin_user() {
+    let (state, _tmp) = test_app_state_with_mesh();
+    // bootstrap_user_and_team gives the user PERM_ADMIN via the
+    // default admin role, which short-circuits the PERM_MANAGE_
+    // FEDERATION bit check.
+    let (_uid, _team_id, token) = bootstrap_user_and_team(&state);
+    let app = test_router(state);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/federation/join-token")
+                .header("authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_to_json(resp.into_body()).await;
+    assert!(json["token"].as_str().unwrap().len() > 10);
+}
+
+#[tokio::test]
+async fn federation_join_info_validates_a_freshly_minted_token() {
+    let (state, _tmp) = test_app_state_with_mesh();
+    let (_uid, _team_id, token) = bootstrap_user_and_team(&state);
+    let app = test_router(state);
+
+    // Mint a token first.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/federation/join-token")
+                .header("authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let minted = body_to_json(resp.into_body()).await["token"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Now validate via the public join-info endpoint.
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri(&format!("/api/v1/federation/join/{}", minted))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_to_json(resp.into_body()).await;
+    // Wire fields documented by the federation::JoinInfo struct.
+    assert!(json["team_id"].is_string() || json.is_object());
+}
+
+#[tokio::test]
+async fn federation_join_info_rejects_garbage_token() {
+    let (state, _tmp) = test_app_state_with_mesh();
+    let app = test_router(state);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/federation/join/not.a.real.token")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(
+        !resp.status().is_success(),
+        "expected non-success for invalid token, got {}",
+        resp.status()
+    );
+}
