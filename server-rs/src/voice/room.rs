@@ -228,3 +228,130 @@ impl RoomManager {
             .collect()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn add_peer_places_user_into_named_channel_with_default_flags() {
+        let m = RoomManager::new();
+        let evicted = m.add_peer("c1", "u1", "alice", "t1").await;
+        assert_eq!(evicted, Vec::<String>::new());
+        let room = m.get_room("c1").await.unwrap();
+        assert_eq!(room.len(), 1);
+        assert_eq!(room[0].user_id, "u1");
+        assert_eq!(room[0].username, "alice");
+        assert!(!room[0].muted);
+        assert!(!room[0].deafened);
+        assert!(!room[0].speaking);
+        assert!(!room[0].screen_sharing);
+        assert!(!room[0].webcam_sharing);
+    }
+
+    #[tokio::test]
+    async fn add_peer_evicts_from_any_prior_channel_one_voice_at_a_time() {
+        let m = RoomManager::new();
+        m.add_peer("c1", "u1", "alice", "t1").await;
+        let evicted = m.add_peer("c2", "u1", "alice", "t1").await;
+        assert_eq!(evicted, vec!["c1".to_string()]);
+        // c1 was emptied → removed
+        assert!(m.get_room("c1").await.is_none());
+        // u1 now lives in c2
+        assert_eq!(m.get_room("c2").await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn add_peer_doesnt_evict_others_when_user_moves() {
+        let m = RoomManager::new();
+        m.add_peer("c1", "u1", "alice", "t1").await;
+        m.add_peer("c1", "u2", "bob", "t1").await;
+        m.add_peer("c2", "u1", "alice", "t1").await;
+        // c1 still holds bob — not emptied.
+        let c1 = m.get_room("c1").await.unwrap();
+        assert_eq!(c1.len(), 1);
+        assert_eq!(c1[0].user_id, "u2");
+    }
+
+    #[tokio::test]
+    async fn remove_peer_drops_empty_channel() {
+        let m = RoomManager::new();
+        m.add_peer("c1", "u1", "alice", "t1").await;
+        m.remove_peer("c1", "u1").await;
+        assert!(m.get_room("c1").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn remove_peer_everywhere_returns_every_channel_the_user_was_in() {
+        let m = RoomManager::new();
+        m.add_peer("c1", "u1", "alice", "t1").await;
+        // (manually inject another channel by joining a different user
+        // first, then adding u1 there)
+        m.add_peer("c2", "u2", "bob", "t1").await;
+        m.add_peer("c2", "u1", "alice2", "t1").await;
+        // u1 should now be in c2 only (was evicted from c1 by the second add_peer).
+        let removed = m.remove_peer_everywhere("u1").await;
+        assert!(removed.contains(&"c2".to_string()));
+        // c1 was emptied by the eviction earlier — already gone.
+        assert!(!removed.contains(&"c1".to_string()));
+    }
+
+    #[tokio::test]
+    async fn set_muted_and_set_deafened_update_the_peer() {
+        let m = RoomManager::new();
+        m.add_peer("c1", "u1", "alice", "t1").await;
+        m.set_muted("c1", "u1", true).await;
+        m.set_deafened("c1", "u1", true).await;
+        let r = m.get_room("c1").await.unwrap();
+        assert!(r[0].muted);
+        assert!(r[0].deafened);
+    }
+
+    #[tokio::test]
+    async fn screen_sharer_returns_the_active_sharer_or_none() {
+        let m = RoomManager::new();
+        m.add_peer("c1", "u1", "alice", "t1").await;
+        m.add_peer("c1", "u2", "bob", "t1").await;
+        assert!(m.screen_sharer("c1").await.is_none());
+        m.set_screen_sharing("c1", "u2", true).await;
+        assert_eq!(m.screen_sharer("c1").await, Some("u2".to_string()));
+        m.set_screen_sharing("c1", "u2", false).await;
+        assert!(m.screen_sharer("c1").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn get_rooms_by_team_filters_correctly() {
+        let m = RoomManager::new();
+        m.add_peer("c1", "u1", "alice", "tA").await;
+        m.add_peer("c2", "u2", "bob", "tA").await;
+        m.add_peer("c3", "u3", "carol", "tB").await;
+        let rooms_a = m.get_rooms_by_team("tA").await;
+        let mut ids: Vec<&str> = rooms_a.iter().map(|r| r.channel_id.as_str()).collect();
+        ids.sort();
+        assert_eq!(ids, vec!["c1", "c2"]);
+        let rooms_b = m.get_rooms_by_team("tB").await;
+        assert_eq!(rooms_b.len(), 1);
+        assert_eq!(rooms_b[0].channel_id, "c3");
+    }
+
+    #[tokio::test]
+    async fn set_muted_on_unknown_user_is_a_noop() {
+        let m = RoomManager::new();
+        m.add_peer("c1", "u1", "alice", "t1").await;
+        m.set_muted("c1", "ghost", true).await;
+        let r = m.get_room("c1").await.unwrap();
+        // u1 still unmuted; ghost was never added.
+        assert!(!r[0].muted);
+        assert_eq!(r.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn webcam_sharing_can_be_toggled_per_peer() {
+        let m = RoomManager::new();
+        m.add_peer("c1", "u1", "alice", "t1").await;
+        m.set_webcam_sharing("c1", "u1", true).await;
+        assert!(m.get_room("c1").await.unwrap()[0].webcam_sharing);
+        m.set_webcam_sharing("c1", "u1", false).await;
+        assert!(!m.get_room("c1").await.unwrap()[0].webcam_sharing);
+    }
+}
