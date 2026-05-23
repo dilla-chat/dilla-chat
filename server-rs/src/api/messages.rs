@@ -329,3 +329,49 @@ pub async fn delete_msg(
 
     json_ok_true()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn list_messages_query_defaults() {
+        let q: ListMessagesQuery = serde_json::from_str("{}").unwrap();
+        assert_eq!(q.before, "");
+        assert_eq!(q.limit, 50);
+    }
+
+    #[test]
+    fn list_messages_query_explicit_values() {
+        let q: ListMessagesQuery = serde_json::from_str(r#"{"before":"2026-01-01","limit":25}"#).unwrap();
+        assert_eq!(q.before, "2026-01-01");
+        assert_eq!(q.limit, 25);
+    }
+
+    #[test]
+    fn default_msg_type_is_text() {
+        let r: CreateMessageRequest = serde_json::from_str(r#"{"content":"hi"}"#).unwrap();
+        assert_eq!(r.msg_type, "text");
+    }
+
+    #[test]
+    fn create_message_request_renames_type_to_msg_type() {
+        let r: CreateMessageRequest = serde_json::from_str(r#"{"content":"x","type":"system"}"#).unwrap();
+        assert_eq!(r.msg_type, "system");
+    }
+
+    #[test]
+    fn max_page_limit_is_at_least_default() {
+        // Sanity check: the server-side clamp must be ≥ the default
+        // limit, otherwise a client requesting the default would be
+        // clamped lower than what they thought they'd get.
+        assert!(MAX_PAGE_LIMIT >= default_limit());
+        assert_eq!(MAX_PAGE_LIMIT, 200);
+    }
+
+    #[test]
+    fn edit_message_request_requires_content() {
+        // Missing `content` must fail.
+        assert!(serde_json::from_str::<EditMessageRequest>("{}").is_err());
+    }
+}
