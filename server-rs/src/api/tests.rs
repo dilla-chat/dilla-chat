@@ -232,6 +232,15 @@ fn test_router(state: AppState) -> Router {
             put(super::channel_mutes::mute).delete(super::channel_mutes::unmute),
         )
         .route("/api/v1/teams/{team_id}/audit", get(super::audit::list))
+        .route(
+            "/api/v1/teams/{team_id}/integrations/giphy",
+            get(super::integrations::get_giphy).put(super::integrations::set_giphy),
+        )
+        .route(
+            "/api/v1/prekeys",
+            post(super::prekeys::upload).delete(super::prekeys::delete_own),
+        )
+        .route("/api/v1/prekeys/{user_id}", get(super::prekeys::get_bundle))
         .route("/api/v1/auth/ws-ticket", post(super::ws_ticket))
         .route("/api/v1/auth/logout", post(super::auth_handlers::logout))
         .route("/api/v1/federation/status", get(super::federation::get_status))
@@ -5432,4 +5441,345 @@ async fn audit_list_for_team_returns_array() {
     // audit_events table is empty on a fresh bootstrap until an action
     // runs — the response shape is still an array (or object with array).
     assert!(json.is_array() || json.is_object());
+}
+
+// ── integrations: giphy ────────────────────────────────────────────
+
+#[tokio::test]
+async fn integrations_giphy_unconfigured_by_default() {
+    let (state, _tmp) = test_app_state();
+    let (_uid, team_id, token) = bootstrap_user_and_team(&state);
+    let app = test_router(state);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri(&format!("/api/v1/teams/{}/integrations/giphy", team_id))
+                .header("authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_to_json(resp.into_body()).await;
+    assert_eq!(json["configured"], false);
+}
+
+#[tokio::test]
+async fn integrations_giphy_set_then_get_reports_configured() {
+    let (state, _tmp) = test_app_state();
+    let (_uid, team_id, token) = bootstrap_user_and_team(&state);
+    let app = test_router(state);
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(&format!("/api/v1/teams/{}/integrations/giphy", team_id))
+                .header("authorization", format!("Bearer {}", token))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::json!({ "api_key": "real-giphy-key-here" }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_to_json(resp.into_body()).await;
+    assert_eq!(json["configured"], true);
+
+    // GET — also reports configured (without leaking the key).
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(&format!("/api/v1/teams/{}/integrations/giphy", team_id))
+                .header("authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let json = body_to_json(resp.into_body()).await;
+    assert_eq!(json["configured"], true);
+    // Critically: the key itself never appears in the response body.
+    assert!(json.get("api_key").is_none());
+}
+
+#[tokio::test]
+async fn integrations_giphy_set_empty_clears() {
+    let (state, _tmp) = test_app_state();
+    let (_uid, team_id, token) = bootstrap_user_and_team(&state);
+    let app = test_router(state);
+
+    // Set then clear.
+    let _ = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(&format!("/api/v1/teams/{}/integrations/giphy", team_id))
+                .header("authorization", format!("Bearer {}", token))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::json!({ "api_key": "tmp" }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(&format!("/api/v1/teams/{}/integrations/giphy", team_id))
+                .header("authorization", format!("Bearer {}", token))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::json!({ "api_key": "" }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let json = body_to_json(resp.into_body()).await;
+    assert_eq!(json["configured"], false);
+}
+
+#[tokio::test]
+async fn integrations_giphy_rejects_too_long_key() {
+    let (state, _tmp) = test_app_state();
+    let (_uid, team_id, token) = bootstrap_user_and_team(&state);
+    let app = test_router(state);
+
+    let too_long = "a".repeat(257);
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(&format!("/api/v1/teams/{}/integrations/giphy", team_id))
+                .header("authorization", format!("Bearer {}", token))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::json!({ "api_key": too_long }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+// ── prekeys ─────────────────────────────────────────────────────────
+
+fn b64(b: &[u8]) -> String {
+    use base64::Engine as _;
+    base64::engine::general_purpose::STANDARD.encode(b)
+}
+
+#[tokio::test]
+async fn prekeys_upload_then_get_bundle_for_self() {
+    let (state, _tmp) = test_app_state();
+    let (uid, _team_id, token) = bootstrap_user_and_team(&state);
+    let app = test_router(state);
+
+    // Upload a bundle.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/prekeys")
+                .header("authorization", format!("Bearer {}", token))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::json!({
+                        "identity_key":       b64(&[1u8; 32]),
+                        "identity_dh_key":    b64(&[2u8; 32]),
+                        "signed_prekey":      b64(&[3u8; 32]),
+                        "signed_prekey_signature": b64(&[4u8; 64]),
+                        "one_time_prekeys":   [b64(&[5u8; 32]), b64(&[6u8; 32])],
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // GET own bundle (same team trivially) — VULN-006 shared-team check
+    // passes because the caller IS the target.
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri(&format!("/api/v1/prekeys/{}", uid))
+                .header("authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_to_json(resp.into_body()).await;
+    assert_eq!(json["user_id"], uid);
+    assert!(json["identity_key"].as_str().unwrap().len() > 0);
+}
+
+#[tokio::test]
+async fn prekeys_upload_rejects_invalid_base64() {
+    let (state, _tmp) = test_app_state();
+    let (_uid, _team_id, token) = bootstrap_user_and_team(&state);
+    let app = test_router(state);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/prekeys")
+                .header("authorization", format!("Bearer {}", token))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::json!({
+                        "identity_key": "not-base64!@#$",
+                        "identity_dh_key": b64(&[2u8; 32]),
+                        "signed_prekey": b64(&[3u8; 32]),
+                        "signed_prekey_signature": b64(&[4u8; 64]),
+                        "one_time_prekeys": [],
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn prekeys_get_bundle_404_when_target_has_no_bundle() {
+    let (state, _tmp) = test_app_state();
+    let (uid, _team_id, token) = bootstrap_user_and_team(&state);
+    let app = test_router(state);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri(&format!("/api/v1/prekeys/{}", uid))
+                .header("authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn prekeys_get_bundle_forbidden_for_unrelated_user() {
+    let (state, _tmp) = test_app_state();
+    let (_uid, _team_id, token) = bootstrap_user_and_team(&state);
+    // Seed a stranger who shares no team with the caller, AND give
+    // them a bundle (so the 404 path isn't what we hit first).
+    state.db.with_conn(|conn| {
+        db::create_user(conn, &db::User {
+            id: "stranger".into(),
+            username: "stranger".into(),
+            display_name: "Stranger".into(),
+            public_key: vec![7u8; 32],
+            avatar_url: String::new(),
+            status_text: String::new(),
+            status_type: "online".into(),
+            is_admin: false,
+            created_at: db::now_str(),
+            updated_at: db::now_str(),
+            ..Default::default()
+        })?;
+        db::save_prekey_bundle(conn, &db::PrekeyBundle {
+            id: db::new_id(),
+            user_id: "stranger".into(),
+            identity_key: vec![1u8; 32],
+            identity_dh_key: vec![2u8; 32],
+            signed_prekey: vec![3u8; 32],
+            signed_prekey_signature: vec![4u8; 64],
+            one_time_prekeys: b"[]".to_vec(),
+            uploaded_at: db::now_str(),
+        })
+    }).unwrap();
+    let app = test_router(state);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/prekeys/stranger")
+                .header("authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn prekeys_delete_own_clears_the_bundle() {
+    let (state, _tmp) = test_app_state();
+    let (uid, _team_id, token) = bootstrap_user_and_team(&state);
+    let app = test_router(state);
+
+    // Upload first so there's something to delete.
+    let _ = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/prekeys")
+                .header("authorization", format!("Bearer {}", token))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::json!({
+                        "identity_key": b64(&[1u8; 32]),
+                        "identity_dh_key": b64(&[2u8; 32]),
+                        "signed_prekey": b64(&[3u8; 32]),
+                        "signed_prekey_signature": b64(&[4u8; 64]),
+                        "one_time_prekeys": [],
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    // Delete.
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/v1/prekeys")
+                .header("authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // GET should now 404 even for self.
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri(&format!("/api/v1/prekeys/{}", uid))
+                .header("authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
