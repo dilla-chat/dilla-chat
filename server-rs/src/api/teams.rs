@@ -641,3 +641,48 @@ async fn broadcast_member_left(hub: &Arc<Hub>, team_id: &str, user_id: &str) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_team_request_requires_name_but_description_defaults_empty() {
+        let r: CreateTeamRequest = serde_json::from_str(r#"{"name":"T"}"#).unwrap();
+        assert_eq!(r.name, "T");
+        assert_eq!(r.description, "");
+        assert!(serde_json::from_str::<CreateTeamRequest>("{}").is_err());
+    }
+
+    #[test]
+    fn update_team_request_treats_all_fields_as_optional() {
+        let r: UpdateTeamRequest = serde_json::from_str("{}").unwrap();
+        assert!(r.name.is_none());
+        assert!(r.description.is_none());
+        assert!(r.icon_url.is_none());
+        assert!(r.force_turn_relay.is_none());
+    }
+
+    #[test]
+    fn update_team_request_force_turn_relay_parses_true_and_false() {
+        let r: UpdateTeamRequest = serde_json::from_str(r#"{"force_turn_relay":true}"#).unwrap();
+        assert_eq!(r.force_turn_relay, Some(true));
+        let r: UpdateTeamRequest = serde_json::from_str(r#"{"force_turn_relay":false}"#).unwrap();
+        assert_eq!(r.force_turn_relay, Some(false));
+    }
+
+    #[test]
+    fn update_member_request_role_ids_is_optional_vec() {
+        let r: UpdateMemberRequest =
+            serde_json::from_str(r#"{"role_ids":["r1","r2"]}"#).unwrap();
+        assert_eq!(r.role_ids.as_deref(), Some(["r1".to_string(), "r2".to_string()].as_slice()));
+    }
+
+    #[test]
+    fn ban_request_reason_defaults_empty() {
+        let r: BanRequest = serde_json::from_str("{}").unwrap();
+        assert_eq!(r.reason, "");
+        let r: BanRequest = serde_json::from_str(r#"{"reason":"spam"}"#).unwrap();
+        assert_eq!(r.reason, "spam");
+    }
+}
