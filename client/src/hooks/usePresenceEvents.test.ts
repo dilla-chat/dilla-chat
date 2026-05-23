@@ -19,6 +19,16 @@ vi.mock('../services/websocket', () => ({
   },
 }));
 
+// services/sounds.ts pulls in userSettingsStore → zustand/middleware,
+// which loads asynchronously and can race the env teardown when this
+// test file finishes. Stub the sound functions so the import chain
+// stops before zustand/middleware enters it. (The actual sounds module
+// is covered by services/sounds.test.ts.)
+vi.mock('../services/sounds', () => ({
+  playJoinSound: vi.fn(),
+  playLeaveSound: vi.fn(),
+}));
+
 import { usePresenceEvents } from './usePresenceEvents';
 import { usePresenceStore } from '../stores/presenceStore';
 import { useVoiceStore } from '../stores/voiceStore';
