@@ -521,3 +521,90 @@ pub struct ResponseEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn event_new_wraps_payload_and_preserves_type() {
+        let ev = Event::new("test:event", serde_json::json!({"x": 1})).unwrap();
+        assert_eq!(ev.event_type, "test:event");
+        assert_eq!(ev.payload, serde_json::json!({"x": 1}));
+    }
+
+    #[test]
+    fn event_new_accepts_unit_payload() {
+        let ev = Event::new("ping", ()).unwrap();
+        assert_eq!(ev.event_type, "ping");
+        assert_eq!(ev.payload, serde_json::json!(null));
+    }
+
+    #[test]
+    fn event_to_bytes_roundtrips_through_serde() {
+        let ev = Event::new("greeting", serde_json::json!({"hi": "world"})).unwrap();
+        let bytes = ev.to_bytes().unwrap();
+        let parsed: Event = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(parsed.event_type, "greeting");
+        assert_eq!(parsed.payload, serde_json::json!({"hi": "world"}));
+    }
+
+    #[test]
+    fn event_type_constants_match_protocol_names() {
+        // Lock the wire format — if any of these change, every client
+        // breaks. Treat these constants as part of the public API.
+        assert_eq!(EVENT_MESSAGE_SEND, "message:send");
+        assert_eq!(EVENT_MESSAGE_NEW, "message:new");
+        assert_eq!(EVENT_TYPING_START, "typing:start");
+        assert_eq!(EVENT_TYPING_INDICATOR, "typing:indicator");
+        assert_eq!(EVENT_PRESENCE_CHANGED, "presence:changed");
+        assert_eq!(EVENT_PING, "ping");
+        assert_eq!(EVENT_PONG, "pong");
+        assert_eq!(ACTION_SYNC_INIT, "sync:init");
+    }
+
+    #[test]
+    fn event_deserialize_treats_missing_payload_as_null() {
+        let ev: Event = serde_json::from_str(r#"{"type":"ping"}"#).unwrap();
+        assert_eq!(ev.event_type, "ping");
+        assert_eq!(ev.payload, serde_json::json!(null));
+    }
+
+    #[test]
+    fn message_send_payload_defaults_unset_fields() {
+        let s = r#"{"channel_id":"c1","content":"hi"}"#;
+        let p: MessageSendPayload = serde_json::from_str(s).unwrap();
+        assert_eq!(p.channel_id, "c1");
+        assert_eq!(p.content, "hi");
+        assert_eq!(p.msg_type, "");
+        assert!(p.thread_id.is_none());
+        assert!(p.attachment_ids.is_empty());
+        assert!(p.reply_to_message_id.is_none());
+    }
+
+    #[test]
+    fn message_send_payload_renames_msg_type_to_type() {
+        let p = MessageSendPayload {
+            channel_id: "c".into(),
+            content: "x".into(),
+            msg_type: "system".into(),
+            thread_id: None,
+            attachment_ids: vec![],
+            reply_to_message_id: None,
+        };
+        let s = serde_json::to_string(&p).unwrap();
+        // Wire field is `type`, not `msg_type`.
+        assert!(s.contains("\"type\":\"system\""));
+        assert!(!s.contains("msg_type"));
+    }
+
+    #[test]
+    fn attachment_payload_default_is_empty() {
+        let a = AttachmentPayload::default();
+        assert_eq!(a.id, "");
+        assert_eq!(a.filename, "");
+        assert_eq!(a.content_type, "");
+        assert_eq!(a.size, 0);
+        assert_eq!(a.url, "");
+    }
+}
