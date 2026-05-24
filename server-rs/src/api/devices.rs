@@ -285,3 +285,66 @@ pub async fn revoke_device(
 
     json_ok_true()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn enroll_begin_request_requires_new_device_public_key() {
+        let r: EnrollBeginRequest =
+            serde_json::from_str(r#"{"new_device_public_key":"abc"}"#).unwrap();
+        assert_eq!(r.new_device_public_key, "abc");
+        assert!(serde_json::from_str::<EnrollBeginRequest>("{}").is_err());
+    }
+
+    #[test]
+    fn enroll_begin_response_serializes_with_both_fields() {
+        let r = EnrollBeginResponse {
+            challenge_id: "cid-1".into(),
+            nonce: "deadbeef".into(),
+        };
+        let s = serde_json::to_string(&r).unwrap();
+        assert!(s.contains("\"challenge_id\":\"cid-1\""));
+        assert!(s.contains("\"nonce\":\"deadbeef\""));
+    }
+
+    #[test]
+    fn enroll_complete_request_requires_all_fields() {
+        let full = r#"{
+            "challenge_id":"c1",
+            "new_device_public_key":"newpk",
+            "authorizer_public_key":"oldpk",
+            "signature":"sig"
+        }"#;
+        let r: EnrollCompleteRequest = serde_json::from_str(full).unwrap();
+        assert_eq!(r.challenge_id, "c1");
+        assert_eq!(r.new_device_public_key, "newpk");
+        assert_eq!(r.authorizer_public_key, "oldpk");
+        assert_eq!(r.signature, "sig");
+        // device_label defaults to empty when not present.
+        assert_eq!(r.device_label, "");
+    }
+
+    #[test]
+    fn enroll_complete_request_rejects_missing_required_fields() {
+        assert!(serde_json::from_str::<EnrollCompleteRequest>(
+            r#"{"challenge_id":"c1"}"#
+        ).is_err());
+        assert!(serde_json::from_str::<EnrollCompleteRequest>(
+            r#"{"challenge_id":"c","new_device_public_key":"n"}"#
+        ).is_err());
+    }
+
+    #[test]
+    fn enroll_complete_request_optional_device_label_parses() {
+        let r: EnrollCompleteRequest = serde_json::from_str(r#"{
+            "challenge_id":"c1",
+            "new_device_public_key":"newpk",
+            "authorizer_public_key":"oldpk",
+            "signature":"sig",
+            "device_label":"iPhone 15"
+        }"#).unwrap();
+        assert_eq!(r.device_label, "iPhone 15");
+    }
+}
