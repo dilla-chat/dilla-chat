@@ -428,7 +428,7 @@ export function NewChannelModal({ onClose, onCreate }) {
 // echoes back to the store so other clients pick up the change.
 export function ChannelAccessModal({ channel, onClose }) {
   const teamId = useTeamStore((s) => s.activeTeamId) as string | null;
-  const roles = useTeamStore((s) => (teamId ? s.roles.get(teamId) ?? [] : []));
+  const roles = useTeamStore((s) => (teamId ? s.roles.get(teamId) ?? EMPTY_LIST : EMPTY_LIST));
   const [selected, setSelected] = useState<Set<string>>(new Set(channel?.accessRoleIds ?? []));
   const [hidden, setHidden] = useState<boolean>(!!channel?.hidden_if_restricted || !!channel?.hiddenIfRestricted);
   const [busy, setBusy] = useState(false);
@@ -526,7 +526,7 @@ export function ChannelAccessModal({ channel, onClose }) {
 // its inherited resolveAccessRoles — one change ripples to N channels.
 export function GroupAccessModal({ group, onClose }: { group: { id: string; name: string; accessRoleIds: string[]; hiddenIfRestricted: boolean }; onClose: () => void }) {
   const teamId = useTeamStore((s) => s.activeTeamId) as string | null;
-  const roles = useTeamStore((s) => (teamId ? s.roles.get(teamId) ?? [] : []));
+  const roles = useTeamStore((s) => (teamId ? s.roles.get(teamId) ?? EMPTY_LIST : EMPTY_LIST));
   const [selected, setSelected] = useState<Set<string>>(new Set(group.accessRoleIds ?? []));
   const [hidden, setHidden] = useState<boolean>(!!group.hiddenIfRestricted);
   const [busy, setBusy] = useState(false);
@@ -1758,8 +1758,8 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
   // "everyone" role and resolve which channels the current user can enter.
   // activeTeamId isn't a prop here — read it from the store directly.
   const sidebarTeamId = useTeamStore((s) => s.activeTeamId);
-  const teamRoles = useTeamStore((s) => (sidebarTeamId ? s.roles.get(sidebarTeamId) ?? [] : [])) as any[];
-  const teamMembers = useTeamStore((s) => (sidebarTeamId ? s.members.get(sidebarTeamId) ?? [] : [])) as any[];
+  const teamRoles = useTeamStore((s) => (sidebarTeamId ? s.roles.get(sidebarTeamId) ?? EMPTY_LIST : EMPTY_LIST)) as any[];
+  const teamMembers = useTeamStore((s) => (sidebarTeamId ? s.members.get(sidebarTeamId) ?? EMPTY_LIST : EMPTY_LIST)) as any[];
   // Resolved permissions bitmask for the current user in this team.
   // Components read perms.has(bit) so admin-only menu items disappear
   // for users who lack that bit — matches the server's require_permission
@@ -2399,7 +2399,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
   // menu (pin / unpin / delete-others). Mirrors the server's
   // require_permission gates so we don't dangle an action that 403s.
   const tcTeamId = useTeamStore((s) => s.activeTeamId);
-  const tcTeamMembers = useTeamStore((s) => (tcTeamId ? s.members.get(tcTeamId) ?? [] : [])) as any[];
+  const tcTeamMembers = useTeamStore((s) => (tcTeamId ? s.members.get(tcTeamId) ?? EMPTY_LIST : EMPTY_LIST)) as any[];
   const msgPerms = useMemo(
     () => resolvePermissions(tcTeamMembers, currentUserId()),
     [tcTeamMembers],
@@ -3883,7 +3883,7 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
   // moderation actions (e.g. Server-mute) only for users who actually
   // hold PERM_MUTE_VOICE — matches the server-side gate.
   const vcTeamId = useTeamStore((s) => s.activeTeamId) as string | null;
-  const vcTeamMembers = useTeamStore((s) => (vcTeamId ? s.members.get(vcTeamId) ?? [] : [])) as any[];
+  const vcTeamMembers = useTeamStore((s) => (vcTeamId ? s.members.get(vcTeamId) ?? EMPTY_LIST : EMPTY_LIST)) as any[];
   const vcPerms = useMemo(() => resolvePermissions(vcTeamMembers, currentUserId()), [vcTeamMembers]);
   // Per-user RTT cache. Each peer publishes their own RTT via the
   // voice:latency WS event; the server fans out as voice:latency-
@@ -4392,7 +4392,7 @@ export function MemberList({ members, voiceConnection, rich, federated }) {
   // after a 403. teamMembers comes from the store so role changes flow in
   // without a prop drill.
   const memberListTeamId = useTeamStore((s) => s.activeTeamId);
-  const memberListTeamMembers = useTeamStore((s) => (memberListTeamId ? s.members.get(memberListTeamId) ?? [] : [])) as any[];
+  const memberListTeamMembers = useTeamStore((s) => (memberListTeamId ? s.members.get(memberListTeamId) ?? EMPTY_LIST : EMPTY_LIST)) as any[];
   const memberPerms = useMemo(
     () => resolvePermissions(memberListTeamMembers, currentUserId()),
     [memberListTeamMembers],

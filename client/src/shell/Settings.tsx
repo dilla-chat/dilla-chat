@@ -27,6 +27,12 @@ import { resolvePermissions } from '../hooks/usePermissions';
 
 const { useState: useStateS, useEffect: useEffectS, useRef: useRefS, useMemo, useCallback: useCallbackS } = React;
 
+// Stable empty array for selector fallbacks. Returning a fresh `[]`
+// from a Zustand selector triggers infinite re-renders under jsdom
+// (useSyncExternalStore can't dedupe by-value); a frozen shared
+// reference makes the selectors stable across calls.
+const EMPTY_LIST: never[] = [];
+
 // Debounced save helper for autosaved text fields. The handler clears any
 // in-flight timer and schedules a new one — keeps API traffic to one POST
 // per ~700ms of idle, matching typical settings UX.
@@ -1866,8 +1872,8 @@ export function permsSummary(permissions: number): string {
 export function TeamRoles() {
   const auth = useActiveTeamAuth();
   const teamId = auth?.teamId;
-  const storeRoles = useTeamStore((s) => (teamId ? s.roles.get(teamId) ?? [] : []));
-  const members = useTeamStore((s) => (teamId ? s.members.get(teamId) ?? [] : []));
+  const storeRoles = useTeamStore((s) => (teamId ? s.roles.get(teamId) ?? EMPTY_LIST : EMPTY_LIST));
+  const members = useTeamStore((s) => (teamId ? s.members.get(teamId) ?? EMPTY_LIST : EMPTY_LIST));
   const setRoles = useTeamStore((s) => s.setRoles);
   const [editing, setEditing] = useStateS<{ id: string } | null>(null);
   const [saving, setSaving] = useStateS(false);
@@ -2058,7 +2064,7 @@ export function RoleEditor({ teamId, role, onClose, onSaved }: { teamId: string;
   // (don't silently drop them on save) and hidden otherwise. The server
   // also rejects with 403 if a moderator tries to grant a bit past
   // their ceiling — this is the discoverability half of the same gate.
-  const teamMembersForGuard = useTeamStore((s) => s.members.get(teamId) ?? []);
+  const teamMembersForGuard = useTeamStore((s) => s.members.get(teamId) ?? EMPTY_LIST);
   const meIdForGuard = useShellDataContext()?.currentUserId ?? null;
   const myBits = useMemo(
     () => meIdForGuard
@@ -2179,8 +2185,8 @@ export function RoleEditor({ teamId, role, onClose, onSaved }: { teamId: string;
 export function TeamMembers() {
   const auth = useActiveTeamAuth();
   const teamId = auth?.teamId;
-  const members = useTeamStore((s) => (teamId ? s.members.get(teamId) ?? [] : []));
-  const roles = useTeamStore((s) => (teamId ? s.roles.get(teamId) ?? [] : []));
+  const members = useTeamStore((s) => (teamId ? s.members.get(teamId) ?? EMPTY_LIST : EMPTY_LIST));
+  const roles = useTeamStore((s) => (teamId ? s.roles.get(teamId) ?? EMPTY_LIST : EMPTY_LIST));
   const setMembers = useTeamStore((s) => s.setMembers);
   const [saving, setSaving] = useStateS(false);
   const [savedAt, setSavedAt] = useStateS<number | null>(null);
@@ -2434,7 +2440,7 @@ export function TeamFederation() {
 export function TeamAudit() {
   const auth = useActiveTeamAuth();
   const teamId = auth?.teamId;
-  const members = useTeamStore((s) => (teamId ? s.members.get(teamId) ?? [] : []));
+  const members = useTeamStore((s) => (teamId ? s.members.get(teamId) ?? EMPTY_LIST : EMPTY_LIST));
   const [events, setEvents] = useStateS<any[] | null>(null);
   const [error, setError] = useStateS<string | null>(null);
 
