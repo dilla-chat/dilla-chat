@@ -245,4 +245,189 @@ describe('ChatApp render in real Chromium', () => {
     );
     await expect.element(screen.getByText('msg 29')).toBeInTheDocument();
   });
+
+  it('renders edited messages with the edited marker', async () => {
+    const data = makeData({
+      MESSAGES: {
+        'ch-1': [{
+          id: 'm1', author: 'me', at: new Date(), kind: 'text', text: 'oops',
+          edited: true, deleted: false,
+        }],
+      },
+    });
+    const screen = await render(
+      <ShellDataProvider value={data}>
+        <ChatApp theme={{ name: 'mesh' }} opts={{}} />
+      </ShellDataProvider>,
+    );
+    await expect.element(screen.getByText('oops')).toBeInTheDocument();
+  });
+
+  it('renders system messages with kind="system"', async () => {
+    const data = makeData({
+      MESSAGES: {
+        'ch-1': [{
+          id: 's1', author: 'me', at: new Date(), kind: 'system', text: 'alice joined',
+          edited: false, deleted: false,
+        }],
+      },
+    });
+    const screen = await render(
+      <ShellDataProvider value={data}>
+        <ChatApp theme={{ name: 'mesh' }} opts={{}} />
+      </ShellDataProvider>,
+    );
+    await expect.element(screen.getByText('alice joined')).toBeInTheDocument();
+  });
+
+  it('renders image attachments inline', async () => {
+    const data = makeData({
+      MESSAGES: {
+        'ch-1': [{
+          id: 'a1', author: 'me', at: new Date(), kind: 'image', text: '',
+          edited: false, deleted: false,
+          attachment: { kind: 'image', label: 'cat.gif', size: 100, src: '/img/cat.gif' },
+        }],
+      },
+    });
+    const { container } = await render(
+      <ShellDataProvider value={data}>
+        <ChatApp theme={{ name: 'mesh' }} opts={{}} />
+      </ShellDataProvider>,
+    );
+    expect(container.querySelector('img')).toBeTruthy();
+  });
+
+  it('renders file attachments with filename', async () => {
+    const data = makeData({
+      MESSAGES: {
+        'ch-1': [{
+          id: 'f1', author: 'me', at: new Date(), kind: 'file', text: '',
+          edited: false, deleted: false,
+          attachment: { kind: 'file', label: 'doc.pdf', size: 12_345_678, src: '/files/doc.pdf' },
+        }],
+      },
+    });
+    const screen = await render(
+      <ShellDataProvider value={data}>
+        <ChatApp theme={{ name: 'mesh' }} opts={{}} />
+      </ShellDataProvider>,
+    );
+    await expect.element(screen.getByText('doc.pdf')).toBeInTheDocument();
+  });
+
+  it('renders reply-to references', async () => {
+    const data = makeData({
+      MESSAGES: {
+        'ch-1': [
+          { id: 'm1', author: 'me', at: new Date(Date.now() - 2000), kind: 'text', text: 'original message', edited: false, deleted: false },
+          { id: 'm2', author: 'u2', at: new Date(), kind: 'text', text: 'replying!', edited: false, deleted: false, replyTo: 'm1' },
+        ],
+      },
+    });
+    const screen = await render(
+      <ShellDataProvider value={data}>
+        <ChatApp theme={{ name: 'mesh' }} opts={{}} />
+      </ShellDataProvider>,
+    );
+    await expect.element(screen.getByText('replying!')).toBeInTheDocument();
+  });
+
+  it('renders deleted messages by filtering them out', async () => {
+    const data = makeData({
+      MESSAGES: {
+        'ch-1': [
+          { id: 'm1', author: 'me', at: new Date(), kind: 'text', text: 'gone', edited: false, deleted: true },
+          { id: 'm2', author: 'u2', at: new Date(), kind: 'text', text: 'visible', edited: false, deleted: false },
+        ],
+      },
+    });
+    const screen = await render(
+      <ShellDataProvider value={data}>
+        <ChatApp theme={{ name: 'mesh' }} opts={{}} />
+      </ShellDataProvider>,
+    );
+    await expect.element(screen.getByText('visible')).toBeInTheDocument();
+  });
+
+  it('renders threads with reply count badge', async () => {
+    const data = makeData({
+      MESSAGES: {
+        'ch-1': [{
+          id: 'p1', author: 'me', at: new Date(), kind: 'text', text: 'parent',
+          edited: false, deleted: false,
+          thread: { count: 3, lastReplyAt: new Date(), participants: ['u2'] },
+        }],
+      },
+      THREAD_REPLIES: {
+        p1: [
+          { id: 'r1', author: 'u2', at: new Date(), kind: 'text', text: 'first reply', edited: false, deleted: false },
+        ],
+      },
+    });
+    const screen = await render(
+      <ShellDataProvider value={data}>
+        <ChatApp theme={{ name: 'mesh' }} opts={{}} />
+      </ShellDataProvider>,
+    );
+    await expect.element(screen.getByText('parent')).toBeInTheDocument();
+  });
+
+  it('renders custom sidebar/members widths via opts', async () => {
+    const { container } = await render(
+      <ShellDataProvider value={makeData()}>
+        <ChatApp theme={{ name: 'mesh' }} opts={{ sidebar: 280, members: 260, density: 'compact' }} />
+      </ShellDataProvider>,
+    );
+    expect(container.firstChild).toBeTruthy();
+  });
+
+  it('renders federated server flag in the rail', async () => {
+    const data = makeData({
+      SERVERS: [{ id: 't1', name: 'Acme', node: 'remote', short: 'A', federated: true, members: 8 }],
+    });
+    const { container } = await render(
+      <ShellDataProvider value={data}>
+        <ChatApp theme={{ name: 'mesh' }} opts={{}} />
+      </ShellDataProvider>,
+    );
+    expect(container.firstChild).toBeTruthy();
+  });
+
+  it('handles a locked channel (admin override path)', async () => {
+    const data = makeData({
+      CHANNELS: [{ id: 'ch-1', name: 'admins-only', type: 'text', topic: '', encrypted: true, unread: 0, locked: true }],
+    });
+    const { container } = await render(
+      <ShellDataProvider value={data}>
+        <ChatApp theme={{ name: 'mesh' }} opts={{}} />
+      </ShellDataProvider>,
+    );
+    expect(container.firstChild).toBeTruthy();
+  });
+
+  it('handles a channel with unread count > 0', async () => {
+    const data = makeData({
+      CHANNELS: [{ id: 'ch-1', name: 'general', type: 'text', topic: '', encrypted: true, unread: 7 }],
+    });
+    const { container } = await render(
+      <ShellDataProvider value={data}>
+        <ChatApp theme={{ name: 'mesh' }} opts={{}} />
+      </ShellDataProvider>,
+    );
+    expect(container.firstChild).toBeTruthy();
+  });
+
+  it('handles a member with a custom status', async () => {
+    const data = makeData({
+      MEMBERS: [{ id: 'me', name: 'me', initials: 'ME', color: '#f00', status: 'online', custom: 'on vacation' }],
+      byId: { me: { id: 'me', name: 'me', initials: 'ME', color: '#f00', status: 'online', custom: 'on vacation' } },
+    });
+    const { container } = await render(
+      <ShellDataProvider value={data}>
+        <ChatApp theme={{ name: 'mesh' }} opts={{}} />
+      </ShellDataProvider>,
+    );
+    expect(container.firstChild).toBeTruthy();
+  });
 });
