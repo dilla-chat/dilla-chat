@@ -704,7 +704,7 @@ export default function Onboarding() {
 }
 
 // ───────── Step 1: Connect ─────────
-function ConnectStep({
+export function ConnectStep({
   mode,
   setMode,
   hasExistingIdentity,
@@ -938,7 +938,7 @@ function ConnectStep({
 }
 
 // ───────── Step 2: Identity ─────────
-function IdentityStep({
+export function IdentityStep({
   username,
   setUsername,
   passphrase,
@@ -1086,7 +1086,7 @@ function IdentityStep({
 }
 
 // ───────── Step 3: Key generation ─────────
-function KeyGenStep({ lines, error, onBack }) {
+export function KeyGenStep({ lines, error, onBack }) {
   return (
     <>
       <h1 className="onb-title">Generating keys…</h1>
@@ -1123,7 +1123,7 @@ function KeyGenStep({ lines, error, onBack }) {
 }
 
 // ───────── Step 4: Safety number ─────────
-function SafetyStep({ fingerprint, recoveryKey, onBack, onNext }) {
+export function SafetyStep({ fingerprint, recoveryKey, onBack, onNext }) {
   const [recoveryConfirmed, setRecoveryConfirmed] = useState(false);
   const [copiedFp, setCopiedFp] = useState(false);
   const [copiedRk, setCopiedRk] = useState(false);
@@ -1266,7 +1266,7 @@ function SafetyStep({ fingerprint, recoveryKey, onBack, onNext }) {
 }
 
 // ───────── Step 5: Done ─────────
-function DoneStep({ username, team, mode, onOpen }) {
+export function DoneStep({ username, team, mode, onOpen }) {
   return (
     <>
       <h1 className="onb-title">You're in.</h1>

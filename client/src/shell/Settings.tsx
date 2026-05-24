@@ -229,7 +229,7 @@ function Settings({ open, mode, defaultTab, onClose }) {
 }
 
 // ───────── shared form atoms ─────────
-function Row({ label, hint, children }) {
+export function Row({ label, hint, children }) {
   return (
     <div className="set-row">
       <div className="set-row-l">
@@ -240,7 +240,7 @@ function Row({ label, hint, children }) {
     </div>
   );
 }
-function Group({ title, hint, children }) {
+export function Group({ title, hint, children }) {
   return (
     <section className="set-group">
       <h3>{title}</h3>
@@ -249,26 +249,26 @@ function Group({ title, hint, children }) {
     </section>
   );
 }
-function Toggle({ value, onChange }) {
+export function Toggle({ value, onChange }) {
   return (
     <button className="set-toggle" data-on={value ? '1' : '0'} onClick={() => onChange(!value)}>
       <i />
     </button>
   );
 }
-function TextField({ value, onChange, placeholder, mono, readOnly }) {
+export function TextField({ value, onChange, placeholder, mono, readOnly }) {
   return <input className={'set-input' + (mono ? ' mono' : '') + (readOnly ? ' set-input-readonly' : '')} value={value} placeholder={placeholder}
                 readOnly={readOnly}
                 onChange={readOnly ? undefined : (e => onChange(e.target.value))} />;
 }
-function Select({ value, onChange, options }) {
+export function Select({ value, onChange, options }) {
   return (
     <select className="set-input" value={value} onChange={e => onChange(e.target.value)}>
       {options.map(o => <option key={o} value={o}>{o}</option>)}
     </select>
   );
 }
-function Btn({ children, danger, onClick }) {
+export function Btn({ children, danger, onClick }) {
   return <button className={'btn' + (danger ? ' btn--danger' : '')} onClick={onClick}>{children}</button>;
 }
 
@@ -278,7 +278,7 @@ function Btn({ children, danger, onClick }) {
 // landed. Replaces the modal's old footer Save/Cancel pair which
 // didn't actually do anything (debounced autosave had already
 // committed before the user clicked).
-function FormBar({
+export function FormBar({
   dirty,
   saving,
   savedAt,
@@ -318,7 +318,7 @@ function FormBar({
 // the source image with a draggable + corner-resizable square overlay,
 // and on Save we render the selection into a fixed 256x256 canvas and
 // return a JPEG Blob. Kept self-contained — no third-party crop libs.
-function CropModal({
+export function CropModal({
   file,
   onCancel,
   onConfirm,
@@ -483,7 +483,7 @@ function CropModal({
 // Updates the local member record so the rest of the UI flips immediately
 // without waiting for a re-sync. Mock sessions keep the cropped blob as
 // an object URL so /mesh demos the same flow.
-function AvatarUploader() {
+export function AvatarUploader() {
   const data = useShellDataContext() as any;
   const meId = data?.currentUserId;
   const me = meId ? data?.byId?.[meId] : null;
@@ -594,7 +594,7 @@ function AvatarUploader() {
   );
 }
 
-function UserAccount() {
+export function UserAccount() {
   // Read the current user from window.SHELL_DATA (set up by useShellData).
   // No hardcoded mock fallback — empty when the data hasn't loaded yet.
   const data = useShellDataContext() as any;
@@ -670,7 +670,7 @@ function UserAccount() {
 // can revoke a stolen / unrecognized device from any other still-
 // trusted device. Server refuses to revoke the user's LAST active
 // device with a 400 — surfaced via an error toast.
-function UserDevices() {
+export function UserDevices() {
   const auth = useActiveTeamAuth();
   const [devices, setDevices] = useStateS<Array<Record<string, unknown>>>([]);
   const [loading, setLoading] = useStateS(true);
@@ -788,7 +788,7 @@ function UserDevices() {
   );
 }
 
-function UserNotif() {
+export function UserNotif() {
   // Notify mode is derived from desktopNotifications + a per-channel filter
   // we don't track yet. For now: desktop on = all, desktop off + sound on =
   // mentions, both off = nothing. Editing the segment toggles the booleans
@@ -889,7 +889,7 @@ function UserNotif() {
     </>
   );
 }
-function UserVoice() {
+export function UserVoice() {
   // Input/output devices persist via useUserSettingsStore (the voice
   // subsystem reads from the same store when it acquires a media stream).
   const inputDevice = useUserSettingsStore((s) => s.selectedInputDevice);
@@ -1124,7 +1124,7 @@ function UserVoice() {
     </>
   );
 }
-function UserAppear() {
+export function UserAppear() {
   // Theme persisted to useUserSettingsStore (themeStore reads from it and
   // updates --theme tokens). 'mesh' is the default per the v2 migration in
   // userSettingsStore.ts. Density also lives there.
@@ -1172,7 +1172,7 @@ function UserAppear() {
   );
 }
 
-function SafetyNumberQR({
+export function SafetyNumberQR({
   payload,
   label,
   onClose,
@@ -1238,7 +1238,7 @@ function SafetyNumberQR({
   );
 }
 
-function UserPrivacy() {
+export function UserPrivacy() {
   const data = useShellDataContext() as any;
   const verified = useVerifiedContacts();
   const meId = data?.currentUserId; const me = meId ? data?.byId?.[meId] : null;
@@ -1405,7 +1405,7 @@ function UserPrivacy() {
 // is done from the member context menu (Block @user) — surfacing a
 // user picker here would duplicate that flow and asks the user to
 // type a name they already see in a list elsewhere.
-function BlockListGroup() {
+export function BlockListGroup() {
   const data = useShellDataContext() as any;
   const blocked = useBlockStore((s) => s.blocked);
   const setAll = useBlockStore((s) => s.setAll);
@@ -1480,7 +1480,7 @@ function BlockListGroup() {
     </Group>
   );
 }
-function UserKeys() {
+export function UserKeys() {
   const rows = [
     ['Open command palette', '⌘ K'],
     ['Open search',           '/'],
@@ -1509,7 +1509,7 @@ function UserKeys() {
 }
 
 // ───────── TEAM tabs ─────────
-function TeamInfo() {
+export function TeamInfo() {
   const data = useShellDataContext() as any;
   const team = data?.SERVERS?.[0];
   const channels = data?.CHANNELS ?? [];
@@ -1608,7 +1608,7 @@ function TeamInfo() {
     </>
   );
 }
-function TeamInvites() {
+export function TeamInvites() {
   const data = useShellDataContext() as any;
   const meId = data?.currentUserId;
   const me = meId ? data?.byId?.[meId] : null;
@@ -1863,7 +1863,7 @@ export function permsSummary(permissions: number): string {
   return labels.length ? labels.join(' · ') : 'no permissions';
 }
 
-function TeamRoles() {
+export function TeamRoles() {
   const auth = useActiveTeamAuth();
   const teamId = auth?.teamId;
   const storeRoles = useTeamStore((s) => (teamId ? s.roles.get(teamId) ?? [] : []));
@@ -2048,7 +2048,7 @@ function TeamRoles() {
   );
 }
 
-function RoleEditor({ teamId, role, onClose, onSaved }: { teamId: string; role: any; onClose: () => void; onSaved: () => void }) {
+export function RoleEditor({ teamId, role, onClose, onSaved }: { teamId: string; role: any; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useStateS(role?.name ?? '');
   const [color, setColor] = useStateS(role?.color ?? '#7a9aa7');
   const [perms, setPerms] = useStateS<number>(role?.permissions ?? 0);
@@ -2176,7 +2176,7 @@ function RoleEditor({ teamId, role, onClose, onSaved }: { teamId: string; role: 
   );
 }
 
-function TeamMembers() {
+export function TeamMembers() {
   const auth = useActiveTeamAuth();
   const teamId = auth?.teamId;
   const members = useTeamStore((s) => (teamId ? s.members.get(teamId) ?? [] : []));
@@ -2325,7 +2325,7 @@ function TeamMembers() {
 // Team Settings → Integrations. Mirror of pages/TeamSettings/IntegrationsTab
 // using this file's atoms (Row/Group/TextField/Btn) so it slots into the
 // shell modal consistently with the other team tabs.
-function TeamIntegrations() {
+export function TeamIntegrations() {
   const auth = useActiveTeamAuth();
   const [configured, setConfigured] = useStateS<boolean | null>(null);
   const [apiKey, setApiKey] = useStateS('');
@@ -2399,7 +2399,7 @@ function TeamIntegrations() {
   );
 }
 
-function TeamFederation() {
+export function TeamFederation() {
   // Use real node identity surfaced through SHELL_DATA.SERVERS[].node.
   // Peers list stays empty until we wire a real peer status feed; the
   // Add-peer wizard is still available.
@@ -2431,7 +2431,7 @@ function TeamFederation() {
     </>
   );
 }
-function TeamAudit() {
+export function TeamAudit() {
   const auth = useActiveTeamAuth();
   const teamId = auth?.teamId;
   const members = useTeamStore((s) => (teamId ? s.members.get(teamId) ?? [] : []));
