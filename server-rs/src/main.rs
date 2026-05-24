@@ -1235,4 +1235,50 @@ mod tests {
     // its failure modes, which can't be tested in-process. The success
     // branches mutate std::env globally and race with parallel tests,
     // so they're left for an integration-test pass instead.
+
+    // ── write_bootstrap_token_file ───────────────────────────────────
+
+    #[cfg(unix)]
+    #[test]
+    fn write_bootstrap_token_file_creates_file_with_token() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("bootstrap.tok");
+        write_bootstrap_token_file(&path, "secret-token").unwrap();
+        let contents = std::fs::read_to_string(&path).unwrap();
+        // Token followed by a newline.
+        assert_eq!(contents, "secret-token\n");
+        // 0o600 = owner read+write only.
+        let perms = std::fs::metadata(&path).unwrap().permissions();
+        assert_eq!(perms.mode() & 0o777, 0o600);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_bootstrap_token_file_replaces_existing_stale_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("bootstrap.tok");
+        // First write — old token.
+        write_bootstrap_token_file(&path, "old").unwrap();
+        // Second write — new token must replace, not append.
+        write_bootstrap_token_file(&path, "new").unwrap();
+        let contents = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(contents, "new\n");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_bootstrap_token_file_errors_when_parent_dir_missing() {
+        let path = std::path::PathBuf::from("/no/such/dir/abc/bootstrap.tok");
+        assert!(write_bootstrap_token_file(&path, "x").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_bootstrap_token_file_writes_empty_token_safely() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("empty.tok");
+        write_bootstrap_token_file(&path, "").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "\n");
+    }
 }
