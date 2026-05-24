@@ -66,7 +66,7 @@ w.Icon = Icon;
 // mock id was the cause of every "thim is admin" / "messages marked as
 // mine when they aren't" bug on /app. An empty string means "no user
 // known", and downstream code treats that as "no match".
-function currentUserId(): string {
+export function currentUserId(): string {
   return (window as any).SHELL_DATA?.currentUserId || '';
 }
 

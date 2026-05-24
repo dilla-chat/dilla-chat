@@ -19,6 +19,7 @@ const {
   mockUnfurl,
   detectUnfurls,
   pollServerToMessage,
+  currentUserId,
 } = ChatAppModule;
 
 describe('ChatApp module exports', () => {
@@ -239,5 +240,22 @@ describe('pollServerToMessage', () => {
     expect(m.options[0]).toEqual({ label: 'a', votes: 5, mine: true });
     expect(m.options[1]).toEqual({ label: 'b', votes: 0, mine: false });
     expect(m.options[2]).toEqual({ label: 'c', votes: 0, mine: false });
+  });
+});
+
+describe('currentUserId', () => {
+  it('returns empty string when window.SHELL_DATA has no currentUserId', () => {
+    (window as unknown as { SHELL_DATA?: unknown }).SHELL_DATA = {};
+    expect(currentUserId()).toBe('');
+  });
+
+  it('reads currentUserId from window.SHELL_DATA', () => {
+    (window as unknown as { SHELL_DATA?: { currentUserId: string } }).SHELL_DATA = { currentUserId: 'u42' };
+    expect(currentUserId()).toBe('u42');
+  });
+
+  it('returns empty string when window.SHELL_DATA is absent', () => {
+    delete (window as unknown as { SHELL_DATA?: unknown }).SHELL_DATA;
+    expect(currentUserId()).toBe('');
   });
 });
