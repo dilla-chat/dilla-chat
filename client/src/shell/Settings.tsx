@@ -47,7 +47,7 @@ function useActiveTeamAuth(): { baseUrl: string; token: string; teamId: string }
   return { baseUrl: team.baseUrl ?? '', token: team.token ?? '', teamId: activeTeamId };
 }
 
-const USER_TABS = [
+export const USER_TABS = [
   { id: 'account',  name: 'Account' },
   { id: 'devices',  name: 'Devices' },
   { id: 'notif',    name: 'Notifications' },
@@ -56,7 +56,7 @@ const USER_TABS = [
   { id: 'privacy',  name: 'Privacy & encryption' },
   { id: 'keys',     name: 'Keyboard shortcuts' },
 ];
-const TEAM_TABS = [
+export const TEAM_TABS = [
   { id: 'team',         name: 'Team info' },
   { id: 'invites',      name: 'Invites' },
   { id: 'members',      name: 'Members' },
@@ -1844,7 +1844,7 @@ function TeamInvites() {
     </Group>
   );
 }
-const PERM_FLAGS = [
+export const PERM_FLAGS = [
   { bit: 1 << 0, key: 'admin',            label: 'Admin (all permissions)' },
   { bit: 1 << 1, key: 'manage_channels',  label: 'Manage channels' },
   { bit: 1 << 2, key: 'manage_members',   label: 'Manage members (kick / ban)' },
@@ -1856,7 +1856,7 @@ const PERM_FLAGS = [
   { bit: 1 << 8, key: 'bypass_slow_mode', label: 'Bypass slow mode' },
 ] as const;
 
-function permsSummary(permissions: number): string {
+export function permsSummary(permissions: number): string {
   if ((permissions & (1 << 0)) !== 0) return 'all permissions';
   const labels = PERM_FLAGS.filter((f) => f.bit !== (1 << 0) && (permissions & f.bit) !== 0)
     .map((f) => f.label.toLowerCase().split(' (')[0]);
