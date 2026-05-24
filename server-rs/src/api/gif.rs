@@ -348,3 +348,79 @@ pub async fn embed(
 
     json_ok(serde_json::json!(attachment))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn percent_encode_preserves_unreserved_set() {
+        // RFC 3986 §2.3: A-Z a-z 0-9 - _ . ~
+        assert_eq!(percent_encode("AbCxyz09-_.~"), "AbCxyz09-_.~");
+    }
+
+    #[test]
+    fn percent_encode_escapes_space_to_20() {
+        assert_eq!(percent_encode("hello world"), "hello%20world");
+    }
+
+    #[test]
+    fn percent_encode_escapes_path_separators_and_punct() {
+        assert_eq!(percent_encode("a/b?c=d&e"), "a%2Fb%3Fc%3Dd%26e");
+    }
+
+    #[test]
+    fn percent_encode_escapes_high_bytes_per_byte_not_per_codepoint() {
+        // UTF-8 'é' is 0xC3 0xA9
+        assert_eq!(percent_encode("é"), "%C3%A9");
+    }
+
+    #[test]
+    fn percent_encode_empty_string_roundtrips() {
+        assert_eq!(percent_encode(""), "");
+    }
+
+    #[test]
+    fn is_giphy_url_accepts_canonical_giphy_subdomains() {
+        assert!(is_giphy_url("https://giphy.com/a.gif"));
+        assert!(is_giphy_url("https://media.giphy.com/path/x.gif"));
+        assert!(is_giphy_url("https://media0.giphy.com/path/x.gif"));
+        assert!(is_giphy_url("https://i.giphy.com/x.gif"));
+    }
+
+    #[test]
+    fn is_giphy_url_rejects_non_https_schemes() {
+        assert!(!is_giphy_url("http://giphy.com/x.gif"));
+        assert!(!is_giphy_url("ftp://giphy.com/x.gif"));
+        assert!(!is_giphy_url("file:///etc/passwd"));
+    }
+
+    #[test]
+    fn is_giphy_url_rejects_lookalike_hosts() {
+        // SSRF guard: arbitrary hosts must not pass.
+        assert!(!is_giphy_url("https://example.com/x.gif"));
+        assert!(!is_giphy_url("https://giphy.com.evil.example/x.gif"));
+        assert!(!is_giphy_url("https://evilgiphy.com/x.gif"));
+    }
+
+    #[test]
+    fn is_giphy_url_strips_port_from_host_match() {
+        // host:port should still match against just the host portion.
+        assert!(is_giphy_url("https://media.giphy.com:443/x.gif"));
+    }
+
+    #[test]
+    fn is_giphy_url_accepts_url_without_path() {
+        assert!(is_giphy_url("https://giphy.com"));
+    }
+
+    #[test]
+    fn gif_query_q_required_but_limit_optional() {
+        let q: GifQuery = serde_json::from_str(r#"{"q":"cat"}"#).unwrap();
+        assert_eq!(q.q, "cat");
+        assert!(q.limit.is_none());
+        let q: GifQuery = serde_json::from_str(r#"{"q":"cat","limit":5}"#).unwrap();
+        assert_eq!(q.limit, Some(5));
+        assert!(serde_json::from_str::<GifQuery>("{}").is_err());
+    }
+}

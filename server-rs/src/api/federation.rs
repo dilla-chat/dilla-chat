@@ -479,3 +479,39 @@ pub async fn revoke_peer(
     tracing::info!(node_id = %node_id, "FEDERATION: peer revoked");
     Ok(Json(json!({ "ok": true })))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_join_token_request_accepts_empty_body() {
+        // The struct is empty by design — creator comes from auth.
+        let _r: CreateJoinTokenRequest = serde_json::from_str("{}").unwrap();
+    }
+
+    #[test]
+    fn pin_peer_request_requires_all_three_fields() {
+        let r: PinPeerRequest = serde_json::from_str(r#"{
+            "node_id":"n1","public_key_b64":"abc","hostname":"peer.example"
+        }"#).unwrap();
+        assert_eq!(r.node_id, "n1");
+        assert_eq!(r.public_key_b64, "abc");
+        assert_eq!(r.hostname, "peer.example");
+    }
+
+    #[test]
+    fn pin_peer_request_rejects_missing_fields() {
+        assert!(serde_json::from_str::<PinPeerRequest>(r#"{"node_id":"n"}"#).is_err());
+        assert!(serde_json::from_str::<PinPeerRequest>(r#"{"public_key_b64":"x"}"#).is_err());
+        assert!(serde_json::from_str::<PinPeerRequest>(r#"{"hostname":"h"}"#).is_err());
+    }
+
+    #[test]
+    fn set_team_authority_request_requires_owner_node_id() {
+        let r: SetTeamAuthorityRequest =
+            serde_json::from_str(r#"{"owner_node_id":"node-1"}"#).unwrap();
+        assert_eq!(r.owner_node_id, "node-1");
+        assert!(serde_json::from_str::<SetTeamAuthorityRequest>("{}").is_err());
+    }
+}
