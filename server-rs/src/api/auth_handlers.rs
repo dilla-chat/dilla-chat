@@ -1689,4 +1689,104 @@ mod tests {
         // 30 (country) + 20 (UA family)
         assert_eq!(score, 50);
     }
+
+    // ── cookie helpers ────────────────────────────────────────────────
+
+    #[test]
+    fn build_auth_cookie_in_secure_mode_includes_secure_flag() {
+        let c = build_auth_cookie("token123", 3600, /*insecure*/ false);
+        assert!(c.contains("__dilla_jwt=token123"));
+        assert!(c.contains("HttpOnly"));
+        assert!(c.contains("SameSite=Strict"));
+        assert!(c.contains("Secure;"));
+        assert!(c.contains("Path=/api/v1"));
+        assert!(c.contains("Max-Age=3600"));
+    }
+
+    #[test]
+    fn build_auth_cookie_in_insecure_mode_omits_secure_flag() {
+        let c = build_auth_cookie("token123", 3600, /*insecure*/ true);
+        assert!(c.contains("__dilla_jwt=token123"));
+        assert!(c.contains("HttpOnly"));
+        assert!(!c.contains("Secure"));
+    }
+
+    #[test]
+    fn clear_auth_cookie_zeros_max_age_and_empties_value() {
+        let c = clear_auth_cookie(/*insecure*/ false);
+        assert!(c.contains("__dilla_jwt=;"));
+        assert!(c.contains("Max-Age=0"));
+        assert!(c.contains("Secure;"));
+    }
+
+    #[test]
+    fn clear_auth_cookie_insecure_omits_secure() {
+        let c = clear_auth_cookie(true);
+        assert!(c.contains("Max-Age=0"));
+        assert!(!c.contains("Secure"));
+    }
+
+    #[test]
+    fn build_auth_cookie_max_age_zero_renders_correctly() {
+        let c = build_auth_cookie("t", 0, true);
+        assert!(c.contains("Max-Age=0"));
+    }
+
+    // ── extract_request_context ───────────────────────────────────────
+
+    #[test]
+    fn extract_request_context_returns_none_none_for_empty_headers() {
+        let headers = HeaderMap::new();
+        let (ip, ua) = extract_request_context(&headers);
+        assert!(ip.is_none());
+        assert!(ua.is_none());
+    }
+
+    #[test]
+    fn extract_request_context_prefers_x_forwarded_for_first_value() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-forwarded-for",
+            "203.0.113.1, 198.51.100.1".parse().unwrap(),
+        );
+        headers.insert("user-agent", "Mozilla/5.0".parse().unwrap());
+        let (ip, ua) = extract_request_context(&headers);
+        assert_eq!(ip.as_deref(), Some("203.0.113.1"));
+        assert_eq!(ua.as_deref(), Some("Mozilla/5.0"));
+    }
+
+    #[test]
+    fn extract_request_context_handles_user_agent_without_ip() {
+        let mut headers = HeaderMap::new();
+        headers.insert("user-agent", "Mozilla/5.0".parse().unwrap());
+        let (ip, ua) = extract_request_context(&headers);
+        assert!(ip.is_none());
+        assert_eq!(ua.as_deref(), Some("Mozilla/5.0"));
+    }
+
+    // ── deserialization contracts ─────────────────────────────────────
+
+    #[test]
+    fn refresh_request_requires_refresh_token() {
+        let r: RefreshRequest = serde_json::from_str(r#"{"refresh_token":"tok"}"#).unwrap();
+        assert_eq!(r.refresh_token, "tok");
+        assert!(serde_json::from_str::<RefreshRequest>("{}").is_err());
+    }
+
+    #[test]
+    fn challenge_request_requires_public_key() {
+        let r: ChallengeRequest = serde_json::from_str(r#"{"public_key":"abc"}"#).unwrap();
+        assert_eq!(r.public_key, "abc");
+        assert!(serde_json::from_str::<ChallengeRequest>("{}").is_err());
+    }
+
+    #[test]
+    fn verify_request_requires_challenge_id_and_signature() {
+        let r: VerifyRequest = serde_json::from_str(r#"{
+            "challenge_id":"c","signature":"s","public_key":"k"
+        }"#).unwrap();
+        assert_eq!(r.challenge_id, "c");
+        assert_eq!(r.signature, "s");
+        assert!(serde_json::from_str::<VerifyRequest>(r#"{"challenge_id":"c"}"#).is_err());
+    }
 }
