@@ -140,7 +140,7 @@ export { memberAvatarStyle, memberAvatarClass } from './Avatar';
 // from growing further.
 
 // Modal: forward a message to another channel or DM
-function ForwardModal({ sourceMsg, members, onClose, onForward }) {
+export function ForwardModal({ sourceMsg, members, onClose, onForward }) {
   const data = (useShellDataContext() as any) || EMPTY_SHELL_DATA;
   const [q, setQ] = useState('');
   useEffect(() => {
@@ -192,7 +192,7 @@ function ForwardModal({ sourceMsg, members, onClose, onForward }) {
 }
 
 // Modal: pick a member to start a new DM with
-function NewDmModal({ members, onClose, onPick }) {
+export function NewDmModal({ members, onClose, onPick }) {
   const [q, setQ] = useState('');
   useEffect(() => {
     function onKey(e) { if (e.key === 'Escape') onClose(); }
@@ -235,7 +235,7 @@ function NewDmModal({ members, onClose, onPick }) {
 // groups filtered by the typed query. Enter on a unique match commits;
 // Enter on a fresh query creates a new group; backspace on an empty
 // input clears the pill so keyboard-only users don't get stuck.
-function GroupCombobox({ value, onChange, existing }: {
+export function GroupCombobox({ value, onChange, existing }: {
   value: string;
   onChange: (next: string) => void;
   existing: string[];
@@ -308,7 +308,7 @@ function GroupCombobox({ value, onChange, existing }: {
 // dilla:giphy-pick which TextChannel routes through its sendRawText
 // (same code path as a normal text message). Esc / overlay click /
 // Cancel button all close without posting.
-function GiphyPicker({
+export function GiphyPicker({
   query,
   results,
   onPick,
@@ -347,7 +347,7 @@ function GiphyPicker({
   );
 }
 
-function NewChannelModal({ onClose, onCreate }) {
+export function NewChannelModal({ onClose, onCreate }) {
   const data = (useShellDataContext() as any) || EMPTY_SHELL_DATA;
   const nodeHost = data?.SERVERS?.[0]?.node || 'local';
   const [name, setName] = useState('');
@@ -426,7 +426,7 @@ function NewChannelModal({ onClose, onCreate }) {
 // Modal: edit an existing channel's topic + slow mode (admin/maintainer).
 // Patches the live record via api.updateChannel; useTeamSync's broadcast
 // echoes back to the store so other clients pick up the change.
-function ChannelAccessModal({ channel, onClose }) {
+export function ChannelAccessModal({ channel, onClose }) {
   const teamId = useTeamStore((s) => s.activeTeamId) as string | null;
   const roles = useTeamStore((s) => (teamId ? s.roles.get(teamId) ?? [] : []));
   const [selected, setSelected] = useState<Set<string>>(new Set(channel?.accessRoleIds ?? []));
@@ -524,7 +524,7 @@ function ChannelAccessModal({ channel, onClose }) {
 // but persists via api.setGroupAccess and the WS broadcasts a
 // group:access-update event that every channel in the group reads through
 // its inherited resolveAccessRoles — one change ripples to N channels.
-function GroupAccessModal({ group, onClose }: { group: { id: string; name: string; accessRoleIds: string[]; hiddenIfRestricted: boolean }; onClose: () => void }) {
+export function GroupAccessModal({ group, onClose }: { group: { id: string; name: string; accessRoleIds: string[]; hiddenIfRestricted: boolean }; onClose: () => void }) {
   const teamId = useTeamStore((s) => s.activeTeamId) as string | null;
   const roles = useTeamStore((s) => (teamId ? s.roles.get(teamId) ?? [] : []));
   const [selected, setSelected] = useState<Set<string>>(new Set(group.accessRoleIds ?? []));
@@ -620,7 +620,7 @@ function GroupAccessModal({ group, onClose }: { group: { id: string; name: strin
 
 // Rename + delete a group. Lives next to GroupAccessModal so the right-
 // click context menu can hand off cleanly.
-function GroupSettingsModal({ group, onClose }: { group: { id: string; name: string }; onClose: () => void }) {
+export function GroupSettingsModal({ group, onClose }: { group: { id: string; name: string }; onClose: () => void }) {
   const teamId = useTeamStore((s) => s.activeTeamId) as string | null;
   const [name, setName] = useState(group.name);
   const [busy, setBusy] = useState(false);
@@ -711,7 +711,7 @@ function GroupSettingsModal({ group, onClose }: { group: { id: string; name: str
   );
 }
 
-function ChannelSettingsModal({ channel, onClose }) {
+export function ChannelSettingsModal({ channel, onClose }) {
   const data = (useShellDataContext() as any) || EMPTY_SHELL_DATA;
   const [topic, setTopic] = useState(channel?.topic ?? '');
   const [slow, setSlow] = useState(String(channel?.slowModeSeconds ?? channel?.slow_mode_seconds ?? 0));
@@ -823,7 +823,7 @@ function ChannelSettingsModal({ channel, onClose }) {
 }
 
 // Modal: create-or-join team
-function NewServerModal({ onClose, onCreate }) {
+export function NewServerModal({ onClose, onCreate }) {
   const [mode, setMode] = useState('create'); // create | join
   const [name, setName] = useState('');
   const [token, setToken] = useState('');
@@ -893,7 +893,7 @@ function NewServerModal({ onClose, onCreate }) {
 }
 
 // Empty state shown when a channel or DM has no messages yet.
-function EmptyFeed({ channel, dmPartner }) {
+export function EmptyFeed({ channel, dmPartner }) {
   if (channel.type === 'dm' && dmPartner) {
     return (
       <div className="empty-feed">
@@ -934,7 +934,7 @@ function EmptyFeed({ channel, dmPartner }) {
 }
 
 // Profile popover — anchored to click coords.
-function ProfilePopover({ pop, onClose, onDM, federated }) {
+export function ProfilePopover({ pop, onClose, onDM, federated }) {
   const data = (useShellDataContext() as any) || EMPTY_SHELL_DATA;
   const ref = useRef(null);
   useEffect(() => {
@@ -999,7 +999,7 @@ const EMOJIS = [
   '🛠','🚀','✅','❌','💡','📌','🐛','📦',
   '☕','🍕','🌮','🎨','🎵','🌙','☀️','🦀',
 ];
-function EmojiPicker({ open, onClose, onPick, anchorRect }) {
+export function EmojiPicker({ open, onClose, onPick, anchorRect }) {
   const ref = useRef(null);
   useEffect(() => {
     if (!open) return;
@@ -1034,7 +1034,7 @@ function EmojiPicker({ open, onClose, onPick, anchorRect }) {
 }
 
 // Drag-to-resize handle for the sidebar and members columns.
-function ResizeHandle({ kind, value, onResize, min = 180, max = 380 }) {
+export function ResizeHandle({ kind, value, onResize, min = 180, max = 380 }) {
   const startX = useRef(0);
   const startW = useRef(0);
   const draggingRef = useRef(false);
@@ -1645,7 +1645,7 @@ function ScreenTile({ member, pip, showStats = false }: { member: any; pip: any;
 }
 
 // ───────────── server rail ─────────────
-function ServerRail({ servers, activeServer, onPick }) {
+export function ServerRail({ servers, activeServer, onPick }) {
   const [serverOrder, setServerOrder] = useState(null);
   const [dragId, setDragId] = useState(null);
   const [overId, setOverId] = useState(null);
@@ -3838,7 +3838,7 @@ export function mockUnfurl(host, url) {
   };
   return { title: url.replace(/^https?:\/\//, ''), desc: '', kind: 'web', meta: host };
 }
-function Unfurl({ url, host }) {
+export function Unfurl({ url, host }) {
   const info = mockUnfurl(host, url);
   return (
     <a href={url} target="_blank" rel="noopener noreferrer" className={'unfurl unfurl-' + info.kind}>
