@@ -430,4 +430,250 @@ describe('ChatApp render in real Chromium', () => {
     );
     expect(container.firstChild).toBeTruthy();
   });
+
+  it('renders messages with custom render fallbacks (no attachment, no thread)', async () => {
+    const data = makeData({
+      MESSAGES: {
+        'ch-1': Array.from({ length: 5 }, (_, i) => ({
+          id: `m${i}`, author: 'me', at: new Date(Date.now() - i * 1000),
+          kind: 'text', text: `bare text ${i}`, edited: false, deleted: false,
+        })),
+      },
+    });
+    const screen = await render(
+      <ShellDataProvider value={data}>
+        <ChatApp theme={{ name: 'mesh' }} opts={{}} />
+      </ShellDataProvider>,
+    );
+    await expect.element(screen.getByText('bare text 0')).toBeInTheDocument();
+  });
+
+  it('renders consecutive same-author messages as one group', async () => {
+    const data = makeData({
+      MESSAGES: {
+        'ch-1': [
+          { id: 'm1', author: 'u2', at: new Date(2026, 0, 1, 12, 0), kind: 'text', text: 'first', edited: false, deleted: false },
+          { id: 'm2', author: 'u2', at: new Date(2026, 0, 1, 12, 0, 5), kind: 'text', text: 'second', edited: false, deleted: false },
+          { id: 'm3', author: 'u2', at: new Date(2026, 0, 1, 12, 0, 10), kind: 'text', text: 'third', edited: false, deleted: false },
+        ],
+      },
+    });
+    const screen = await render(
+      <ShellDataProvider value={data}>
+        <ChatApp theme={{ name: 'mesh' }} opts={{}} />
+      </ShellDataProvider>,
+    );
+    await expect.element(screen.getByText('third')).toBeInTheDocument();
+  });
+
+  it('renders messages with a URL (unfurl rendering smoke)', async () => {
+    const data = makeData({
+      MESSAGES: {
+        'ch-1': [{
+          id: 'm1', author: 'me', at: new Date(), kind: 'text',
+          text: 'check out https://github.com/dilla-chat/dilla-chat',
+          edited: false, deleted: false,
+        }],
+      },
+    });
+    const { container } = await render(
+      <ShellDataProvider value={data}>
+        <ChatApp theme={{ name: 'mesh' }} opts={{}} />
+      </ShellDataProvider>,
+    );
+    // The unfurl card renders mock metadata that varies by handoff
+    // version — just confirm the URL text is in the DOM (either
+    // markdown link or unfurl card).
+    expect(container.textContent).toContain('github');
+  });
+
+  it('renders a system message + a text message in the same channel', async () => {
+    const data = makeData({
+      MESSAGES: {
+        'ch-1': [
+          { id: 's', author: 'me', at: new Date(), kind: 'system', text: 'channel created', edited: false, deleted: false },
+          { id: 'm', author: 'u2', at: new Date(), kind: 'text', text: 'welcome!', edited: false, deleted: false },
+        ],
+      },
+    });
+    const screen = await render(
+      <ShellDataProvider value={data}>
+        <ChatApp theme={{ name: 'mesh' }} opts={{}} />
+      </ShellDataProvider>,
+    );
+    await expect.element(screen.getByText('channel created')).toBeInTheDocument();
+    await expect.element(screen.getByText('welcome!')).toBeInTheDocument();
+  });
+
+  it('renders messages with mentions', async () => {
+    const data = makeData({
+      MESSAGES: {
+        'ch-1': [{
+          id: 'm1', author: 'u2', at: new Date(), kind: 'text',
+          text: 'hey @me, look at this',
+          edited: false, deleted: false,
+        }],
+      },
+    });
+    const screen = await render(
+      <ShellDataProvider value={data}>
+        <ChatApp theme={{ name: 'mesh' }} opts={{}} />
+      </ShellDataProvider>,
+    );
+    await expect.element(screen.getByText(/look at this/)).toBeInTheDocument();
+  });
+
+  it('renders messages with code blocks', async () => {
+    const data = makeData({
+      MESSAGES: {
+        'ch-1': [{
+          id: 'm1', author: 'me', at: new Date(), kind: 'text',
+          text: 'try:\n```ts\nconsole.log(1)\n```',
+          edited: false, deleted: false,
+        }],
+      },
+    });
+    const screen = await render(
+      <ShellDataProvider value={data}>
+        <ChatApp theme={{ name: 'mesh' }} opts={{}} />
+      </ShellDataProvider>,
+    );
+    await expect.element(screen.getByText(/console\.log/)).toBeInTheDocument();
+  });
+
+  it('renders multiple channels with different categories', async () => {
+    const data = makeData({
+      CHANNELS: [
+        { id: 'ch-1', name: 'general', type: 'text', topic: '', category: 'Main', groupId: 'g1', encrypted: true, unread: 0 },
+        { id: 'ch-3', name: 'dev', type: 'text', topic: '', category: 'Dev', groupId: 'g2', encrypted: true, unread: 0 },
+        { id: 'ch-2', name: 'lounge', type: 'voice', topic: '', category: 'Main', groupId: 'g1', encrypted: true, unread: 0, participants: [] },
+        { id: 'ch-4', name: 'standup', type: 'voice', topic: '', category: 'Dev', groupId: 'g2', encrypted: true, unread: 0, participants: [] },
+      ],
+    });
+    const { container } = await render(
+      <ShellDataProvider value={data}>
+        <ChatApp theme={{ name: 'mesh' }} opts={{}} />
+      </ShellDataProvider>,
+    );
+    expect(container.firstChild).toBeTruthy();
+  });
+
+  it('renders a thread with multiple replies', async () => {
+    const data = makeData({
+      MESSAGES: {
+        'ch-1': [{
+          id: 'p1', author: 'me', at: new Date(2026, 0, 1, 10), kind: 'text',
+          text: 'thread parent', edited: false, deleted: false,
+          thread: { count: 4, lastReplyAt: new Date(), participants: ['u2'] },
+        }],
+      },
+      THREAD_REPLIES: {
+        p1: [
+          { id: 'r1', author: 'u2', at: new Date(2026, 0, 1, 11), kind: 'text', text: 'reply A', edited: false, deleted: false },
+          { id: 'r2', author: 'me', at: new Date(2026, 0, 1, 12), kind: 'text', text: 'reply B', edited: false, deleted: false },
+          { id: 'r3', author: 'u2', at: new Date(2026, 0, 1, 13), kind: 'text', text: 'reply C', edited: false, deleted: false },
+        ],
+      },
+    });
+    const screen = await render(
+      <ShellDataProvider value={data}>
+        <ChatApp theme={{ name: 'mesh' }} opts={{}} />
+      </ShellDataProvider>,
+    );
+    await expect.element(screen.getByText('thread parent')).toBeInTheDocument();
+  });
+
+  it('renders DM view with messages', async () => {
+    const data = makeData({
+      DMS: [
+        { id: 'dm-1', with: 'u2', preview: 'hey', at: new Date(), unread: 0 },
+      ],
+      DM_MESSAGES: {
+        'dm-1': [
+          { id: 'dm-m1', author: 'u2', at: new Date(), kind: 'text', text: 'DM hello', edited: false, deleted: false },
+          { id: 'dm-m2', author: 'me', at: new Date(), kind: 'text', text: 'DM response', edited: false, deleted: false },
+        ],
+      },
+    });
+    const { container } = await render(
+      <ShellDataProvider value={data}>
+        <ChatApp theme={{ name: 'mesh' }} opts={{}} />
+      </ShellDataProvider>,
+    );
+    expect(container.firstChild).toBeTruthy();
+  });
+
+  it('renders group DMs with name', async () => {
+    const data = makeData({
+      DMS: [
+        { id: 'dm-g', with: ['u2', 'u3'], group: true, name: 'alice, bob', preview: '', at: new Date(), unread: 0 },
+      ],
+      DM_MESSAGES: {},
+      byId: {
+        me: { id: 'me', name: 'me', initials: 'ME', color: '#f00' },
+        u2: { id: 'u2', name: 'alice', initials: 'AL', color: '#0f0' },
+        u3: { id: 'u3', name: 'bob', initials: 'BO', color: '#00f' },
+      },
+    });
+    const { container } = await render(
+      <ShellDataProvider value={data}>
+        <ChatApp theme={{ name: 'mesh' }} opts={{}} />
+      </ShellDataProvider>,
+    );
+    expect(container.firstChild).toBeTruthy();
+  });
+
+  it('renders typing indicator placeholder when no typing event', async () => {
+    const { container } = await render(
+      <ShellDataProvider value={makeData()}>
+        <ChatApp theme={{ name: 'mesh' }} opts={{}} />
+      </ShellDataProvider>,
+    );
+    // No typing means no indicator — just smoke-check the render.
+    expect(container.firstChild).toBeTruthy();
+  });
+
+  it('renders multiple messages with mixed reactions', async () => {
+    const data = makeData({
+      MESSAGES: {
+        'ch-1': [
+          { id: 'm1', author: 'me', at: new Date(), kind: 'text', text: 'shipping!',
+            edited: false, deleted: false,
+            reactions: [{ e: '🚀', n: 5, mine: true }, { e: '🎉', n: 3, mine: false }] },
+          { id: 'm2', author: 'u2', at: new Date(), kind: 'text', text: 'nice',
+            edited: false, deleted: false,
+            reactions: [{ e: '👍', n: 2, mine: true }] },
+        ],
+      },
+    });
+    const screen = await render(
+      <ShellDataProvider value={data}>
+        <ChatApp theme={{ name: 'mesh' }} opts={{}} />
+      </ShellDataProvider>,
+    );
+    await expect.element(screen.getByText('shipping!')).toBeInTheDocument();
+  });
+
+  it('renders a multi-option poll with mixed vote state', async () => {
+    const data = makeData({
+      MESSAGES: {
+        'ch-1': [{
+          id: 'p1', kind: 'poll', author: 'me', at: new Date(),
+          question: 'Pick a colour',
+          options: [
+            { label: 'red', votes: 4, mine: true },
+            { label: 'green', votes: 2, mine: false },
+            { label: 'blue', votes: 7, mine: false },
+            { label: 'yellow', votes: 0, mine: false },
+          ],
+        }],
+      },
+    });
+    const screen = await render(
+      <ShellDataProvider value={data}>
+        <ChatApp theme={{ name: 'mesh' }} opts={{}} />
+      </ShellDataProvider>,
+    );
+    await expect.element(screen.getByText('Pick a colour')).toBeInTheDocument();
+  });
 });
