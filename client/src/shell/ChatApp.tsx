@@ -80,7 +80,7 @@ const EMPTY_LIST: any[] = [];
 // Convert a server-side poll payload to the local kind:'poll' message
 // shape that the timeline renderer expects. Uses the poll's id as the
 // message id so vote updates can find and patch it in place.
-function pollServerToMessage(p: any, me: string) {
+export function pollServerToMessage(p: any, me: string) {
   const labels: string[] = p.options || [];
   const tallies: number[] = p.tallies || [];
   const voters: string[][] = p.voters || [];
@@ -98,10 +98,10 @@ function pollServerToMessage(p: any, me: string) {
   };
 }
 
-function timeShort(d) {
+export function timeShort(d) {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
-function dayLabel(d) {
+export function dayLabel(d) {
   const now = new Date();
   const sameDay = d.toDateString() === now.toDateString();
   const y = new Date(now); y.setDate(now.getDate() - 1);
@@ -109,7 +109,7 @@ function dayLabel(d) {
   if (d.toDateString() === y.toDateString()) return 'Yesterday';
   return d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
 }
-function groupMessages(msgs) {
+export function groupMessages(msgs) {
   // Group consecutive messages by the same author within ~5min into stacks.
   const out = [];
   let last = null;
@@ -3812,10 +3812,10 @@ function renderText(text, _members) {
 // Match the host exactly (or as a subdomain). Using includes() would
 // accept evilgithub.com / github.com.evil.com etc.; CodeQL flagged it
 // as incomplete-url-substring-sanitization.
-function isHost(host: string, suffix: string): boolean {
+export function isHost(host: string, suffix: string): boolean {
   return host === suffix || host.endsWith('.' + suffix);
 }
-function mockUnfurl(host, url) {
+export function mockUnfurl(host, url) {
   if (isHost(host, 'github.com')) {
     if (url.includes('/pull/')) return {
       title: 'PR #47 · voice-dock: tighten audio meter polling',
@@ -3851,7 +3851,7 @@ function Unfurl({ url, host }) {
     </a>
   );
 }
-function detectUnfurls(text) {
+export function detectUnfurls(text) {
   if (!text) return [];
   // Skip URLs inside triple-backtick code fences
   const stripped = text.replace(/```[\s\S]*?```/g, '');
