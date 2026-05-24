@@ -861,6 +861,49 @@ mod tests {
         assert_eq!(AUTH_TIMEOUT_SECS, 5);
     }
 
+    // ── looks_like_v3 wire shape sniff ───────────────────────────────
+
+    #[test]
+    fn looks_like_v3_recognises_well_formed_v3_handshake() {
+        let text = r#"{"v":3,"node_id":"n1","nonce":"abc","signature":"sig"}"#;
+        assert!(looks_like_v3(text));
+    }
+
+    #[test]
+    fn looks_like_v3_rejects_legacy_v1_join_token_format() {
+        // Pre-v3 auth message — must NOT be sniffed as v3.
+        let v1 = r#"{"join_token":"secret"}"#;
+        assert!(!looks_like_v3(v1));
+    }
+
+    #[test]
+    fn looks_like_v3_rejects_wrong_version_number() {
+        let v2 = r#"{"v":2,"node_id":"n1","nonce":"abc"}"#;
+        assert!(!looks_like_v3(v2));
+        let v4 = r#"{"v":4,"node_id":"n1","nonce":"abc"}"#;
+        assert!(!looks_like_v3(v4));
+    }
+
+    #[test]
+    fn looks_like_v3_rejects_missing_node_id() {
+        let text = r#"{"v":3,"nonce":"abc"}"#;
+        assert!(!looks_like_v3(text));
+    }
+
+    #[test]
+    fn looks_like_v3_rejects_node_id_of_wrong_type() {
+        // node_id must be a string; numbers / null / object don't count.
+        let text = r#"{"v":3,"node_id":123,"nonce":"x"}"#;
+        assert!(!looks_like_v3(text));
+    }
+
+    #[test]
+    fn looks_like_v3_rejects_invalid_json() {
+        assert!(!looks_like_v3("not-json"));
+        assert!(!looks_like_v3(""));
+        assert!(!looks_like_v3("{"));
+    }
+
     // ── Integration tests for federation transport auth ──────────────
 
     use tokio::net::TcpListener;
