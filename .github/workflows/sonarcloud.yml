@@ -42,7 +42,7 @@ jobs:
         # flaky in CI and cascade-fail the coverage report.
         # continue-on-error keeps a stray failure from blocking the
         # main coverage signal.
-        run: cd client && npx vitest run --config vitest.browser.config.ts --coverage shell/ChatApp.browser shell/ChatApp.interactions shell/Settings.browser shell/Settings.interactions
+        run: cd client && npx vitest run --config vitest.browser.config.ts --coverage shell/ChatApp.browser shell/ChatApp.interactions shell/ChatApp.events shell/Settings.browser shell/Settings.interactions
         continue-on-error: true
 
       # ── Rust + Clippy report ──────────────────────────────────────────────
