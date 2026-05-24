@@ -1064,7 +1064,7 @@ export function ResizeHandle({ kind, value, onResize, min = 180, max = 380 }) {
 }
 
 // Thread panel — opens when clicking a thread-preview on a message.
-function ThreadPanel({ channelId, messageId, members, onClose, onReact }) {
+export function ThreadPanel({ channelId, messageId, members, onClose, onReact }) {
   const data = (useShellDataContext() as any) || EMPTY_SHELL_DATA;
   const channel = data?.CHANNELS?.find(c => c.id === channelId);
   const original = (data?.MESSAGES?.[channelId] || []).find(m => m.id === messageId);
@@ -1229,7 +1229,7 @@ function ThreadPanel({ channelId, messageId, members, onClose, onReact }) {
 // remote camera and screen-share tiles. Falls back to null when no stream
 // is available — callers render the CamTile/ScreenTile placeholder in
 // that case.
-function VideoTile({ stream, fit = 'cover', mirror, showStats = true }: { stream: MediaStream; fit?: 'cover' | 'contain'; mirror?: boolean; showStats?: boolean }) {
+export function VideoTile({ stream, fit = 'cover', mirror, showStats = true }: { stream: MediaStream; fit?: 'cover' | 'contain'; mirror?: boolean; showStats?: boolean }) {
   const ref = useRef<HTMLVideoElement | null>(null);
   const [stats, setStats] = useState<{ w: number; h: number; fps: number } | null>(null);
   const [bitrate, setBitrate] = useState<number | null>(null);
@@ -1371,7 +1371,7 @@ function VideoTile({ stream, fit = 'cover', mirror, showStats = true }: { stream
 // meaningful movement still fires `onClick` so the pip-swap focus-
 // toggle behavior keeps working.
 type DragHandle = 'move' | 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
-function FloatingPip({
+export function FloatingPip({
   className,
   children,
   onClick,
@@ -1555,7 +1555,7 @@ function FloatingPip({
   );
 }
 
-function CamTile({ member, mini, showStats = false }) {
+export function CamTile({ member, mini, showStats = false }) {
   // Pick the real webcam stream if available — local user reads from
   // useVoiceStore.localWebcamStream, peers from remoteWebcamStreams[user_id].
   // Falls back to the SVG silhouette when no stream exists yet.
@@ -1587,7 +1587,7 @@ function CamTile({ member, mini, showStats = false }) {
 
 // Screen-share tile. Real getDisplayMedia stream when available, otherwise
 // the stylized terminal/editor placeholder (kept for tests + offline UX).
-function ScreenTile({ member, pip, showStats = false }: { member: any; pip: any; showStats?: boolean }) {
+export function ScreenTile({ member, pip, showStats = false }: { member: any; pip: any; showStats?: boolean }) {
   const isSelf = member.id === currentUserId();
   const localScreen = useVoiceStore((s) => s.localScreenStream);
   const remoteScreen = useVoiceStore((s) => s.remoteScreenStreams?.[member.id] ?? null);
@@ -1741,7 +1741,7 @@ export function ServerRail({ servers, activeServer, onPick }) {
 }
 
 // ───────────── channel sidebar ─────────────
-function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChannel,
+export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChannel,
                           voiceConnection, members, dms, activeDM, onPickDM,
                           onLeaveVoice, onJoinVoice, mute, setMute, deaf, setDeaf, cam, setCam, screen, setScreen,
                           mutedChannels = new Set(), toggleMuteChannel, onNewDm }) {
@@ -2293,7 +2293,7 @@ function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPickChann
   );
 }
 
-function UserPanel({ member }) {
+export function UserPanel({ member }) {
   // `member` can legitimately be undefined for a beat after sign-in —
   // currentUserId() reads from window.SHELL_DATA which AppShell refreshes
   // every render, but between an auth-store update and the next shell-data
@@ -2394,7 +2394,7 @@ function UserPanel({ member }) {
 }
 
 // ───────────── main pane: text channel ─────────────
-function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, onSend, onReact, onVote, onEdit, onDelete, onAttach, pendingAttachments, onRemoveAttachment, replyTo, onSetReply, typing, onJoinVoice, membersOpen, onToggleMembers, slowModeLock }) {
+export function TextChannel({ channel, messages, members, dmPartner, draft, setDraft, onSend, onReact, onVote, onEdit, onDelete, onAttach, pendingAttachments, onRemoveAttachment, replyTo, onSetReply, typing, onJoinVoice, membersOpen, onToggleMembers, slowModeLock }) {
   // Viewer permissions for this team, used to gate the message context
   // menu (pin / unpin / delete-others). Mirrors the server's
   // require_permission gates so we don't dangle an action that 403s.
@@ -3873,7 +3873,7 @@ export function detectUnfurls(text) {
 }
 
 // ───────────── main pane: voice channel ─────────────
-function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute, setMute, deaf, setDeaf, cam, setCam, screen, setScreen, rich, membersOpen, onToggleMembers }) {
+export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute, setMute, deaf, setDeaf, cam, setCam, screen, setScreen, rich, membersOpen, onToggleMembers }) {
   const nodes = (window.MeshChrome && window.MeshChrome.MEMBER_NODES) || {};
   const participants = (channel.participants || []).map(id => members.byId[id]);
   const isConnected = voiceConnection && voiceConnection.channelId === channel.id;
@@ -4386,7 +4386,7 @@ function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute
 }
 
 // ───────────── member list ─────────────
-function MemberList({ members, voiceConnection, rich, federated }) {
+export function MemberList({ members, voiceConnection, rich, federated }) {
   // Resolve the viewer's perms once per render so menu items can hide
   // admin actions for non-admins instead of toasting 'permission required'
   // after a 403. teamMembers comes from the store so role changes flow in
