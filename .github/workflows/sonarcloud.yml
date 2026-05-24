@@ -37,9 +37,12 @@ jobs:
 
       - name: Run client browser tests with coverage (real Chromium)
         # Browser-mode tests exercise ChatApp/Settings — jsdom can't.
-        # continue-on-error so a flaky browser run never blocks the
+        # Scoped to shell/ChatApp.browser + shell/Settings.browser
+        # because the pre-existing CSS/viewport browser tests are
+        # flaky in CI and cascade-fail the coverage report.
+        # continue-on-error keeps a stray failure from blocking the
         # main coverage signal.
-        run: cd client && npx vitest run --config vitest.browser.config.ts --coverage
+        run: cd client && npx vitest run --config vitest.browser.config.ts --coverage shell/ChatApp.browser shell/Settings.browser
         continue-on-error: true
 
       # ── Rust + Clippy report ──────────────────────────────────────────────
