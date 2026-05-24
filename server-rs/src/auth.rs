@@ -1431,4 +1431,50 @@ mod tests {
         let user_id = auth2.validate_jwt(&token).unwrap();
         assert_eq!(user_id, "cross-user");
     }
+
+    // ── extract_auth_cookie ──────────────────────────────────────────
+
+    fn headers_with_cookie(cookie: &str) -> http::HeaderMap {
+        let mut h = http::HeaderMap::new();
+        h.insert(http::header::COOKIE, cookie.parse().unwrap());
+        h
+    }
+
+    #[test]
+    fn extract_auth_cookie_finds_token_when_cookie_present() {
+        let h = headers_with_cookie("__dilla_jwt=abc.def.ghi");
+        assert_eq!(extract_auth_cookie(&h), Some("abc.def.ghi".to_string()));
+    }
+
+    #[test]
+    fn extract_auth_cookie_finds_token_among_other_cookies() {
+        let h = headers_with_cookie("foo=bar; __dilla_jwt=token123; baz=qux");
+        assert_eq!(extract_auth_cookie(&h), Some("token123".to_string()));
+    }
+
+    #[test]
+    fn extract_auth_cookie_returns_none_when_cookie_header_missing() {
+        let h = http::HeaderMap::new();
+        assert!(extract_auth_cookie(&h).is_none());
+    }
+
+    #[test]
+    fn extract_auth_cookie_returns_none_when_jwt_cookie_absent() {
+        let h = headers_with_cookie("session=abc; theme=dark");
+        assert!(extract_auth_cookie(&h).is_none());
+    }
+
+    #[test]
+    fn extract_auth_cookie_returns_none_for_empty_value() {
+        let h = headers_with_cookie("__dilla_jwt=");
+        // Empty cookie value is treated as absent — clear_auth_cookie
+        // emits exactly this form to log the user out.
+        assert!(extract_auth_cookie(&h).is_none());
+    }
+
+    #[test]
+    fn extract_auth_cookie_handles_leading_whitespace() {
+        let h = headers_with_cookie("foo=1;   __dilla_jwt=tok2");
+        assert_eq!(extract_auth_cookie(&h), Some("tok2".to_string()));
+    }
 }
