@@ -69,7 +69,7 @@ interface LogLine {
   err?: boolean;
 }
 
-function passphraseStrength(p: string) {
+export function passphraseStrength(p: string) {
   if (!p) return { score: 0, label: 'empty', color: 'var(--fg-3)' };
   let s = 0;
   if (p.length >= 8) s++;
