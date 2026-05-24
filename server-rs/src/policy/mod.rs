@@ -301,4 +301,87 @@ mod tests {
             },
         );
     }
+
+    #[test]
+    fn decision_is_allowed_matches_only_allow_variant() {
+        assert!(Decision::Allow.is_allowed());
+        assert!(!Decision::Deny("anything").is_allowed());
+    }
+
+    #[test]
+    fn log_decision_records_deny_at_info_without_panicking() {
+        // Smoke: the Deny branch in log_decision must not panic, even
+        // with empty target ids / reasons.
+        log_decision(
+            &Decision::Deny("test.reason"),
+            &DecisionContext {
+                user_id: "",
+                target_kind: "",
+                target_id: "",
+                reason: "",
+            },
+        );
+    }
+
+    #[test]
+    fn can_call_federation_allows_non_empty_node_id() {
+        let db = test_db();
+        db.with_conn(|c| {
+            let d = can_call_federation(c, "node-1");
+            assert!(d.is_allowed());
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn can_call_federation_denies_empty_node_id() {
+        let db = test_db();
+        db.with_conn(|c| {
+            match can_call_federation(c, "") {
+                Decision::Deny(r) => assert_eq!(r, "federation.unknown_peer"),
+                _ => panic!("expected Deny"),
+            }
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn require_team_member_returns_err_when_not_a_member() {
+        let db = test_db();
+        db.with_conn(|c| {
+            let result = require_team_member(c, "ghost-user", "ghost-team");
+            assert!(result.is_err());
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn require_permission_returns_err_when_no_permission() {
+        let db = test_db();
+        db.with_conn(|c| {
+            // No user, no team — the permission check has nothing to grant.
+            let result = require_permission(c, "ghost", "ghost-team", db::PERM_ADMIN);
+            assert!(result.is_err());
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn can_read_attachment_denies_unknown_attachment_id() {
+        let db = test_db();
+        db.with_conn(|c| {
+            let d = can_read_attachment(c, "u", "missing-attachment-id");
+            assert!(!d.is_allowed());
+            match d {
+                Decision::Deny(r) => assert_eq!(r, "attachment.not_found"),
+                _ => panic!("expected Deny"),
+            }
+            Ok(())
+        })
+        .unwrap();
+    }
 }
