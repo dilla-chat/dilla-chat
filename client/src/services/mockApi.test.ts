@@ -218,4 +218,153 @@ describe('MockApiService — DMs', () => {
       expect(edited).toBeTypeOf('object');
     }
   });
+
+  it('deleteDMMessage + addDMMembers + removeDMMember are reachable', async () => {
+    const svc = newService();
+    const dm = await svc.createDM('t', ['user-a', 'user-b']);
+    const sent = await svc.sendDMMessage('t', dm.id, 'soon-to-delete');
+    const mid = (sent as { id?: string }).id;
+    if (mid) await svc.deleteDMMessage('t', dm.id, mid);
+    await svc.addDMMembers();
+    await svc.removeDMMember();
+  });
+});
+
+describe('MockApiService — threads', () => {
+  it('createThread + getChannelThreads + getThread', async () => {
+    const svc = newService();
+    const t = await svc.createThread('t', 'ch-1', 'msg-1', 'topic');
+    expect(t).toBeTypeOf('object');
+    expect(Array.isArray(await svc.getChannelThreads('t', 'ch-1'))).toBe(true);
+    const got = await svc.getThread('t', (t as { id: string }).id);
+    expect(got).toBeTypeOf('object');
+  });
+
+  it('updateThread + deleteThread', async () => {
+    const svc = newService();
+    const t = await svc.createThread('t', 'ch-1', 'msg-1');
+    await svc.updateThread('t', (t as { id: string }).id, 'new title');
+    await svc.deleteThread('t', (t as { id: string }).id);
+  });
+
+  it('thread messages CRUD', async () => {
+    const svc = newService();
+    const t = await svc.createThread('t', 'ch-1', 'msg-1');
+    const tid = (t as { id: string }).id;
+    expect(Array.isArray(await svc.getThreadMessages('t', tid))).toBe(true);
+    const sent = await svc.sendThreadMessage('t', tid, 'hi');
+    const sid = (sent as { id?: string }).id;
+    if (sid) {
+      await svc.editThreadMessage('t', tid, sid, 'edited');
+      await svc.deleteThreadMessage('t', tid, sid);
+    }
+  });
+});
+
+describe('MockApiService — reactions / attachments', () => {
+  it('add/remove/get reactions', async () => {
+    const svc = newService();
+    await svc.addReaction('t', 'ch-1', 'm1', '👍');
+    await svc.removeReaction('t', 'ch-1', 'm1', '👍');
+    const r = await svc.getReactions('t', 'ch-1', 'm1');
+    expect(Array.isArray(r)).toBe(true);
+  });
+
+  it('uploadFile + getAttachmentUrl + deleteAttachment', async () => {
+    const svc = newService();
+    const att = await svc.uploadFile();
+    expect(att).toBeTypeOf('object');
+    expect(svc.getAttachmentUrl()).toBe('');
+    await svc.deleteAttachment();
+  });
+});
+
+describe('MockApiService — presence + voice', () => {
+  it('getPresences + getUserPresence + updatePresence', async () => {
+    const svc = newService();
+    expect(await svc.getPresences()).toBeTypeOf('object');
+    expect(await svc.getUserPresence('t', 'me')).toBeTypeOf('object');
+    await svc.updatePresence();
+  });
+
+  it('getVoiceState + joinVoice + leaveVoice', async () => {
+    const svc = newService();
+    expect(await svc.getVoiceState('t', 'ch-voice')).toBeTypeOf('object');
+    expect(await svc.joinVoice('t', 'ch-voice')).toBeTypeOf('object');
+    await svc.leaveVoice();
+  });
+});
+
+describe('MockApiService — polls', () => {
+  it('list / create / vote / unvote', async () => {
+    const svc = newService();
+    expect(Array.isArray(await svc.getPolls('t', 'ch-1'))).toBe(true);
+    const created = (await svc.createPoll('t', 'ch-1', { question: 'Q?', options: ['a', 'b'] })) as { id?: string };
+    expect(created).toBeTypeOf('object');
+    const pid = created.id ?? 'p1';
+    await svc.votePoll('t', pid, 0);
+    await svc.unvotePoll('t', pid);
+  });
+});
+
+describe('MockApiService — mute / unmute', () => {
+  it('mute + unmute channel', async () => {
+    const svc = newService();
+    const muted = await svc.muteChannel('t', 'ch-1');
+    expect(muted).toBeTypeOf('object');
+    await svc.muteChannel('t', 'ch-1', new Date().toISOString());
+    await svc.unmuteChannel('t', 'ch-1');
+  });
+});
+
+describe('MockApiService — giphy', () => {
+  it('embedGif + searchGif', async () => {
+    const svc = newService();
+    expect(await svc.embedGif('t', 'https://example/gif')).toBeTypeOf('object');
+    expect(await svc.searchGif('t', 'cat', 10)).toBeTypeOf('object');
+  });
+
+  it('getGiphyIntegration + setGiphyApiKey', async () => {
+    const svc = newService();
+    expect(await svc.getGiphyIntegration('t')).toBeTypeOf('object');
+    expect(await svc.setGiphyApiKey('t', 'gph_key')).toBeTypeOf('object');
+  });
+});
+
+describe('MockApiService — blocks / pins / groups', () => {
+  it('list / block / unblock', async () => {
+    const svc = newService();
+    expect(await svc.listBlocks('t')).toBeInstanceOf(Array);
+    await svc.blockUser('t', 'u2');
+    await svc.unblockUser('t', 'u2');
+  });
+
+  it('pin / unpin message', async () => {
+    const svc = newService();
+    await svc.pinMessage('t', 'ch-1', 'm1');
+    await svc.unpinMessage('t', 'ch-1', 'm1');
+  });
+
+  it('groups CRUD + setGroupAccess', async () => {
+    const svc = newService();
+    const groups = await svc.listGroups('t');
+    expect(Array.isArray(groups)).toBe(true);
+    const created = await svc.createGroup('t', 'newgrp');
+    expect(created.id).toBeTruthy();
+    const updated = await svc.updateGroup('t', created.id, { name: 'renamed', position: 2 });
+    expect(updated).toBeTypeOf('object');
+    const access = await svc.setGroupAccess('t', created.id, ['r1'], true);
+    expect(access.role_ids).toEqual(['r1']);
+    await svc.deleteGroup('t', created.id);
+  });
+});
+
+describe('MockApiService — health + leave', () => {
+  it('leaveTeam is a noop', async () => {
+    await expect(newService().leaveTeam('t')).resolves.toBeUndefined();
+  });
+
+  it('checkHealth returns true', async () => {
+    expect(await newService().checkHealth()).toBe(true);
+  });
 });
