@@ -93,6 +93,14 @@ describe('prekeyVaultWorkerImpl', () => {
     expect(await getPrekeySecrets()).toBeNull();
   });
 
+  it('getPrekeySecrets returns null when KEK is not installed and cache is empty', async () => {
+    expect(await getPrekeySecrets()).toBeNull();
+  });
+
+  it('savePrekeySecrets throws when KEK is not installed', async () => {
+    await expect(savePrekeySecrets(b64([1]), [])).rejects.toThrow(/KEK not set/);
+  });
+
   it('rotating the KEK invalidates the existing vault (load returns null)', async () => {
     await initSessionKey('kek-a');
     await savePrekeySecrets(b64([1, 2]), [b64([3, 4])]);
