@@ -224,4 +224,14 @@ mod tests {
         let result = load_theme_file(path.to_str().unwrap());
         assert_eq!(result, Some(":root { --x: 1; }".to_string()));
     }
+
+    #[test]
+    fn load_theme_file_returns_none_for_oversized_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("big.css");
+        // Write 1 MiB + 1 byte to trip the size cap.
+        let big = vec![b'a'; (1024 * 1024) + 1];
+        std::fs::write(&path, &big).unwrap();
+        assert!(load_theme_file(path.to_str().unwrap()).is_none());
+    }
 }
