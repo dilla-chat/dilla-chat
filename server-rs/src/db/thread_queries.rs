@@ -354,6 +354,38 @@ mod tests {
     }
 
     #[test]
+    fn test_get_thread_messages_with_before_pagination() {
+        let db = test_db();
+        setup_for_threads(&db);
+
+        let thread = Thread {
+            id: "thr-pg".into(), channel_id: "ch1".into(), parent_message_id: "pm1".into(),
+            team_id: "t1".into(), creator_id: "u1".into(), title: "Pg".into(),
+            message_count: 0, last_message_at: None, created_at: crate::db::now_str(),
+        };
+        db.with_conn(|c| create_thread(c, &thread)).unwrap();
+
+        for i in 0..5 {
+            let reply = Message {
+                id: format!("rp{}", i), channel_id: "ch1".into(), dm_channel_id: String::new(),
+                author_id: "u1".into(), content: format!("body {}", i), msg_type: "text".into(),
+                thread_id: "thr-pg".into(), edited_at: None, deleted: false,
+                lamport_ts: i as i64, created_at: format!("2024-02-01 00:00:0{}", i),
+                ..Default::default()
+            };
+            db.with_conn(|c| create_thread_message(c, &reply)).unwrap();
+        }
+
+        // before="2024-02-01 00:00:03" → only earlier rows, max 2.
+        let page = db.with_conn(|c| {
+            get_thread_messages(c, "thr-pg", "2024-02-01 00:00:03", 2)
+        }).unwrap();
+        assert_eq!(page.len(), 2);
+        // The most-recent-earlier two messages, in chronological (reverse-of-desc) order.
+        assert!(page[0].created_at < "2024-02-01 00:00:03".to_string());
+    }
+
+    #[test]
     fn test_delete_thread_removes_messages() {
         let db = test_db();
         setup_for_threads(&db);
