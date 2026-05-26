@@ -126,8 +126,8 @@ describe('TeamRoles', () => {
     const { container } = render(wrap(<TeamRoles />));
     const rows = [...container.querySelectorAll('.set-tr.role')] as HTMLElement[];
     if (rows.length >= 2) {
-      fireEvent.dragStart(rows[0]);
-      fireEvent.dragOver(rows[1]);
+      fireEvent.dragStart(rows[0], { dataTransfer: { effectAllowed: '', dropEffect: '', setData: () => {}, getData: () => '' } });
+      fireEvent.dragOver(rows[1], { dataTransfer: { effectAllowed: '', dropEffect: '', setData: () => {}, getData: () => '' } });
       fireEvent.drop(rows[1]);
     }
     expect(container.firstChild).toBeTruthy();
@@ -137,7 +137,7 @@ describe('TeamRoles', () => {
     const { container } = render(wrap(<TeamRoles />));
     const rows = [...container.querySelectorAll('.set-tr.role')] as HTMLElement[];
     if (rows[0]) {
-      fireEvent.dragStart(rows[0]);
+      fireEvent.dragStart(rows[0], { dataTransfer: { effectAllowed: '', dropEffect: '', setData: () => {}, getData: () => '' } });
       fireEvent.drop(rows[0]);
     }
     expect(apiMocks.reorderRoles).not.toHaveBeenCalled();
@@ -147,7 +147,7 @@ describe('TeamRoles', () => {
     const { container } = render(wrap(<TeamRoles />));
     const rows = [...container.querySelectorAll('.set-tr.role')] as HTMLElement[];
     if (rows[0]) {
-      fireEvent.dragStart(rows[0]);
+      fireEvent.dragStart(rows[0], { dataTransfer: { effectAllowed: '', dropEffect: '', setData: () => {}, getData: () => '' } });
       fireEvent.dragEnd(rows[0]);
     }
     expect(container.firstChild).toBeTruthy();
