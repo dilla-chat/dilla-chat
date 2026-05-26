@@ -328,6 +328,57 @@ mod tests {
     }
 
     #[test]
+    fn test_user_permissions_bits_for_non_member_returns_zero() {
+        let db = test_db();
+        let owner = make_user("u-owner", "o", &[1u8; 32]);
+        db.with_conn(|c| crate::db::create_user(c, &owner)).unwrap();
+        let team = make_team("t-zero", "T", "u-owner");
+        db.with_conn(|c| crate::db::create_team(c, &team)).unwrap();
+        let bits = db.with_conn(|c| user_permissions_bits(c, "ghost-user", "t-zero")).unwrap();
+        assert_eq!(bits, 0);
+    }
+
+    #[test]
+    fn test_user_permissions_bits_owner_returns_all_bits_set() {
+        let db = test_db();
+        let owner = make_user("u-owner", "o", &[1u8; 32]);
+        db.with_conn(|c| crate::db::create_user(c, &owner)).unwrap();
+        let team = make_team("t-own", "T", "u-owner");
+        db.with_conn(|c| crate::db::create_team(c, &team)).unwrap();
+        let bits = db.with_conn(|c| user_permissions_bits(c, "u-owner", "t-own")).unwrap();
+        assert_eq!(bits, !0);
+    }
+
+    #[test]
+    fn test_user_permissions_bits_admin_role_short_circuits() {
+        let db = test_db();
+        let owner = make_user("u-owner", "o", &[1u8; 32]);
+        let user = make_user("u-mod", "m", &[2u8; 32]);
+        db.with_conn(|c| crate::db::create_user(c, &owner)).unwrap();
+        db.with_conn(|c| crate::db::create_user(c, &user)).unwrap();
+        let team = make_team("t-admin", "T", "u-owner");
+        db.with_conn(|c| crate::db::create_team(c, &team)).unwrap();
+        let member = make_member("m-mod", "t-admin", "u-mod");
+        db.with_conn(|c| crate::db::create_member(c, &member)).unwrap();
+        let now = crate::db::now_str();
+        let role = crate::db::models::Role {
+            id: "r-admin".into(),
+            team_id: "t-admin".into(),
+            name: "Admin".into(),
+            color: String::new(),
+            position: 0,
+            permissions: PERM_ADMIN,
+            is_default: false,
+            created_at: now.clone(),
+            updated_at: now,
+        };
+        db.with_conn(|c| crate::db::create_role(c, &role)).unwrap();
+        db.with_conn(|c| crate::db::assign_role_to_member(c, "m-mod", "r-admin")).unwrap();
+        let bits = db.with_conn(|c| user_permissions_bits(c, "u-mod", "t-admin")).unwrap();
+        assert_eq!(bits, !0);
+    }
+
+    #[test]
     fn test_user_has_no_permission_without_role() {
         let db = test_db();
         let owner = make_user("u1", "owner", &[1u8; 32]);
