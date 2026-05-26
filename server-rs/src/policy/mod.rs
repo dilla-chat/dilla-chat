@@ -371,6 +371,57 @@ mod tests {
     }
 
     #[test]
+    fn can_send_message_denies_non_member() {
+        let db = test_db();
+        db.with_conn(|c| {
+            let d = can_send_message(c, "ghost", "ghost-team", "ghost-channel");
+            match d {
+                Decision::Deny(r) => assert_eq!(r, "team.not_member"),
+                _ => panic!("expected Deny"),
+            }
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn can_manage_team_denies_non_admin() {
+        let db = test_db();
+        db.with_conn(|c| {
+            let d = can_manage_team(c, "ghost", "ghost-team");
+            match d {
+                Decision::Deny(r) => assert_eq!(r, "team.no_manage_permission"),
+                _ => panic!("expected Deny"),
+            }
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn can_subscribe_channel_denies_cross_team() {
+        let db = test_db();
+        db.with_conn(|c| {
+            // Insert a team + channel directly.
+            c.execute(
+                "INSERT INTO teams (id, name, created_by) VALUES ('t-real', 'real', 'u-creator')",
+                [],
+            ).unwrap();
+            c.execute(
+                "INSERT INTO channels (id, team_id, name, type) VALUES ('ch-real', 't-real', 'general', 'text')",
+                [],
+            ).unwrap();
+            let d = can_subscribe_channel(c, "u", "t-other", "ch-real");
+            match d {
+                Decision::Deny(r) => assert_eq!(r, "channel.cross_team"),
+                _ => panic!("expected Deny cross_team"),
+            }
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
     fn can_read_attachment_denies_unknown_attachment_id() {
         let db = test_db();
         db.with_conn(|c| {
