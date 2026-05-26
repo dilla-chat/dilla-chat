@@ -97,6 +97,32 @@ describe('MeshBottomBar', () => {
     expect(container.textContent).toMatch(/db SQLCIPHER/i);
   });
 
+  it('clicking the node chunk dispatches mesh:open-federation', () => {
+    const spy = vi.spyOn(window, 'dispatchEvent');
+    render(<MeshBottomBar />);
+    fireEvent.click(screen.getByText('node').closest('button')!);
+    expect(spy.mock.calls.some((c) => c[0] instanceof CustomEvent && c[0].type === 'mesh:open-federation')).toBe(true);
+    spy.mockRestore();
+  });
+
+  it('clicking the peers chunk dispatches mesh:open-federation', () => {
+    useMeshStore.setState({ status: 'ok', peersConnected: 1, peersTotal: 2 });
+    const spy = vi.spyOn(window, 'dispatchEvent');
+    render(<MeshBottomBar />);
+    fireEvent.click(screen.getByText('peers').closest('button')!);
+    expect(spy.mock.calls.some((c) => c[0] instanceof CustomEvent && c[0].type === 'mesh:open-federation')).toBe(true);
+    spy.mockRestore();
+  });
+
+  it('shows db CHECKING… when server config is null', async () => {
+    vi.resetModules();
+    vi.doMock('../../hooks/useServerConfig', () => ({ useServerConfig: () => null }));
+    const { default: Bar } = await import('./MeshBottomBar');
+    const { container } = render(<Bar />);
+    expect(container.textContent).toMatch(/CHECKING…/);
+    vi.doUnmock('../../hooks/useServerConfig');
+  });
+
   it('shows version + build in the rightmost chunk', () => {
     const { container } = render(<MeshBottomBar />);
     // Pulled from Vite-injected build constants — the exact values
