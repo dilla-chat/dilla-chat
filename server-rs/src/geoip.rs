@@ -80,4 +80,21 @@ mod tests {
         // cold start.
         let _ = country_for(&ip);
     }
+
+    #[test]
+    fn init_with_empty_path_does_not_panic() {
+        // Empty path takes the None branch — must not panic and must
+        // leave the global state usable.
+        init("");
+    }
+
+    #[test]
+    fn init_with_unreadable_path_falls_back_to_none() {
+        // Non-existent file path exercises the Err arm of
+        // Reader::open_readfile without depending on a real .mmdb
+        // fixture in the repo.
+        init("/tmp/this-path-does-not-exist-for-dilla-geoip-test.mmdb");
+        let ip: IpAddr = "8.8.8.8".parse().unwrap();
+        let _ = country_for(&ip);
+    }
 }
