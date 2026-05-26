@@ -363,3 +363,26 @@ describe('IDB error path coverage', () => {
     expect(['resolved', 'rejected']).toContain(settled);
   });
 });
+
+describe('sourceHash invalidation', () => {
+  it('returns null when sourceCiphertext does not match stored hash', async () => {
+    await cacheMessage('msg-source', 'ch-source', 'plain', 'original-cipher');
+    const result = await getCachedMessage('msg-source', 'edited-cipher');
+    expect(result).toBeNull();
+  });
+
+  it('returns plaintext when sourceCiphertext matches', async () => {
+    await cacheMessage('msg-source-2', 'ch-source', 'plain', 'same-cipher');
+    const result = await getCachedMessage('msg-source-2', 'same-cipher');
+    expect(result).toBe('plain');
+  });
+
+  it('returns null when decrypt fails (e.g., key rotation)', async () => {
+    await cacheMessage('msg-rotated', 'ch-rotated', 'plain');
+    // Rotate the derivedKey to invalidate the cache key
+    const { useAuthStore } = await import('../stores/authStore');
+    useAuthStore.setState({ derivedKey: 'rotated-derived-key-xyz' });
+    const result = await getCachedMessage('msg-rotated');
+    expect(result).toBeNull();
+  });
+});
