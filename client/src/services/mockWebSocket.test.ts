@@ -98,6 +98,43 @@ describe('MockWebSocketService', () => {
     expect(resp).toEqual([{ id: 'm1' }]);
   });
 
+  it('request() delegates to peerApi for threads:list', async () => {
+    const getChannelThreads = vi.fn().mockResolvedValue([{ id: 'th1' }]);
+    ws.setPeerApi({ getChannelThreads });
+    const resp = await ws.request<unknown[]>('t1', 'threads:list', { channel_id: 'c1' });
+    expect(getChannelThreads).toHaveBeenCalledWith('t1', 'c1');
+    expect(resp).toEqual([{ id: 'th1' }]);
+  });
+
+  it('request() delegates to peerApi for threads:messages', async () => {
+    const getThreadMessages = vi.fn().mockResolvedValue([{ id: 'msg1' }]);
+    ws.setPeerApi({ getThreadMessages });
+    const resp = await ws.request<unknown[]>('t1', 'threads:messages', { thread_id: 'th1' });
+    expect(getThreadMessages).toHaveBeenCalledWith('t1', 'th1');
+    expect(resp).toEqual([{ id: 'msg1' }]);
+  });
+
+  it('request() delegates to peerApi for dms:list', async () => {
+    const getDMChannels = vi.fn().mockResolvedValue([{ id: 'dm1' }]);
+    ws.setPeerApi({ getDMChannels });
+    const resp = await ws.request<{ dm_channels: unknown[] }>('t1', 'dms:list');
+    expect(resp).toEqual({ dm_channels: [{ id: 'dm1' }] });
+  });
+
+  it('request() delegates to peerApi for dms:messages', async () => {
+    const getDMMessages = vi.fn().mockResolvedValue([{ id: 'dmm1' }]);
+    ws.setPeerApi({ getDMMessages });
+    const resp = await ws.request<unknown[]>('t1', 'dms:messages', { dm_id: 'dm1' });
+    expect(getDMMessages).toHaveBeenCalledWith('t1', 'dm1');
+    expect(resp).toEqual([{ id: 'dmm1' }]);
+  });
+
+  it('request() returns {} for an unknown action when peerApi is set', async () => {
+    ws.setPeerApi({ getMessages: vi.fn() });
+    const resp = await ws.request<object>('t1', 'something:weird');
+    expect(resp).toEqual({});
+  });
+
   it('all send-style no-op methods exist and return undefined', () => {
     // The MockWebSocketService advertises the same surface area as the
     // real ws so /mesh can use it as a drop-in. None of these need to
