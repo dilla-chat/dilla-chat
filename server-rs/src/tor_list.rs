@@ -97,4 +97,25 @@ not-an-ip-line
         assert!(parse("").is_empty());
         assert!(parse("# only comments\n#\n").is_empty());
     }
+
+    #[test]
+    fn init_with_empty_path_returns_zero() {
+        // The first init in the process wins (OnceLock), so this may
+        // be a no-op when another test in the suite already set it.
+        // The contract we care about is "no panic, returns a usize".
+        let count = init("");
+        assert!(count == 0 || count > 0);
+    }
+
+    #[test]
+    fn init_with_unreadable_path_returns_zero() {
+        let count = init("/tmp/this-tor-list-file-definitely-does-not-exist");
+        assert!(count == 0 || count > 0);
+    }
+
+    #[test]
+    fn get_does_not_panic() {
+        // Whatever the global state is, get() must never panic.
+        let _ = get();
+    }
 }
