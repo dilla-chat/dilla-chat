@@ -270,6 +270,50 @@ describe('MockApiService — reactions / attachments', () => {
     expect(Array.isArray(r)).toBe(true);
   });
 
+  it('addReaction → toggles existing emoji count + getReactions surfaces it', async () => {
+    const svc = newService();
+    const msg = {
+      id: 'msg-react',
+      channel_id: 'ch-react',
+      sender_id: 'demo',
+      username: 'demo',
+      content: 'hi',
+      reactions: [] as { emoji: string; users: string[]; count: number }[],
+      attachments: [],
+      created_at: new Date().toISOString(),
+      edited_at: null,
+      deleted: false,
+    };
+    (svc as unknown as { _addChannelMessage: (c: string, m: typeof msg) => void })._addChannelMessage('ch-react', msg);
+
+    await svc.addReaction('t', 'ch-react', 'msg-react', '🔥');
+    let r = await svc.getReactions('t', 'ch-react', 'msg-react');
+    expect(r[0].emoji).toBe('🔥');
+    expect(r[0].count).toBe(1);
+    expect(r[0].me).toBe(true);
+
+    // Same emoji again from the same user — no count bump
+    await svc.addReaction('t', 'ch-react', 'msg-react', '🔥');
+    r = await svc.getReactions('t', 'ch-react', 'msg-react');
+    expect(r[0].count).toBe(1);
+
+    // Remove — emoji entry deletes when count hits zero
+    await svc.removeReaction('t', 'ch-react', 'msg-react', '🔥');
+    r = await svc.getReactions('t', 'ch-react', 'msg-react');
+    expect(r).toEqual([]);
+  });
+
+  it('removeReaction on a missing emoji is a no-op', async () => {
+    const svc = newService();
+    const msg = {
+      id: 'msg-nope', channel_id: 'ch-nope', sender_id: 'd', username: 'd',
+      content: '', reactions: [], attachments: [], created_at: '', edited_at: null, deleted: false,
+    };
+    (svc as unknown as { _addChannelMessage: (c: string, m: typeof msg) => void })._addChannelMessage('ch-nope', msg);
+    await svc.removeReaction('t', 'ch-nope', 'msg-nope', '🤷');
+    expect(await svc.getReactions('t', 'ch-nope', 'msg-nope')).toEqual([]);
+  });
+
   it('uploadFile + getAttachmentUrl + deleteAttachment', async () => {
     const svc = newService();
     const att = await svc.uploadFile();
