@@ -11,7 +11,7 @@ vi.mock('./crypto/sessionStore', () => ({
   saveGroupSession: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { initCrypto, resetCrypto, getIdentityKeys, cryptoService } from './crypto';
+import { initCrypto, resetCrypto, getIdentityKeys, cryptoService, isCryptoInitialized } from './crypto';
 import { generateEd25519KeyPair, generateX25519KeyPair } from './cryptoCore';
 
 async function makeTestKeys() {
@@ -31,6 +31,23 @@ describe('crypto service', () => {
 
   it('resetCrypto clears manager', () => {
     expect(() => getIdentityKeys()).toThrow();
+  });
+
+  it('isCryptoInitialized reflects manager state', async () => {
+    expect(isCryptoInitialized()).toBe(false);
+    const keys = await makeTestKeys();
+    await initCrypto(keys, 'k');
+    expect(isCryptoInitialized()).toBe(true);
+    resetCrypto();
+    expect(isCryptoInitialized()).toBe(false);
+  });
+
+  it('initCrypto swallows session-restore errors', async () => {
+    const { loadSessions } = await import('./keyStore');
+    vi.mocked(loadSessions).mockRejectedValueOnce(new Error('idb broken'));
+    const keys = await makeTestKeys();
+    await expect(initCrypto(keys, 'k')).resolves.toBeUndefined();
+    expect(isCryptoInitialized()).toBe(true);
   });
 
   it('initCrypto restores sessions when loadSessions returns data', async () => {
