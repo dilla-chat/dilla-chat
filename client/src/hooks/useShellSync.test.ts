@@ -161,6 +161,31 @@ describe('useShellSync — WS event dispatch', () => {
     expect(banner?.kind).toBe('offline');
   });
 
+  it('ws:connected with peersTotal=0 sets status to ready', () => {
+    useMeshStore.setState({ peersTotal: 0, peersConnected: 0 } as never);
+    renderHook(() => useShellSync());
+    wsHandlers.get('ws:connected')!();
+    expect(useMeshStore.getState().status).toBe('ready');
+  });
+
+  it('ws:connected with peersConnected < peersTotal sets status to degraded', () => {
+    useMeshStore.setState({ peersTotal: 3, peersConnected: 1 } as never);
+    renderHook(() => useShellSync());
+    wsHandlers.get('ws:connected')!();
+    expect(useMeshStore.getState().status).toBe('degraded');
+  });
+
+  it('ws:connected with full peers + prior offline banner shows restored banner', () => {
+    useMeshStore.setState({
+      peersTotal: 2,
+      peersConnected: 2,
+      connectionBanner: { kind: 'offline', message: 'Disconnected' },
+    } as never);
+    renderHook(() => useShellSync());
+    wsHandlers.get('ws:connected')!();
+    expect(useMeshStore.getState().connectionBanner?.kind).toBe('restored');
+  });
+
   it('voice:incoming-call dispatches a mesh:incoming-call CustomEvent', () => {
     const spy = vi.spyOn(window, 'dispatchEvent');
     renderHook(() => useShellSync());
