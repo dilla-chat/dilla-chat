@@ -84,6 +84,56 @@ describe('ConfirmDialog', () => {
     expect(result).toBe(false);
   });
 
+  it('Escape on the overlay onKeyDown cancels', async () => {
+    const { container } = render(<ConfirmDialog />);
+    let result: boolean | null = null;
+    act(() => {
+      void dillaConfirm({ body: 'go?' }).then((r) => (result = r));
+    });
+    const overlay = container.querySelector('.modal-overlay') as HTMLElement;
+    await act(async () => {
+      fireEvent.keyDown(overlay, { key: 'Escape' });
+      await Promise.resolve();
+    });
+    expect(result).toBe(false);
+  });
+
+  it('non-escape onKeyDown on the overlay does not cancel', async () => {
+    const { container } = render(<ConfirmDialog />);
+    let result: boolean | null = null;
+    act(() => {
+      void dillaConfirm({ body: 'go?' }).then((r) => (result = r));
+    });
+    const overlay = container.querySelector('.modal-overlay') as HTMLElement;
+    await act(async () => {
+      fireEvent.keyDown(overlay, { key: 'a' });
+      await Promise.resolve();
+    });
+    expect(result).toBeNull();
+  });
+
+  it('cancel × button in the header cancels', async () => {
+    const { container } = render(<ConfirmDialog />);
+    let result: boolean | null = null;
+    act(() => {
+      void dillaConfirm({ body: 'go?' }).then((r) => (result = r));
+    });
+    const x = container.querySelector('.modal-x') as HTMLElement;
+    await act(async () => {
+      fireEvent.click(x);
+      await Promise.resolve();
+    });
+    expect(result).toBe(false);
+  });
+
+  it('keyDown on the card does not bubble up to the overlay', async () => {
+    const { container } = render(<ConfirmDialog />);
+    act(() => { void dillaConfirm({ body: 'go?' }); });
+    const card = container.querySelector('.confirm-card') as HTMLElement;
+    // Smoke: stopPropagation path must not throw.
+    expect(() => fireEvent.keyDown(card, { key: 'a' })).not.toThrow();
+  });
+
   it('Enter key confirms the prompt', async () => {
     render(<ConfirmDialog />);
     let result: boolean | null = null;
