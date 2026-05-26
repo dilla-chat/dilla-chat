@@ -116,3 +116,62 @@ describe('state independence', () => {
     expect(getState().theme).toBe('dark');
   });
 });
+
+describe('setBaseFontPx clamping', () => {
+  it('clamps to min 11 when smaller passed', () => {
+    getState().setBaseFontPx(5);
+    expect(getState().baseFontPx).toBe(11);
+  });
+
+  it('clamps to max 20 when larger passed', () => {
+    getState().setBaseFontPx(30);
+    expect(getState().baseFontPx).toBe(20);
+  });
+
+  it('rounds non-integer values', () => {
+    getState().setBaseFontPx(13.7);
+    expect(getState().baseFontPx).toBe(14);
+  });
+
+  it('accepts values within range', () => {
+    getState().setBaseFontPx(16);
+    expect(getState().baseFontPx).toBe(16);
+  });
+});
+
+describe('setReduceMotion + setTheme', () => {
+  it('toggles reduceMotion', () => {
+    getState().setReduceMotion(true);
+    expect(getState().reduceMotion).toBe(true);
+    getState().setReduceMotion(false);
+    expect(getState().reduceMotion).toBe(false);
+  });
+
+  it('setTheme accepts mesh and minimal', () => {
+    getState().setTheme('mesh');
+    expect(getState().theme).toBe('mesh');
+    getState().setTheme('minimal');
+    expect(getState().theme).toBe('minimal');
+  });
+});
+
+describe('setQuietHours', () => {
+  it('updates enabled flag', () => {
+    getState().setQuietHours({ enabled: true });
+    expect(getState().quietHoursEnabled).toBe(true);
+  });
+
+  it('updates from/to', () => {
+    getState().setQuietHours({ from: '23:00', to: '08:00' });
+    expect(getState().quietHoursFrom).toBe('23:00');
+    expect(getState().quietHoursTo).toBe('08:00');
+  });
+
+  it('partial update preserves untouched fields', () => {
+    getState().setQuietHours({ enabled: true, from: '00:00', to: '06:00' });
+    getState().setQuietHours({ enabled: false });
+    expect(getState().quietHoursEnabled).toBe(false);
+    expect(getState().quietHoursFrom).toBe('00:00');
+    expect(getState().quietHoursTo).toBe('06:00');
+  });
+});
