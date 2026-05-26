@@ -143,4 +143,35 @@ mod tests {
         })
         .unwrap();
     }
+
+    #[test]
+    fn update_member_from_sync_mutates_nickname() {
+        let db = test_db();
+        seed(&db);
+        db.with_conn(|c| {
+            c.execute(
+                "INSERT INTO members (id, team_id, user_id, nickname, joined_at, updated_at)
+                 VALUES ('m1', 't1', 'u1', 'old-nick', datetime('now'), datetime('now'))",
+                [],
+            )?;
+            let member = Member {
+                id: "m1".into(),
+                team_id: "t1".into(),
+                user_id: "u1".into(),
+                nickname: "new-nick".into(),
+                invited_by: String::new(),
+                joined_at: crate::db::now_str(),
+                updated_at: crate::db::now_str(),
+            };
+            update_member_from_sync(c, &member)?;
+            let got: String = c.query_row(
+                "SELECT nickname FROM members WHERE id = 'm1'",
+                [],
+                |row| row.get(0),
+            )?;
+            assert_eq!(got, "new-nick");
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+    }
 }
