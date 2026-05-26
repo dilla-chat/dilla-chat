@@ -262,4 +262,22 @@ mod tests {
             .unwrap();
         assert_eq!(result, None);
     }
+
+    #[test]
+    fn test_get_last_read_at_returns_none_when_unset() {
+        let db = setup();
+        let result = db
+            .with_conn(|c| get_last_read_at(c, "u1", "ch1"))
+            .unwrap();
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_get_dm_unread_counts_for_user_empty_when_no_dm_channels() {
+        let db = setup();
+        let counts = db
+            .with_conn(|c| get_dm_unread_counts_for_user(c, "u1", "t1"))
+            .unwrap();
+        assert!(counts.is_empty());
+    }
 }
