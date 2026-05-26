@@ -1,4 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+/**
+ * @vitest-environment jsdom
+ */
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useLayoutStore } from './layoutStore';
 
 beforeEach(() => {
@@ -53,6 +56,42 @@ describe('layoutStore', () => {
     expect(useLayoutStore.getState().membersWidth).toBe(282);
     nudgeMembersWidth(-1000);
     expect(useLayoutStore.getState().membersWidth).toBe(180);
+  });
+
+  it('persist migrate v0 → enables top + bottom bars', async () => {
+    globalThis.localStorage.setItem(
+      'dilla-layout',
+      JSON.stringify({ state: { sidebarWidth: 240, membersWidth: 232, topBarEnabled: false, bottomBarEnabled: false }, version: 0 }),
+    );
+    vi.resetModules();
+    const mod = await import('./layoutStore');
+    await new Promise((r) => setTimeout(r, 10));
+    const s = mod.useLayoutStore.getState();
+    expect(s.topBarEnabled).toBe(true);
+    expect(s.bottomBarEnabled).toBe(true);
+  });
+
+  it('persist migrate at current version returns state unchanged', async () => {
+    globalThis.localStorage.setItem(
+      'dilla-layout',
+      JSON.stringify({ state: { topBarEnabled: false, bottomBarEnabled: false }, version: 1 }),
+    );
+    vi.resetModules();
+    const mod = await import('./layoutStore');
+    await new Promise((r) => setTimeout(r, 10));
+    const s = mod.useLayoutStore.getState();
+    expect(s.topBarEnabled).toBe(false);
+  });
+
+  it('persist migrate handles null persistedState', async () => {
+    globalThis.localStorage.setItem(
+      'dilla-layout',
+      JSON.stringify({ state: null, version: 0 }),
+    );
+    vi.resetModules();
+    const mod = await import('./layoutStore');
+    await new Promise((r) => setTimeout(r, 10));
+    expect(mod.useLayoutStore.getState().topBarEnabled).toBe(true);
   });
 
   it('toggleTopBar / toggleBottomBar flip boolean state', () => {

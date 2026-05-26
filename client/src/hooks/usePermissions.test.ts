@@ -111,3 +111,25 @@ describe('resolvePermissions', () => {
     expect(out.has(PERM_MANAGE_ROLES)).toBe(false);
   });
 });
+
+describe('usePermissions hook', () => {
+  it('returns empty perms when teamId is set but team has no members', async () => {
+    const { renderHook } = await import('@testing-library/react');
+    const { useTeamStore } = await import('../stores/teamStore');
+    const { usePermissions } = await import('./usePermissions');
+    useTeamStore.setState({ members: new Map([['t1', []]]) } as never);
+    const { result } = renderHook(() => usePermissions('t1', 'u1'));
+    expect(result.current.bits).toBe(0);
+  });
+
+  it('returns admin perms when the user has admin role', async () => {
+    const { renderHook } = await import('@testing-library/react');
+    const { useTeamStore } = await import('../stores/teamStore');
+    const { usePermissions } = await import('./usePermissions');
+    useTeamStore.setState({
+      members: new Map([['t1', [{ userId: 'u1', roles: [{ permissions: PERM_ADMIN }] }] as never]]),
+    } as never);
+    const { result } = renderHook(() => usePermissions('t1', 'u1'));
+    expect(result.current.isAdmin).toBe(true);
+  });
+});
