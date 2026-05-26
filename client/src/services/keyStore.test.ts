@@ -19,6 +19,8 @@ import {
   generatePrfSalt,
   generateRecoveryKey,
   signChallenge,
+  hasPasskeyKeySlot,
+  hasPasswordSlot,
 } from './keyStore';
 import { randomBytes, ed25519Verify, importEd25519PublicKey } from './cryptoCore';
 
@@ -418,5 +420,32 @@ describe('hasIdentity', () => {
     const prfSalt = randomBytes(32);
     await createIdentity('https://example.com', prfKey, prfSalt, makeCredential());
     expect(await hasIdentity()).toBe(true);
+  });
+});
+
+describe('hasPasskeyKeySlot + hasPasswordSlot', () => {
+  it('hasPasskeyKeySlot returns false when no identity exists', async () => {
+    expect(await hasPasskeyKeySlot()).toBe(false);
+  });
+
+  it('hasPasskeyKeySlot returns true after PRF identity creation', async () => {
+    const prfKey = randomBytes(32);
+    const prfSalt = randomBytes(32);
+    await createIdentity('https://example.com', prfKey, prfSalt, makeCredential());
+    expect(await hasPasskeyKeySlot()).toBe(true);
+  });
+
+  it('hasPasswordSlot returns false when no identity exists', async () => {
+    expect(await hasPasswordSlot()).toBe(false);
+  });
+
+  it('hasPasswordSlot returns true after passphrase identity creation', async () => {
+    await createIdentityWithPassphrase('https://example.com', 'hunter2', []);
+    expect(await hasPasswordSlot()).toBe(true);
+  });
+
+  it('hasPasskeyKeySlot returns false for a passphrase-only identity', async () => {
+    await createIdentityWithPassphrase('https://example.com', 'hunter2', []);
+    expect(await hasPasskeyKeySlot()).toBe(false);
   });
 });
