@@ -194,3 +194,33 @@ pub async fn put_identity_blob(
 
     Ok(Json(json!({ "ok": true })))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn is_valid_hh_mm_accepts_valid_times() {
+        assert!(is_valid_hh_mm("00:00"));
+        assert!(is_valid_hh_mm("09:30"));
+        assert!(is_valid_hh_mm("23:59"));
+        assert!(is_valid_hh_mm("12:00"));
+    }
+
+    #[test]
+    fn is_valid_hh_mm_rejects_invalid_shapes() {
+        assert!(!is_valid_hh_mm(""));
+        assert!(!is_valid_hh_mm("9:30"));
+        assert!(!is_valid_hh_mm("09-30"));
+        assert!(!is_valid_hh_mm("0930"));
+        assert!(!is_valid_hh_mm("09:30:00"));
+    }
+
+    #[test]
+    fn is_valid_hh_mm_rejects_out_of_range() {
+        assert!(!is_valid_hh_mm("24:00"));
+        assert!(!is_valid_hh_mm("99:59"));
+        assert!(!is_valid_hh_mm("00:60"));
+        assert!(!is_valid_hh_mm("ab:cd"));
+    }
+}
