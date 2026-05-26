@@ -183,6 +183,43 @@ mod tests {
     }
 
     #[test]
+    fn test_team_upload_bytes_default_zero() {
+        let db = test_db();
+        let user = make_user("u1", "u", &[1u8; 32]);
+        db.with_conn(|c| crate::db::create_user(c, &user)).unwrap();
+        let team = make_team("t1", "T", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+
+        let used = db.with_conn(|c| get_team_upload_bytes_used(c, "t1")).unwrap();
+        assert_eq!(used, 0);
+    }
+
+    #[test]
+    fn test_team_upload_bytes_unknown_team_returns_zero() {
+        let db = test_db();
+        let used = db.with_conn(|c| get_team_upload_bytes_used(c, "missing")).unwrap();
+        assert_eq!(used, 0);
+    }
+
+    #[test]
+    fn test_add_team_upload_bytes_adds_and_clamps_to_zero() {
+        let db = test_db();
+        let user = make_user("u1", "u", &[1u8; 32]);
+        db.with_conn(|c| crate::db::create_user(c, &user)).unwrap();
+        let team = make_team("t1", "T", "u1");
+        db.with_conn(|c| create_team(c, &team)).unwrap();
+
+        db.with_conn(|c| add_team_upload_bytes(c, "t1", 1234)).unwrap();
+        let used = db.with_conn(|c| get_team_upload_bytes_used(c, "t1")).unwrap();
+        assert_eq!(used, 1234);
+
+        // Negative delta below zero clamps via MAX(0, ...).
+        db.with_conn(|c| add_team_upload_bytes(c, "t1", -10_000)).unwrap();
+        let used = db.with_conn(|c| get_team_upload_bytes_used(c, "t1")).unwrap();
+        assert_eq!(used, 0);
+    }
+
+    #[test]
     fn test_get_teams_by_user() {
         let db = test_db();
         let user = make_user("u1", "owner", &[1u8; 32]);
