@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { useAuthStore } from './authStore';
+import {
+  useAuthStore,
+  persistPassphrase,
+  restorePassphrase,
+  restoreEncryptedAuthData,
+  restoreEncryptedAuthDataIntoStore,
+} from './authStore';
 import type { User } from './authStore';
 
 function getState() {
@@ -320,3 +326,68 @@ describe('setTeamOrder', () => {
     ]);
   });
 });
+
+describe('persistPassphrase + restorePassphrase', () => {
+  it('returns null when nothing stored', async () => {
+    expect(await restorePassphrase()).toBeNull();
+  });
+
+  it('roundtrips: persist + restore', async () => {
+    await persistPassphrase('hunter2');
+    expect(await restorePassphrase()).toBe('hunter2');
+  });
+
+  it('persistPassphrase(null) clears the stored value', async () => {
+    await persistPassphrase('hunter2');
+    await persistPassphrase(null);
+    expect(await restorePassphrase()).toBeNull();
+  });
+
+  it('restorePassphrase returns null on decrypt failure', async () => {
+    sessionStorage.setItem('dilla:passphrase:enc', 'not-valid-base64-encrypted');
+    expect(await restorePassphrase()).toBeNull();
+  });
+});
+
+describe('restoreEncryptedAuthData', () => {
+  it('returns null when nothing is stored', async () => {
+    expect(await restoreEncryptedAuthData()).toBeNull();
+  });
+
+  it('returns null when decrypt fails', async () => {
+    sessionStorage.setItem('dilla_teams_enc', 'garbage');
+    expect(await restoreEncryptedAuthData()).toBeNull();
+  });
+
+  it('roundtrips teams + servers via addTeam → restore', async () => {
+    useAuthStore.getState().addTeam('t-restore', 'tok', null, { name: 'R' }, 'https://restore.example');
+    // Wait for the async persistEncryptedMap that addTeam fires
+    await new Promise((r) => setTimeout(r, 50));
+    const restored = await restoreEncryptedAuthData();
+    expect(restored).not.toBeNull();
+    expect(restored!.teams.has('t-restore')).toBe(true);
+  });
+});
+
+describe('restoreEncryptedAuthDataIntoStore', () => {
+  it('is a no-op when nothing is stored', async () => {
+    await restoreEncryptedAuthDataIntoStore();
+    expect(useAuthStore.getState().teams.size).toBe(0);
+  });
+
+  it('does not wipe live state when restored payload is empty', async () => {
+    useAuthStore.getState().addTeam('t-live', 'tok', null, {}, 'https://live.example');
+    await restoreEncryptedAuthDataIntoStore();
+    // live team still there
+    expect(useAuthStore.getState().teams.has('t-live')).toBe(true);
+  });
+
+  it('overwrites teams when restored payload is non-empty', async () => {
+    useAuthStore.getState().addTeam('t-source', 'tok', null, {}, 'https://example.com');
+    await new Promise((r) => setTimeout(r, 50));
+    useAuthStore.setState({ teams: new Map(), servers: new Map() });
+    await restoreEncryptedAuthDataIntoStore();
+    expect(useAuthStore.getState().teams.has('t-source')).toBe(true);
+  });
+});
+
