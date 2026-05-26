@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { api } from './api';
+import { api, isSameOriginAsApi } from './api';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -1152,6 +1152,104 @@ describe('ApiService', () => {
 
       await api.deleteThread('t-dth', 'th1');
       expect(lastFetchCall().init.method).toBe('DELETE');
+    });
+  });
+
+  describe('logoutServer + simple endpoints', () => {
+    it('logoutServer returns true on 2xx', async () => {
+      globalThis.fetch = mockFetchResponse({});
+      expect(await api.logoutServer('https://logout.io', 'tok')).toBe(true);
+    });
+
+    it('logoutServer returns false on network failure', async () => {
+      globalThis.fetch = vi.fn().mockRejectedValue(new Error('boom'));
+      expect(await api.logoutServer('https://logout.io', 'tok')).toBe(false);
+    });
+
+    it('getPolls hits the channel polls endpoint', async () => {
+      api.addTeam('t-poll', 'https://poll.io');
+      api.setToken('t-poll', 'tok');
+      globalThis.fetch = mockFetchResponse({ polls: [{ id: 'p1' }] });
+      const polls = await api.getPolls('t-poll', 'ch1');
+      expect(polls).toEqual([{ id: 'p1' }]);
+      expect(lastFetchCall().url).toContain('/polls');
+    });
+
+    it('markChannelRead PUTs the read endpoint', async () => {
+      api.addTeam('t-mr', 'https://mr.io');
+      api.setToken('t-mr', 'tok');
+      globalThis.fetch = mockFetchResponse({});
+      await api.markChannelRead('t-mr', 'ch-mr');
+      expect(lastFetchCall().init.method).toBe('PUT');
+      expect(lastFetchCall().url).toContain('/read');
+    });
+
+    it('listDevices unwraps {devices: [...]}', async () => {
+      api.addTeam('t-ld', 'https://ld.io');
+      api.setToken('t-ld', 'tok');
+      globalThis.fetch = mockFetchResponse({ devices: [{ id: 'd1' }] });
+      const list = await api.listDevices('t-ld');
+      expect(list).toEqual([{ id: 'd1' }]);
+    });
+
+    it('listDevices returns [] for non-list/object payloads', async () => {
+      api.addTeam('t-ld2', 'https://ld2.io');
+      api.setToken('t-ld2', 'tok');
+      globalThis.fetch = mockFetchResponse(null);
+      expect(await api.listDevices('t-ld2')).toEqual([]);
+    });
+
+    it('reorderRoles PUTs role_ids body', async () => {
+      api.addTeam('t-rr', 'https://rr.io');
+      api.setToken('t-rr', 'tok');
+      globalThis.fetch = mockFetchResponse({});
+      await api.reorderRoles('t-rr', ['r1', 'r2']);
+      const call = lastFetchCall();
+      expect(call.init.method).toBe('PUT');
+      expect(JSON.parse(call.init.body as string)).toEqual({ role_ids: ['r1', 'r2'] });
+    });
+  });
+
+  describe('isSameOriginAsApi', () => {
+    it('returns false for Tauri origins', () => {
+      Object.defineProperty(globalThis, 'location', {
+        value: { origin: 'tauri://localhost' },
+        configurable: true,
+      });
+      expect(isSameOriginAsApi('https://api.example.com')).toBe(false);
+    });
+
+    it('returns true for empty baseUrl', () => {
+      Object.defineProperty(globalThis, 'location', {
+        value: { origin: 'http://localhost:8888' },
+        configurable: true,
+      });
+      expect(isSameOriginAsApi('')).toBe(true);
+      expect(isSameOriginAsApi('/api')).toBe(true);
+    });
+
+    it('returns false for cross-origin URLs', () => {
+      Object.defineProperty(globalThis, 'location', {
+        value: { origin: 'http://localhost:8888' },
+        configurable: true,
+      });
+      expect(isSameOriginAsApi('https://other.example.com')).toBe(false);
+    });
+
+    it('returns true when origin matches', () => {
+      Object.defineProperty(globalThis, 'location', {
+        value: { origin: 'https://same.example.com' },
+        configurable: true,
+      });
+      expect(isSameOriginAsApi('https://same.example.com/api')).toBe(true);
+    });
+
+    it('returns false on URL parse error', () => {
+      Object.defineProperty(globalThis, 'location', {
+        value: { origin: 'http://localhost:8888' },
+        configurable: true,
+      });
+      expect(isSameOriginAsApi('not a url')).toBe(false);
     });
   });
 
