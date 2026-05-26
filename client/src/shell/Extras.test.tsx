@@ -64,6 +64,42 @@ describe('Extras / NotificationStack', () => {
     expect(container.querySelectorAll('.notify-toast').length).toBe(4);
     expect(container.querySelector('.notify-overflow')).toBeTruthy();
   });
+
+  it('clicking the clear-all button empties the stack', () => {
+    const { container } = render(withShell(<NotificationStack />, { SERVERS: [] }));
+    act(() => {
+      for (let i = 0; i < 5; i++) {
+        window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { title: `t${i}` } }));
+      }
+    });
+    const clearBtn = container.querySelector('.notify-overflow button') as HTMLButtonElement;
+    act(() => { clearBtn.click(); });
+    expect(container.querySelectorAll('.notify-toast').length).toBe(0);
+  });
+
+  it('clicking a toast with a channelId dispatches dilla:pickchannel and dismisses it', () => {
+    const { container } = render(withShell(<NotificationStack />, { SERVERS: [] }));
+    const spy = vi.spyOn(window, 'dispatchEvent');
+    act(() => {
+      window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { title: 'mention', channelId: 'ch-1' } }));
+    });
+    const toast = container.querySelector('.notify-toast.clickable') as HTMLElement;
+    act(() => { toast.click(); });
+    expect(spy.mock.calls.some((c) => c[0] instanceof CustomEvent && c[0].type === 'dilla:pickchannel')).toBe(true);
+    expect(container.querySelectorAll('.notify-toast').length).toBe(0);
+    spy.mockRestore();
+  });
+
+  it('hovering a toast does not crash (pauseDismiss path)', () => {
+    const { container } = render(withShell(<NotificationStack />, { SERVERS: [] }));
+    act(() => {
+      window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { title: 'hover-me' } }));
+    });
+    const toast = container.querySelector('.notify-toast') as HTMLElement;
+    expect(() => {
+      toast.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+    }).not.toThrow();
+  });
 });
 
 describe('Extras / FirstRunSplash', () => {
