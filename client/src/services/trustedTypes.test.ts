@@ -23,17 +23,23 @@ async function withoutDOMParser(fn: () => Promise<void> | void) {
 
 // Helper: install the policy + return its createHTML transform.
 async function getCreateHTML(): Promise<(s: string) => string> {
+  return (await getPolicy()).createHTML;
+}
+
+interface PolicyHooks {
+  createHTML: (s: string) => string;
+  createScript: (s: string) => string;
+  createScriptURL: (s: string) => string;
+}
+
+async function getPolicy(): Promise<PolicyHooks> {
   vi.resetModules();
-  let captured!: (s: string) => string;
+  let captured!: PolicyHooks;
   Object.defineProperty(window, 'trustedTypes', {
     value: {
-      createPolicy: (_name: string, opts: { createHTML?: (s: string) => string }) => {
-        captured = opts.createHTML ?? ((s) => s);
-        return {
-          createHTML: opts.createHTML ?? ((s) => s),
-          createScript: () => { throw new Error('disabled'); },
-          createScriptURL: () => { throw new Error('disabled'); },
-        };
+      createPolicy: (_name: string, opts: PolicyHooks) => {
+        captured = opts;
+        return opts;
       },
     },
     configurable: true,
@@ -125,5 +131,90 @@ describe('trustedTypes / stripDangerousMarkup (linear SSR fallback)', () => {
     await withoutDOMParser(() => {
       expect(createHTML('<p>just text</p>')).toBe('<p>just text</p>');
     });
+  });
+
+  it('handles char after <script that is not a tag-boundary (e.g. <scriptz)', async () => {
+    await withoutDOMParser(() => {
+      const out = createHTML('<scriptz>fine</scriptz>');
+      expect(out).toContain('scriptz');
+    });
+  });
+
+  it('handles <script without closing tag start — drops the rest', async () => {
+    await withoutDOMParser(() => {
+      const out = createHTML('<p>a</p><script no-close');
+      expect(out).toBe('<p>a</p>');
+    });
+  });
+});
+
+describe('trustedTypes / createScript + createScriptURL hooks', () => {
+  afterEach(() => {
+    // @ts-expect-error reset
+    delete window.trustedTypes;
+  });
+
+  it('createScript always throws', async () => {
+    const policy = await getPolicy();
+    expect(() => policy.createScript('alert(1)')).toThrow(TypeError);
+  });
+
+  it('createScriptURL accepts a safe relative URL', async () => {
+    const policy = await getPolicy();
+    expect(policy.createScriptURL('/static/x.js')).toBe('/static/x.js');
+  });
+
+  it('createScriptURL rejects javascript: URL', async () => {
+    const policy = await getPolicy();
+    expect(() => policy.createScriptURL('javascript:alert(1)')).toThrow(TypeError);
+  });
+
+  it('createScriptURL rejects vbscript: URL', async () => {
+    const policy = await getPolicy();
+    expect(() => policy.createScriptURL('vbscript:msgbox 1')).toThrow(TypeError);
+  });
+
+  it('createScriptURL rejects data: text/html URL', async () => {
+    const policy = await getPolicy();
+    expect(() => policy.createScriptURL('data:text/html,<script>1</script>')).toThrow(TypeError);
+  });
+
+  it('createScriptURL accepts data: text/javascript (out of scope for this filter)', async () => {
+    const policy = await getPolicy();
+    // The coarse filter only rejects javascript:/vbscript:/data:text/html.
+    // text/javascript-data is still allowed (CSP catches real loads).
+    expect(policy.createScriptURL('data:text/javascript,1')).toBe('data:text/javascript,1');
+  });
+
+  it('logs and swallows when createPolicy throws (duplicate-policy case)', async () => {
+    vi.resetModules();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    Object.defineProperty(window, 'trustedTypes', {
+      value: {
+        createPolicy: () => {
+          throw new Error('already exists');
+        },
+      },
+      configurable: true,
+      writable: true,
+    });
+    const mod = await import('./trustedTypes');
+    expect(() => mod.installTrustedTypesPolicy()).not.toThrow();
+    expect(warn).toHaveBeenCalledWith(
+      '[trusted-types] policy registration failed:',
+      expect.any(Error),
+    );
+    warn.mockRestore();
+  });
+
+  it('no-ops when trustedTypes is not available', async () => {
+    vi.resetModules();
+    Object.defineProperty(window, 'trustedTypes', {
+      value: undefined,
+      configurable: true,
+      writable: true,
+    });
+    const mod = await import('./trustedTypes');
+    expect(() => mod.installTrustedTypesPolicy()).not.toThrow();
   });
 });
