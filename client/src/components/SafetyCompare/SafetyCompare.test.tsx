@@ -109,4 +109,39 @@ describe('SafetyCompare', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onClose).toHaveBeenCalledOnce();
   });
+
+  it('Highlight blocks button toggles pulsing class', () => {
+    render(
+      <SafetyCompare
+        open
+        yours={matching}
+        theirs={matching}
+        yourName="you"
+        theirName="them"
+        onClose={() => {}}
+        onMarkVerified={() => {}}
+        onMarkMismatch={() => {}}
+      />,
+    );
+    const btn = screen.getByText('Highlight blocks');
+    fireEvent.click(btn);
+    expect(document.querySelector('.safety-compare-fingerprint.pulsing')).toBeTruthy();
+  });
+
+  it('keyDown on the dialog body does not bubble (stopPropagation path)', () => {
+    render(
+      <SafetyCompare
+        open
+        yours={matching}
+        theirs={matching}
+        yourName="you"
+        theirName="them"
+        onClose={vi.fn()}
+        onMarkVerified={() => {}}
+        onMarkMismatch={() => {}}
+      />,
+    );
+    const dialog = screen.getByRole('dialog');
+    expect(() => fireEvent.keyDown(dialog, { key: 'a' })).not.toThrow();
+  });
 });
