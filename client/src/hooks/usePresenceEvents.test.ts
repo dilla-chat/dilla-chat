@@ -147,6 +147,59 @@ describe('usePresenceEvents', () => {
     expect(useVoiceStore.getState().currentChannelId).toBeNull();
   });
 
+  it('voice:force-disconnect tears down voice when channel matches', () => {
+    useVoiceStore.setState({ currentChannelId: 'ch-1', connected: true });
+    renderHook(() => usePresenceEvents('t1'));
+    wsHandlers.get('voice:force-disconnect')!({ channel_id: 'ch-1', reason: 'access_revoked' });
+    expect(useVoiceStore.getState().currentChannelId).toBeNull();
+  });
+
+  it('voice:force-disconnect with reason=moderator_action triggers notify', () => {
+    useVoiceStore.setState({ currentChannelId: 'ch-1', connected: true });
+    const spy = vi.spyOn(window, 'dispatchEvent');
+    renderHook(() => usePresenceEvents('t1'));
+    wsHandlers.get('voice:force-disconnect')!({ channel_id: 'ch-1', reason: 'moderator_action' });
+    const fired = spy.mock.calls.some(
+      (c) => c[0] instanceof CustomEvent && c[0].type === 'dilla:notify' && (c[0] as CustomEvent).detail.text.includes('moderator'),
+    );
+    expect(fired).toBe(true);
+    spy.mockRestore();
+  });
+
+  it('voice:force-disconnect with unknown reason uses generic message', () => {
+    useVoiceStore.setState({ currentChannelId: 'ch-1', connected: true });
+    const spy = vi.spyOn(window, 'dispatchEvent');
+    renderHook(() => usePresenceEvents('t1'));
+    wsHandlers.get('voice:force-disconnect')!({ channel_id: 'ch-1', reason: 'whatever' });
+    const fired = spy.mock.calls.some(
+      (c) => c[0] instanceof CustomEvent && c[0].type === 'dilla:notify',
+    );
+    expect(fired).toBe(true);
+    spy.mockRestore();
+  });
+
+  it('voice:force-disconnect does nothing when not in any voice channel', () => {
+    useVoiceStore.setState({ currentChannelId: null, connected: false });
+    renderHook(() => usePresenceEvents('t1'));
+    wsHandlers.get('voice:force-disconnect')!({ channel_id: 'ch-1', reason: 'access_revoked' });
+    expect(useVoiceStore.getState().currentChannelId).toBeNull();
+  });
+
+  it('voice:rooms-snapshot replaces voiceOccupants', () => {
+    renderHook(() => usePresenceEvents('t1'));
+    wsHandlers.get('voice:rooms-snapshot')!({
+      team_id: 't1',
+      rooms: { 'ch-1': [{ user_id: 'u1', username: 'alice' }] },
+    });
+    expect(useVoiceStore.getState().voiceOccupants['ch-1']?.[0].user_id).toBe('u1');
+  });
+
+  it('voice:rooms-snapshot ignores falsy payload', () => {
+    renderHook(() => usePresenceEvents('t1'));
+    wsHandlers.get('voice:rooms-snapshot')!({ team_id: 't1' });
+    expect(useVoiceStore.getState().voiceOccupants).toEqual({});
+  });
+
   it('unmount unsubscribes every handler', () => {
     const { unmount } = renderHook(() => usePresenceEvents('t1'));
     unmount();
