@@ -81,6 +81,37 @@ vi.stubGlobal('RTCPeerConnection', vi.fn(() => ({
   removeEventListener: vi.fn(),
 })));
 
+// ─── DataTransfer stub ──────────────────────────────────────────────────────
+// jsdom doesn't ship DataTransfer; testing-library fireEvent.dragStart
+// doesn't auto-inject one. Tests calling dragStart without an explicit
+// dataTransfer crash with "Cannot set properties of undefined (setting
+// 'effectAllowed')". Inject a minimal DataTransfer onto every drag* event.
+class MockDataTransfer {
+  effectAllowed = '';
+  dropEffect = '';
+  files: File[] = [];
+  items = [] as DataTransferItem[];
+  types = [] as string[];
+  setData = vi.fn();
+  getData = vi.fn(() => '');
+  clearData = vi.fn();
+  setDragImage = vi.fn();
+}
+if (typeof globalThis.DataTransfer === 'undefined') {
+  vi.stubGlobal('DataTransfer', MockDataTransfer);
+}
+// Patch DragEvent constructor so fireEvent.dragStart() without a
+// dataTransfer still ends up with one attached.
+const realDragEvent = globalThis.DragEvent;
+class PatchedDragEvent extends (realDragEvent || Event) {
+  dataTransfer: MockDataTransfer;
+  constructor(type: string, init?: DragEventInit) {
+    super(type, init);
+    this.dataTransfer = (init?.dataTransfer as unknown as MockDataTransfer) ?? new MockDataTransfer();
+  }
+}
+vi.stubGlobal('DragEvent', PatchedDragEvent);
+
 // ─── Notification stub ──────────────────────────────────────────────────────
 const MockNotification = vi.fn() as unknown as typeof Notification;
 Object.defineProperty(MockNotification, 'permission', {
