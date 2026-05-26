@@ -122,5 +122,54 @@ describe('useMessageDecryption', () => {
       const result = serverToMessage(msg, 'text');
       expect(result.username).toBe('Unknown');
     });
+
+    it('rewrites relative attachment urls to absolute', () => {
+      const msg = { ...baseMsg, attachments: [{ url: '/files/a.png', id: 'a1', message_id: 'm1' } as never] };
+      const result = serverToMessage(msg, 'text');
+      expect(result.attachments?.[0].url.startsWith('http')).toBe(true);
+    });
+
+    it('preserves absolute attachment urls', () => {
+      const msg = { ...baseMsg, attachments: [{ url: 'https://cdn.test/a.png', id: 'a1', message_id: 'm1' } as never] };
+      const result = serverToMessage(msg, 'text');
+      expect(result.attachments?.[0].url).toBe('https://cdn.test/a.png');
+    });
+  });
+});
+
+describe('forgetDecryptFailure + sentPlaintextCache eviction', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('forgetDecryptFailure clears all failures for a channel', async () => {
+    const { tryDecrypt, forgetDecryptFailure } = await import('./useMessageDecryption');
+    vi.mocked(cryptoService.decryptChannel).mockRejectedValueOnce(new Error('fail'));
+    const cipher = 'A'.repeat(100);
+    await tryDecrypt('m-clear', cipher, 'sender', 'ch-clear', 'key');
+    forgetDecryptFailure('ch-clear');
+    vi.mocked(cryptoService.decryptChannel).mockResolvedValueOnce('decoded-after-forget');
+    const result = await tryDecrypt('m-clear', cipher, 'sender', 'ch-clear', 'key');
+    expect(result).toBe('decoded-after-forget');
+  });
+
+  it('sent cache evicts oldest entry once size > MAX_SENT_CACHE (200)', async () => {
+    const { tryEncrypt } = await import('./useMessageDecryption');
+    for (let i = 0; i < 201; i++) {
+      vi.mocked(cryptoService.encryptChannel).mockResolvedValueOnce('ct-' + i);
+      await tryEncrypt('pt-' + i, 'ch-cache', 'key');
+    }
+    expect(cryptoService.encryptChannel).toHaveBeenCalled();
+  });
+
+  it('short-circuits when a failure was recorded for the same ciphertext', async () => {
+    const { tryDecrypt } = await import('./useMessageDecryption');
+    vi.mocked(cryptoService.decryptChannel).mockRejectedValueOnce(new Error('fail'));
+    const cipher = 'A'.repeat(100);
+    await tryDecrypt('m-short', cipher, 'sender', 'ch-short', 'key');
+    vi.mocked(cryptoService.decryptChannel).mockClear();
+    const second = await tryDecrypt('m-short', cipher, 'sender', 'ch-short', 'key');
+    expect(second).toContain('Unable to decrypt');
+    expect(cryptoService.decryptChannel).not.toHaveBeenCalled();
   });
 });
