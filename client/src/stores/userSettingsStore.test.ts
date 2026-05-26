@@ -1,4 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+/**
+ * @vitest-environment jsdom
+ */
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useUserSettingsStore } from './userSettingsStore';
 
 function getState() {
@@ -152,6 +155,59 @@ describe('setReduceMotion + setTheme', () => {
     expect(getState().theme).toBe('mesh');
     getState().setTheme('minimal');
     expect(getState().theme).toBe('minimal');
+  });
+});
+
+describe('persist.migrate via localStorage rehydration', () => {
+  async function reimportWithStale(state: Record<string, unknown>, version: number) {
+    globalThis.localStorage.setItem(
+      'dilla-user-settings',
+      JSON.stringify({ state, version }),
+    );
+    vi.resetModules();
+    const mod = await import('./userSettingsStore');
+    await new Promise((r) => setTimeout(r, 10));
+    return mod.useUserSettingsStore.getState();
+  }
+
+  beforeEach(() => {
+    globalThis.localStorage.clear();
+  });
+
+  it('v0 → adds density=regular', async () => {
+    const s = await reimportWithStale({}, 0);
+    expect(s.density).toBe('regular');
+  });
+
+  it('v1 → flips dark theme to mesh', async () => {
+    const s = await reimportWithStale({ theme: 'dark' }, 1);
+    expect(s.theme).toBe('mesh');
+  });
+
+  it('v1 → preserves explicit light theme', async () => {
+    const s = await reimportWithStale({ theme: 'light' }, 1);
+    expect(s.theme).toBe('light');
+  });
+
+  it('v2 → seeds quiet hours defaults', async () => {
+    const s = await reimportWithStale({}, 2);
+    expect(s.quietHoursEnabled).toBe(false);
+    expect(s.quietHoursFrom).toBe('22:00');
+    expect(s.quietHoursTo).toBe('07:30');
+  });
+
+  it('v3 → seeds baseFontPx + reduceMotion', async () => {
+    const s = await reimportWithStale({}, 3);
+    expect(s.baseFontPx).toBe(14);
+    expect(s.reduceMotion).toBe(false);
+  });
+
+  it('v0 full chain applies every migration', async () => {
+    const s = await reimportWithStale({}, 0);
+    expect(s.density).toBe('regular');
+    expect(s.theme).toBe('mesh');
+    expect(s.baseFontPx).toBe(14);
+    expect(s.quietHoursFrom).toBe('22:00');
   });
 });
 
