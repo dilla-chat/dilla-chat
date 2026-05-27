@@ -555,6 +555,101 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn update_thread_happy_path_as_creator() {
+        let (state, _tmp) = make_state();
+        seed_team_with_message(&state);
+        // Seed a thread owned by alice.
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_thread(conn, &db::Thread {
+                id: "th1".into(),
+                channel_id: "ch1".into(),
+                parent_message_id: "msg-parent".into(),
+                team_id: "t1".into(),
+                creator_id: "alice".into(),
+                title: "original".into(),
+                message_count: 0,
+                last_message_at: None,
+                created_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/teams/t1/threads/th1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"title":"renamed"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn delete_thread_happy_path_as_creator() {
+        let (state, _tmp) = make_state();
+        seed_team_with_message(&state);
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_thread(conn, &db::Thread {
+                id: "th-del".into(),
+                channel_id: "ch1".into(),
+                parent_message_id: "msg-parent".into(),
+                team_id: "t1".into(),
+                creator_id: "alice".into(),
+                title: "deleteme".into(),
+                message_count: 0,
+                last_message_at: None,
+                created_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/threads/th-del")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn list_thread_messages_happy_path_empty() {
+        let (state, _tmp) = make_state();
+        seed_team_with_message(&state);
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_thread(conn, &db::Thread {
+                id: "th-list".into(),
+                channel_id: "ch1".into(),
+                parent_message_id: "msg-parent".into(),
+                team_id: "t1".into(),
+                creator_id: "alice".into(),
+                title: "list".into(),
+                message_count: 0,
+                last_message_at: None,
+                created_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::get("/teams/t1/threads/th-list/messages?limit=10")
+                    .body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
     async fn create_thread_idempotent_returns_existing_for_same_parent() {
         let (state, _tmp) = make_state();
         seed_team_with_message(&state);
