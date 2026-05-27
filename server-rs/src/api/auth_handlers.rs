@@ -2323,6 +2323,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn register_rejects_when_signature_does_not_verify_against_nonce() {
+        use base64::Engine as _;
+        use ed25519_dalek::{Signer, SigningKey};
+        let (state, _tmp) = make_state();
+        let now = crate::db::now_str();
+        state.db.with_conn(|conn| {
+            crate::db::create_team(conn, &crate::db::Team {
+                id: "t-bad-sig".into(),
+                name: "T".into(),
+                created_by: "x".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            crate::db::create_invite(conn, &crate::db::Invite {
+                id: "inv-sig".into(),
+                team_id: "t-bad-sig".into(),
+                token: "sig-token".into(),
+                created_by: "x".into(),
+                max_uses: None,
+                uses: 0,
+                expires_at: None,
+                revoked: false,
+                created_at: now,
+            })
+        }).unwrap();
+        // Generate a challenge but sign the WRONG bytes → verify returns false.
+        let signing_key = SigningKey::from_bytes(&[200u8; 32]);
+        let pk_bytes = signing_key.verifying_key().to_bytes();
+        let (_nonce, challenge_id) = state.auth.generate_challenge().unwrap();
+        // Sign garbage instead of the nonce so verify_challenge returns false.
+        let wrong_sig = signing_key.sign(b"wrong-message-not-the-nonce");
+        let pk_b64 = base64::engine::general_purpose::STANDARD.encode(pk_bytes);
+        let sig_b64 = base64::engine::general_purpose::STANDARD.encode(wrong_sig.to_bytes());
+        let body = format!(
+            r#"{{"username":"hi","challenge_id":"{}","public_key":"{}","signature":"{}","invite_token":"sig-token"}}"#,
+            challenge_id, pk_b64, sig_b64
+        );
+        let app = Router::new()
+            .route("/auth/register", post(register))
+            .with_state(state);
+        let resp = app
+            .oneshot(
+                Request::post("/auth/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        // 401 Unauthorized — "invalid signature" path at L822-823 of
+        // decode_and_verify_challenge.
+        assert_eq!(resp.status(), 401);
+    }
+
+    #[tokio::test]
     async fn bootstrap_rejects_invalid_bootstrap_token() {
         use base64::Engine as _;
         use ed25519_dalek::{Signer, SigningKey};
