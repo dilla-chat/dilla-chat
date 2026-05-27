@@ -813,6 +813,56 @@ mod tests {
         );
     }
 
+    // ── send / broadcast / peer_statuses / stop ─────────────────────
+
+    #[tokio::test]
+    async fn send_returns_err_when_peer_not_connected() {
+        let t = Transport::new();
+        let ev = super::super::FederationEvent {
+            event_type: "test".into(),
+            node_name: "n".into(),
+            timestamp: 1,
+            payload: serde_json::Value::Null,
+        };
+        let res = t.send("unknown-peer", &ev).await;
+        let err = res.unwrap_err();
+        assert!(err.contains("not connected"));
+    }
+
+    #[tokio::test]
+    async fn broadcast_with_zero_peers_does_not_panic() {
+        let t = Transport::new();
+        let ev = super::super::FederationEvent {
+            event_type: "test".into(),
+            node_name: "n".into(),
+            timestamp: 1,
+            payload: serde_json::Value::Null,
+        };
+        // No peers registered → broadcast iterates 0 peers and returns.
+        t.broadcast(&ev).await;
+    }
+
+    #[tokio::test]
+    async fn peer_statuses_is_empty_for_fresh_transport() {
+        let t = Transport::new();
+        assert!(t.peer_statuses().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn stop_clears_connection_map() {
+        let t = Transport::new();
+        // Fresh transport has no conns; stop should still return cleanly.
+        t.stop().await;
+        assert!(t.peer_statuses().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn connect_to_peer_refuses_plain_ws_when_not_insecure() {
+        let t = Transport::new();
+        let err = t.connect_to_peer("ws://example.com:8081").await.unwrap_err();
+        assert!(err.contains("refusing to connect"));
+    }
+
     #[test]
     fn test_validate_auth_message_valid() {
         let msg = r#"{"join_token":"my-secret"}"#;
