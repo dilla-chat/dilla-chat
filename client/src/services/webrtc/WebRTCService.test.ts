@@ -384,6 +384,30 @@ describe('WebRTCService', () => {
       expect(useVoiceStore.getState().peerConnection).not.toBeNull();
     });
 
+    it('cleans up stale screen + webcam streams from voiceStore (L99-107)', async () => {
+      const stopFn = vi.fn();
+      const fakeStream = { getTracks: () => [{ stop: stopFn }] } as unknown as MediaStream;
+      const setLocalScreenStream = vi.fn();
+      const setLocalWebcamStream = vi.fn();
+      const setScreenSharing = vi.fn();
+      const setWebcamSharing = vi.fn();
+      useVoiceStore.setState({
+        localScreenStream: fakeStream,
+        localWebcamStream: fakeStream,
+        setLocalScreenStream,
+        setLocalWebcamStream,
+        setScreenSharing,
+        setWebcamSharing,
+      } as never);
+      await webrtcService.connect('ch-1', 'team-1');
+      // Each stream is stopped + the corresponding setters are called with null/false.
+      expect(stopFn).toHaveBeenCalled();
+      expect(setLocalScreenStream).toHaveBeenCalledWith(null);
+      expect(setScreenSharing).toHaveBeenCalledWith(false);
+      expect(setLocalWebcamStream).toHaveBeenCalledWith(null);
+      expect(setWebcamSharing).toHaveBeenCalledWith(false);
+    });
+
     it('registers WS listeners', async () => {
       await webrtcService.connect('ch-1', 'team-1');
       // on() should have been called for voice events
