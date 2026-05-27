@@ -347,4 +347,202 @@ mod tests {
         }"#).unwrap();
         assert_eq!(r.device_label, "iPhone 15");
     }
+
+    // ── axum integration tests ──────────────────────────────────────
+
+    use crate::auth::AuthService;
+    use crate::config::Config;
+    use crate::db::Database;
+    use crate::presence::PresenceManager;
+    use crate::ws::Hub;
+    use axum::body::Body;
+    use axum::http::Request;
+    use axum::routing::{get, post, delete as axum_delete};
+    use axum::Router;
+    use std::sync::Arc;
+    use tower::ServiceExt;
+
+    fn make_state() -> (AppState, tempfile::TempDir) {
+        let tmp = tempfile::tempdir().unwrap();
+        let database = Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        database.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;")).unwrap();
+        database.run_migrations().unwrap();
+        let auth = Arc::new(AuthService::new(database.clone(), ""));
+        let hub = Arc::new(Hub::new(database.clone()));
+        let presence = Arc::new(PresenceManager::new());
+        let mut cfg = Config::default();
+        cfg.port = 8080;
+        cfg.data_dir = tmp.path().to_str().unwrap().to_string();
+        let state = AppState {
+            db: database,
+            auth,
+            hub,
+            presence,
+            config: Arc::new(cfg),
+            mesh: None,
+            custom_theme_css: None,
+        };
+        (state, tmp)
+    }
+
+    fn seed_user(db: &Database, user_id: &str) {
+        let now = db::now_str();
+        db.with_conn(|conn| {
+            db::create_user(conn, &db::User {
+                id: user_id.into(),
+                username: user_id.into(),
+                display_name: user_id.into(),
+                public_key: vec![1u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now,
+                ..Default::default()
+            })
+        })
+        .unwrap();
+    }
+
+    fn router(state: AppState, user_id: &'static str) -> Router {
+        Router::new()
+            .route("/devices", get(list_devices))
+            .route("/devices/enroll-begin", post(enroll_begin))
+            .route("/devices/enroll-complete", post(enroll_complete))
+            .route("/devices/{device_id}", axum_delete(revoke_device))
+            .layer(axum::Extension(UserId(user_id.to_string())))
+            .with_state(state)
+    }
+
+    #[tokio::test]
+    async fn list_devices_returns_empty_array_for_user_with_no_devices() {
+        let (state, _tmp) = make_state();
+        seed_user(&state.db, "alice");
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(Request::get("/devices").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn enroll_begin_rejects_invalid_base64_public_key() {
+        let (state, _tmp) = make_state();
+        seed_user(&state.db, "alice");
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::post("/devices/enroll-begin")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"new_device_public_key":"not-base64!!!"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
+
+    #[tokio::test]
+    async fn enroll_begin_rejects_wrong_length_public_key() {
+        let (state, _tmp) = make_state();
+        seed_user(&state.db, "alice");
+        let app = router(state, "alice");
+        // Valid base64, but decodes to fewer than 32 bytes.
+        let resp = app
+            .oneshot(
+                Request::post("/devices/enroll-begin")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"new_device_public_key":"YWJj"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
+
+    #[tokio::test]
+    async fn enroll_begin_returns_challenge_for_valid_32_byte_key() {
+        let (state, _tmp) = make_state();
+        seed_user(&state.db, "alice");
+        let app = router(state, "alice");
+        let pk_b64 = base64::engine::general_purpose::STANDARD.encode(&[0u8; 32]);
+        let body = format!(r#"{{"new_device_public_key":"{}"}}"#, pk_b64);
+        let resp = app
+            .oneshot(
+                Request::post("/devices/enroll-begin")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn revoke_device_returns_404_for_unknown_id() {
+        let (state, _tmp) = make_state();
+        seed_user(&state.db, "alice");
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/devices/ghost-device")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 404);
+    }
+
+    #[tokio::test]
+    async fn enroll_complete_rejects_invalid_base64_new_pk() {
+        let (state, _tmp) = make_state();
+        seed_user(&state.db, "alice");
+        let app = router(state, "alice");
+        let body = r#"{
+            "challenge_id":"c1",
+            "new_device_public_key":"!!!notbase64",
+            "authorizer_public_key":"oldpk",
+            "signature":"sig",
+            "device_label":""
+        }"#;
+        let resp = app
+            .oneshot(
+                Request::post("/devices/enroll-complete")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
+
+    #[tokio::test]
+    async fn enroll_complete_rejects_oversized_device_label() {
+        let (state, _tmp) = make_state();
+        seed_user(&state.db, "alice");
+        let app = router(state, "alice");
+        let valid_pk = base64::engine::general_purpose::STANDARD.encode(&[0u8; 32]);
+        let valid_sig = base64::engine::general_purpose::STANDARD.encode(&[0u8; 64]);
+        let oversize_label = "a".repeat(65);
+        let body = format!(
+            r#"{{"challenge_id":"c1","new_device_public_key":"{}","authorizer_public_key":"{}","signature":"{}","device_label":"{}"}}"#,
+            valid_pk, valid_pk, valid_sig, oversize_label,
+        );
+        let resp = app
+            .oneshot(
+                Request::post("/devices/enroll-complete")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
 }
