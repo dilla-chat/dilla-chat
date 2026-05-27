@@ -966,6 +966,142 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn edit_dm_message_rejects_non_author() {
+        let (state, _tmp) = make_state();
+        seed_team_and_member(&state);
+        // Create a DM channel with both users, and a message authored by u2.
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            let dm = db::DMChannel {
+                id: "dm-edit".into(),
+                team_id: "t1".into(),
+                dm_type: "dm".into(),
+                name: String::new(),
+                created_at: now.clone(),
+            };
+            db::create_dm_channel(conn, &dm)?;
+            db::add_dm_members(conn, "dm-edit", &["u1".to_string(), "u2".to_string()])?;
+            db::create_message(conn, &db::Message {
+                id: "msg-by-u2".into(),
+                channel_id: String::new(),
+                dm_channel_id: "dm-edit".into(),
+                author_id: "u2".into(),
+                content: "bobs note".into(),
+                msg_type: "text".into(),
+                thread_id: String::new(),
+                edited_at: None,
+                deleted: false,
+                lamport_ts: 0,
+                reply_to_message_id: None,
+                created_at: now,
+            })
+        }).unwrap();
+        // u1 (not the author) tries to edit u2's DM message.
+        let app = router(state, "u1");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/teams/t1/dms/dm-edit/messages/msg-by-u2")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"content":"hijack"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn delete_dm_message_rejects_non_author() {
+        let (state, _tmp) = make_state();
+        seed_team_and_member(&state);
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            let dm = db::DMChannel {
+                id: "dm-del".into(),
+                team_id: "t1".into(),
+                dm_type: "dm".into(),
+                name: String::new(),
+                created_at: now.clone(),
+            };
+            db::create_dm_channel(conn, &dm)?;
+            db::add_dm_members(conn, "dm-del", &["u1".to_string(), "u2".to_string()])?;
+            db::create_message(conn, &db::Message {
+                id: "msg-del-by-u2".into(),
+                channel_id: String::new(),
+                dm_channel_id: "dm-del".into(),
+                author_id: "u2".into(),
+                content: "delete me".into(),
+                msg_type: "text".into(),
+                thread_id: String::new(),
+                edited_at: None,
+                deleted: false,
+                lamport_ts: 0,
+                reply_to_message_id: None,
+                created_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "u1");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/dms/dm-del/messages/msg-del-by-u2")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn edit_dm_message_happy_path() {
+        let (state, _tmp) = make_state();
+        seed_team_and_member(&state);
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            let dm = db::DMChannel {
+                id: "dm-happy".into(),
+                team_id: "t1".into(),
+                dm_type: "dm".into(),
+                name: String::new(),
+                created_at: now.clone(),
+            };
+            db::create_dm_channel(conn, &dm)?;
+            db::add_dm_members(conn, "dm-happy", &["u1".to_string(), "u2".to_string()])?;
+            db::create_message(conn, &db::Message {
+                id: "msg-by-u1".into(),
+                channel_id: String::new(),
+                dm_channel_id: "dm-happy".into(),
+                author_id: "u1".into(),
+                content: "original".into(),
+                msg_type: "text".into(),
+                thread_id: String::new(),
+                edited_at: None,
+                deleted: false,
+                lamport_ts: 0,
+                reply_to_message_id: None,
+                created_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "u1");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/teams/t1/dms/dm-happy/messages/msg-by-u1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"content":"edited"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
     async fn create_or_get_dm_returns_existing_when_one_already_exists() {
         let (state, _tmp) = make_state();
         seed_team_and_member(&state);
