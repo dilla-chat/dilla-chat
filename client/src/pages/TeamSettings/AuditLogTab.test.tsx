@@ -72,6 +72,51 @@ describe('AuditLogTab', () => {
     await waitFor(() => expect(container.firstChild).toBeTruthy());
   });
 
+  it('handles audit events with missing name detail (covers `name || \'—\'` defaults)', async () => {
+    apiMocks.getAuditEvents.mockResolvedValueOnce([
+      { id: 'e1', created_at: '2026-03-01', actor_user_id: 'me', action: 'role.create', target_type: 'role', target_id: 'r1', details: null },
+      { id: 'e2', created_at: '2026-03-02', actor_user_id: 'me', action: 'role.update', target_type: 'role', target_id: 'r1', details: null },
+      { id: 'e3', created_at: '2026-03-03', actor_user_id: 'me', action: 'role.delete', target_type: 'role', target_id: 'r1', details: null },
+      { id: 'e4', created_at: '2026-03-04', actor_user_id: 'me', action: 'channel.create', target_type: 'channel', target_id: 'ch1', details: '{}' },
+      { id: 'e5', created_at: '2026-03-05', actor_user_id: 'me', action: 'channel.update', target_type: 'channel', target_id: 'ch1', details: '{}' },
+      { id: 'e6', created_at: '2026-03-06', actor_user_id: 'me', action: 'channel.delete', target_type: 'channel', target_id: 'ch1', details: '{}' },
+      { id: 'e7', created_at: '2026-03-07', actor_user_id: 'me', action: 'channel.lock', target_type: 'channel', target_id: 'ch1', details: '{}' },
+      { id: 'e8', created_at: '2026-03-08', actor_user_id: 'me', action: 'channel.unlock', target_type: 'channel', target_id: 'ch1', details: '{}' },
+      { id: 'e9', created_at: '2026-03-09', actor_user_id: 'me', action: 'group.create', target_type: 'group', target_id: 'g1', details: '{}' },
+      { id: 'e10', created_at: '2026-03-10', actor_user_id: 'me', action: 'group.update', target_type: 'group', target_id: 'g1', details: '{}' },
+      { id: 'e11', created_at: '2026-03-11', actor_user_id: 'me', action: 'group.delete', target_type: 'group', target_id: 'g1', details: '{}' },
+      { id: 'e12', created_at: '2026-03-12', actor_user_id: 'me', action: 'group.access', target_type: 'group', target_id: 'g1', details: '{}' },
+      // member events with unknown target_user — exercises `targetUser ?? e.target_id ?? '?'` branches.
+      { id: 'e13', created_at: '2026-03-13', actor_user_id: 'me', action: 'member.roles.update', target_type: 'user', target_id: 'ghost-user-id', details: null },
+      { id: 'e14', created_at: '2026-03-14', actor_user_id: 'me', action: 'member.kick', target_type: 'user', target_id: 'ghost-user-id', details: null },
+      { id: 'e15', created_at: '2026-03-15', actor_user_id: 'me', action: 'member.ban', target_type: 'user', target_id: 'ghost-user-id', details: null },
+      // member events with no target_id at all.
+      { id: 'e16', created_at: '2026-03-16', actor_user_id: 'me', action: 'member.kick', target_type: 'user', target_id: null, details: null },
+      { id: 'e17', created_at: '2026-03-17', actor_user_id: 'me', action: 'team.update', target_type: null, target_id: null, details: null },
+      { id: 'e18', created_at: '2026-03-18', actor_user_id: 'me', action: 'invite.create', target_type: null, target_id: null, details: '{}' },
+    ]);
+    const { container } = render(<AuditLogTab teamId="t1" />);
+    await waitFor(() => expect(apiMocks.getAuditEvents).toHaveBeenCalled());
+    expect(container.firstChild).toBeTruthy();
+  });
+
+  it('handles audit event with system actor (no actor_user_id)', async () => {
+    apiMocks.getAuditEvents.mockResolvedValueOnce([
+      { id: 'sys', created_at: '2026-03-20', actor_user_id: null, action: 'role.create', target_type: 'role', target_id: 'r1', details: '{"name":"Admin"}' },
+    ]);
+    const { container } = render(<AuditLogTab teamId="t1" />);
+    await waitFor(() => expect(container.textContent).toContain('system'));
+  });
+
+  it('handles audit event with unknown actor (short-id fallback)', async () => {
+    apiMocks.getAuditEvents.mockResolvedValueOnce([
+      { id: 'unk', created_at: '2026-03-21', actor_user_id: 'ghost-12345678', action: 'role.create', target_type: 'role', target_id: 'r1', details: '{"name":"X"}' },
+    ]);
+    const { container } = render(<AuditLogTab teamId="t1" />);
+    // actor.username || e.actor_user_id.slice(0,8)
+    await waitFor(() => expect(container.textContent).toContain('ghost-12'));
+  });
+
   it('renders every remaining describe() case', async () => {
     apiMocks.getAuditEvents.mockResolvedValueOnce([
       { id: 'r1', created_at: '2026-02-01', actor_user_id: 'me', action: 'role.reorder', target_type: null, target_id: null, details: null },
