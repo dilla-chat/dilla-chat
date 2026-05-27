@@ -1147,6 +1147,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn handle_incoming_refuses_empty_join_secret_without_insecure() {
+        let (listener, port) = start_tcp_listener().await;
+        // Empty join secret + insecure=false → immediate close on connect.
+        let transport = Transport::new();
+
+        let client_handle = tokio::spawn(async move {
+            let url = format!("ws://127.0.0.1:{}", port);
+            let (mut ws, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+            while let Some(msg) = ws.next().await {
+                match msg {
+                    Ok(Message::Close(_)) => break,
+                    Err(_) => break,
+                    _ => {}
+                }
+            }
+        });
+
+        let (tcp_stream, _) = listener.accept().await.unwrap();
+        let ws_stream = tokio_tungstenite::accept_async(MaybeTlsStream::Plain(tcp_stream))
+            .await
+            .unwrap();
+
+        transport.handle_incoming("anon-peer", ws_stream).await;
+
+        // The conns map should NOT contain the peer because we refused
+        // the empty-secret/insecure=false handshake.
+        let conns = transport.conns.read().await;
+        assert!(!conns.contains_key("anon-peer"));
+        client_handle.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn handle_incoming_accepts_empty_join_secret_with_insecure() {
+        let (listener, port) = start_tcp_listener().await;
+        // Empty join secret + insecure=true → accepts anonymously (dev pattern).
+        let transport = Transport::with_settings(String::new(), true);
+
+        let client_handle = tokio::spawn(async move {
+            let url = format!("ws://127.0.0.1:{}", port);
+            let (mut ws, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            // Close from client side so handle_incoming finishes cleanly.
+            let _ = ws.close(None).await;
+        });
+
+        let (tcp_stream, _) = listener.accept().await.unwrap();
+        let ws_stream = tokio_tungstenite::accept_async(MaybeTlsStream::Plain(tcp_stream))
+            .await
+            .unwrap();
+
+        transport.handle_incoming("insecure-peer", ws_stream).await;
+
+        let conns = transport.conns.read().await;
+        assert!(conns.contains_key("insecure-peer"));
+        client_handle.await.unwrap();
+    }
+
+    #[tokio::test]
     async fn test_handle_incoming_auth_success() {
         let (listener, port) = start_tcp_listener().await;
         let transport = Transport::with_join_secret("test-secret".to_string());
