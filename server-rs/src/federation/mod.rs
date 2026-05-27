@@ -1336,6 +1336,55 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn handle_federation_event_with_signed_prov_runs_authority_check() {
+        let node = make_node();
+        // Provide an origin_node_id so the authority::check + seq watermark
+        // paths run. The peer is not pinned → LegacyTeam decision applies for
+        // a freshly seeded DB, which is one of the allowed branches.
+        let event = FederationEvent {
+            event_type: FED_EVENT_PRESENCE_CHANGED.to_string(),
+            node_name: "peer-1".into(),
+            timestamp: 1,
+            payload: serde_json::json!({
+                "user_id": "u1",
+                "status_type": "online",
+                "custom_status": "",
+            }),
+        };
+        let prov = transport::EventProvenance {
+            origin_node_id: Some("origin-node".into()),
+            seq: Some(1),
+            event_id: Some("evt-1".into()),
+        };
+        let res = node.handle_federation_event("peer-1", event, prov).await;
+        assert!(res.is_ok());
+    }
+
+    #[tokio::test]
+    async fn handle_federation_event_drops_non_monotonic_seq() {
+        let node = make_node();
+        let prov_at = |seq: u64| transport::EventProvenance {
+            origin_node_id: Some("origin-node".into()),
+            seq: Some(seq),
+            event_id: Some(format!("evt-{seq}")),
+        };
+        let ev = |seq: u64| FederationEvent {
+            event_type: FED_EVENT_PRESENCE_CHANGED.to_string(),
+            node_name: "peer-1".into(),
+            timestamp: seq,
+            payload: serde_json::json!({
+                "user_id": "u1",
+                "status_type": "online",
+                "custom_status": "",
+            }),
+        };
+        // First event at seq=5 — accepted, watermark stored.
+        node.handle_federation_event("peer-1", ev(5), prov_at(5)).await.unwrap();
+        // Second event at seq=3 — must be dropped (non-monotonic).
+        node.handle_federation_event("peer-1", ev(3), prov_at(3)).await.unwrap();
+    }
+
+    #[tokio::test]
     async fn handle_federation_event_unknown_event_type_returns_ok() {
         let node = make_node();
         let event = FederationEvent {
