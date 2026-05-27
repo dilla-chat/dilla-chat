@@ -346,4 +346,74 @@ mod tests {
             resp.status()
         );
     }
+
+    // ── direct-file serve branches (L186-207) ─────────────────────────
+    // When EmbeddedFiles has a file at the requested path, the handler
+    // returns it directly with a mime-guessed Content-Type. This test
+    // only runs when the dist/ has been populated by `npm run build`.
+
+    #[tokio::test]
+    async fn serves_embedded_index_html_with_content_type() {
+        // Skip when EmbeddedFiles is empty (CI without client build).
+        if EmbeddedFiles::get("index.html").is_none() {
+            return;
+        }
+        let app = webapp_fallback(WebappSecurity::default());
+        let req = Request::builder()
+            .uri("/index.html")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let ct = resp.headers().get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("");
+        assert!(ct.starts_with("text/html"), "content-type: {ct}");
+    }
+
+    #[tokio::test]
+    async fn serves_embedded_assets_with_long_cache() {
+        // Find any /assets/* file in the embedded set.
+        let asset_path = EmbeddedFiles::iter()
+            .find(|p| p.starts_with("assets/"))
+            .map(|p| p.into_owned());
+        if asset_path.is_none() {
+            return;
+        }
+        let path = asset_path.unwrap();
+        let app = webapp_fallback(WebappSecurity::default());
+        let req = Request::builder()
+            .uri(format!("/{}", path))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let cc = resp
+            .headers()
+            .get(header::CACHE_CONTROL)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        assert!(cc.contains("max-age=31536000"), "cache-control: {cc}");
+        assert!(cc.contains("immutable"), "cache-control: {cc}");
+    }
+
+    #[tokio::test]
+    async fn serves_embedded_non_asset_without_long_cache() {
+        // A non-/assets/ path (e.g. /favicon.svg) should not get the
+        // immutable cache header.
+        if EmbeddedFiles::get("favicon.svg").is_none() {
+            return;
+        }
+        let app = webapp_fallback(WebappSecurity::default());
+        let req = Request::builder()
+            .uri("/favicon.svg")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let cc = resp
+            .headers()
+            .get(header::CACHE_CONTROL)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        assert!(!cc.contains("max-age=31536000"), "non-asset should not get long cache: {cc}");
+    }
 }
