@@ -1,7 +1,7 @@
 // Direct unit tests on ChatApp's exported UserPanel.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, fireEvent } from '@testing-library/react';
+import { render, fireEvent, act } from '@testing-library/react';
 
 if (typeof globalThis.ResizeObserver === 'undefined') {
   (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = class {
@@ -9,9 +9,12 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
   };
 }
 
+const apiMock = vi.hoisted(() => ({
+  api: { updateMe: vi.fn(async () => ({})), updatePresence: vi.fn(async () => ({})) },
+}));
 vi.mock('../services/websocket', () => ({ ws: { updatePresence: vi.fn() } }));
-vi.mock('../services/api', () => ({ api: { updateMe: vi.fn(async () => ({})) } }));
-vi.mock('../services/mockSession', () => ({ isMockSession: () => true }));
+vi.mock('../services/api', () => apiMock);
+vi.mock('../services/mockSession', () => ({ isMockSession: () => false }));
 vi.mock('./icons', () => {
   const stub = () => <span data-icon />;
   return { Icon: new Proxy({}, { get: () => stub }), default: new Proxy({}, { get: () => stub }) };
@@ -91,5 +94,89 @@ describe('UserPanel', () => {
     const m = { ...ME, customStatus: 'In a meeting' };
     const { container } = render(wrap(<UserPanel member={m} />));
     expect(container.firstChild).toBeTruthy();
+  });
+
+  // ── deeper behaviour: status picker open/close + persistence ──────
+  it('clicking "Set status" toggles the picker open and back closed', () => {
+    const { container } = render(wrap(<UserPanel member={ME} />));
+    const setBtn = container.querySelector('button[title="Set status"]') as HTMLButtonElement;
+    expect(container.querySelector('.status-pop')).toBeFalsy();
+    fireEvent.click(setBtn);
+    expect(container.querySelector('.status-pop')).toBeTruthy();
+    fireEvent.click(setBtn);
+    expect(container.querySelector('.status-pop')).toBeFalsy();
+  });
+
+  it('clicking "Preferences" dispatches dilla:open-settings (user)', () => {
+    const captured: CustomEvent[] = [];
+    const cb = (e: Event) => captured.push(e as CustomEvent);
+    window.addEventListener('dilla:open-settings', cb);
+    const { container } = render(wrap(<UserPanel member={ME} />));
+    const prefs = container.querySelector('button[title="Preferences"]') as HTMLButtonElement;
+    fireEvent.click(prefs);
+    window.removeEventListener('dilla:open-settings', cb);
+    expect(captured.length).toBe(1);
+    expect((captured[0] as CustomEvent).detail).toBe('user');
+  });
+
+  it('clicking a status row sets status + calls api.updatePresence (L2362-2365)', () => {
+    apiMock.api.updatePresence.mockClear();
+    const { container } = render(wrap(<UserPanel member={ME} />));
+    fireEvent.click(container.querySelector('button[title="Set status"]') as HTMLButtonElement);
+    const dndRow = Array.from(container.querySelectorAll('.sp-row')).find(
+      (r) => /do not disturb/i.test(r.textContent ?? ''),
+    ) as HTMLButtonElement;
+    fireEvent.click(dndRow);
+    expect(container.querySelector('.status-pop')).toBeFalsy();
+    expect(apiMock.api.updatePresence).toHaveBeenCalledWith('t1', 'dnd', undefined);
+  });
+
+  it('setting custom message via "Set" calls api.updatePresence (L2377-2381)', () => {
+    apiMock.api.updatePresence.mockClear();
+    const { container } = render(wrap(<UserPanel member={ME} />));
+    fireEvent.click(container.querySelector('button[title="Set status"]') as HTMLButtonElement);
+    const input = container.querySelector('.sp-custom input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'heads down' } });
+    const setBtn = Array.from(container.querySelectorAll('.sp-custom button')).find(
+      (b) => (b.textContent ?? '').trim() === 'Set',
+    ) as HTMLButtonElement;
+    fireEvent.click(setBtn);
+    expect(apiMock.api.updatePresence).toHaveBeenCalledWith('t1', 'online', 'heads down');
+  });
+
+  it('"clear" button on existing custom resets custom + calls api.updatePresence (L2384-2388)', () => {
+    apiMock.api.updatePresence.mockClear();
+    const { container } = render(wrap(<UserPanel member={{ ...ME, custom: 'busy' }} />));
+    fireEvent.click(container.querySelector('button[title="Set status"]') as HTMLButtonElement);
+    const clearBtn = container.querySelector('.sp-clear') as HTMLButtonElement;
+    expect(clearBtn).toBeTruthy();
+    fireEvent.click(clearBtn);
+    expect(apiMock.api.updatePresence).toHaveBeenCalledWith('t1', 'online', undefined);
+  });
+
+  it('Escape closes the picker (L2312)', () => {
+    const { container } = render(wrap(<UserPanel member={ME} />));
+    fireEvent.click(container.querySelector('button[title="Set status"]') as HTMLButtonElement);
+    expect(container.querySelector('.status-pop')).toBeTruthy();
+    act(() => fireEvent.keyDown(document, { key: 'Escape' }));
+    expect(container.querySelector('.status-pop')).toBeFalsy();
+  });
+
+  it('mousedown outside the popover closes it (L2311)', async () => {
+    const { container } = render(wrap(<UserPanel member={ME} />));
+    fireEvent.click(container.querySelector('button[title="Set status"]') as HTMLButtonElement);
+    await new Promise((r) => setTimeout(r, 5));
+    act(() => fireEvent.mouseDown(document.body));
+    expect(container.querySelector('.status-pop')).toBeFalsy();
+  });
+
+  it('persistPresence early-returns when teamId is null', () => {
+    apiMock.api.updatePresence.mockClear();
+    useTeamStore.setState({ activeTeamId: null } as never);
+    const { container } = render(wrap(<UserPanel member={ME} />));
+    fireEvent.click(container.querySelector('button[title="Set status"]') as HTMLButtonElement);
+    const row = container.querySelectorAll('.sp-row')[0] as HTMLButtonElement;
+    fireEvent.click(row);
+    expect(apiMock.api.updatePresence).not.toHaveBeenCalled();
   });
 });
