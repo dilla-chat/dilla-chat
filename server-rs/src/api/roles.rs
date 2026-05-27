@@ -619,4 +619,58 @@ mod tests {
             .unwrap();
         assert!(resp.status().as_u16() >= 400);
     }
+
+    #[tokio::test]
+    async fn update_role_4xx_for_unknown_id() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/teams/t1/roles/missing")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"name":"renamed"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn reorder_roles_4xx_for_non_admin() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "ghost");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/teams/t1/roles/reorder")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"role_ids":["r1","r2"]}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn create_role_rejects_oversized_name() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let oversized = "n".repeat(101);
+        let body = format!(r#"{{"name":"{}"}}"#, oversized);
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/roles")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
 }
