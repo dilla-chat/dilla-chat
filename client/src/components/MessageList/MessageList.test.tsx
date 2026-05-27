@@ -1138,6 +1138,25 @@ describe('MessageList', () => {
       expect(screen.queryByTestId('user-profile')).not.toBeInTheDocument();
     });
 
+    it('Send Message button in profile invokes handleSendMessage (L106-110, L457)', async () => {
+      const apiModule = await import('../../services/api');
+      const createDM = vi.fn(async () => ({ id: 'dm-new' }));
+      vi.spyOn(apiModule.api, 'createDM').mockImplementation(createDM);
+      const msgs = [makeMessage()];
+      useMessageStore.setState({
+        messages: new Map([['ch-1', msgs]]),
+        loadingHistory: new Map(),
+        hasMore: new Map(),
+      });
+      render(<MessageList channelId="ch-1" currentUserId="user-2" onLoadMore={vi.fn()} />);
+      fireEvent.click(screen.getByText('alice'));
+      const sendBtn = screen.getByTestId('profile-send');
+      fireEvent.click(sendBtn);
+      // Allow the async createDM to resolve.
+      await new Promise((r) => setTimeout(r, 5));
+      expect(createDM).toHaveBeenCalled();
+    });
+
     it('Forward action button dispatches mesh:open-forward with detail (L333)', () => {
       const msgs = [makeMessage()];
       useMessageStore.setState({
