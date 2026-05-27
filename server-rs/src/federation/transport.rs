@@ -1214,6 +1214,51 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn read_pump_rejects_v1_event_when_require_v3_true() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let (listener, port) = start_tcp_listener().await;
+        // require_v3=true so legacy v1 events are dropped at the read pump.
+        // Use empty secret + insecure so the auth gate passes via dev path.
+        let transport = Transport::with_settings_full(
+            String::new(), true, None, /*require_v3*/ true, None,
+        );
+
+        let received = Arc::new(AtomicBool::new(false));
+        let received_clone = Arc::clone(&received);
+        transport
+            .set_on_event(Arc::new(move |_peer, _event, _prov| {
+                received_clone.store(true, Ordering::SeqCst);
+            }))
+            .await;
+
+        let client_handle = tokio::spawn(async move {
+            let url = format!("ws://127.0.0.1:{}", port);
+            let (mut ws, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+            let event = serde_json::json!({
+                "type": "test",
+                "node_name": "remote",
+                "timestamp": 42,
+                "payload": null,
+            });
+            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+            ws.send(Message::Text(event.to_string().into())).await.unwrap();
+            tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
+            let _ = ws.close(None).await;
+        });
+
+        let (tcp_stream, _) = listener.accept().await.unwrap();
+        let ws_stream = tokio_tungstenite::accept_async(MaybeTlsStream::Plain(tcp_stream))
+            .await
+            .unwrap();
+        transport.handle_incoming("relay-peer-v3only", ws_stream).await;
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+        // Handler must NOT have fired — require_v3 rejected the v1 frame.
+        assert!(!received.load(Ordering::SeqCst));
+        let _ = client_handle.await;
+    }
+
+    #[tokio::test]
     async fn read_pump_dispatches_legacy_v1_event_to_handler() {
         use std::sync::atomic::{AtomicBool, Ordering};
         let (listener, port) = start_tcp_listener().await;
