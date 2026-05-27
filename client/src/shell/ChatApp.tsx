@@ -1646,6 +1646,7 @@ export function ScreenTile({ member, pip, showStats = false }: { member: any; pi
 
 // ───────────── server rail ─────────────
 export function ServerRail({ servers, activeServer, onPick }) {
+  const data = (useShellDataContext() as any) || EMPTY_SHELL_DATA;
   const [serverOrder, setServerOrder] = useState(null);
   const [dragId, setDragId] = useState(null);
   const [overId, setOverId] = useState(null);
