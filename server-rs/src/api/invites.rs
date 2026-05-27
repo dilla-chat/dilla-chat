@@ -498,4 +498,114 @@ mod tests {
         })
         .unwrap();
     }
+
+    // ── axum integration tests ──────────────────────────────────────
+
+    use crate::api::AppState;
+    use crate::auth::{AuthService, UserId};
+    use crate::config::Config;
+    use crate::presence::PresenceManager;
+    use crate::ws::Hub;
+    use axum::body::Body;
+    use axum::http::Request;
+    use axum::routing::{get, post, delete as axum_delete};
+    use axum::Router;
+    use std::sync::Arc;
+    use tower::ServiceExt;
+
+    fn make_state() -> (AppState, tempfile::TempDir) {
+        let (db, tmp) = test_db();
+        let auth = Arc::new(AuthService::new(db.clone(), ""));
+        let hub = Arc::new(Hub::new(db.clone()));
+        let presence = Arc::new(PresenceManager::new());
+        let mut cfg = Config::default();
+        cfg.port = 8080;
+        cfg.data_dir = tmp.path().to_str().unwrap().to_string();
+        let state = AppState {
+            db,
+            auth,
+            hub,
+            presence,
+            config: Arc::new(cfg),
+            mesh: None,
+            custom_theme_css: None,
+        };
+        (state, tmp)
+    }
+
+    fn router(state: AppState, user_id: &'static str) -> Router {
+        Router::new()
+            .route("/teams/{team_id}/invites", get(list).post(create))
+            .route("/teams/{team_id}/invites/{invite_id}", axum_delete(revoke))
+            .route("/invites/{token}", get(get_invite_info))
+            .layer(axum::Extension(UserId(user_id.to_string())))
+            .with_state(state)
+    }
+
+    #[tokio::test]
+    async fn list_invites_requires_team_membership() {
+        let (state, _tmp) = make_state();
+        seed_team(&state.db);
+        let app = router(state, "ghost");
+        let resp = app
+            .oneshot(
+                Request::get("/teams/t1/invites").body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        // Non-member should get a 403/404, never 200.
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn create_invite_rejects_non_admin_user() {
+        let (state, _tmp) = make_state();
+        seed_team(&state.db);
+        // 'u1' is the team owner, but the create handler requires
+        // PERM_CREATE_INVITES — owner by default has all perms.
+        // We test the negative case: a non-member should be denied.
+        let app = router(state, "ghost");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/invites")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn get_invite_info_returns_404_for_unknown_token() {
+        let (state, _tmp) = make_state();
+        seed_team(&state.db);
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::get("/invites/unknown-token").body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 404);
+    }
+
+    #[tokio::test]
+    async fn revoke_invite_returns_404_for_unknown_id() {
+        let (state, _tmp) = make_state();
+        seed_team(&state.db);
+        let app = router(state, "u1");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/invites/ghost-invite-id")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 404);
+    }
 }
