@@ -1319,6 +1319,119 @@ mod sync_response_tests {
     }
 
     #[tokio::test]
+    async fn handle_state_sync_response_updates_existing_member_when_newer() {
+        let mgr = test_sync_manager();
+        let now = db::now_str();
+        let later = (chrono::Utc::now() + chrono::Duration::hours(1))
+            .format("%Y-%m-%d %H:%M:%S").to_string();
+        mgr.db.with_conn(|c| {
+            db::create_user(c, &db::User {
+                id: "u1".into(),
+                username: "alice".into(),
+                display_name: "Alice".into(),
+                public_key: vec![1u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_team(c, &db::Team {
+                id: "t1".into(),
+                name: "T".into(),
+                created_by: "u1".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_member(c, &db::Member {
+                id: "m1".into(),
+                team_id: "t1".into(),
+                user_id: "u1".into(),
+                nickname: "OldNick".into(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now.clone(),
+            })
+        }).unwrap();
+        // Inbound member with later updated_at → should replace nickname.
+        let member = db::Member {
+            id: "m1".into(),
+            team_id: "t1".into(),
+            user_id: "u1".into(),
+            nickname: "NewNick".into(),
+            invited_by: String::new(),
+            joined_at: now,
+            updated_at: later.clone(),
+        };
+        let data = StateSyncData {
+            channels: vec![],
+            messages: vec![],
+            members: vec![member],
+            roles: vec![],
+        };
+        let res = mgr.handle_state_sync_response(data).await;
+        assert!(res.is_ok(), "merge_members failed: {:?}", res);
+    }
+
+    #[tokio::test]
+    async fn handle_state_sync_response_skips_older_member_payload() {
+        let mgr = test_sync_manager();
+        let now = db::now_str();
+        let earlier = (chrono::Utc::now() - chrono::Duration::hours(1))
+            .format("%Y-%m-%d %H:%M:%S").to_string();
+        mgr.db.with_conn(|c| {
+            db::create_user(c, &db::User {
+                id: "u1".into(),
+                username: "alice".into(),
+                display_name: "Alice".into(),
+                public_key: vec![1u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_team(c, &db::Team {
+                id: "t1".into(),
+                name: "T".into(),
+                created_by: "u1".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_member(c, &db::Member {
+                id: "m1".into(),
+                team_id: "t1".into(),
+                user_id: "u1".into(),
+                nickname: "CurrentNick".into(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now.clone(),
+            })
+        }).unwrap();
+        let stale_member = db::Member {
+            id: "m1".into(),
+            team_id: "t1".into(),
+            user_id: "u1".into(),
+            nickname: "StaleNick".into(),
+            invited_by: String::new(),
+            joined_at: now,
+            updated_at: earlier,
+        };
+        let data = StateSyncData {
+            channels: vec![],
+            messages: vec![],
+            members: vec![stale_member],
+            roles: vec![],
+        };
+        let res = mgr.handle_state_sync_response(data).await;
+        assert!(res.is_ok(), "merge should noop, got: {:?}", res);
+    }
+
+    #[tokio::test]
     async fn handle_state_sync_response_merges_new_channels_and_roles() {
         let mgr = test_sync_manager();
         // Seed users + team so foreign-key checks pass.
