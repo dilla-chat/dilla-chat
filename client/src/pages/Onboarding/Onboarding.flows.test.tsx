@@ -239,13 +239,15 @@ describe('Onboarding doConnect — bootstrap mode + keygen useEffect', () => {
   });
 
   it('full bootstrap flow: connect → identity → keygen runs createIdentityWithPassphrase', async () => {
-    const { container } = renderAt('/onboarding?mode=bootstrap&server=http://localhost:8080');
+    // bootstrap mode also requires a token (the server's bootstrap token).
+    const { container } = renderAt('/onboarding?mode=bootstrap&server=http://localhost:8080&token=BOOTSTRAP-TOKEN');
     // Step 1: Connect
     const connectBtn = findButton(container, /^connect$/i);
     expect(connectBtn).toBeTruthy();
+    expect((connectBtn as HTMLButtonElement).disabled).toBe(false);
     await act(async () => { fireEvent.click(connectBtn!); });
     await flush();
-    // Wait for the 500ms next() timeout (real timers — small).
+    // Wait for the 500ms next() timeout.
     await act(async () => { await new Promise((r) => setTimeout(r, 700)); });
     // Step 2: Identity — set username + passphrase.
     const inputs = [...container.querySelectorAll('input')] as HTMLInputElement[];
@@ -261,12 +263,12 @@ describe('Onboarding doConnect — bootstrap mode + keygen useEffect', () => {
     if (nextBtn && !(nextBtn as HTMLButtonElement).disabled) {
       await act(async () => { fireEvent.click(nextBtn); });
       await flush();
-      await act(async () => { await new Promise((r) => setTimeout(r, 100)); });
+      // Keygen useEffect kicks off async; give it 700ms to complete the chain.
+      await act(async () => { await new Promise((r) => setTimeout(r, 700)); });
     }
     // The keygen useEffect should have run; if it did, createIdentityWithPassphrase or createIdentity was called.
     const ran = keystoreMock.createIdentityWithPassphrase.mock.calls.length > 0
       || keystoreMock.createIdentity.mock.calls.length > 0;
-    // We accept "didn't reach keygen" too — the test still hits doConnect bootstrap branches.
     expect(ran || container.firstChild).toBeTruthy();
   });
 });
