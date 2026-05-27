@@ -409,4 +409,52 @@ mod tests {
             .unwrap();
         assert!(resp.status().as_u16() >= 400);
     }
+
+    #[tokio::test]
+    async fn update_thread_4xx_for_unknown_id() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/teams/t1/threads/missing")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"title":"renamed"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn delete_thread_4xx_for_unknown_id() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/threads/missing")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn list_thread_messages_4xx_for_unknown_thread() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::get("/teams/t1/threads/missing/messages").body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
 }
