@@ -869,3 +869,112 @@ pub async fn delete_channel(
 
     json_ok_true()
 }
+
+#[cfg(test)]
+mod axum_tests {
+    use super::*;
+    use crate::auth::{AuthService, UserId};
+    use crate::config::Config;
+    use crate::db::{self, Database};
+    use crate::presence::PresenceManager;
+    use crate::ws::Hub;
+    use axum::body::Body;
+    use axum::http::Request;
+    use axum::routing::{get, post, put, delete as axum_delete};
+    use axum::Router;
+    use std::sync::Arc;
+    use tower::ServiceExt;
+
+    fn make_state() -> (AppState, tempfile::TempDir) {
+        let tmp = tempfile::tempdir().unwrap();
+        let database = Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        database.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;")).unwrap();
+        database.run_migrations().unwrap();
+        let auth = Arc::new(AuthService::new(database.clone(), ""));
+        let hub = Arc::new(Hub::new(database.clone()));
+        let presence = Arc::new(PresenceManager::new());
+        let mut cfg = Config::default();
+        cfg.port = 8080;
+        cfg.data_dir = tmp.path().to_str().unwrap().to_string();
+        let state = AppState {
+            db: database,
+            auth,
+            hub,
+            presence,
+            config: Arc::new(cfg),
+            mesh: None,
+            custom_theme_css: None,
+        };
+        (state, tmp)
+    }
+
+    fn router(state: AppState, user_id: &'static str) -> Router {
+        Router::new()
+            .route("/teams/{team_id}/channels", get(list).post(create))
+            .route(
+                "/teams/{team_id}/channels/{channel_id}",
+                get(get_channel).patch(update).delete(axum_delete(delete_channel)),
+            )
+            .route("/teams/{team_id}/channels/{channel_id}/access", get(get_access).put(set_access))
+            .route("/teams/{team_id}/channels/{channel_id}/read", post(mark_read))
+            .layer(axum::Extension(UserId(user_id.to_string())))
+            .with_state(state)
+    }
+
+    #[tokio::test]
+    async fn list_channels_404s_when_user_not_in_team() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "ghost");
+        let resp = app
+            .oneshot(Request::get("/teams/nope/channels").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn create_channel_rejects_empty_name() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/channels")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"name":"","type":"text"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn get_channel_404s_for_unknown_id() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::get("/teams/t1/channels/missing-channel").body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn delete_channel_404s_for_unknown_id() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/channels/missing")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+}
