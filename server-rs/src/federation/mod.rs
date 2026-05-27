@@ -1385,6 +1385,72 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn handle_federation_event_message_edit_with_full_payload_updates_local_db() {
+        let node = make_node();
+        // Seed a message we can edit.
+        node.db.with_conn(|c| {
+            c.execute_batch("PRAGMA foreign_keys = OFF;")?;
+            c.execute("INSERT INTO users (id, username, public_key, created_at, updated_at) VALUES ('u1', 'a', x'01', datetime('now'), datetime('now'))", [])?;
+            c.execute("INSERT INTO teams (id, name, created_by, created_at, updated_at) VALUES ('t1', 'T', 'u1', datetime('now'), datetime('now'))", [])?;
+            c.execute("INSERT INTO channels (id, team_id, name, type, created_at, updated_at) VALUES ('ch1', 't1', 'g', 'text', datetime('now'), datetime('now'))", [])?;
+            c.execute(
+                "INSERT INTO messages (id, channel_id, dm_channel_id, author_id, content, type, deleted, lamport_ts, created_at)
+                 VALUES ('m-fed', 'ch1', '', 'u1', 'old', 'text', 0, 1, datetime('now'))",
+                [],
+            )?;
+            Ok::<(), rusqlite::Error>(())
+        }).unwrap();
+        let event = FederationEvent {
+            event_type: FED_EVENT_MESSAGE_EDIT.to_string(),
+            node_name: "peer-1".into(),
+            timestamp: 1,
+            payload: serde_json::json!({
+                "message_id": "m-fed",
+                "channel_id": "ch1",
+                "content": "edited via federation",
+            }),
+        };
+        let prov = transport::EventProvenance { origin_node_id: None, seq: None, event_id: None };
+        let res = node.handle_federation_event("peer-1", event, prov).await;
+        assert!(res.is_ok());
+        // Verify the message content was updated.
+        let content: String = node.db.with_conn(|c| {
+            c.query_row("SELECT content FROM messages WHERE id = 'm-fed'", [], |r| r.get(0))
+        }).unwrap();
+        assert_eq!(content, "edited via federation");
+    }
+
+    #[tokio::test]
+    async fn handle_federation_event_message_delete_soft_deletes() {
+        let node = make_node();
+        node.db.with_conn(|c| {
+            c.execute_batch("PRAGMA foreign_keys = OFF;")?;
+            c.execute("INSERT INTO users (id, username, public_key, created_at, updated_at) VALUES ('u1', 'a', x'01', datetime('now'), datetime('now'))", [])?;
+            c.execute("INSERT INTO teams (id, name, created_by, created_at, updated_at) VALUES ('t1', 'T', 'u1', datetime('now'), datetime('now'))", [])?;
+            c.execute("INSERT INTO channels (id, team_id, name, type, created_at, updated_at) VALUES ('ch1', 't1', 'g', 'text', datetime('now'), datetime('now'))", [])?;
+            c.execute(
+                "INSERT INTO messages (id, channel_id, dm_channel_id, author_id, content, type, deleted, lamport_ts, created_at)
+                 VALUES ('m-del', 'ch1', '', 'u1', 'gone', 'text', 0, 1, datetime('now'))",
+                [],
+            )?;
+            Ok::<(), rusqlite::Error>(())
+        }).unwrap();
+        let event = FederationEvent {
+            event_type: FED_EVENT_MESSAGE_DELETE.to_string(),
+            node_name: "peer-1".into(),
+            timestamp: 1,
+            payload: serde_json::json!({"message_id": "m-del", "channel_id": "ch1"}),
+        };
+        let prov = transport::EventProvenance { origin_node_id: None, seq: None, event_id: None };
+        let res = node.handle_federation_event("peer-1", event, prov).await;
+        assert!(res.is_ok());
+        let deleted: i32 = node.db.with_conn(|c| {
+            c.query_row("SELECT deleted FROM messages WHERE id = 'm-del'", [], |r| r.get(0))
+        }).unwrap();
+        assert_eq!(deleted, 1);
+    }
+
+    #[tokio::test]
     async fn handle_federation_event_unknown_event_type_returns_ok() {
         let node = make_node();
         let event = FederationEvent {
