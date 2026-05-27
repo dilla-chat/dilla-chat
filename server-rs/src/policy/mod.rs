@@ -435,4 +435,70 @@ mod tests {
         })
         .unwrap();
     }
+
+    #[test]
+    fn can_read_attachment_denies_unlinked_attachment_with_policy_undefined() {
+        let db = test_db();
+        db.with_conn(|c| {
+            db::create_attachment(c, &db::Attachment {
+                id: "att-unlinked".into(),
+                message_id: String::new(),
+                filename_encrypted: b"name".to_vec(),
+                content_type_encrypted: b"application/octet-stream".to_vec(),
+                size: 4,
+                storage_path: "/tmp/x".into(),
+                uploader_id: None,
+                created_at: db::now_str(),
+            })
+        })
+        .unwrap();
+        db.with_conn(|c| {
+            match can_read_attachment(c, "u", "att-unlinked") {
+                Decision::Deny(r) => assert_eq!(r, "attachment.unlinked_policy_undefined"),
+                _ => panic!("expected Deny for unlinked policy"),
+            }
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn can_read_attachment_denies_when_message_missing() {
+        let db = test_db();
+        db.with_conn(|c| {
+            db::create_attachment(c, &db::Attachment {
+                id: "att-orphan".into(),
+                message_id: "msg-ghost".into(),
+                filename_encrypted: b"x".to_vec(),
+                content_type_encrypted: b"x".to_vec(),
+                size: 1,
+                storage_path: "/tmp/x".into(),
+                uploader_id: None,
+                created_at: db::now_str(),
+            })
+        })
+        .unwrap();
+        db.with_conn(|c| {
+            match can_read_attachment(c, "u", "att-orphan") {
+                Decision::Deny(r) => assert_eq!(r, "attachment.message_missing"),
+                _ => panic!("expected Deny for missing message"),
+            }
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn can_subscribe_channel_denies_unknown_channel_for_non_dm_member() {
+        let db = test_db();
+        db.with_conn(|c| {
+            let d = can_subscribe_channel(c, "u", "t", "no-such-channel");
+            match d {
+                Decision::Deny(r) => assert_eq!(r, "channel.unknown"),
+                _ => panic!("expected Deny channel.unknown"),
+            }
+            Ok(())
+        })
+        .unwrap();
+    }
 }
