@@ -1095,6 +1095,194 @@ mod tests {
         assert_eq!(node.node_name, "test-node");
     }
 
+    fn make_node() -> Arc<MeshNode> {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = db::Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        db.run_migrations().unwrap();
+        std::mem::forget(tmp);
+        let hub = Arc::new(crate::ws::Hub::new(db.clone()));
+        let config = MeshConfig {
+            node_name: "test-node".into(),
+            bind_addr: "0.0.0.0".into(),
+            bind_port: 8081,
+            advertise_addr: String::new(),
+            advertise_port: 0,
+            peers: vec![],
+            tls_cert: String::new(),
+            tls_key: String::new(),
+            join_secret: String::new(),
+            ..Default::default()
+        };
+        Arc::new(MeshNode::new(config, db, hub))
+    }
+
+    #[tokio::test]
+    async fn broadcast_message_runs_with_no_peers() {
+        let node = make_node();
+        let msg = ReplicationMessage {
+            message_id: "m1".into(),
+            channel_id: "ch1".into(),
+            author_id: "u1".into(),
+            username: "alice".into(),
+            content: "hi".into(),
+            msg_type: "text".into(),
+            thread_id: String::new(),
+            lamport_ts: 1,
+            created_at: "2024-01-01 00:00:00".into(),
+        };
+        node.broadcast_message(&msg).await;
+    }
+
+    #[tokio::test]
+    async fn broadcast_message_edit_runs() {
+        let node = make_node();
+        node.broadcast_message_edit("m1", "ch1", "updated").await;
+    }
+
+    #[tokio::test]
+    async fn broadcast_message_delete_runs() {
+        let node = make_node();
+        node.broadcast_message_delete("m1", "ch1").await;
+    }
+
+    #[tokio::test]
+    async fn broadcast_presence_changed_runs() {
+        let node = make_node();
+        node.broadcast_presence_changed("u1", "online", "coding").await;
+    }
+
+    #[tokio::test]
+    async fn broadcast_voice_user_joined_and_left_run() {
+        let node = make_node();
+        node.broadcast_voice_user_joined("ch-voice", "u1", "alice").await;
+        node.broadcast_voice_user_left("ch-voice", "u1").await;
+    }
+
+    #[tokio::test]
+    async fn get_peers_starts_empty() {
+        let node = make_node();
+        let peers = node.get_peers().await;
+        assert!(peers.is_empty());
+    }
+
+    #[tokio::test]
+    async fn handle_federation_event_dispatches_to_message_new_handler() {
+        let node = make_node();
+        // Seed prerequisite rows so message creation can land.
+        node.db.with_conn(|c| {
+            c.execute("INSERT INTO users (id, username, public_key, created_at, updated_at) VALUES ('u1', 'alice', x'01', datetime('now'), datetime('now'))", [])?;
+            c.execute("INSERT INTO teams (id, name, created_by, created_at, updated_at) VALUES ('t1', 'T', 'u1', datetime('now'), datetime('now'))", [])?;
+            c.execute("INSERT INTO channels (id, team_id, name, type, created_at, updated_at) VALUES ('ch1', 't1', 'g', 'text', datetime('now'), datetime('now'))", [])?;
+            Ok::<(), rusqlite::Error>(())
+        }).unwrap();
+        let event = FederationEvent {
+            event_type: FED_EVENT_MESSAGE_NEW.to_string(),
+            node_name: "peer-1".into(),
+            timestamp: 5,
+            payload: serde_json::json!({
+                "message_id": "m-fed-1",
+                "channel_id": "ch1",
+                "author_id": "u1",
+                "username": "alice",
+                "content": "hello from peer",
+                "type": "text",
+                "thread_id": "",
+                "lamport_ts": 5,
+                "created_at": "2024-01-01 00:00:00",
+            }),
+        };
+        let prov = transport::EventProvenance { origin_node_id: None, seq: None, event_id: None };
+        let res = node.handle_federation_event("peer-1", event, prov).await;
+        assert!(res.is_ok(), "handle_federation_event failed: {:?}", res);
+    }
+
+    #[tokio::test]
+    async fn handle_message_edit_with_missing_fields_returns_err() {
+        let node = make_node();
+        let event = FederationEvent {
+            event_type: FED_EVENT_MESSAGE_EDIT.to_string(),
+            node_name: "peer-1".into(),
+            timestamp: 1,
+            payload: serde_json::json!({"message_id": "m1"}),
+        };
+        let prov = transport::EventProvenance { origin_node_id: None, seq: None, event_id: None };
+        let res = node.handle_federation_event("peer-1", event, prov).await;
+        assert!(res.is_err());
+    }
+
+    #[tokio::test]
+    async fn handle_message_delete_with_missing_fields_returns_err() {
+        let node = make_node();
+        let event = FederationEvent {
+            event_type: FED_EVENT_MESSAGE_DELETE.to_string(),
+            node_name: "peer-1".into(),
+            timestamp: 1,
+            payload: serde_json::json!({}),
+        };
+        let prov = transport::EventProvenance { origin_node_id: None, seq: None, event_id: None };
+        let res = node.handle_federation_event("peer-1", event, prov).await;
+        assert!(res.is_err());
+    }
+
+    #[tokio::test]
+    async fn handle_presence_changed_dispatches() {
+        let node = make_node();
+        let event = FederationEvent {
+            event_type: FED_EVENT_PRESENCE_CHANGED.to_string(),
+            node_name: "peer-1".into(),
+            timestamp: 1,
+            payload: serde_json::json!({
+                "user_id": "u1",
+                "status_type": "online",
+                "custom_status": "",
+            }),
+        };
+        let prov = transport::EventProvenance { origin_node_id: None, seq: None, event_id: None };
+        let _ = node.handle_federation_event("peer-1", event, prov).await;
+    }
+
+    #[tokio::test]
+    async fn handle_voice_user_joined_and_left_dispatches() {
+        let node = make_node();
+        let prov_template = || transport::EventProvenance { origin_node_id: None, seq: None, event_id: None };
+        let joined = FederationEvent {
+            event_type: FED_EVENT_VOICE_USER_JOINED.to_string(),
+            node_name: "peer-1".into(),
+            timestamp: 1,
+            payload: serde_json::json!({
+                "channel_id": "ch1",
+                "user_id": "u1",
+                "username": "alice",
+            }),
+        };
+        let _ = node.handle_federation_event("peer-1", joined, prov_template()).await;
+        let left = FederationEvent {
+            event_type: FED_EVENT_VOICE_USER_LEFT.to_string(),
+            node_name: "peer-1".into(),
+            timestamp: 1,
+            payload: serde_json::json!({
+                "channel_id": "ch1",
+                "user_id": "u1",
+            }),
+        };
+        let _ = node.handle_federation_event("peer-1", left, prov_template()).await;
+    }
+
+    #[tokio::test]
+    async fn handle_federation_event_unknown_event_type_returns_ok() {
+        let node = make_node();
+        let event = FederationEvent {
+            event_type: "unknown:event".to_string(),
+            node_name: "peer-1".into(),
+            timestamp: 1,
+            payload: serde_json::Value::Null,
+        };
+        let prov = transport::EventProvenance { origin_node_id: None, seq: None, event_id: None };
+        let res = node.handle_federation_event("peer-1", event, prov).await;
+        // Unknown event types are logged but don't error out.
+        assert!(res.is_ok());
+    }
+
     #[test]
     fn mesh_node_sync_and_join_managers_accessible() {
         let db = {
