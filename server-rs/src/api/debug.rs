@@ -302,4 +302,98 @@ mod tests {
         // plus the marker suffix.
         assert!(out.contains("…[truncated]"));
     }
+
+    // ── axum integration tests ──────────────────────────────────────
+
+    use crate::api::AppState;
+    use crate::auth::AuthService;
+    use crate::config::Config;
+    use crate::db::Database;
+    use crate::presence::PresenceManager;
+    use crate::ws::Hub;
+    use axum::body::Body;
+    use axum::http::Request;
+    use axum::routing::post;
+    use axum::Router;
+    use std::sync::Arc;
+    use tower::ServiceExt;
+
+    fn make_state(browser_log_forward: bool) -> (AppState, tempfile::TempDir) {
+        let tmp = tempfile::tempdir().unwrap();
+        let database = Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        database.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;")).unwrap();
+        database.run_migrations().unwrap();
+        let auth = Arc::new(AuthService::new(database.clone(), ""));
+        let hub = Arc::new(Hub::new(database.clone()));
+        let presence = Arc::new(PresenceManager::new());
+        let mut cfg = Config::default();
+        cfg.port = 8080;
+        cfg.data_dir = tmp.path().to_str().unwrap().to_string();
+        cfg.browser_log_forward = browser_log_forward;
+        let state = AppState {
+            db: database,
+            auth,
+            hub,
+            presence,
+            config: Arc::new(cfg),
+            mesh: None,
+            custom_theme_css: None,
+        };
+        (state, tmp)
+    }
+
+    #[tokio::test]
+    async fn ingest_returns_204_when_browser_log_forward_disabled() {
+        let (state, _tmp) = make_state(false);
+        let app = Router::new()
+            .route("/debug/browser-log", post(ingest))
+            .with_state(state);
+        let resp = app
+            .oneshot(
+                Request::post("/debug/browser-log")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"session":"abc","entries":[]}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 204);
+    }
+
+    #[tokio::test]
+    async fn ingest_rejects_malformed_json_when_enabled() {
+        let (state, _tmp) = make_state(true);
+        let app = Router::new()
+            .route("/debug/browser-log", post(ingest))
+            .with_state(state);
+        let resp = app
+            .oneshot(
+                Request::post("/debug/browser-log")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{not json"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
+
+    #[tokio::test]
+    async fn ingest_accepts_valid_batch_when_enabled() {
+        let (state, _tmp) = make_state(true);
+        let app = Router::new()
+            .route("/debug/browser-log", post(ingest))
+            .with_state(state);
+        let body = r#"{"session":"sess-1","entries":[{"level":"error","message":"oops"},{"level":"info","message":"hi"}]}"#;
+        let resp = app
+            .oneshot(
+                Request::post("/debug/browser-log")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() < 400);
+    }
 }
