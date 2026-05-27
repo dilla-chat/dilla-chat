@@ -131,4 +131,24 @@ describe('MeshBottomBar', () => {
     expect(container.textContent).toMatch(/v \d+\.\d+\.\d+/i);
     expect(container.textContent).toMatch(/build [\w-]+/i);
   });
+
+  it('clicking the voice chunk dispatches mesh:open-voice-settings (L115)', async () => {
+    vi.resetModules();
+    vi.doMock('../../stores/voiceStore', () => ({
+      useVoiceStore: (selector: (s: { connected: boolean }) => unknown) =>
+        selector({ connected: true }),
+    }));
+    const { default: Bar } = await import('./MeshBottomBar');
+    const spy = vi.spyOn(window, 'dispatchEvent');
+    render(<Bar />);
+    const voiceBtn = screen.getByText('voice').closest('button')!;
+    fireEvent.click(voiceBtn);
+    expect(
+      spy.mock.calls.some(
+        (c) => c[0] instanceof CustomEvent && c[0].type === 'mesh:open-voice-settings',
+      ),
+    ).toBe(true);
+    spy.mockRestore();
+    vi.doUnmock('../../stores/voiceStore');
+  });
 });
