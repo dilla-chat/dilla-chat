@@ -977,4 +977,64 @@ mod axum_tests {
             .unwrap();
         assert!(resp.status().as_u16() >= 400);
     }
+
+    #[tokio::test]
+    async fn create_channel_rejects_oversized_name() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let oversized = "n".repeat(101);
+        let body = format!(r#"{{"name":"{}","type":"text"}}"#, oversized);
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/channels")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
+
+    #[tokio::test]
+    async fn create_channel_rejects_oversized_topic() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let oversized = "t".repeat(1025);
+        let body = format!(r#"{{"name":"ok","type":"text","topic":"{}"}}"#, oversized);
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/channels")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
+
+    #[tokio::test]
+    async fn mark_read_4xx_for_non_member() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "ghost");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/channels/ch1/read").body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn get_access_4xx_for_non_member() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "ghost");
+        let resp = app
+            .oneshot(Request::get("/teams/t1/channels/ch1/access").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
 }
