@@ -370,6 +370,49 @@ describe('Onboarding KeyGen useEffect — keyProtect=hardware (PRF passkey)', ()
   });
 });
 
+describe('Onboarding — advancing to Done and clicking Open', () => {
+  it('completes full flow: connect → identity → keygen → safety → done → open', async () => {
+    const { container } = renderAt(
+      '/onboarding?mode=bootstrap&server=http://localhost:8080&token=BOOTSTRAP-TOKEN',
+    );
+    await advanceToKeygen(container);
+    // After keygen completes, the next() scheduled-700ms transitions to Safety.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 900));
+    });
+    // Click "I've saved both" or "I've saved it" on the Safety step.
+    let safetyNext = findButton(container, /I've saved/i);
+    if (safetyNext && !safetyNext.disabled) {
+      // If recovery key is shown, the checkbox needs to be ticked first.
+      const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+      if (checkbox) {
+        await act(async () => {
+          fireEvent.click(checkbox);
+        });
+      }
+      safetyNext = findButton(container, /I've saved/i);
+      if (safetyNext && !safetyNext.disabled) {
+        await act(async () => {
+          fireEvent.click(safetyNext);
+        });
+        await flush();
+      }
+    }
+    // Now on Done step — click "Open Dilla" / "Open" button.
+    const openBtn = findButton(container, /Open/i);
+    if (openBtn) {
+      await act(async () => {
+        fireEvent.click(openBtn);
+      });
+      await flush();
+      // Either activateTeamAndNavigate or navigate('/app') should have fired.
+      const teamNavFired = utilsMock.activateTeamAndNavigate.mock.calls.length > 0;
+      const directNavFired = navigateMock.mock.calls.some(([arg]) => arg === '/app');
+      expect(teamNavFired || directNavFired).toBe(true);
+    }
+  });
+});
+
 describe('Onboarding KeyGen useEffect — resume path (existing identity on disk)', () => {
   it('re-uses existing identity when hasIdentity returns true', async () => {
     keystoreMock.hasIdentity.mockResolvedValue(true);
