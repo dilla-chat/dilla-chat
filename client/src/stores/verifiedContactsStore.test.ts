@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useVerifiedContacts } from './verifiedContactsStore';
 
 const STORAGE_KEY = 'dilla:verified-contacts:v1';
@@ -59,5 +59,28 @@ describe('useVerifiedContacts', () => {
     expect(useVerifiedContacts.getState().isVerified('u1', 'abcdef')).toBe(
       'unverified',
     );
+  });
+
+  it('load() returns {} when JSON.parse fails (catch branch L26-27)', async () => {
+    localStorage.setItem(STORAGE_KEY, '{this is not}');
+    vi.resetModules();
+    const { useVerifiedContacts: fresh } = await import('./verifiedContactsStore');
+    expect(fresh.getState().byUserId).toEqual({});
+  });
+
+  it('load() returns {} when JSON.parse yields non-object (L25)', async () => {
+    localStorage.setItem(STORAGE_KEY, 'null');
+    vi.resetModules();
+    const { useVerifiedContacts: fresh } = await import('./verifiedContactsStore');
+    expect(fresh.getState().byUserId).toEqual({});
+  });
+
+  it('load() hydrates from a valid stored payload (L24-25 success)', async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      'u-saved': { publicKeyHex: 'aabbcc', verifiedAt: 12345 },
+    }));
+    vi.resetModules();
+    const { useVerifiedContacts: fresh } = await import('./verifiedContactsStore');
+    expect(fresh.getState().byUserId['u-saved']?.publicKeyHex).toBe('aabbcc');
   });
 });
