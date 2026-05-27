@@ -261,4 +261,72 @@ mod tests {
         let r = safe_outbound_url("https://127.0.0.1/").await;
         assert!(r.is_err());
     }
+
+    #[tokio::test]
+    async fn refuses_invalid_url() {
+        assert!(safe_outbound_url("not a url at all").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn refuses_url_with_empty_host() {
+        // https:/// has no host.
+        let r = safe_outbound_url("https:///").await;
+        assert!(r.is_err());
+    }
+
+    #[tokio::test]
+    async fn refuses_private_rfc1918_address() {
+        let r = safe_outbound_url("https://10.0.0.1/").await;
+        assert!(r.is_err());
+    }
+
+    #[tokio::test]
+    async fn refuses_aws_metadata_link_local() {
+        let r = safe_outbound_url("https://169.254.169.254/").await;
+        assert!(r.is_err());
+    }
+
+    #[tokio::test]
+    async fn refuses_ipv6_loopback() {
+        let r = safe_outbound_url("https://[::1]/").await;
+        assert!(r.is_err());
+    }
+
+    #[tokio::test]
+    async fn refuses_unique_local_ipv6() {
+        let r = safe_outbound_url("https://[fc00::1]/").await;
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn is_public_ip_rejects_carrier_grade_nat() {
+        let ip: IpAddr = "100.64.0.1".parse().unwrap();
+        assert!(!is_public_ip(&ip));
+        let ip: IpAddr = "100.127.255.255".parse().unwrap();
+        assert!(!is_public_ip(&ip));
+    }
+
+    #[test]
+    fn is_public_ip_accepts_typical_public_v4() {
+        let ip: IpAddr = "8.8.8.8".parse().unwrap();
+        assert!(is_public_ip(&ip));
+    }
+
+    #[test]
+    fn is_public_ip_rejects_multicast_v4() {
+        let ip: IpAddr = "224.0.0.1".parse().unwrap();
+        assert!(!is_public_ip(&ip));
+    }
+
+    #[test]
+    fn is_public_ip_rejects_link_local_v6() {
+        let ip: IpAddr = "fe80::1".parse().unwrap();
+        assert!(!is_public_ip(&ip));
+    }
+
+    #[test]
+    fn is_public_ip_accepts_public_v6() {
+        let ip: IpAddr = "2606:4700:4700::1111".parse().unwrap();
+        assert!(is_public_ip(&ip));
+    }
 }
