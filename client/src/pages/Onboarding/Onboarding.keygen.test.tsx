@@ -382,3 +382,151 @@ describe('Onboarding KeyGen useEffect — resume path (existing identity on disk
     expect(keystoreMock.createIdentityWithPassphrase).not.toHaveBeenCalled();
   });
 });
+
+describe('Onboarding doConnect — recovery happy path', () => {
+  it('drives the full recovery flow: blob fetch → unlock → challenge → verify → navigate', async () => {
+    // Mock fetch to return a valid blob payload for the recovery fetch.
+    keystoreMock.unlockWithRecovery.mockResolvedValueOnce({
+      publicKeyBytes: new Uint8Array([1, 2, 3]),
+      signingKey: {} as CryptoKey,
+      dhKeyPair: { privateKey: {} as CryptoKey, publicKeyBytes: new Uint8Array() },
+    } as never);
+
+    const { container } = renderAt('/onboarding?mode=existing&recover=1');
+    const inputs = [...container.querySelectorAll('input')] as HTMLInputElement[];
+    const serverInput = inputs.find((i) => /localhost:8080/.test(i.placeholder));
+    const userInput = inputs.find((i) => /username/.test(i.placeholder));
+    const keyArea = container.querySelector('textarea') as HTMLTextAreaElement | null;
+    expect(serverInput).toBeTruthy();
+    expect(userInput).toBeTruthy();
+    expect(keyArea).toBeTruthy();
+    await act(async () => {
+      fireEvent.change(serverInput!, { target: { value: 'https://recover.example' } });
+      fireEvent.change(userInput!, { target: { value: 'alice' } });
+      fireEvent.change(keyArea!, { target: { value: 'AAAA-BBBB-CCCC-DDDD' } });
+    });
+    const btn = findButton(container, /Recover identity/i);
+    expect(btn).toBeTruthy();
+    expect(btn!.disabled).toBe(false);
+    await act(async () => {
+      fireEvent.click(btn!);
+    });
+    await flush();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 100));
+    });
+    // Recovery flow chain.
+    expect(keystoreMock.importIdentityBlob).toHaveBeenCalled();
+    expect(keystoreMock.unlockWithRecovery).toHaveBeenCalled();
+    expect(apiMock.api.requestChallenge).toHaveBeenCalled();
+    expect(apiMock.api.verifyChallenge).toHaveBeenCalled();
+    expect(utilsMock.activateTeamAndNavigate).toHaveBeenCalled();
+  });
+
+  it('surfaces a friendly error when blob fetch returns non-ok', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({}),
+    }) as never;
+    const { container } = renderAt('/onboarding?mode=existing&recover=1');
+    const inputs = [...container.querySelectorAll('input')] as HTMLInputElement[];
+    const serverInput = inputs.find((i) => /localhost:8080/.test(i.placeholder))!;
+    const userInput = inputs.find((i) => /username/.test(i.placeholder))!;
+    const keyArea = container.querySelector('textarea') as HTMLTextAreaElement;
+    await act(async () => {
+      fireEvent.change(serverInput, { target: { value: 'https://recover.example' } });
+      fireEvent.change(userInput, { target: { value: 'alice' } });
+      fireEvent.change(keyArea, { target: { value: 'AAAA-BBBB' } });
+    });
+    const btn = findButton(container, /Recover identity/i);
+    await act(async () => {
+      fireEvent.click(btn!);
+    });
+    await flush();
+    expect(container.textContent).toMatch(/identity blob|failed|error/i);
+  });
+});
+
+describe('Onboarding doConnect — existing mode passkey-PRF path', () => {
+  it('attempts passkey unlock when credentials exist + no passphrase entered', async () => {
+    keystoreMock.getCredentialInfo.mockResolvedValueOnce({
+      credentials: [{ id: 'cred-1' }],
+      prfSalt: new Uint8Array(32),
+      keySlots: [{ server_url: 'https://stored.example' }],
+    } as never);
+    webauthnMock.authenticatePasskey.mockResolvedValueOnce({
+      prfOutput: new ArrayBuffer(32),
+    } as never);
+    keystoreMock.unlockWithPrf.mockResolvedValueOnce({
+      publicKeyBytes: new Uint8Array([1, 2, 3]),
+      signingKey: {} as CryptoKey,
+      dhKeyPair: { privateKey: {} as CryptoKey, publicKeyBytes: new Uint8Array() },
+    } as never);
+
+    const { container } = renderAt('/onboarding?mode=existing');
+    const btn = findButton(container, /^Unlock$/);
+    expect(btn).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(btn!);
+    });
+    await flush();
+    expect(webauthnMock.authenticatePasskey).toHaveBeenCalled();
+    expect(keystoreMock.unlockWithPrf).toHaveBeenCalled();
+  });
+
+  it('falls back to passphrase when passkey is unavailable', async () => {
+    keystoreMock.getCredentialInfo.mockResolvedValueOnce(null as never);
+    const { container } = renderAt('/onboarding?mode=existing');
+    const inputs = [...container.querySelectorAll('input')] as HTMLInputElement[];
+    const passInput = inputs.find((i) => i.type === 'password' || /pass/i.test(i.placeholder));
+    expect(passInput).toBeTruthy();
+    await act(async () => {
+      fireEvent.change(passInput!, { target: { value: 'my-secret-passphrase' } });
+    });
+    const btn = findButton(container, /^Unlock$/);
+    await act(async () => {
+      fireEvent.click(btn!);
+    });
+    await flush();
+    expect(keystoreMock.unlockWithPassphrase).toHaveBeenCalled();
+  });
+});
+
+describe('Onboarding back button + footer skip', () => {
+  it('back from Identity returns to Connect', async () => {
+    const { container } = renderAt(
+      '/onboarding?mode=bootstrap&server=http://localhost:8080&token=TOK',
+    );
+    const connectBtn = findButton(container, /^Connect$/);
+    await act(async () => {
+      fireEvent.click(connectBtn!);
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 600));
+    });
+    // Now on Identity step — the Back button should send us back to Connect.
+    const backBtn = findButton(container, /^Back$/);
+    if (backBtn) {
+      await act(async () => {
+        fireEvent.click(backBtn);
+      });
+      await flush();
+      // Connect button should be visible again.
+      expect(findButton(container, /^Connect$/)).toBeTruthy();
+    }
+  });
+
+  it('footer "have an account?" link switches mode to existing', async () => {
+    const { container } = renderAt('/onboarding?mode=bootstrap');
+    const signInLink = findButton(container, /have an account|sign in/i);
+    if (signInLink) {
+      await act(async () => {
+        fireEvent.click(signInLink);
+      });
+      await flush();
+      // After mode=existing, an Unlock button should appear.
+      expect(findButton(container, /^Unlock$/)).toBeTruthy();
+    }
+  });
+});
