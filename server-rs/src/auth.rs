@@ -1477,4 +1477,23 @@ mod tests {
         let h = headers_with_cookie("foo=1;   __dilla_jwt=tok2");
         assert_eq!(extract_auth_cookie(&h), Some("tok2".to_string()));
     }
+
+    // ── refresh_with_sliding tests ──────────────────────────────────
+
+    #[test]
+    fn refresh_with_sliding_does_not_rotate_a_fresh_token() {
+        let auth = test_auth_service();
+        let token = auth.generate_refresh_token("u1").unwrap();
+        // The token is freshly minted → > half lifetime remaining → no rotate.
+        let (_access, returned, rotated) = auth.refresh_with_sliding(&token).unwrap();
+        assert!(!rotated);
+        assert_eq!(returned, token);
+    }
+
+    #[test]
+    fn refresh_with_sliding_rejects_invalid_token() {
+        let auth = test_auth_service();
+        let res = auth.refresh_with_sliding("garbage-not-a-jwt");
+        assert!(res.is_err());
+    }
 }
