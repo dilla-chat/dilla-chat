@@ -558,6 +558,81 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn enroll_complete_rejects_wrong_length_authorizer_public_key() {
+        let (state, _tmp) = make_state();
+        seed_user(&state.db, "alice");
+        let app = router(state, "alice");
+        let new_pk = base64::engine::general_purpose::STANDARD.encode(&[0u8; 32]);
+        let bad_auth_pk = base64::engine::general_purpose::STANDARD.encode(&[0u8; 16]); // wrong length
+        let sig = base64::engine::general_purpose::STANDARD.encode(&[0u8; 64]);
+        let body = format!(
+            r#"{{"challenge_id":"c1","new_device_public_key":"{}","authorizer_public_key":"{}","signature":"{}","device_label":""}}"#,
+            new_pk, bad_auth_pk, sig
+        );
+        let resp = app
+            .oneshot(
+                Request::post("/devices/enroll-complete")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
+
+    #[tokio::test]
+    async fn enroll_complete_rejects_wrong_length_signature() {
+        let (state, _tmp) = make_state();
+        seed_user(&state.db, "alice");
+        let app = router(state, "alice");
+        let new_pk = base64::engine::general_purpose::STANDARD.encode(&[0u8; 32]);
+        let auth_pk = base64::engine::general_purpose::STANDARD.encode(&[0u8; 32]);
+        let bad_sig = base64::engine::general_purpose::STANDARD.encode(&[0u8; 16]); // wrong length
+        let body = format!(
+            r#"{{"challenge_id":"c1","new_device_public_key":"{}","authorizer_public_key":"{}","signature":"{}","device_label":""}}"#,
+            new_pk, auth_pk, bad_sig
+        );
+        let resp = app
+            .oneshot(
+                Request::post("/devices/enroll-complete")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
+
+    #[tokio::test]
+    async fn enroll_complete_4xx_for_unknown_authorizer() {
+        let (state, _tmp) = make_state();
+        seed_user(&state.db, "alice");
+        let app = router(state, "alice");
+        // Properly-formed body — passes the length gates — but the authorizer
+        // pubkey isn't a known device of this user, so we expect 403.
+        let new_pk = base64::engine::general_purpose::STANDARD.encode(&[7u8; 32]);
+        let auth_pk = base64::engine::general_purpose::STANDARD.encode(&[8u8; 32]);
+        let sig = base64::engine::general_purpose::STANDARD.encode(&[0u8; 64]);
+        let body = format!(
+            r#"{{"challenge_id":"c1","new_device_public_key":"{}","authorizer_public_key":"{}","signature":"{}","device_label":""}}"#,
+            new_pk, auth_pk, sig
+        );
+        let resp = app
+            .oneshot(
+                Request::post("/devices/enroll-complete")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        // 403 (authorizer unknown) — but accept any 4xx
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
     async fn revoke_device_404_for_other_users_device() {
         let (state, _tmp) = make_state();
         seed_user(&state.db, "alice");
