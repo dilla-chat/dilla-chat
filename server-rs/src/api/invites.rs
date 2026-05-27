@@ -608,4 +608,122 @@ mod tests {
             .unwrap();
         assert_eq!(resp.status(), 404);
     }
+
+    #[tokio::test]
+    async fn create_invite_happy_path_as_owner() {
+        let (state, _tmp) = make_state();
+        seed_team(&state.db);
+        let app = router(state, "u1");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/invites")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"max_uses":5}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn list_invites_returns_array_for_member() {
+        let (state, _tmp) = make_state();
+        seed_team(&state.db);
+        // Add u1 as a member so the team-member check passes.
+        let now = db::now_str();
+        state.db.with_conn(|c| {
+            db::create_member(c, &db::Member {
+                id: "m-u1".into(),
+                team_id: "t1".into(),
+                user_id: "u1".into(),
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "u1");
+        let resp = app
+            .oneshot(Request::get("/teams/t1/invites").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn revoke_invite_happy_path() {
+        let (state, _tmp) = make_state();
+        seed_team(&state.db);
+        // Seed an invite directly so we have something to revoke.
+        let now = db::now_str();
+        state.db.with_conn(|c| {
+            db::create_invite(c, &db::Invite {
+                id: "inv-1".into(),
+                team_id: "t1".into(),
+                token: "token-1".into(),
+                created_by: "u1".into(),
+                max_uses: None,
+                uses: 0,
+                expires_at: None,
+                revoked: false,
+                created_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "u1");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/invites/inv-1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn revoke_invite_rejects_team_mismatch() {
+        let (state, _tmp) = make_state();
+        seed_team(&state.db);
+        // Seed an invite belonging to team t-other but routed under t1.
+        let now = db::now_str();
+        state.db.with_conn(|c| {
+            db::create_team(c, &db::Team {
+                id: "t-other".into(),
+                name: "Other".into(),
+                created_by: "u1".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_invite(c, &db::Invite {
+                id: "inv-other".into(),
+                team_id: "t-other".into(),
+                token: "tok-other".into(),
+                created_by: "u1".into(),
+                max_uses: None,
+                uses: 0,
+                expires_at: None,
+                revoked: false,
+                created_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "u1");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/invites/inv-other")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
 }
