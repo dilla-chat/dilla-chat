@@ -1314,6 +1314,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn start_reconnect_loop_handles_zero_peers_then_stop() {
+        // Smoke: exercises the reconnect loop's spawn + first tick + stop path.
+        let t = Arc::new(Transport::with_settings(String::new(), true));
+        t.start_reconnect_loop();
+        // No peers registered → loop iterates with empty list.
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+        t.stop().await;
+    }
+
+    #[tokio::test]
+    async fn start_ping_loop_handles_zero_peers_then_stop() {
+        let t = Arc::new(Transport::with_settings(String::new(), true));
+        t.start_ping_loop();
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+        t.stop().await;
+    }
+
+    #[tokio::test]
     async fn stop_closes_connected_peers() {
         let (listener, port) = start_tcp_listener().await;
         let transport = Transport::with_settings(String::new(), true);
