@@ -729,6 +729,135 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn edit_message_rejects_non_author() {
+        let (state, _tmp) = make_state();
+        seed_team_channel_member(&state, "alice", "t1", "ch1");
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_user(conn, &db::User {
+                id: "bob".into(),
+                username: "bob".into(),
+                display_name: "Bob".into(),
+                public_key: vec![2u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_member(conn, &db::Member {
+                id: "m-bob".into(),
+                team_id: "t1".into(),
+                user_id: "bob".into(),
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now.clone(),
+            })?;
+            db::create_message(conn, &db::Message {
+                id: "m-alice".into(),
+                channel_id: "ch1".into(),
+                dm_channel_id: String::new(),
+                author_id: "alice".into(),
+                content: "alice's message".into(),
+                msg_type: "text".into(),
+                thread_id: String::new(),
+                edited_at: None,
+                deleted: false,
+                lamport_ts: 0,
+                reply_to_message_id: None,
+                created_at: now,
+            })
+        }).unwrap();
+        // Bob (not the author) tries to edit alice's message.
+        let app = router(state, "bob");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/teams/t1/channels/ch1/messages/m-alice")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"content":"hijack"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn edit_message_rejects_already_soft_deleted() {
+        let (state, _tmp) = make_state();
+        seed_team_channel_member(&state, "alice", "t1", "ch1");
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_message(conn, &db::Message {
+                id: "m-deleted".into(),
+                channel_id: "ch1".into(),
+                dm_channel_id: String::new(),
+                author_id: "alice".into(),
+                content: "tombstone".into(),
+                msg_type: "text".into(),
+                thread_id: String::new(),
+                edited_at: None,
+                deleted: false,
+                lamport_ts: 0,
+                reply_to_message_id: None,
+                created_at: now,
+            })?;
+            db::soft_delete_message(conn, "m-deleted")
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/teams/t1/channels/ch1/messages/m-deleted")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"content":"revive"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn delete_message_rejects_already_deleted() {
+        let (state, _tmp) = make_state();
+        seed_team_channel_member(&state, "alice", "t1", "ch1");
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_message(conn, &db::Message {
+                id: "m-stale".into(),
+                channel_id: "ch1".into(),
+                dm_channel_id: String::new(),
+                author_id: "alice".into(),
+                content: "gone".into(),
+                msg_type: "text".into(),
+                thread_id: String::new(),
+                edited_at: None,
+                deleted: false,
+                lamport_ts: 0,
+                reply_to_message_id: None,
+                created_at: now,
+            })?;
+            db::soft_delete_message(conn, "m-stale")
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/channels/ch1/messages/m-stale/del")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
     async fn delete_message_happy_path_as_author() {
         let (state, _tmp) = make_state();
         seed_team_channel_member(&state, "alice", "t1", "ch1");
