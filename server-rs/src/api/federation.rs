@@ -882,6 +882,75 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn set_team_authority_happy_path_with_local_node_id() {
+        let (state, _tmp) = make_state();
+        seed_admin_user(&state.db);
+        // Seed a team so the team-existence check passes.
+        let now = crate::db::now_str();
+        state.db.with_conn(|conn| {
+            crate::db::create_team(conn, &crate::db::Team {
+                id: "t-auth".into(),
+                name: "T".into(),
+                created_by: "super".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now,
+                ..Default::default()
+            })
+        }).unwrap();
+        // Boot the local node identity so we can pass its node_id as the owner.
+        let local_identity = crate::federation::identity::ensure(&state.db).unwrap();
+        let app = router(state, "super");
+        let body = format!(r#"{{"owner_node_id":"{}"}}"#, local_identity.node_id);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/federation/teams/t-auth/authority")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn set_team_authority_rejects_unpinned_owner_node_id() {
+        let (state, _tmp) = make_state();
+        seed_admin_user(&state.db);
+        let now = crate::db::now_str();
+        state.db.with_conn(|conn| {
+            crate::db::create_team(conn, &crate::db::Team {
+                id: "t-stranger".into(),
+                name: "T".into(),
+                created_by: "super".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now,
+                ..Default::default()
+            })
+        }).unwrap();
+        let app = router(state, "super");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/federation/teams/t-stranger/authority")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"owner_node_id":"some-unpinned-node"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        // Not us, not a pinned peer → BadRequest.
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
     async fn revoke_peer_404_for_unknown_node() {
         let (state, _tmp) = make_state();
         seed_admin_user(&state.db);
