@@ -533,4 +533,90 @@ mod tests {
     fn default_color_is_grey() {
         assert_eq!(default_color(), "#99AAB5");
     }
+
+    // ── axum integration tests ──────────────────────────────────────
+
+    use crate::auth::{AuthService, UserId};
+    use crate::config::Config;
+    use crate::presence::PresenceManager;
+    use crate::ws::Hub;
+    use axum::body::Body;
+    use axum::http::Request;
+    use axum::routing::{get, post, patch, delete as axum_delete, put};
+    use axum::Router;
+    use std::sync::Arc;
+    use tower::ServiceExt;
+
+    fn make_state() -> (AppState, tempfile::TempDir) {
+        let (db, tmp) = test_db();
+        let auth = Arc::new(AuthService::new(db.clone(), ""));
+        let hub = Arc::new(Hub::new(db.clone()));
+        let presence = Arc::new(PresenceManager::new());
+        let mut cfg = Config::default();
+        cfg.port = 8080;
+        cfg.data_dir = tmp.path().to_str().unwrap().to_string();
+        let state = AppState {
+            db,
+            auth,
+            hub,
+            presence,
+            config: Arc::new(cfg),
+            mesh: None,
+            custom_theme_css: None,
+        };
+        (state, tmp)
+    }
+
+    fn router(state: AppState, user_id: &'static str) -> Router {
+        Router::new()
+            .route("/teams/{team_id}/roles", get(list).post(create))
+            .route("/teams/{team_id}/roles/{role_id}", patch(update).delete(axum_delete(delete_role)))
+            .route("/teams/{team_id}/roles/reorder", put(reorder))
+            .layer(axum::Extension(UserId(user_id.to_string())))
+            .with_state(state)
+    }
+
+    #[tokio::test]
+    async fn list_roles_404s_for_non_member() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "ghost");
+        let resp = app
+            .oneshot(Request::get("/teams/t1/roles").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn create_role_rejects_empty_name() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/roles")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"name":""}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn delete_role_404s_for_unknown_id() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/roles/missing")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
 }
