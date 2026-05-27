@@ -1049,6 +1049,102 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn update_member_role_assignment_as_owner_succeeds() {
+        let (state, _tmp) = make_state();
+        seed_team_with_member(&state, "t1", "alice", "bob");
+        // Seed a role bob can be assigned.
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_role(conn, &db::Role {
+                id: "r-mod".into(),
+                team_id: "t1".into(),
+                name: "Mod".into(),
+                color: "#000".into(),
+                position: 1,
+                permissions: 0,
+                is_default: false,
+                created_at: now.clone(),
+                updated_at: now,
+            })
+        }).unwrap();
+        let app = router_full(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/teams/t1/members/bob")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"role_ids":["r-mod"]}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn update_member_rejects_unknown_role_id() {
+        let (state, _tmp) = make_state();
+        seed_team_with_member(&state, "t1", "alice", "bob");
+        let app = router_full(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/teams/t1/members/bob")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"role_ids":["ghost-role"]}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn update_member_rejects_role_from_different_team() {
+        let (state, _tmp) = make_state();
+        seed_team_with_member(&state, "t1", "alice", "bob");
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_team(conn, &db::Team {
+                id: "t-other".into(),
+                name: "Other".into(),
+                created_by: "alice".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_role(conn, &db::Role {
+                id: "r-other".into(),
+                team_id: "t-other".into(),
+                name: "Other Role".into(),
+                color: String::new(),
+                position: 1,
+                permissions: 0,
+                is_default: false,
+                created_at: now.clone(),
+                updated_at: now,
+            })
+        }).unwrap();
+        let app = router_full(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/teams/t1/members/bob")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"role_ids":["r-other"]}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
     async fn update_member_nickname_as_owner_succeeds() {
         let (state, _tmp) = make_state();
         seed_team_with_member(&state, "t1", "alice", "bob");
