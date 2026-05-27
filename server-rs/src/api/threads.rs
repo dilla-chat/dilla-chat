@@ -650,6 +650,105 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn get_thread_rejects_thread_from_other_team() {
+        let (state, _tmp) = make_state();
+        seed_team_with_message(&state);
+        // Seed a second team + thread that lives there.
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_team(conn, &db::Team {
+                id: "t-other".into(),
+                name: "Other".into(),
+                created_by: "alice".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_member(conn, &db::Member {
+                id: "m-alice-other".into(),
+                team_id: "t-other".into(),
+                user_id: "alice".into(),
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now.clone(),
+            })?;
+            db::create_thread(conn, &db::Thread {
+                id: "th-other".into(),
+                channel_id: "ch1".into(),
+                parent_message_id: "msg-parent".into(),
+                team_id: "t-other".into(),
+                creator_id: "alice".into(),
+                title: "in other team".into(),
+                message_count: 0,
+                last_message_at: None,
+                created_at: now,
+            })
+        }).unwrap();
+        // Request via t1, but thread belongs to t-other → 4xx.
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(Request::get("/teams/t1/threads/th-other").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn delete_thread_rejects_non_creator_without_admin() {
+        let (state, _tmp) = make_state();
+        seed_team_with_message(&state);
+        // Bob is a plain member, alice owns the thread.
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_user(conn, &db::User {
+                id: "bob".into(),
+                username: "bob".into(),
+                display_name: "Bob".into(),
+                public_key: vec![2u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_member(conn, &db::Member {
+                id: "m-bob-t1".into(),
+                team_id: "t1".into(),
+                user_id: "bob".into(),
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now.clone(),
+            })?;
+            db::create_thread(conn, &db::Thread {
+                id: "th-by-alice".into(),
+                channel_id: "ch1".into(),
+                parent_message_id: "msg-parent".into(),
+                team_id: "t1".into(),
+                creator_id: "alice".into(),
+                title: String::new(),
+                message_count: 0,
+                last_message_at: None,
+                created_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "bob");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/threads/th-by-alice")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
     async fn create_thread_idempotent_returns_existing_for_same_parent() {
         let (state, _tmp) = make_state();
         seed_team_with_message(&state);
