@@ -444,4 +444,42 @@ mod tests {
         assert!(info.peers.is_empty());
         assert_eq!(info.expires_at, 9999);
     }
+
+    // ── enforce_security_policy branches ─────────────────────────────
+
+    #[test]
+    fn enforce_security_policy_no_op_when_no_peers() {
+        // No peers configured → must return cleanly regardless of secret.
+        JoinManager::enforce_security_policy("", false, false);
+        JoinManager::enforce_security_policy("", false, true);
+        JoinManager::enforce_security_policy("secret", false, false);
+    }
+
+    #[test]
+    fn enforce_security_policy_logs_only_with_empty_secret_and_insecure() {
+        // insecure=true, empty secret, peers configured → log+return, no panic.
+        JoinManager::enforce_security_policy("", true, true);
+    }
+
+    #[test]
+    fn enforce_security_policy_warns_on_short_secret() {
+        // Short non-empty secret → tracing::warn; non-panic.
+        JoinManager::enforce_security_policy("short", true, true);
+    }
+
+    #[test]
+    #[should_panic(expected = "DILLA_JOIN_SECRET is empty")]
+    fn enforce_security_policy_panics_when_empty_secret_and_secure_mode() {
+        JoinManager::enforce_security_policy("", true, false);
+    }
+
+    // ── handle_node_join error path (no peer registered) ─────────────
+
+    #[tokio::test]
+    async fn handle_node_join_returns_err_when_transport_cannot_reach_peer() {
+        let mgr = test_join_manager_with_team();
+        let res = mgr.handle_node_join("peer-unreachable").await;
+        // Transport::send fails for an unknown peer → propagates as Err.
+        assert!(res.is_err());
+    }
 }
