@@ -423,4 +423,103 @@ mod tests {
         assert_eq!(q.limit, Some(5));
         assert!(serde_json::from_str::<GifQuery>("{}").is_err());
     }
+
+    // ── axum integration tests — early-return branches ──────────────
+
+    use crate::auth::{AuthService, UserId};
+    use crate::config::Config;
+    use crate::db::Database;
+    use crate::presence::PresenceManager;
+    use crate::ws::Hub;
+    use axum::body::Body;
+    use axum::http::Request;
+    use axum::routing::{get, post};
+    use axum::Router;
+    use std::sync::Arc;
+    use tower::ServiceExt;
+
+    fn make_state() -> (AppState, tempfile::TempDir) {
+        let tmp = tempfile::tempdir().unwrap();
+        let database = Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        database.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;")).unwrap();
+        database.run_migrations().unwrap();
+        let auth = Arc::new(AuthService::new(database.clone(), ""));
+        let hub = Arc::new(Hub::new(database.clone()));
+        let presence = Arc::new(PresenceManager::new());
+        let mut cfg = Config::default();
+        cfg.port = 8080;
+        cfg.data_dir = tmp.path().to_str().unwrap().to_string();
+        let state = AppState {
+            db: database,
+            auth,
+            hub,
+            presence,
+            config: Arc::new(cfg),
+            mesh: None,
+            custom_theme_css: None,
+        };
+        (state, tmp)
+    }
+
+    fn router(state: AppState, user_id: &'static str) -> Router {
+        Router::new()
+            .route("/teams/{team_id}/gif/search", get(search))
+            .route("/teams/{team_id}/gif/embed", post(embed))
+            .layer(axum::Extension(UserId(user_id.to_string())))
+            .with_state(state)
+    }
+
+    #[tokio::test]
+    async fn search_rejects_empty_query() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(Request::get("/teams/t1/gif/search?q=").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn search_4xx_for_non_member() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "ghost");
+        let resp = app
+            .oneshot(Request::get("/teams/t1/gif/search?q=cat").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn embed_rejects_non_giphy_url() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/gif/embed")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"url":"https://evil.com/x.gif"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
+
+    #[tokio::test]
+    async fn embed_with_giphy_url_404s_for_non_member() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "ghost");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/gif/embed")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"url":"https://media.giphy.com/x.gif"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
 }
