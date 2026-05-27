@@ -79,4 +79,29 @@ describe('ResizeHandle', () => {
     expect(onResize).toHaveBeenNthCalledWith(1, 10);
     expect(onResize).toHaveBeenNthCalledWith(2, 20);
   });
+
+  it('ArrowLeft on the handle calls onResize(-10) (L55)', () => {
+    const onResize = vi.fn();
+    const { container } = render(<ResizeHandle onResize={onResize} />);
+    const handle = container.querySelector('.resize-handle')!;
+    fireEvent.keyDown(handle, { key: 'ArrowLeft' });
+    expect(onResize).toHaveBeenCalledWith(-10);
+  });
+
+  it('ArrowRight on the handle calls onResize(10) (L56)', () => {
+    const onResize = vi.fn();
+    const { container } = render(<ResizeHandle onResize={onResize} />);
+    const handle = container.querySelector('.resize-handle')!;
+    fireEvent.keyDown(handle, { key: 'ArrowRight' });
+    expect(onResize).toHaveBeenCalledWith(10);
+  });
+
+  it('other keys do not call onResize', () => {
+    const onResize = vi.fn();
+    const { container } = render(<ResizeHandle onResize={onResize} />);
+    const handle = container.querySelector('.resize-handle')!;
+    fireEvent.keyDown(handle, { key: 'Enter' });
+    fireEvent.keyDown(handle, { key: 'Tab' });
+    expect(onResize).not.toHaveBeenCalled();
+  });
 });
