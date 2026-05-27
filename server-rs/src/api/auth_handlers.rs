@@ -2019,6 +2019,55 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn verify_rejects_when_user_device_is_revoked() {
+        use base64::Engine as _;
+        use ed25519_dalek::{Signer, SigningKey};
+        let (state, _tmp) = make_state();
+        // Seed alice with a known keypair.
+        let signing_key = SigningKey::from_bytes(&[43u8; 32]);
+        let pk_bytes = signing_key.verifying_key().to_bytes();
+        let now = crate::db::now_str();
+        state.db.with_conn(|conn| {
+            crate::db::create_user(conn, &crate::db::User {
+                id: "alice".into(),
+                username: "alice".into(),
+                display_name: "Alice".into(),
+                public_key: pk_bytes.to_vec(),
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now,
+                ..Default::default()
+            })?;
+            // Insert a device row tied to the pubkey, then mark it revoked.
+            let did = crate::db::create_device(conn, "alice", &pk_bytes, "primary")?;
+            crate::db::revoke_device(conn, &did)
+        }).unwrap();
+        // Generate a challenge + sign with the matching key — challenge
+        // verification passes, but verify_handler refuses to mint a JWT
+        // because the corresponding device row is revoked.
+        let (nonce, challenge_id) = state.auth.generate_challenge().unwrap();
+        let signature = signing_key.sign(&nonce);
+        let pk_b64 = base64::engine::general_purpose::STANDARD.encode(pk_bytes);
+        let sig_b64 = base64::engine::general_purpose::STANDARD.encode(signature.to_bytes());
+        let body = format!(
+            r#"{{"challenge_id":"{}","public_key":"{}","signature":"{}"}}"#,
+            challenge_id, pk_b64, sig_b64
+        );
+        let app = router_full(state);
+        let resp = app
+            .oneshot(
+                Request::post("/auth/verify")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        // 401 — device revoked path returns Unauthorized("invalid signature").
+        assert_eq!(resp.status(), 401);
+    }
+
+    #[tokio::test]
     async fn bootstrap_happy_path_consumes_token_and_creates_team() {
         use base64::Engine as _;
         use ed25519_dalek::{Signer, SigningKey};
