@@ -1266,6 +1266,28 @@ describe('AppLayout behavioral', () => {
     // handleJumpToMessage fires a setTimeout - just verify no crash
   });
 
+  it('jump-to-message scrolls + highlights when target element exists (L543-547)', async () => {
+    render(<AppLayout />);
+    // Seed a target element so the setTimeout body runs.
+    const target = document.createElement('div');
+    target.id = 'msg-msg-456';
+    document.body.appendChild(target);
+    const scrollIntoView = vi.fn();
+    target.scrollIntoView = scrollIntoView;
+    await waitFor(() => {
+      expect(screen.getAllByTestId('jump-same-channel').length).toBeGreaterThan(0);
+    });
+    fireEvent.click(screen.getAllByTestId('jump-same-channel')[0]);
+    // setTimeout(100) fires inside the handler.
+    await new Promise((r) => setTimeout(r, 120));
+    expect(scrollIntoView).toHaveBeenCalled();
+    expect(target.classList.contains('message-highlight')).toBe(true);
+    // Class is removed after 2s — wait for it.
+    await new Promise((r) => setTimeout(r, 2100));
+    expect(target.classList.contains('message-highlight')).toBe(false);
+    target.remove();
+  });
+
 
   it('triggers search focus via Ctrl+K', async () => {
     render(<AppLayout />);
