@@ -79,4 +79,47 @@ describe('App router', () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(container.textContent).toContain('AppPage');
   });
+
+  it('renders /create-identity-legacy → CreateIdentity', async () => {
+    useAuthStore.setState({ isAuthenticated: false } as never);
+    window.history.pushState({}, '', '/create-identity-legacy');
+    const { container } = render(<App />);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(container.textContent).toContain('CreateIdentity');
+  });
+
+  it('renders /login-legacy → Login', async () => {
+    useAuthStore.setState({ isAuthenticated: false } as never);
+    window.history.pushState({}, '', '/login-legacy');
+    const { container } = render(<App />);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(container.textContent).toContain('Login');
+  });
+
+  it('renders /recover-legacy → RecoverFromServer', async () => {
+    useAuthStore.setState({ isAuthenticated: false } as never);
+    window.history.pushState({}, '', '/recover-legacy');
+    const { container } = render(<App />);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(container.textContent).toContain('RecoverFromServer');
+  });
+
+  it('renders /setup-legacy → SetupAdmin', async () => {
+    useAuthStore.setState({ isAuthenticated: false } as never);
+    window.history.pushState({}, '', '/setup-legacy');
+    const { container } = render(<App />);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(container.textContent).toContain('SetupAdmin');
+  });
+
+  it('AuthRedirect catch path defaults to /onboarding when hasIdentity throws', async () => {
+    // Re-mock keyStore so hasIdentity throws — exercises the catch arm.
+    const ks = await import('./services/keyStore');
+    (ks.hasIdentity as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('idb broken'));
+    useAuthStore.setState({ isAuthenticated: false } as never);
+    window.history.pushState({}, '', '/');
+    const { container } = render(<App />);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(container.textContent).toContain('Onboarding');
+  });
 });
