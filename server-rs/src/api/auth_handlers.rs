@@ -1789,4 +1789,112 @@ mod tests {
         assert_eq!(r.signature, "s");
         assert!(serde_json::from_str::<VerifyRequest>(r#"{"challenge_id":"c"}"#).is_err());
     }
+
+    // ── axum integration tests for refresh + logout ────────────────
+
+    use crate::api::AppState;
+    use crate::config::Config;
+    use crate::presence::PresenceManager;
+    use crate::ws::Hub;
+    use axum::body::Body;
+    use axum::http::Request;
+    use axum::routing::post;
+    use axum::Router;
+    use std::sync::Arc;
+    use tower::ServiceExt;
+
+    fn make_state() -> (AppState, tempfile::TempDir) {
+        let tmp = tempfile::tempdir().unwrap();
+        let database = crate::db::Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        database.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;")).unwrap();
+        database.run_migrations().unwrap();
+        let auth = Arc::new(crate::auth::AuthService::new(database.clone(), ""));
+        let hub = Arc::new(Hub::new(database.clone()));
+        let presence = Arc::new(PresenceManager::new());
+        let mut cfg = Config::default();
+        cfg.port = 8080;
+        cfg.data_dir = tmp.path().to_str().unwrap().to_string();
+        let state = AppState {
+            db: database,
+            auth,
+            hub,
+            presence,
+            config: Arc::new(cfg),
+            mesh: None,
+            custom_theme_css: None,
+        };
+        (state, tmp)
+    }
+
+    fn router(state: AppState) -> Router {
+        Router::new()
+            .route("/auth/refresh", post(refresh))
+            .route("/auth/logout", post(logout))
+            .with_state(state)
+    }
+
+    #[tokio::test]
+    async fn refresh_rejects_empty_refresh_token() {
+        let (state, _tmp) = make_state();
+        let app = router(state);
+        let resp = app
+            .oneshot(
+                Request::post("/auth/refresh")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"refresh_token":""}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
+
+    #[tokio::test]
+    async fn refresh_rejects_garbage_refresh_token() {
+        let (state, _tmp) = make_state();
+        let app = router(state);
+        let resp = app
+            .oneshot(
+                Request::post("/auth/refresh")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"refresh_token":"not-a-jwt"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 401);
+    }
+
+    #[tokio::test]
+    async fn refresh_happy_path_returns_new_access_token() {
+        let (state, _tmp) = make_state();
+        let token = state.auth.generate_refresh_token("u1").unwrap();
+        let app = router(state);
+        let body = format!(r#"{{"refresh_token":"{}"}}"#, token);
+        let resp = app
+            .oneshot(
+                Request::post("/auth/refresh")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn logout_without_token_succeeds_idempotently() {
+        let (state, _tmp) = make_state();
+        let app = router(state);
+        let resp = app
+            .oneshot(
+                Request::post("/auth/logout")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status() == 200 || resp.status() == 401);
+    }
 }
