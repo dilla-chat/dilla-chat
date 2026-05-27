@@ -1138,6 +1138,28 @@ describe('MessageList', () => {
       expect(screen.queryByTestId('user-profile')).not.toBeInTheDocument();
     });
 
+    it('Forward action button dispatches mesh:open-forward with detail (L333)', () => {
+      const msgs = [makeMessage()];
+      useMessageStore.setState({
+        messages: new Map([['ch-1', msgs]]),
+        loadingHistory: new Map(),
+        hasMore: new Map(),
+      });
+      const captured: CustomEvent[] = [];
+      const cb = (e: Event) => captured.push(e as CustomEvent);
+      window.addEventListener('mesh:open-forward', cb);
+      const { container } = render(
+        <MessageList channelId="ch-1" currentUserId="user-2" onLoadMore={vi.fn()} />,
+      );
+      const fwdBtn = container.querySelector('button[title="Forward"]') as HTMLButtonElement | null;
+      if (fwdBtn) fireEvent.click(fwdBtn);
+      window.removeEventListener('mesh:open-forward', cb);
+      expect(captured.length).toBe(1);
+      const detail = captured[0].detail as { messageId: string; author: string };
+      expect(detail.messageId).toBe('msg-1');
+      expect(detail.author).toBe('alice');
+    });
+
     it('opens popover near right viewport edge flips to the left (L99)', () => {
       const msgs = [makeMessage()];
       useMessageStore.setState({
