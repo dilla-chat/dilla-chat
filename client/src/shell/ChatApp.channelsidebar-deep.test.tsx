@@ -151,6 +151,72 @@ describe('ChannelSidebar groups and collapse', () => {
     expect(items.some((it) => it.label === 'Group settings')).toBe(true);
   });
 
+  it('channel right-click menu: Mark as read + Mute + Copy link + admin actions (L2086-2107)', () => {
+    useTeamStore.setState({
+      members: new Map([
+        ['t1', [{ id: 'm1', userId: 'me', isAdmin: true, roleIds: ['r-admin'], roles: [{ id: 'r-admin', permissions: 0x001 }] }]],
+      ]),
+    } as never);
+    let menuItems: Array<{ label?: string; onClick?: () => void; sep?: boolean }> = [];
+    const cb = (e: Event) => {
+      menuItems = (e as CustomEvent).detail.items;
+    };
+    window.addEventListener('dilla:open-menu', cb);
+    const { container } = render(wrap(<ChannelSidebar {...baseProps} channels={channels} />));
+    const channelRows = Array.from(container.querySelectorAll('.channel-row')) as HTMLElement[];
+    fireEvent.contextMenu(channelRows[0]);
+    window.removeEventListener('dilla:open-menu', cb);
+    const labels = menuItems.map((it) => it.label as string).filter(Boolean);
+    expect(labels).toContain('Mark as read');
+    expect(labels).toContain('Copy link');
+    // Admin actions present.
+    expect(labels.some((l) => /Kanal settings/i.test(l ?? ''))).toBe(true);
+  });
+
+  it('non-admin channel context menu omits admin actions', () => {
+    // No admin permissions.
+    useTeamStore.setState({
+      members: new Map([
+        ['t1', [{ id: 'm1', userId: 'me', isAdmin: false, roleIds: [], roles: [] }]],
+      ]),
+    } as never);
+    let menuItems: Array<{ label?: string }> = [];
+    const cb = (e: Event) => {
+      menuItems = (e as CustomEvent).detail.items;
+    };
+    window.addEventListener('dilla:open-menu', cb);
+    const { container } = render(wrap(<ChannelSidebar {...baseProps} channels={channels} />));
+    const channelRows = Array.from(container.querySelectorAll('.channel-row')) as HTMLElement[];
+    fireEvent.contextMenu(channelRows[0]);
+    window.removeEventListener('dilla:open-menu', cb);
+    const labels = menuItems.map((it) => it.label as string).filter(Boolean);
+    expect(labels.includes('Kanal settings')).toBe(false);
+    expect(labels.includes('Manage access')).toBe(false);
+  });
+
+  it('channel-in-group shows "Access is handled by group" (disabled) (L2103-2104)', () => {
+    useTeamStore.setState({
+      members: new Map([
+        ['t1', [{ id: 'm1', userId: 'me', isAdmin: true, roleIds: ['r-admin'], roles: [{ id: 'r-admin', permissions: 0x001 }] }]],
+      ]),
+    } as never);
+    // Use a single channel that belongs to group g1 — fewer DOM noise.
+    const groupChannel = [
+      { id: 'ch-grouped', name: 'in-group', type: 'text' as const, groupId: 'g1', unread: 0 },
+    ];
+    let menuItems: Array<{ label?: string; disabled?: boolean }> = [];
+    const cb = (e: Event) => {
+      menuItems = (e as CustomEvent).detail.items;
+    };
+    window.addEventListener('dilla:open-menu', cb);
+    const { container } = render(wrap(<ChannelSidebar {...baseProps} channels={groupChannel} />));
+    const channelRows = Array.from(container.querySelectorAll('.channel-row')) as HTMLElement[];
+    fireEvent.contextMenu(channelRows[0]);
+    window.removeEventListener('dilla:open-menu', cb);
+    const labels = menuItems.map((it) => it.label as string).filter(Boolean);
+    expect(labels.some((l) => /Access is handled by group/i.test(l))).toBe(true);
+  });
+
   it('group context menu "Manage access" + "Group settings" dispatch their events', () => {
     useTeamStore.setState({
       members: new Map([
