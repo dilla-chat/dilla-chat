@@ -112,6 +112,13 @@ describe('AppShell', () => {
     expect(getByTestId('node').textContent).toBe('local');
   });
 
+  it('node falls back to "local" when baseUrl is malformed (L141 catch)', () => {
+    // A bare string that isn't a valid URL throws inside `new URL(base)`.
+    seedTeam('Acme', 'not a valid url');
+    const { getByTestId } = render(<AppShell ready />);
+    expect(getByTestId('node').textContent).toBe('local');
+  });
+
   it('federated flag flips to true when meshStore has peers', () => {
     seedTeam('A');
     useMeshStore.setState({ peersTotal: 3 } as never);
