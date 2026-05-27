@@ -698,6 +698,54 @@ mod tests {
     }
 
     #[test]
+    fn channel_name_exists_returns_true_for_existing_name() {
+        let (db, _tmp) = test_db();
+        seed_team_and_channel(&db);
+        let exists = db.with_conn(|c| channel_name_exists(c, "t1", "general", "text", None)).unwrap();
+        assert!(exists);
+    }
+
+    #[test]
+    fn channel_name_exists_normalizes_whitespace_and_case() {
+        let (db, _tmp) = test_db();
+        seed_team_and_channel(&db);
+        let exists = db.with_conn(|c| channel_name_exists(c, "t1", "  GENERAL  ", "text", None)).unwrap();
+        assert!(exists);
+    }
+
+    #[test]
+    fn channel_name_exists_ignores_self_when_id_provided() {
+        let (db, _tmp) = test_db();
+        seed_team_and_channel(&db);
+        let exists = db.with_conn(|c| channel_name_exists(c, "t1", "general", "text", Some("c1"))).unwrap();
+        assert!(!exists);
+    }
+
+    #[test]
+    fn channel_name_exists_separates_by_channel_type() {
+        let (db, _tmp) = test_db();
+        seed_team_and_channel(&db);
+        // The "general" channel is type=text. A voice channel with the same
+        // name should NOT collide.
+        let exists = db.with_conn(|c| channel_name_exists(c, "t1", "general", "voice", None)).unwrap();
+        assert!(!exists);
+    }
+
+    #[test]
+    fn map_channel_name_conflict_translates_forbidden_sentinel_to_409() {
+        let mapped = map_channel_name_conflict(AppError::Forbidden("channel_name_conflict".into()));
+        assert!(matches!(mapped, AppError::Conflict(_)));
+    }
+
+    #[test]
+    fn map_channel_name_conflict_passes_other_errors_through() {
+        let mapped = map_channel_name_conflict(AppError::NotFound("x".into()));
+        assert!(matches!(mapped, AppError::NotFound(_)));
+        let mapped2 = map_channel_name_conflict(AppError::Forbidden("other".into()));
+        assert!(matches!(mapped2, AppError::Forbidden(_)));
+    }
+
+    #[test]
     fn apply_channel_updates_partial() {
         let mut channel = make_channel("c1", "t1");
 
