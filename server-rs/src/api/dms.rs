@@ -828,4 +828,117 @@ mod tests {
             .unwrap();
         assert!(resp.status().as_u16() >= 400);
     }
+
+    fn seed_team_and_member(state: &AppState) {
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_user(conn, &db::User {
+                id: "u1".into(),
+                username: "alice".into(),
+                display_name: "Alice".into(),
+                public_key: vec![1u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_user(conn, &db::User {
+                id: "u2".into(),
+                username: "bob".into(),
+                display_name: "Bob".into(),
+                public_key: vec![2u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_team(conn, &db::Team {
+                id: "t1".into(),
+                name: "T".into(),
+                created_by: "u1".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_member(conn, &db::Member {
+                id: "m1".into(),
+                team_id: "t1".into(),
+                user_id: "u1".into(),
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now.clone(),
+            })?;
+            db::create_member(conn, &db::Member {
+                id: "m2".into(),
+                team_id: "t1".into(),
+                user_id: "u2".into(),
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now,
+            })
+        }).unwrap();
+    }
+
+    #[tokio::test]
+    async fn create_or_get_dm_happy_path_creates_dm() {
+        let (state, _tmp) = make_state();
+        seed_team_and_member(&state);
+        let app = router(state, "u1");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/dms")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"user_ids":["u2"]}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn list_dms_happy_path_returns_array_for_member() {
+        let (state, _tmp) = make_state();
+        seed_team_and_member(&state);
+        let app = router(state, "u1");
+        let resp = app
+            .oneshot(Request::get("/teams/t1/dms").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn send_dm_message_happy_path() {
+        let (state, _tmp) = make_state();
+        seed_team_and_member(&state);
+        // Create the DM channel first.
+        let dm_id = state.db.with_conn(|conn| {
+            let dm = db::DMChannel {
+                id: "dm-test".into(),
+                team_id: "t1".into(),
+                dm_type: "dm".into(),
+                name: String::new(),
+                created_at: db::now_str(),
+            };
+            db::create_dm_channel(conn, &dm)?;
+            db::add_dm_members(conn, "dm-test", &["u1".to_string(), "u2".to_string()])?;
+            Ok::<String, rusqlite::Error>("dm-test".into())
+        }).unwrap();
+        let app = router(state, "u1");
+        let resp = app
+            .oneshot(
+                Request::post(format!("/teams/t1/dms/{}/messages", dm_id))
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"content":"hi bob","type":"text"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
 }
