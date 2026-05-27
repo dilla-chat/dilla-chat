@@ -1121,5 +1121,41 @@ describe('MessageList', () => {
       expect(screen.getByTestId('user-profile')).toBeInTheDocument();
       expect(screen.queryByTestId('profile-send')).not.toBeInTheDocument();
     });
+
+    it('outside mousedown closes the popover (L119-121)', async () => {
+      const msgs = [makeMessage()];
+      useMessageStore.setState({
+        messages: new Map([['ch-1', msgs]]),
+        loadingHistory: new Map(),
+        hasMore: new Map(),
+      });
+      render(<MessageList channelId="ch-1" currentUserId="user-2" onLoadMore={vi.fn()} />);
+      fireEvent.click(screen.getByText('alice'));
+      expect(screen.getByTestId('user-profile')).toBeInTheDocument();
+      // The useEffect attaches the listener via setTimeout(0); wait one tick.
+      await new Promise((r) => setTimeout(r, 5));
+      fireEvent.mouseDown(document.body);
+      expect(screen.queryByTestId('user-profile')).not.toBeInTheDocument();
+    });
+
+    it('opens popover near right viewport edge flips to the left (L99)', () => {
+      const msgs = [makeMessage()];
+      useMessageStore.setState({
+        messages: new Map([['ch-1', msgs]]),
+        loadingHistory: new Map(),
+        hasMore: new Map(),
+      });
+      render(<MessageList channelId="ch-1" currentUserId="user-2" onLoadMore={vi.fn()} />);
+      const username = screen.getByText('alice');
+      // Patch its getBoundingClientRect to put it at the far right.
+      Object.defineProperty(username, 'getBoundingClientRect', {
+        value: () => ({ left: 1200, right: 1280, top: 100, bottom: 120, width: 80, height: 20, x: 1200, y: 100, toJSON: () => ({}) }),
+        configurable: true,
+      });
+      // Use a narrow viewport so the right-edge overflow triggers.
+      Object.defineProperty(window, 'innerWidth', { value: 1024, configurable: true });
+      fireEvent.click(username);
+      expect(screen.getByTestId('user-profile')).toBeInTheDocument();
+    });
   });
 });
