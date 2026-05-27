@@ -1147,6 +1147,61 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn handle_incoming_accepts_valid_v3_handshake() {
+        use ed25519_dalek::{Signer, SigningKey};
+
+        let (listener, port) = start_tcp_listener().await;
+        // Set up DB with our local identity + pin the remote signing key.
+        let tmp = tempfile::tempdir().unwrap();
+        let db = crate::db::Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        db.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;")).unwrap();
+        db.run_migrations().unwrap();
+        let local_id = Arc::new(crate::federation::identity::ensure(&db).unwrap());
+        let remote_sk = SigningKey::from_bytes(&[33u8; 32]);
+        let remote_pk = remote_sk.verifying_key();
+        db.with_conn(|c| {
+            crate::federation::peers::pin(c, "remote", &remote_pk, "peer.example").map(|_| ())
+        })
+        .unwrap();
+
+        // Federation transport with join_secret + identity + db so handshake gate runs.
+        let transport = Transport::with_settings_full(
+            "secret".into(), false, Some(local_id), false, Some(db),
+        );
+
+        // Client signs `node_id || nonce` with the pinned key, sends v3 handshake.
+        let client_handle = tokio::spawn(async move {
+            let url = format!("ws://127.0.0.1:{}", port);
+            let (mut ws, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+            let node_id = "remote";
+            let nonce = vec![7u8; 24];
+            let mut signing_bytes = node_id.as_bytes().to_vec();
+            signing_bytes.extend_from_slice(&nonce);
+            let sig = remote_sk.sign(&signing_bytes);
+            use base64::Engine as _;
+            let nonce_b64 = base64::engine::general_purpose::STANDARD.encode(&nonce);
+            let sig_b64 = base64::engine::general_purpose::STANDARD.encode(sig.to_bytes());
+            let hs = format!(
+                r#"{{"v":3,"node_id":"{}","nonce":"{}","signature":"{}"}}"#,
+                node_id, nonce_b64, sig_b64
+            );
+            ws.send(Message::Text(hs.into())).await.unwrap();
+            tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
+            let _ = ws.close(None).await;
+        });
+
+        let (tcp_stream, _) = listener.accept().await.unwrap();
+        let ws_stream = tokio_tungstenite::accept_async(MaybeTlsStream::Plain(tcp_stream))
+            .await
+            .unwrap();
+        transport.handle_incoming("remote-peer", ws_stream).await;
+
+        let conns = transport.conns.read().await;
+        assert!(conns.contains_key("remote-peer"), "v3-authenticated peer should be registered");
+        let _ = client_handle.await;
+    }
+
+    #[tokio::test]
     async fn handle_incoming_v1_secret_rejected_when_require_v3_is_true() {
         let (listener, port) = start_tcp_listener().await;
         // join_secret set + require_v3=true → v1 handshake refused.
