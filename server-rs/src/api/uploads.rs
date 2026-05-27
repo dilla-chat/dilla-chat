@@ -477,6 +477,8 @@ mod tests {
         cfg.port = 8080;
         cfg.data_dir = tmp.path().to_str().unwrap().to_string();
         cfg.upload_dir = format!("{}/uploads", tmp.path().to_str().unwrap());
+        cfg.max_upload_size = 25 * 1024 * 1024;
+        cfg.upload_quota_per_team_gb = 10;
         let state = AppState {
             db: database,
             auth,
@@ -551,6 +553,174 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), 403);
+    }
+
+    fn seed_alice_in_t1(state: &AppState) {
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_user(conn, &db::User {
+                id: "alice".into(),
+                username: "alice".into(),
+                display_name: "Alice".into(),
+                public_key: vec![1u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_team(conn, &db::Team {
+                id: "t1".into(),
+                name: "T".into(),
+                description: String::new(),
+                icon_url: String::new(),
+                created_by: "alice".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                federated: false,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_member(conn, &db::Member {
+                id: "m1".into(),
+                team_id: "t1".into(),
+                user_id: "alice".into(),
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now,
+            })
+        }).unwrap();
+    }
+
+    #[tokio::test]
+    async fn upload_happy_path_creates_attachment() {
+        let (state, _tmp) = make_state();
+        seed_alice_in_t1(&state);
+        let app = Router::new()
+            .route("/teams/{team_id}/attachments", axum::routing::post(upload))
+            .layer(axum::Extension(UserId("alice".to_string())))
+            .with_state(state);
+        let boundary = "----happy";
+        let body = format!(
+            "--{}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"hello.txt\"\r\nContent-Type: text/plain\r\n\r\nhello world\r\n--{}--\r\n",
+            boundary, boundary
+        );
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/attachments")
+                    .header("content-type", format!("multipart/form-data; boundary={}", boundary))
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn download_happy_path_unlinked_in_grace() {
+        let (state, _tmp) = make_state();
+        seed_alice_in_t1(&state);
+        // Write a real file to disk, register an unlinked attachment owned by alice.
+        let upload_dir = std::path::Path::new(&state.config.upload_dir).join("t1");
+        std::fs::create_dir_all(&upload_dir).unwrap();
+        let aid = "att-happy";
+        let fp = upload_dir.join(aid);
+        std::fs::write(&fp, b"payload").unwrap();
+        state.db.with_conn(|conn| {
+            db::create_attachment(conn, &db::Attachment {
+                id: aid.into(),
+                message_id: String::new(),
+                filename_encrypted: b"name".to_vec(),
+                content_type_encrypted: b"application/octet-stream".to_vec(),
+                size: 7,
+                storage_path: fp.to_str().unwrap().to_string(),
+                uploader_id: Some("alice".into()),
+                created_at: db::now_str(),
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::get(format!("/teams/t1/attachments/{}", aid)).body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn download_rejects_different_uploader_in_grace() {
+        let (state, _tmp) = make_state();
+        seed_alice_in_t1(&state);
+        // Make bob also a member, register attachment owned by bob, alice tries to read.
+        state.db.with_conn(|conn| {
+            let now = db::now_str();
+            db::create_user(conn, &db::User {
+                id: "bob".into(),
+                username: "bob".into(),
+                display_name: "Bob".into(),
+                public_key: vec![2u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_member(conn, &db::Member {
+                id: "m-bob".into(),
+                team_id: "t1".into(),
+                user_id: "bob".into(),
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now,
+            })
+        }).unwrap();
+        let upload_dir = std::path::Path::new(&state.config.upload_dir).join("t1");
+        std::fs::create_dir_all(&upload_dir).unwrap();
+        let aid = "att-bob";
+        let fp = upload_dir.join(aid);
+        std::fs::write(&fp, b"bobs data").unwrap();
+        state.db.with_conn(|conn| {
+            db::create_attachment(conn, &db::Attachment {
+                id: aid.into(),
+                message_id: String::new(),
+                filename_encrypted: b"name".to_vec(),
+                content_type_encrypted: b"application/octet-stream".to_vec(),
+                size: 9,
+                storage_path: fp.to_str().unwrap().to_string(),
+                uploader_id: Some("bob".into()),
+                created_at: db::now_str(),
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::get(format!("/teams/t1/attachments/{}", aid)).body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn delete_attachment_4xx_without_permission() {
+        let (state, _tmp) = make_state();
+        seed_alice_in_t1(&state);
+        // alice is just a member, not an admin → lacks PERM_MANAGE_MESSAGES.
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/attachments/any")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
     }
 
     #[tokio::test]
