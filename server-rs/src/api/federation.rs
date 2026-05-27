@@ -774,6 +774,134 @@ mod tests {
         assert!(resp.status().as_u16() >= 400);
     }
 
+    fn seed_admin_user(db: &crate::db::Database) {
+        let now = crate::db::now_str();
+        db.with_conn(|conn| {
+            crate::db::create_user(conn, &crate::db::User {
+                id: "super".into(),
+                username: "super".into(),
+                display_name: "Super".into(),
+                public_key: vec![3u8; 32],
+                status_type: "online".into(),
+                is_admin: true,
+                created_at: now.clone(),
+                updated_at: now,
+                ..Default::default()
+            })?;
+            Ok::<(), rusqlite::Error>(())
+        }).unwrap();
+    }
+
+    #[tokio::test]
+    async fn pin_peer_happy_path_with_global_admin() {
+        let (state, _tmp) = make_state();
+        seed_admin_user(&state.db);
+        let app = router(state, "super");
+        // Real 32-byte Ed25519 secret → derive a valid verifying key bytes.
+        use ed25519_dalek::SigningKey;
+        let sk = SigningKey::from_bytes(&[7u8; 32]);
+        let pk_bytes = sk.verifying_key().to_bytes();
+        use base64::Engine as _;
+        let pk_b64 = base64::engine::general_purpose::STANDARD.encode(pk_bytes);
+        let body = format!(
+            r#"{{"node_id":"peer-1","public_key_b64":"{}","hostname":"peer.example"}}"#,
+            pk_b64
+        );
+        let resp = app
+            .oneshot(
+                Request::post("/federation/pinned-peers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn list_pinned_peers_returns_array_for_admin() {
+        let (state, _tmp) = make_state();
+        seed_admin_user(&state.db);
+        let app = router(state, "super");
+        let resp = app
+            .oneshot(Request::get("/federation/pinned-peers").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn get_node_identity_returns_200_for_admin() {
+        let (state, _tmp) = make_state();
+        seed_admin_user(&state.db);
+        let app = router(state, "super");
+        let resp = app
+            .oneshot(Request::get("/federation/identity").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn set_team_authority_404_for_unknown_team() {
+        let (state, _tmp) = make_state();
+        seed_admin_user(&state.db);
+        let app = router(state, "super");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/federation/teams/no-such-team/authority")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"owner_node_id":"some-node"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 404);
+    }
+
+    #[tokio::test]
+    async fn set_team_authority_rejects_empty_owner_node_id() {
+        let (state, _tmp) = make_state();
+        seed_admin_user(&state.db);
+        let app = router(state, "super");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/federation/teams/t1/authority")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"owner_node_id":""}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
+
+    #[tokio::test]
+    async fn set_team_authority_rejects_oversized_owner_node_id() {
+        let (state, _tmp) = make_state();
+        seed_admin_user(&state.db);
+        let app = router(state, "super");
+        let oversize = "n".repeat(129);
+        let body = format!(r#"{{"owner_node_id":"{}"}}"#, oversize);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/federation/teams/t1/authority")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
+
     #[tokio::test]
     async fn pin_peer_rejects_oversized_node_id() {
         let (state, _tmp) = make_state();
