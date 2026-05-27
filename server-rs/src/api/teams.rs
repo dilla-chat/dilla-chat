@@ -1085,6 +1085,110 @@ mod tests {
         assert_eq!(resp.status(), 200);
     }
 
+    fn router_with_bans(state: AppState, user_id: &'static str) -> Router {
+        use axum::routing::delete as axum_delete;
+        Router::new()
+            .route("/teams/{id}/members/{user_id}", patch(update_member).delete(axum_delete(kick_member)))
+            .route("/teams/{id}/bans/{user_id}", post(ban_member).delete(axum_delete(unban_member)))
+            .layer(axum::Extension(UserId(user_id.to_string())))
+            .with_state(state)
+    }
+
+    #[tokio::test]
+    async fn ban_member_happy_path() {
+        let (state, _tmp) = make_state();
+        seed_team_with_member(&state, "t1", "alice", "bob");
+        let app = router_with_bans(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/bans/bob")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"reason":"spam"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn ban_member_rejects_double_ban() {
+        let (state, _tmp) = make_state();
+        seed_team_with_member(&state, "t1", "alice", "bob");
+        let app1 = router_with_bans(state.clone(), "alice");
+        let r1 = app1
+            .oneshot(
+                Request::post("/teams/t1/bans/bob")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"reason":""}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(r1.status(), 200);
+        let app2 = router_with_bans(state, "alice");
+        let r2 = app2
+            .oneshot(
+                Request::post("/teams/t1/bans/bob")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"reason":""}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        // Second ban is rejected — already banned.
+        assert!(r2.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn unban_member_404_for_unbanned_user() {
+        let (state, _tmp) = make_state();
+        seed_team_with_member(&state, "t1", "alice", "bob");
+        let app = router_with_bans(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/bans/bob")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 404);
+    }
+
+    #[tokio::test]
+    async fn unban_member_happy_path_after_ban() {
+        let (state, _tmp) = make_state();
+        seed_team_with_member(&state, "t1", "alice", "bob");
+        // First ban bob.
+        let app1 = router_with_bans(state.clone(), "alice");
+        let r1 = app1
+            .oneshot(
+                Request::post("/teams/t1/bans/bob")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"reason":""}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(r1.status(), 200);
+        // Now unban.
+        let app2 = router_with_bans(state, "alice");
+        let r2 = app2
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/bans/bob")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(r2.status(), 200);
+    }
+
     #[tokio::test]
     async fn leave_team_happy_path_for_non_admin_member() {
         let (state, _tmp) = make_state();
