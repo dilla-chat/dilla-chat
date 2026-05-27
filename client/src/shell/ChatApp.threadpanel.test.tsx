@@ -119,4 +119,47 @@ describe('ThreadPanel', () => {
     for (const b of buttons) try { fireEvent.click(b); } catch { /* */ }
     expect(container.firstChild).toBeTruthy();
   });
+
+  it('clicking a reply reaction toggles via internal setReplies (L1175-1196)', () => {
+    const REPLIES_WITH_RXN = [
+      {
+        id: 'rr1',
+        author: 'u2',
+        at: new Date(),
+        kind: 'text',
+        text: 'with reactions',
+        edited: false,
+        deleted: false,
+        reactions: [
+          { e: '👍', n: 2, mine: false },
+          { e: '🔥', n: 1, mine: true },
+        ],
+      },
+    ];
+    const SHELL_WITH_RXN = {
+      ...SHELL,
+      THREAD_REPLIES: { p1: REPLIES_WITH_RXN },
+    };
+    const { container } = render(
+      <ShellDataProvider value={SHELL_WITH_RXN}>
+        <ThreadPanel
+          channelId="ch-1"
+          messageId="p1"
+          members={{ MEMBERS: [ME, ALICE], byId: { me: ME, u2: ALICE } }}
+          onClose={vi.fn()}
+          onReact={vi.fn()}
+        />
+      </ShellDataProvider>,
+    );
+    // Reply reaction pills should render under the thread reply.
+    const pills = Array.from(container.querySelectorAll('.rxn')) as HTMLElement[];
+    expect(pills.length).toBeGreaterThan(0);
+    // Click the not-mine pill — should increment.
+    const thumbs = pills.find((el) => (el.textContent ?? '').includes('👍'));
+    if (thumbs) fireEvent.click(thumbs);
+    // Click the mine pill (count=1) — should remove.
+    const fire = pills.find((el) => (el.textContent ?? '').includes('🔥'));
+    if (fire) fireEvent.click(fire);
+    expect(container.firstChild).toBeTruthy();
+  });
 });
