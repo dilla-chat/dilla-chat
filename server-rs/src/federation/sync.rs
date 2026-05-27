@@ -1228,4 +1228,51 @@ mod tests {
         let now = 1000;
         let last = now - 301; // 301s ago, limit is 300s
         assert!(!is_sync_rate_limited(Some(last), now));
-}
+    }
+
+    // ── should_update_message branches ──────────────────────────────
+
+    fn make_msg(id: &str, edited: Option<&str>, deleted: bool) -> db::Message {
+        db::Message {
+            id: id.into(),
+            channel_id: "ch1".into(),
+            dm_channel_id: String::new(),
+            author_id: "u1".into(),
+            content: "x".into(),
+            msg_type: "text".into(),
+            thread_id: String::new(),
+            reply_to_message_id: None,
+            edited_at: edited.map(String::from),
+            deleted,
+            lamport_ts: 0,
+            created_at: "2024-01-01 00:00:00".into(),
+        }
+    }
+
+    #[test]
+    fn should_update_message_remote_newer_edit_overwrites_local() {
+        let remote = make_msg("m1", Some("2024-02-02 00:00:00"), false);
+        let local = make_msg("m1", Some("2024-01-01 00:00:00"), false);
+        assert!(should_update_message(&remote, &local));
+    }
+
+    #[test]
+    fn should_update_message_remote_older_edit_keeps_local() {
+        let remote = make_msg("m1", Some("2024-01-01 00:00:00"), false);
+        let local = make_msg("m1", Some("2024-02-02 00:00:00"), false);
+        assert!(!should_update_message(&remote, &local));
+    }
+
+    #[test]
+    fn should_update_message_remote_tombstone_overwrites_equal_local() {
+        let remote = make_msg("m1", Some("2024-01-01 00:00:00"), true);
+        let local = make_msg("m1", Some("2024-01-01 00:00:00"), false);
+        assert!(should_update_message(&remote, &local));
+    }
+
+    #[test]
+    fn should_update_message_handles_missing_edited_at() {
+        let remote = make_msg("m1", None, false);
+        let local = make_msg("m1", None, false);
+        assert!(!should_update_message(&remote, &local));
+    }
