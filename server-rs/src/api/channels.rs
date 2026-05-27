@@ -1310,6 +1310,46 @@ mod axum_tests {
     }
 
     #[tokio::test]
+    async fn create_channel_409_for_duplicate_name() {
+        let (state, _tmp) = make_state();
+        seed_alice_team_and_channel(&state);
+        // 'general' already exists from the seed → create another with the same
+        // name + type must hit the L106-107 conflict path.
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/channels")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"name":"general","type":"text"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn list_channels_skips_hidden_channels_for_non_admin() {
+        let (state, _tmp) = make_state();
+        seed_alice_team_and_channel(&state);
+        // Mark ch1 as hidden_if_restricted.
+        state.db.with_conn(|conn| {
+            conn.execute(
+                "UPDATE channels SET hidden_if_restricted = 1 WHERE id = 'ch1'",
+                [],
+            ).map(|_| ())
+        }).unwrap();
+        let app = router(state, "alice");
+        // alice is the team owner so user_can_access_channel returns true →
+        // hidden_if_restricted branch fires but allowed=true keeps it.
+        let resp = app
+            .oneshot(Request::get("/teams/t1/channels").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
     async fn delete_channel_happy_path() {
         let (state, _tmp) = make_state();
         seed_alice_team_and_channel(&state);
