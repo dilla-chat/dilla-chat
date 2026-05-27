@@ -705,6 +705,112 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn delete_attachment_happy_path_as_owner() {
+        let (state, _tmp) = make_state();
+        seed_alice_in_t1(&state);
+        // alice owns the team → has PERM_MANAGE_MESSAGES.
+        let upload_dir = std::path::Path::new(&state.config.upload_dir).join("t1");
+        std::fs::create_dir_all(&upload_dir).unwrap();
+        let aid = "att-to-delete";
+        let fp = upload_dir.join(aid);
+        std::fs::write(&fp, b"bytes").unwrap();
+        state.db.with_conn(|conn| {
+            db::create_attachment(conn, &db::Attachment {
+                id: aid.into(),
+                message_id: String::new(),
+                filename_encrypted: b"name".to_vec(),
+                content_type_encrypted: b"application/octet-stream".to_vec(),
+                size: 5,
+                storage_path: fp.to_str().unwrap().to_string(),
+                uploader_id: Some("alice".into()),
+                created_at: db::now_str(),
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/teams/t1/attachments/{}", aid))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn download_past_grace_window_4xx() {
+        let (state, _tmp) = make_state();
+        seed_alice_in_t1(&state);
+        let upload_dir = std::path::Path::new(&state.config.upload_dir).join("t1");
+        std::fs::create_dir_all(&upload_dir).unwrap();
+        let aid = "att-stale";
+        let fp = upload_dir.join(aid);
+        std::fs::write(&fp, b"old").unwrap();
+        // Created 2 hours ago — outside the 1h grace window.
+        let stale_ts = (chrono::Utc::now() - chrono::Duration::hours(2))
+            .format("%Y-%m-%d %H:%M:%S")
+            .to_string();
+        state.db.with_conn(|conn| {
+            db::create_attachment(conn, &db::Attachment {
+                id: aid.into(),
+                message_id: String::new(),
+                filename_encrypted: b"n".to_vec(),
+                content_type_encrypted: b"x".to_vec(),
+                size: 3,
+                storage_path: fp.to_str().unwrap().to_string(),
+                uploader_id: Some("alice".into()),
+                created_at: stale_ts,
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::get(format!("/teams/t1/attachments/{}", aid))
+                    .body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn download_legacy_attachment_with_matching_team_segment() {
+        let (state, _tmp) = make_state();
+        seed_alice_in_t1(&state);
+        let upload_dir = std::path::Path::new(&state.config.upload_dir).join("t1");
+        std::fs::create_dir_all(&upload_dir).unwrap();
+        let aid = "att-legacy";
+        let fp = upload_dir.join(aid);
+        std::fs::write(&fp, b"legacy").unwrap();
+        // Pre-migration row: uploader_id IS NULL → falls back to
+        // storage_path team-segment match.
+        state.db.with_conn(|conn| {
+            db::create_attachment(conn, &db::Attachment {
+                id: aid.into(),
+                message_id: String::new(),
+                filename_encrypted: b"n".to_vec(),
+                content_type_encrypted: b"x".to_vec(),
+                size: 6,
+                storage_path: fp.to_str().unwrap().to_string(),
+                uploader_id: None,
+                created_at: db::now_str(),
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::get(format!("/teams/t1/attachments/{}", aid))
+                    .body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
     async fn delete_attachment_4xx_without_permission() {
         let (state, _tmp) = make_state();
         seed_alice_in_t1(&state);
