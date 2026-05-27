@@ -798,6 +798,22 @@ mod tests {
     }
 
     #[test]
+    fn validate_v3_handshake_rejects_malformed_json() {
+        let t = Transport::new();
+        assert_eq!(t.validate_v3_handshake("not-json"), Err("v3 handshake malformed"));
+    }
+
+    #[test]
+    fn validate_v3_handshake_rejects_when_no_node_identity() {
+        let t = Transport::new();
+        let hs = r#"{"v":3,"node_id":"n1","nonce":"AAAAAAAAAAAAAAAAAAAAAA==","signature":""}"#;
+        assert_eq!(
+            t.validate_v3_handshake(hs),
+            Err("v3 handshake unsupported: no local node identity"),
+        );
+    }
+
+    #[test]
     fn test_validate_auth_message_valid() {
         let msg = r#"{"join_token":"my-secret"}"#;
         assert!(validate_auth_message(msg, "my-secret"));
