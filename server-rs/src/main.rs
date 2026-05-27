@@ -1281,4 +1281,59 @@ mod tests {
         write_bootstrap_token_file(&path, "").unwrap();
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "\n");
     }
+
+    // ── init_telemetry_relay branches ────────────────────────────────
+
+    #[test]
+    fn init_telemetry_relay_returns_none_when_adapter_is_none() {
+        let mut cfg = Config::default();
+        cfg.telemetry_adapter = "none".into();
+        assert!(init_telemetry_relay(&cfg).is_none());
+    }
+
+    #[test]
+    fn init_telemetry_relay_returns_none_when_adapter_is_empty() {
+        let mut cfg = Config::default();
+        cfg.telemetry_adapter = String::new();
+        assert!(init_telemetry_relay(&cfg).is_none());
+    }
+
+    #[test]
+    fn init_telemetry_relay_returns_none_when_adapter_is_unknown() {
+        let mut cfg = Config::default();
+        cfg.telemetry_adapter = "datadog-like-thing".into();
+        assert!(init_telemetry_relay(&cfg).is_none());
+    }
+
+    #[test]
+    fn init_telemetry_relay_returns_none_when_sentry_dsn_missing() {
+        let mut cfg = Config::default();
+        cfg.telemetry_adapter = "sentry".into();
+        cfg.sentry_dsn = String::new();
+        assert!(init_telemetry_relay(&cfg).is_none());
+    }
+
+    #[test]
+    fn init_telemetry_relay_returns_none_for_bad_sentry_dsn() {
+        let mut cfg = Config::default();
+        cfg.telemetry_adapter = "sentry".into();
+        cfg.sentry_dsn = "this-is-not-a-valid-dsn".into();
+        // Bad DSN should be caught and return None instead of panicking.
+        assert!(init_telemetry_relay(&cfg).is_none());
+    }
+
+    // ── init_database happy path ─────────────────────────────────────
+
+    // ── check_first_start when users already exist (skip path) ────────
+
+    #[tokio::test]
+    async fn check_first_start_no_op_when_users_exist() {
+        let (db, _tmp) = test_db();
+        seed_user(&db, "u1");
+        let auth = Arc::new(AuthService::new(db.clone(), ""));
+        let cfg = Config::default();
+        // Doesn't panic, doesn't write a bootstrap token file because
+        // a user is present.
+        check_first_start(&db, &auth, &cfg);
+    }
 }
