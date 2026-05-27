@@ -1347,6 +1347,109 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn read_pump_dispatches_valid_v3_signed_event() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let (listener, port) = start_tcp_listener().await;
+        let tmp = tempfile::tempdir().unwrap();
+        let db = crate::db::Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        db.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;")).unwrap();
+        db.run_migrations().unwrap();
+        // Use the local node identity to sign + pin its own pubkey so wire::verify
+        // resolves on the receive side. The signed envelope carries `node_id`
+        // which both produces the pinned-peer key and is what verify checks.
+        let local_id = Arc::new(crate::federation::identity::ensure(&db).unwrap());
+        db.with_conn(|c| {
+            crate::federation::peers::pin(c, &local_id.node_id, &local_id.public_key, "loopback").map(|_| ())
+        })
+        .unwrap();
+        let expected_node_id = local_id.node_id.clone();
+        let signing_id = Arc::clone(&local_id);
+
+        let transport = Transport::with_settings_full(
+            String::new(), true, Some(local_id), false, Some(db.clone()),
+        );
+
+        let received = Arc::new(AtomicBool::new(false));
+        let received_clone = Arc::clone(&received);
+        let expected_node_id_clone = expected_node_id.clone();
+        transport
+            .set_on_event(Arc::new(move |_peer, _event, prov| {
+                if prov.origin_node_id.as_deref() == Some(expected_node_id_clone.as_str()) {
+                    received_clone.store(true, Ordering::SeqCst);
+                }
+            }))
+            .await;
+
+        let client_handle = tokio::spawn(async move {
+            let url = format!("ws://127.0.0.1:{}", port);
+            let (mut ws, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+            let event = super::super::FederationEvent {
+                event_type: "test-v3".into(),
+                node_name: "loopback".into(),
+                timestamp: 99,
+                payload: serde_json::Value::Null,
+            };
+            let signed = crate::federation::wire::sign(&signing_id, event, 42).unwrap();
+            let json = serde_json::to_string(&signed).unwrap();
+            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+            ws.send(Message::Text(json.into())).await.unwrap();
+            tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
+            let _ = ws.close(None).await;
+        });
+
+        let (tcp_stream, _) = listener.accept().await.unwrap();
+        let ws_stream = tokio_tungstenite::accept_async(MaybeTlsStream::Plain(tcp_stream))
+            .await
+            .unwrap();
+        transport.handle_incoming("peer-v3-conn", ws_stream).await;
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+        assert!(received.load(Ordering::SeqCst), "expected v3 dispatch to fire");
+        let _ = client_handle.await;
+    }
+
+    #[tokio::test]
+    async fn read_pump_rejects_malformed_v3_event() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let (listener, port) = start_tcp_listener().await;
+        // No identity / no DB → first branch picks up "v":3 in text but
+        // serde_json::from_str::<SignedFederationEvent> fails on broken payload.
+        let transport = Transport::with_settings_full(
+            String::new(), true, None, false, None,
+        );
+
+        let received = Arc::new(AtomicBool::new(false));
+        let received_clone = Arc::clone(&received);
+        transport
+            .set_on_event(Arc::new(move |_p, _e, _pr| {
+                received_clone.store(true, Ordering::SeqCst);
+            }))
+            .await;
+
+        let client_handle = tokio::spawn(async move {
+            let url = format!("ws://127.0.0.1:{}", port);
+            let (mut ws, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+            // Has "v":3 marker but lacks required SignedFederationEvent fields.
+            let bad = r#"{"v":3,"node_id":"x","not_a_signed_event":true}"#;
+            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+            ws.send(Message::Text(bad.into())).await.unwrap();
+            tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
+            let _ = ws.close(None).await;
+        });
+
+        let (tcp_stream, _) = listener.accept().await.unwrap();
+        let ws_stream = tokio_tungstenite::accept_async(MaybeTlsStream::Plain(tcp_stream))
+            .await
+            .unwrap();
+        transport.handle_incoming("malformed-v3", ws_stream).await;
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+        assert!(!received.load(Ordering::SeqCst), "handler must NOT fire on malformed v3");
+        let _ = client_handle.await;
+    }
+
+    #[tokio::test]
     async fn read_pump_dispatches_legacy_v1_event_to_handler() {
         use std::sync::atomic::{AtomicBool, Ordering};
         let (listener, port) = start_tcp_listener().await;
