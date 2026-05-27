@@ -131,4 +131,42 @@ describe('UserProfile', () => {
     const popover = container.querySelector('dialog.user-profile-popover');
     expect(popover).toBeInTheDocument();
   });
+
+  it('renders verify button when member has a public key', () => {
+    const member = { ...baseMember, publicKeyHex: 'abcd1234abcd1234' };
+    const { container } = render(<UserProfile member={member as never} x={0} y={0} onClose={vi.fn()} />);
+    expect(container.querySelector('.user-profile-verify')).toBeInTheDocument();
+  });
+
+  it('clicking verify dispatches dilla:verify-safety and closes', () => {
+    const member = { ...baseMember, publicKeyHex: 'abcd1234abcd1234' };
+    const onClose = vi.fn();
+    const spy = vi.spyOn(window, 'dispatchEvent');
+    const { container } = render(<UserProfile member={member as never} x={0} y={0} onClose={onClose} />);
+    const btn = container.querySelector('.user-profile-verify') as HTMLButtonElement;
+    fireEvent.click(btn);
+    expect(spy.mock.calls.some((c) => c[0] instanceof CustomEvent && c[0].type === 'dilla:verify-safety')).toBe(true);
+    expect(onClose).toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it('shows verified badge when verifiedContacts marks key verified', async () => {
+    const { useVerifiedContacts } = await import('../../stores/verifiedContactsStore');
+    useVerifiedContacts.setState({
+      byUserId: { 'user-1': { publicKeyHex: 'abcd1234abcd1234', verifiedAt: 1700000000 } },
+    } as never);
+    const member = { ...baseMember, publicKeyHex: 'abcd1234abcd1234' };
+    const { container } = render(<UserProfile member={member as never} x={0} y={0} onClose={vi.fn()} />);
+    expect(container.querySelector('.user-profile-verify--verified')).toBeInTheDocument();
+  });
+
+  it('shows changed badge when stored fingerprint differs', async () => {
+    const { useVerifiedContacts } = await import('../../stores/verifiedContactsStore');
+    useVerifiedContacts.setState({
+      byUserId: { 'user-1': { publicKeyHex: 'oldhashvalue1234', verifiedAt: 1700000000 } },
+    } as never);
+    const member = { ...baseMember, publicKeyHex: 'abcd1234abcd1234' };
+    const { container } = render(<UserProfile member={member as never} x={0} y={0} onClose={vi.fn()} />);
+    expect(container.querySelector('.user-profile-verify--changed')).toBeInTheDocument();
+  });
 });
