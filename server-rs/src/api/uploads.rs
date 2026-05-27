@@ -878,6 +878,131 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn download_unlinked_attachment_with_rfc3339_timestamp() {
+        let (state, _tmp) = make_state();
+        seed_alice_in_t1(&state);
+        let upload_dir = std::path::Path::new(&state.config.upload_dir).join("t1");
+        std::fs::create_dir_all(&upload_dir).unwrap();
+        let aid = "att-rfc3339";
+        let fp = upload_dir.join(aid);
+        std::fs::write(&fp, b"rfc").unwrap();
+        // Use RFC3339 timestamp instead of the canonical "%Y-%m-%d %H:%M:%S".
+        let rfc_ts = chrono::Utc::now().to_rfc3339();
+        state.db.with_conn(|conn| {
+            db::create_attachment(conn, &db::Attachment {
+                id: aid.into(),
+                message_id: String::new(),
+                filename_encrypted: b"n".to_vec(),
+                content_type_encrypted: b"x".to_vec(),
+                size: 3,
+                storage_path: fp.to_str().unwrap().to_string(),
+                uploader_id: Some("alice".into()),
+                created_at: rfc_ts,
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::get(format!("/teams/t1/attachments/{}", aid))
+                    .body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn download_linked_attachment_with_channel_access_denied() {
+        let (state, _tmp) = make_state();
+        seed_alice_in_t1(&state);
+        // Seed bob as a non-member.
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_user(conn, &db::User {
+                id: "bob".into(),
+                username: "bob".into(),
+                display_name: "Bob".into(),
+                public_key: vec![2u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_member(conn, &db::Member {
+                id: "m-bob".into(),
+                team_id: "t1".into(),
+                user_id: "bob".into(),
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now.clone(),
+            })?;
+            // Channel with role-gated access — bob isn't in the allowed list.
+            db::create_channel(conn, &db::Channel {
+                id: "ch-locked".into(),
+                team_id: "t1".into(),
+                name: "private".into(),
+                channel_type: "text".into(),
+                topic: String::new(),
+                created_by: "alice".into(),
+                position: 0,
+                locked: false,
+                hidden_if_restricted: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            // Add an access role role-r1 and put it on the channel; bob has no role.
+            db::create_role(conn, &db::Role {
+                id: "role-r1".into(),
+                team_id: "t1".into(),
+                name: "Insiders".into(),
+                color: String::new(),
+                position: 1,
+                permissions: 0,
+                is_default: false,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+            })?;
+            db::set_channel_access_roles(conn, "ch-locked", &["role-r1".to_string()])?;
+            db::create_message(conn, &db::Message {
+                id: "msg-locked".into(),
+                channel_id: "ch-locked".into(),
+                dm_channel_id: String::new(),
+                author_id: "alice".into(),
+                content: "locked content".into(),
+                msg_type: "text".into(),
+                thread_id: String::new(),
+                edited_at: None,
+                deleted: false,
+                lamport_ts: 0,
+                reply_to_message_id: None,
+                created_at: now.clone(),
+            })?;
+            db::create_attachment(conn, &db::Attachment {
+                id: "att-locked".into(),
+                message_id: "msg-locked".into(),
+                filename_encrypted: b"n".to_vec(),
+                content_type_encrypted: b"x".to_vec(),
+                size: 4,
+                storage_path: "/tmp/locked".into(),
+                uploader_id: Some("alice".into()),
+                created_at: now,
+            })
+        }).unwrap();
+        // bob is a team member but lacks the role for ch-locked.
+        let app = router(state, "bob");
+        let resp = app
+            .oneshot(
+                Request::get("/teams/t1/attachments/att-locked")
+                    .body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
     async fn download_legacy_attachment_with_matching_team_segment() {
         let (state, _tmp) = make_state();
         seed_alice_in_t1(&state);
