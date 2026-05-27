@@ -2,7 +2,7 @@
 // is exercised (post + correlated response). The existing
 // workerClient.test.ts only covers the backend=main fallbacks.
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 // Stub Worker BEFORE importing the module so getWorker() picks it up.
 class FakeWorker {

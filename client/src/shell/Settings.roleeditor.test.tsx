@@ -133,7 +133,7 @@ describe('RoleEditor', () => {
   it('Save button disables while saving', async () => {
     // Make updateRole hang
     let resolveIt: () => void = () => {};
-    apiMocks.updateRole.mockImplementationOnce(() => new Promise<{}>((r) => { resolveIt = () => r({}); }));
+    apiMocks.updateRole.mockImplementationOnce(() => new Promise<object>((r) => { resolveIt = () => r({}); }));
     const { container } = render(wrap(<RoleEditor teamId="t1" role={ROLE} onClose={vi.fn()} onSaved={vi.fn()} />));
     const saveBtn = [...container.querySelectorAll('button')].find((b) => /save/i.test(b.textContent ?? '')) as HTMLButtonElement;
     fireEvent.click(saveBtn);
