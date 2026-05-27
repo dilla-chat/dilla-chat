@@ -595,6 +595,89 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn list_messages_returns_message_with_enriched_attachment() {
+        let (state, _tmp) = make_state();
+        seed_team_channel_member(&state, "alice", "t1", "ch1");
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_message(conn, &db::Message {
+                id: "m-with-att".into(),
+                channel_id: "ch1".into(),
+                dm_channel_id: String::new(),
+                author_id: "alice".into(),
+                content: "look at this".into(),
+                msg_type: "text".into(),
+                thread_id: String::new(),
+                edited_at: None,
+                deleted: false,
+                lamport_ts: 0,
+                reply_to_message_id: None,
+                created_at: now.clone(),
+            })?;
+            db::create_attachment(conn, &db::Attachment {
+                id: "att-msg".into(),
+                message_id: "m-with-att".into(),
+                filename_encrypted: b"hi.png".to_vec(),
+                content_type_encrypted: b"image/png".to_vec(),
+                size: 12,
+                storage_path: "/tmp/att".into(),
+                uploader_id: Some("alice".into()),
+                created_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::get("/teams/t1/channels/ch1/messages?limit=10")
+                    .body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn create_message_404_for_channel_in_different_team() {
+        let (state, _tmp) = make_state();
+        seed_team_channel_member(&state, "alice", "t1", "ch1");
+        // Channel ch1 belongs to t1, but request goes via a different team id.
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_team(conn, &db::Team {
+                id: "t-other".into(),
+                name: "Other".into(),
+                created_by: "alice".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_member(conn, &db::Member {
+                id: "m-alice-other".into(),
+                team_id: "t-other".into(),
+                user_id: "alice".into(),
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t-other/channels/ch1/messages")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"content":"oops","type":"text"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        // 404 — channel does not belong to t-other.
+        assert_eq!(resp.status(), 404);
+    }
+
+    #[tokio::test]
     async fn list_messages_happy_path_empty() {
         let (state, _tmp) = make_state();
         seed_team_channel_member(&state, "alice", "t1", "ch1");
