@@ -1451,6 +1451,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn handle_state_sync_response_with_empty_payload_succeeds() {
+        let node = make_node();
+        let event = FederationEvent {
+            event_type: FED_EVENT_STATE_SYNC_RESP.to_string(),
+            node_name: "peer-1".into(),
+            timestamp: 1,
+            payload: serde_json::json!({
+                "channels": [],
+                "messages": [],
+                "members": [],
+                "roles": [],
+            }),
+        };
+        let prov = transport::EventProvenance { origin_node_id: None, seq: None, event_id: None };
+        let res = node.handle_federation_event("peer-1", event, prov).await;
+        assert!(res.is_ok(), "state sync response with empty data should succeed: {:?}", res);
+    }
+
+    #[tokio::test]
+    async fn handle_federation_event_message_new_with_invalid_payload_errors() {
+        let node = make_node();
+        let event = FederationEvent {
+            event_type: FED_EVENT_MESSAGE_NEW.to_string(),
+            node_name: "peer-1".into(),
+            timestamp: 1,
+            payload: serde_json::json!({"garbage": true}),
+        };
+        let prov = transport::EventProvenance { origin_node_id: None, seq: None, event_id: None };
+        let res = node.handle_federation_event("peer-1", event, prov).await;
+        assert!(res.is_err());
+    }
+
+    #[tokio::test]
     async fn handle_federation_event_unknown_event_type_returns_ok() {
         let node = make_node();
         let event = FederationEvent {
