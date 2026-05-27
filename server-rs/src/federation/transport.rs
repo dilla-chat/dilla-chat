@@ -1179,6 +1179,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn send_succeeds_when_peer_connected_after_handshake() {
+        let (listener, port) = start_tcp_listener().await;
+        let transport = Transport::with_settings(String::new(), true);
+
+        // Wire up the client that connects and listens.
+        let client_handle = tokio::spawn(async move {
+            let url = format!("ws://127.0.0.1:{}", port);
+            let (mut ws, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+            // Read until close or a message.
+            let _ = ws.next().await;
+        });
+
+        let (tcp_stream, _) = listener.accept().await.unwrap();
+        let ws_stream = tokio_tungstenite::accept_async(MaybeTlsStream::Plain(tcp_stream))
+            .await
+            .unwrap();
+        transport.handle_incoming("connected-peer", ws_stream).await;
+
+        // Now send a federation event to the connected peer — exercises
+        // send()'s Message::Text branch + serialize path.
+        let ev = super::super::FederationEvent {
+            event_type: "test".into(),
+            node_name: "n".into(),
+            timestamp: 1,
+            payload: serde_json::Value::Null,
+        };
+        let res = transport.send("connected-peer", &ev).await;
+        assert!(res.is_ok());
+
+        // Broadcast also iterates the same connection so this hits the
+        // broadcast-with-conns path.
+        transport.broadcast(&ev).await;
+
+        let _ = client_handle.await;
+    }
+
+    #[tokio::test]
     async fn handle_incoming_accepts_empty_join_secret_with_insecure() {
         let (listener, port) = start_tcp_listener().await;
         // Empty join secret + insecure=true → accepts anonymously (dev pattern).
