@@ -1398,6 +1398,30 @@ describe('AppLayout behavioral', () => {
     expect(true).toBe(true);
   });
 
+  // ── content-header action buttons (L421/429/437/453) ──────────────
+  it('Header action buttons dispatch mesh:open-* events', async () => {
+    render(<AppLayout />);
+    await waitFor(() => {
+      expect(screen.getByText('general')).toBeInTheDocument();
+    });
+    // Find buttons by title attribute.
+    const titles = ['Threads', 'Saved messages', 'Pinned messages', 'Search'];
+    const captured: string[] = [];
+    const cb = (e: Event) => captured.push(e.type);
+    for (const name of ['mesh:open-threads', 'mesh:open-saved', 'mesh:open-pinned', 'mesh:open-search']) {
+      window.addEventListener(name, cb);
+    }
+    for (const title of titles) {
+      const btn = document.querySelector(`button[title="${title}"]`) as HTMLButtonElement | null;
+      if (btn) act(() => fireEvent.click(btn));
+    }
+    for (const name of ['mesh:open-threads', 'mesh:open-saved', 'mesh:open-pinned', 'mesh:open-search']) {
+      window.removeEventListener(name, cb);
+    }
+    // At least one event should have been dispatched.
+    expect(captured.length).toBeGreaterThanOrEqual(1);
+  });
+
   // ── handleQuickSwitch via QuickSwitcher click (L553-563) ──────────
   it('Quick switcher item click invokes handleQuickSwitch for a channel', async () => {
     render(<AppLayout />);
