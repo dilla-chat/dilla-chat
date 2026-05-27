@@ -525,4 +525,158 @@ mod tests {
             .unwrap();
         assert!(resp.status().as_u16() >= 400);
     }
+
+    fn seed_team_channel_member(state: &AppState, uid: &str, tid: &str, cid: &str) {
+        let now = db::now_str();
+        let uid = uid.to_string();
+        let tid = tid.to_string();
+        let cid = cid.to_string();
+        state.db.with_conn(|conn| {
+            db::create_user(conn, &db::User {
+                id: uid.clone(),
+                username: uid.clone(),
+                display_name: uid.clone(),
+                public_key: uid.as_bytes().iter().chain([0u8; 32].iter()).take(32).copied().collect(),
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_team(conn, &db::Team {
+                id: tid.clone(),
+                name: "T".into(),
+                created_by: uid.clone(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_member(conn, &db::Member {
+                id: format!("m-{}-{}", uid, tid),
+                team_id: tid.clone(),
+                user_id: uid.clone(),
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now.clone(),
+            })?;
+            db::create_channel(conn, &db::Channel {
+                id: cid.clone(),
+                team_id: tid.clone(),
+                name: "general".into(),
+                channel_type: "text".into(),
+                topic: String::new(),
+                created_by: uid.clone(),
+                position: 0,
+                locked: false,
+                created_at: now.clone(),
+                updated_at: now,
+                ..Default::default()
+            })
+        }).unwrap();
+    }
+
+    #[tokio::test]
+    async fn create_message_happy_path() {
+        let (state, _tmp) = make_state();
+        seed_team_channel_member(&state, "alice", "t1", "ch1");
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/channels/ch1/messages")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"content":"hi","type":"text"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn list_messages_happy_path_empty() {
+        let (state, _tmp) = make_state();
+        seed_team_channel_member(&state, "alice", "t1", "ch1");
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::get("/teams/t1/channels/ch1/messages?limit=10")
+                    .body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn edit_message_happy_path_as_author() {
+        let (state, _tmp) = make_state();
+        seed_team_channel_member(&state, "alice", "t1", "ch1");
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_message(conn, &db::Message {
+                id: "m1".into(),
+                channel_id: "ch1".into(),
+                dm_channel_id: String::new(),
+                author_id: "alice".into(),
+                content: "original".into(),
+                msg_type: "text".into(),
+                thread_id: String::new(),
+                edited_at: None,
+                deleted: false,
+                lamport_ts: 0,
+                reply_to_message_id: None,
+                created_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/teams/t1/channels/ch1/messages/m1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"content":"edited"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn delete_message_happy_path_as_author() {
+        let (state, _tmp) = make_state();
+        seed_team_channel_member(&state, "alice", "t1", "ch1");
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_message(conn, &db::Message {
+                id: "m2".into(),
+                channel_id: "ch1".into(),
+                dm_channel_id: String::new(),
+                author_id: "alice".into(),
+                content: "to delete".into(),
+                msg_type: "text".into(),
+                thread_id: String::new(),
+                edited_at: None,
+                deleted: false,
+                lamport_ts: 0,
+                reply_to_message_id: None,
+                created_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/channels/ch1/messages/m2/del")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
 }
