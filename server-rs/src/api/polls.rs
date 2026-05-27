@@ -284,4 +284,117 @@ mod tests {
             .unwrap();
         assert!(resp.status().as_u16() >= 400);
     }
+
+    fn seed_team_member_poll(state: &AppState) {
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_user(conn, &db::User {
+                id: "alice".into(),
+                username: "alice".into(),
+                display_name: "Alice".into(),
+                public_key: vec![1u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_team(conn, &db::Team {
+                id: "t1".into(),
+                name: "T".into(),
+                created_by: "alice".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_member(conn, &db::Member {
+                id: "m1".into(),
+                team_id: "t1".into(),
+                user_id: "alice".into(),
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now.clone(),
+            })?;
+            db::create_poll(conn, &db::Poll {
+                id: "p1".into(),
+                team_id: "t1".into(),
+                channel_id: "ch1".into(),
+                created_by: Some("alice".into()),
+                question: "best lang?".into(),
+                options: serde_json::json!(["rust","go","python"]).to_string(),
+                created_at: now,
+            })
+        }).unwrap();
+    }
+
+    #[tokio::test]
+    async fn vote_happy_path() {
+        let (state, _tmp) = make_state();
+        seed_team_member_poll(&state);
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/polls/p1/vote")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"option_index":0}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn vote_rejects_out_of_range_option() {
+        let (state, _tmp) = make_state();
+        seed_team_member_poll(&state);
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/polls/p1/vote")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"option_index":99}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn vote_rejects_negative_option_index() {
+        let (state, _tmp) = make_state();
+        seed_team_member_poll(&state);
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/polls/p1/vote")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"option_index":-1}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn unvote_happy_path() {
+        let (state, _tmp) = make_state();
+        seed_team_member_poll(&state);
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/polls/p1/vote")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
 }
