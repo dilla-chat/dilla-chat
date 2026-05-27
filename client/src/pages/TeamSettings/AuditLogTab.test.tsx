@@ -71,4 +71,24 @@ describe('AuditLogTab', () => {
     const { container } = render(<AuditLogTab teamId="t1" />);
     await waitFor(() => expect(container.firstChild).toBeTruthy());
   });
+
+  it('renders every remaining describe() case', async () => {
+    apiMocks.getAuditEvents.mockResolvedValueOnce([
+      { id: 'r1', created_at: '2026-02-01', actor_user_id: 'me', action: 'role.reorder', target_type: null, target_id: null, details: null },
+      { id: 'c1', created_at: '2026-02-02', actor_user_id: 'me', action: 'channel.update', target_type: 'channel', target_id: 'ch1', details: '{"name":"renamed"}' },
+      { id: 'c2', created_at: '2026-02-03', actor_user_id: 'me', action: 'channel.access.update', target_type: 'channel', target_id: 'ch1', details: null },
+      { id: 'g1', created_at: '2026-02-04', actor_user_id: 'me', action: 'group.create', target_type: 'group', target_id: 'g1', details: '{"name":"Team"}' },
+      { id: 'g2', created_at: '2026-02-05', actor_user_id: 'me', action: 'group.update', target_type: 'group', target_id: 'g1', details: '{"name":"Team"}' },
+      { id: 'g3', created_at: '2026-02-06', actor_user_id: 'me', action: 'group.delete', target_type: 'group', target_id: 'g1', details: '{"name":"OldGroup"}' },
+      { id: 'g4', created_at: '2026-02-07', actor_user_id: 'me', action: 'group.access', target_type: 'group', target_id: 'g1', details: '{"name":"Engineering"}' },
+      { id: 'mp', created_at: '2026-02-08', actor_user_id: 'me', action: 'message.pin', target_type: 'message', target_id: 'msg1', details: null },
+      { id: 'mu', created_at: '2026-02-09', actor_user_id: 'me', action: 'message.unpin', target_type: 'message', target_id: 'msg1', details: null },
+      { id: 'gx', created_at: '2026-02-10', actor_user_id: 'me', action: 'integration.giphy.set', target_type: null, target_id: null, details: null },
+      { id: 'gy', created_at: '2026-02-11', actor_user_id: 'me', action: 'integration.giphy.clear', target_type: null, target_id: null, details: null },
+      { id: 'ml', created_at: '2026-02-12', actor_user_id: 'me', action: 'member.leave', target_type: 'user', target_id: 'me', details: null },
+    ]);
+    const { container } = render(<AuditLogTab teamId="t1" />);
+    await waitFor(() => expect(apiMocks.getAuditEvents).toHaveBeenCalled());
+    expect(container.firstChild).toBeTruthy();
+  });
 });
