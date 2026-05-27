@@ -966,6 +966,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn create_or_get_dm_returns_existing_when_one_already_exists() {
+        let (state, _tmp) = make_state();
+        seed_team_and_member(&state);
+        // First create the 1:1 DM.
+        let app1 = router(state.clone(), "u1");
+        let r1 = app1
+            .oneshot(
+                Request::post("/teams/t1/dms")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"user_ids":["u2"]}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(r1.status(), 200);
+        // Second call should short-circuit and return the existing DM.
+        let app2 = router(state, "u1");
+        let r2 = app2
+            .oneshot(
+                Request::post("/teams/t1/dms")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"user_ids":["u2"]}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(r2.status(), 200);
+    }
+
+    #[tokio::test]
     async fn send_dm_message_happy_path() {
         let (state, _tmp) = make_state();
         seed_team_and_member(&state);
