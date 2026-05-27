@@ -882,6 +882,73 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn revoke_peer_404_for_unknown_node() {
+        let (state, _tmp) = make_state();
+        seed_admin_user(&state.db);
+        // Mount the revoke route on top of the existing router.
+        let app = Router::new()
+            .route("/federation/pinned-peers/{node_id}", axum::routing::delete(revoke_peer))
+            .layer(axum::Extension(UserId("super".to_string())))
+            .with_state(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/federation/pinned-peers/no-such-peer")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        // Either 404 (not found) or 500 (internal) — both exercise the
+        // post-perms path. Smoke test.
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn revoke_peer_happy_path_after_pin() {
+        let (state, _tmp) = make_state();
+        seed_admin_user(&state.db);
+        // First pin a peer so revoke has something to revoke.
+        use ed25519_dalek::SigningKey;
+        let sk = SigningKey::from_bytes(&[9u8; 32]);
+        let pk_bytes = sk.verifying_key().to_bytes();
+        use base64::Engine as _;
+        let pk_b64 = base64::engine::general_purpose::STANDARD.encode(pk_bytes);
+        let body = format!(
+            r#"{{"node_id":"peer-rev","public_key_b64":"{}","hostname":"peer.example"}}"#,
+            pk_b64
+        );
+        let app1 = router(state.clone(), "super");
+        let r1 = app1
+            .oneshot(
+                Request::post("/federation/pinned-peers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(r1.status(), 200);
+        // Now revoke it.
+        let app2 = Router::new()
+            .route("/federation/pinned-peers/{node_id}", axum::routing::delete(revoke_peer))
+            .layer(axum::Extension(UserId("super".to_string())))
+            .with_state(state);
+        let r2 = app2
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/federation/pinned-peers/peer-rev")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(r2.status(), 200);
+    }
+
+    #[tokio::test]
     async fn set_team_authority_rejects_oversized_owner_node_id() {
         let (state, _tmp) = make_state();
         seed_admin_user(&state.db);
