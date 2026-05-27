@@ -606,6 +606,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn enroll_complete_idempotent_returns_existing_device_for_duplicate_pubkey() {
+        use base64::Engine as _;
+        use ed25519_dalek::{Signer, SigningKey};
+        let (state, _tmp) = make_state();
+        seed_user(&state.db, "alice");
+        let authorizer_sk = SigningKey::from_bytes(&[33u8; 32]);
+        let authorizer_pk = authorizer_sk.verifying_key().to_bytes();
+        let new_pk_bytes = [44u8; 32];
+        state.db.with_conn(|conn| {
+            db::create_device(conn, "alice", &authorizer_pk, "primary").map(|_| ())?;
+            // Pre-create the "new" device row so enroll_complete hits the
+            // L171 `return Ok(existing.id)` branch instead of creating again.
+            db::create_device(conn, "alice", &new_pk_bytes, "duplicate").map(|_| ())
+        }).unwrap();
+        let (nonce, challenge_id) = state.auth.generate_challenge().unwrap();
+        let signature = authorizer_sk.sign(&nonce);
+        let body = format!(
+            r#"{{"challenge_id":"{}","new_device_public_key":"{}","authorizer_public_key":"{}","signature":"{}","device_label":"dup"}}"#,
+            challenge_id,
+            base64::engine::general_purpose::STANDARD.encode(new_pk_bytes),
+            base64::engine::general_purpose::STANDARD.encode(authorizer_pk),
+            base64::engine::general_purpose::STANDARD.encode(signature.to_bytes()),
+        );
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::post("/devices/enroll-complete")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
     async fn enroll_complete_happy_path_creates_new_device() {
         use base64::Engine as _;
         use ed25519_dalek::{Signer, SigningKey};
