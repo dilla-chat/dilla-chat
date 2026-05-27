@@ -1056,6 +1056,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn upload_rejects_oversize_payload() {
+        let (mut state, _tmp) = make_state();
+        seed_alice_in_t1(&state);
+        // Force a max_upload_size = 1 byte so the 11-byte body exceeds it.
+        let mut cfg = (*state.config).clone();
+        cfg.max_upload_size = 1;
+        state.config = Arc::new(cfg);
+        let app = Router::new()
+            .route("/teams/{team_id}/attachments", axum::routing::post(upload))
+            .layer(axum::Extension(UserId("alice".to_string())))
+            .with_state(state);
+        let boundary = "----oversize";
+        let body = format!(
+            "--{}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"big.bin\"\r\nContent-Type: application/octet-stream\r\n\r\nhello world\r\n--{}--\r\n",
+            boundary, boundary
+        );
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/attachments")
+                    .header("content-type", format!("multipart/form-data; boundary={}", boundary))
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
+
+    #[tokio::test]
     async fn upload_rejects_invalid_team_id() {
         let (state, _tmp) = make_state();
         // Seed a real member so we pass the membership gate, then hit the
