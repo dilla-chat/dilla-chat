@@ -354,4 +354,32 @@ mod tests {
         m.set_webcam_sharing("c1", "u1", false).await;
         assert!(!m.get_room("c1").await.unwrap()[0].webcam_sharing);
     }
+
+    #[tokio::test]
+    async fn remove_peer_everywhere_empties_and_cleans_team_mapping() {
+        let m = RoomManager::new();
+        m.add_peer("ch1", "u1", "alice", "t1").await;
+        m.add_peer("ch2", "u1", "alice", "t1").await;
+        // u2 in ch1 keeps it alive after u1 leaves; ch2 only had u1 → empties.
+        m.add_peer("ch1", "u2", "bob", "t1").await;
+
+        let removed = m.remove_peer_everywhere("u1").await;
+        // u1 was removed from at least one channel.
+        assert!(!removed.is_empty());
+        // ch2 emptied — must be gone from rooms regardless of iteration order.
+        assert!(m.get_room("ch2").await.is_none());
+        // Verify team mapping cleared for the empty channel.
+        let rooms_by_team = m.get_rooms_by_team("t1").await;
+        assert!(rooms_by_team.iter().all(|r| r.channel_id != "ch2"));
+    }
+
+    #[tokio::test]
+    async fn remove_peer_everywhere_returns_empty_when_user_not_present() {
+        let m = RoomManager::new();
+        m.add_peer("ch1", "alice", "alice", "t1").await;
+        let removed = m.remove_peer_everywhere("ghost").await;
+        assert!(removed.is_empty());
+        // The original room still has alice.
+        assert_eq!(m.get_room("ch1").await.unwrap().len(), 1);
+    }
 }
