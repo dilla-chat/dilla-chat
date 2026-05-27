@@ -674,4 +674,125 @@ mod tests {
             .unwrap();
         let _ = resp.status();
     }
+
+    fn seed_team_with_admin(db: &crate::db::Database) {
+        let now = crate::db::now_str();
+        db.with_conn(|conn| {
+            crate::db::create_user(conn, &crate::db::User {
+                id: "admin".into(),
+                username: "admin".into(),
+                display_name: "Admin".into(),
+                public_key: vec![1u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            crate::db::create_team(conn, &crate::db::Team {
+                id: "t1".into(),
+                name: "T".into(),
+                created_by: "admin".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now,
+                ..Default::default()
+            })?;
+            Ok::<(), rusqlite::Error>(())
+        }).unwrap();
+    }
+
+    #[tokio::test]
+    async fn pin_peer_rejects_empty_node_id_when_admin() {
+        let (state, _tmp) = make_state();
+        seed_team_with_admin(&state.db);
+        let app = router(state, "admin");
+        let body = r#"{"node_id":"","public_key_b64":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=","hostname":"peer.example"}"#;
+        let resp = app
+            .oneshot(
+                Request::post("/federation/pinned-peers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn pin_peer_rejects_empty_hostname() {
+        let (state, _tmp) = make_state();
+        seed_team_with_admin(&state.db);
+        let app = router(state, "admin");
+        let body = r#"{"node_id":"node-1","public_key_b64":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=","hostname":""}"#;
+        let resp = app
+            .oneshot(
+                Request::post("/federation/pinned-peers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn pin_peer_rejects_invalid_base64_public_key() {
+        let (state, _tmp) = make_state();
+        seed_team_with_admin(&state.db);
+        let app = router(state, "admin");
+        let body = r#"{"node_id":"n","public_key_b64":"!!not-base64","hostname":"h"}"#;
+        let resp = app
+            .oneshot(
+                Request::post("/federation/pinned-peers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn pin_peer_rejects_wrong_length_public_key() {
+        let (state, _tmp) = make_state();
+        seed_team_with_admin(&state.db);
+        let app = router(state, "admin");
+        let body = r#"{"node_id":"n","public_key_b64":"YWJj","hostname":"h"}"#;
+        let resp = app
+            .oneshot(
+                Request::post("/federation/pinned-peers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn pin_peer_rejects_oversized_node_id() {
+        let (state, _tmp) = make_state();
+        seed_team_with_admin(&state.db);
+        let app = router(state, "admin");
+        let oversize = "n".repeat(129);
+        let body = format!(
+            r#"{{"node_id":"{}","public_key_b64":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=","hostname":"h"}}"#,
+            oversize,
+        );
+        let resp = app
+            .oneshot(
+                Request::post("/federation/pinned-peers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
 }
