@@ -2270,6 +2270,67 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn bootstrap_rejects_username_longer_than_32_chars() {
+        use base64::Engine as _;
+        use ed25519_dalek::{Signer, SigningKey};
+        let (state, _tmp) = make_state();
+        let signing_key = SigningKey::from_bytes(&[123u8; 32]);
+        let pk_bytes = signing_key.verifying_key().to_bytes();
+        let (nonce, challenge_id) = state.auth.generate_challenge().unwrap();
+        let signature = signing_key.sign(&nonce);
+        let pk_b64 = base64::engine::general_purpose::STANDARD.encode(pk_bytes);
+        let sig_b64 = base64::engine::general_purpose::STANDARD.encode(signature.to_bytes());
+        // Username 33 chars long — triggers the L556-558 length guard.
+        let oversize = "u".repeat(33);
+        let body = format!(
+            r#"{{"username":"{}","challenge_id":"{}","public_key":"{}","signature":"{}","bootstrap_token":"tok"}}"#,
+            oversize, challenge_id, pk_b64, sig_b64,
+        );
+        let app = Router::new().route("/auth/bootstrap", post(bootstrap)).with_state(state);
+        let resp = app
+            .oneshot(
+                Request::post("/auth/bootstrap")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
+
+    #[tokio::test]
+    async fn bootstrap_rejects_invalid_bootstrap_token() {
+        use base64::Engine as _;
+        use ed25519_dalek::{Signer, SigningKey};
+        let (state, _tmp) = make_state();
+        // Valid signed challenge but the bootstrap_token doesn't exist in
+        // the DB → validate_bootstrap_token returns InvalidParameterName,
+        // which the bootstrap handler maps to AppError::BadRequest.
+        let signing_key = SigningKey::from_bytes(&[100u8; 32]);
+        let pk_bytes = signing_key.verifying_key().to_bytes();
+        let (nonce, challenge_id) = state.auth.generate_challenge().unwrap();
+        let signature = signing_key.sign(&nonce);
+        let pk_b64 = base64::engine::general_purpose::STANDARD.encode(pk_bytes);
+        let sig_b64 = base64::engine::general_purpose::STANDARD.encode(signature.to_bytes());
+        let body = format!(
+            r#"{{"username":"admin","challenge_id":"{}","public_key":"{}","signature":"{}","bootstrap_token":"never-issued"}}"#,
+            challenge_id, pk_b64, sig_b64
+        );
+        let app = Router::new().route("/auth/bootstrap", post(bootstrap)).with_state(state);
+        let resp = app
+            .oneshot(
+                Request::post("/auth/bootstrap")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
+
+    #[tokio::test]
     async fn bootstrap_happy_path_consumes_token_and_creates_team() {
         use base64::Engine as _;
         use ed25519_dalek::{Signer, SigningKey};
