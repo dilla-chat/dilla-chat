@@ -606,6 +606,72 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn enroll_complete_4xx_when_authorizer_device_is_revoked() {
+        let (state, _tmp) = make_state();
+        seed_user(&state.db, "alice");
+        // Seed a revoked authorizer device for alice.
+        let auth_pk_bytes = [9u8; 32];
+        state.db.with_conn(|conn| {
+            let did = db::create_device(conn, "alice", &auth_pk_bytes, "authorizer")?;
+            db::revoke_device(conn, &did)?;
+            Ok::<(), rusqlite::Error>(())
+        }).unwrap();
+        let app = router(state, "alice");
+        use base64::Engine as _;
+        let new_pk = base64::engine::general_purpose::STANDARD.encode([0u8; 32]);
+        let auth_pk = base64::engine::general_purpose::STANDARD.encode(auth_pk_bytes);
+        let sig = base64::engine::general_purpose::STANDARD.encode([0u8; 64]);
+        let body = format!(
+            r#"{{"challenge_id":"c1","new_device_public_key":"{}","authorizer_public_key":"{}","signature":"{}","device_label":"new-mobile"}}"#,
+            new_pk, auth_pk, sig
+        );
+        let resp = app
+            .oneshot(
+                Request::post("/devices/enroll-complete")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        // 403 because the authorizer device is revoked.
+        assert_eq!(resp.status(), 403);
+    }
+
+    #[tokio::test]
+    async fn enroll_complete_4xx_with_invalid_signature_for_active_authorizer() {
+        let (state, _tmp) = make_state();
+        seed_user(&state.db, "alice");
+        // Seed an ACTIVE authorizer device, but use a bad signature so
+        // verify_challenge fails. This drives the post-authorizer-lookup
+        // signature-verify path.
+        let auth_pk_bytes = [9u8; 32];
+        state.db.with_conn(|conn| {
+            db::create_device(conn, "alice", &auth_pk_bytes, "authorizer").map(|_| ())
+        }).unwrap();
+        let app = router(state, "alice");
+        use base64::Engine as _;
+        let new_pk = base64::engine::general_purpose::STANDARD.encode([0u8; 32]);
+        let auth_pk = base64::engine::general_purpose::STANDARD.encode(auth_pk_bytes);
+        let bad_sig = base64::engine::general_purpose::STANDARD.encode([0u8; 64]);
+        let body = format!(
+            r#"{{"challenge_id":"never-issued","new_device_public_key":"{}","authorizer_public_key":"{}","signature":"{}","device_label":""}}"#,
+            new_pk, auth_pk, bad_sig
+        );
+        let resp = app
+            .oneshot(
+                Request::post("/devices/enroll-complete")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        // 401 since verify_challenge rejects, or 4xx generally.
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
     async fn enroll_complete_4xx_for_unknown_authorizer() {
         let (state, _tmp) = make_state();
         seed_user(&state.db, "alice");
