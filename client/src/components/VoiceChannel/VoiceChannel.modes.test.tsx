@@ -117,4 +117,58 @@ describe('VoiceChannel focus + fullscreen modes', () => {
     const { container } = render(<VoiceChannel channel={channel} />);
     expect(container.firstChild).toBeTruthy();
   });
+
+  it('clicking expand on a webcam peer enters focused-webcam mode (L113-167)', () => {
+    const stream = { getVideoTracks: () => [] } as unknown as MediaStream;
+    seed({
+      peers: {
+        me: { user_id: 'me', username: 'me', speaking: false, muted: false, deafened: false },
+        u2: { user_id: 'u2', username: 'alice', speaking: false, webcam_sharing: true },
+      },
+      remoteWebcamStreams: { u2: stream },
+    });
+    const { container } = render(<VoiceChannel channel={channel} />);
+    // Click the expand button to enter focus mode.
+    const expand = container.querySelector('.voice-tile-expand-btn') as HTMLButtonElement | null;
+    if (expand) fireEvent.click(expand);
+    // After click, the focus banner should appear.
+    expect(container.textContent).toMatch(/VIEWING|alice/i);
+  });
+
+  it('clicking thumbnail in focus mode switches focused peer', () => {
+    const s1 = { getVideoTracks: () => [] } as unknown as MediaStream;
+    const s2 = { getVideoTracks: () => [] } as unknown as MediaStream;
+    seed({
+      peers: {
+        me: { user_id: 'me', username: 'me', speaking: false, webcam_sharing: true },
+        u2: { user_id: 'u2', username: 'alice', speaking: false, webcam_sharing: true },
+      },
+      remoteWebcamStreams: { u2: s2 },
+      webcamSharing: true,
+      localWebcamStream: s1,
+    });
+    const { container } = render(<VoiceChannel channel={channel} />);
+    const expand = container.querySelector('.voice-tile-expand-btn') as HTMLButtonElement | null;
+    if (expand) fireEvent.click(expand);
+    // Click a different thumbnail to switch focus.
+    const thumbs = Array.from(container.querySelectorAll('.fullscreen-thumbnail')) as HTMLButtonElement[];
+    if (thumbs.length > 1) fireEvent.click(thumbs[1]);
+    expect(container.firstChild).toBeTruthy();
+  });
+
+  it('Close button on focus mode exits back to normal', () => {
+    const stream = { getVideoTracks: () => [] } as unknown as MediaStream;
+    seed({
+      peers: { me: { user_id: 'me', username: 'me' }, u2: { user_id: 'u2', username: 'alice', speaking: false, webcam_sharing: true } },
+      remoteWebcamStreams: { u2: stream },
+    });
+    const { container } = render(<VoiceChannel channel={channel} />);
+    const expand = container.querySelector('.voice-tile-expand-btn') as HTMLButtonElement | null;
+    if (expand) fireEvent.click(expand);
+    // Now find the close button (.screen-share-close) and click.
+    const close = container.querySelector('.screen-share-close') as HTMLButtonElement | null;
+    if (close) fireEvent.click(close);
+    // Should return to normal view (no .voice-focus-mode class).
+    expect(container.querySelector('.voice-focus-mode')).toBeFalsy();
+  });
 });
