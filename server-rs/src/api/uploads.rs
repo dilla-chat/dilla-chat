@@ -777,6 +777,107 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn download_legacy_attachment_with_mismatched_team_segment_4xx() {
+        let (state, _tmp) = make_state();
+        seed_alice_in_t1(&state);
+        // Legacy attachment (uploader_id=None) but storage_path parent dir
+        // points to a different team — should refuse.
+        let other_dir = std::path::Path::new(&state.config.upload_dir).join("other-team");
+        std::fs::create_dir_all(&other_dir).unwrap();
+        let aid = "att-foreign";
+        let fp = other_dir.join(aid);
+        std::fs::write(&fp, b"foreign").unwrap();
+        state.db.with_conn(|conn| {
+            db::create_attachment(conn, &db::Attachment {
+                id: aid.into(),
+                message_id: String::new(),
+                filename_encrypted: b"n".to_vec(),
+                content_type_encrypted: b"x".to_vec(),
+                size: 7,
+                storage_path: fp.to_str().unwrap().to_string(),
+                uploader_id: None,
+                created_at: db::now_str(),
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::get(format!("/teams/t1/attachments/{}", aid))
+                    .body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn download_linked_attachment_cross_team_404() {
+        let (state, _tmp) = make_state();
+        seed_alice_in_t1(&state);
+        // Linked attachment with message in a channel of a different team.
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_team(conn, &db::Team {
+                id: "t-other".into(),
+                name: "Other".into(),
+                created_by: "alice".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_channel(conn, &db::Channel {
+                id: "ch-other".into(),
+                team_id: "t-other".into(),
+                name: "general".into(),
+                channel_type: "text".into(),
+                topic: String::new(),
+                created_by: "alice".into(),
+                position: 0,
+                locked: false,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_message(conn, &db::Message {
+                id: "msg-foreign".into(),
+                channel_id: "ch-other".into(),
+                dm_channel_id: String::new(),
+                author_id: "alice".into(),
+                content: "foreign".into(),
+                msg_type: "text".into(),
+                thread_id: String::new(),
+                edited_at: None,
+                deleted: false,
+                lamport_ts: 0,
+                reply_to_message_id: None,
+                created_at: now.clone(),
+            })?;
+            db::create_attachment(conn, &db::Attachment {
+                id: "att-linked-foreign".into(),
+                message_id: "msg-foreign".into(),
+                filename_encrypted: b"n".to_vec(),
+                content_type_encrypted: b"x".to_vec(),
+                size: 4,
+                storage_path: "/tmp/x".into(),
+                uploader_id: Some("alice".into()),
+                created_at: now,
+            })
+        }).unwrap();
+        // Request via t1, but attachment is linked into t-other's channel.
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::get("/teams/t1/attachments/att-linked-foreign")
+                    .body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
     async fn download_legacy_attachment_with_matching_team_segment() {
         let (state, _tmp) = make_state();
         seed_alice_in_t1(&state);
