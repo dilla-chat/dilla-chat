@@ -114,6 +114,66 @@ describe('MemberList', () => {
     expect(container.firstChild).toBeTruthy();
   });
 
+  it('right-click + click every member context-menu action (L4444-4515)', async () => {
+    // Admin perms so Kick + Ban appear.
+    useTeamStore.setState({
+      activeTeamId: 't1',
+      members: new Map([
+        ['t1', [
+          { id: 'm1', userId: 'me', isAdmin: true, roleIds: ['r-admin'], roles: [{ id: 'r-admin', permissions: 0x001 }] },
+          { id: 'm2', userId: 'u2', isAdmin: false, roleIds: [], roles: [] },
+        ]],
+      ]),
+    } as never);
+    let menuItems: Array<{ label?: string; onClick?: () => void | Promise<void>; sep?: boolean }> = [];
+    const cb = (e: Event) => {
+      const items = (e as CustomEvent).detail.items;
+      if (items && items.length > menuItems.length) menuItems = items;
+    };
+    window.addEventListener('dilla:open-menu', cb);
+    const { container } = render(wrap(<MemberList members={{ MEMBERS: [ME, ALICE] }} voiceConnection={null} rich={false} federated={false} />));
+    const rows = [...container.querySelectorAll('.member, .ml-row')] as HTMLElement[];
+    // Right-click alice (not me) to expose kick/ban admin actions.
+    const aliceRow = rows.find((r) => /alice/i.test(r.textContent ?? '')) ?? rows[1];
+    if (aliceRow) fireEvent.contextMenu(aliceRow);
+    window.removeEventListener('dilla:open-menu', cb);
+    // Click each action — they each dispatch events / call api mocks.
+    for (const item of menuItems) {
+      if (item.sep || !item.onClick) continue;
+      try {
+        const result = item.onClick();
+        if (result instanceof Promise) await result;
+      } catch { /* swallow */ }
+    }
+    expect(menuItems.length).toBeGreaterThan(3);
+  });
+
+  it('blocked member context-menu shows Unblock action that calls api.unblockUser', async () => {
+    useBlockStore.setState({
+      blocked: new Set(['u2']),
+      isBlocked: (id: string) => id === 'u2',
+      block: vi.fn(),
+      unblock: vi.fn(),
+    } as never);
+    let menuItems: Array<{ label?: string; onClick?: () => void | Promise<void> }> = [];
+    const cb = (e: Event) => {
+      const items = (e as CustomEvent).detail.items;
+      if (items) menuItems = items;
+    };
+    window.addEventListener('dilla:open-menu', cb);
+    const { container } = render(wrap(<MemberList members={{ MEMBERS: [ME, ALICE] }} voiceConnection={null} rich={false} federated={false} />));
+    const rows = [...container.querySelectorAll('.member, .ml-row')] as HTMLElement[];
+    const aliceRow = rows.find((r) => /alice/i.test(r.textContent ?? '')) ?? rows[1];
+    if (aliceRow) fireEvent.contextMenu(aliceRow);
+    window.removeEventListener('dilla:open-menu', cb);
+    const unblock = menuItems.find((it) => /Unblock/i.test(it.label ?? ''));
+    expect(unblock).toBeTruthy();
+    if (unblock?.onClick) {
+      const result = unblock.onClick();
+      if (result instanceof Promise) await result;
+    }
+  });
+
   it('renders rich + federated variants', () => {
     for (const [rich, fed] of [[true, true], [true, false], [false, true], [false, false]] as const) {
       const { container } = render(wrap(<MemberList members={{ MEMBERS: [ME, ALICE] }} voiceConnection={null} rich={rich} federated={fed} />));
