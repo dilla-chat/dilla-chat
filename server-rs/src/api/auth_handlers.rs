@@ -2019,6 +2019,76 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn register_happy_path_creates_user_with_valid_invite() {
+        use base64::Engine as _;
+        use ed25519_dalek::{Signer, SigningKey};
+
+        let (state, _tmp) = make_state();
+        // Seed an existing team + invite so register has something to bind to.
+        let now = crate::db::now_str();
+        state.db.with_conn(|conn| {
+            crate::db::create_user(conn, &crate::db::User {
+                id: "u-owner".into(),
+                username: "owner".into(),
+                display_name: "Owner".into(),
+                public_key: vec![1u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            crate::db::create_team(conn, &crate::db::Team {
+                id: "t-reg".into(),
+                name: "Registration".into(),
+                created_by: "u-owner".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            crate::db::create_invite(conn, &crate::db::Invite {
+                id: "inv-reg".into(),
+                team_id: "t-reg".into(),
+                token: "valid-invite-token".into(),
+                created_by: "u-owner".into(),
+                max_uses: None,
+                uses: 0,
+                expires_at: None,
+                revoked: false,
+                created_at: now,
+            })
+        }).unwrap();
+
+        // Build a new identity for the registering user.
+        let signing_key = SigningKey::from_bytes(&[55u8; 32]);
+        let pk_bytes = signing_key.verifying_key().to_bytes();
+        let (nonce, challenge_id) = state.auth.generate_challenge().unwrap();
+        let signature = signing_key.sign(&nonce);
+        let pk_b64 = base64::engine::general_purpose::STANDARD.encode(pk_bytes);
+        let sig_b64 = base64::engine::general_purpose::STANDARD.encode(signature.to_bytes());
+
+        let body = format!(
+            r#"{{"username":"newbie","challenge_id":"{}","public_key":"{}","signature":"{}","invite_token":"valid-invite-token"}}"#,
+            challenge_id, pk_b64, sig_b64
+        );
+        // Build a small router exposing register only.
+        let app = Router::new()
+            .route("/auth/register", post(register))
+            .with_state(state);
+        let resp = app
+            .oneshot(
+                Request::post("/auth/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
     async fn verify_happy_path_returns_jwt_for_known_user() {
         use base64::Engine as _;
         use ed25519_dalek::{Signer, SigningKey};
