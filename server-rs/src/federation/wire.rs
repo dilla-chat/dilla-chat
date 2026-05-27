@@ -356,4 +356,32 @@ mod tests {
         let err = verify_with_public_key(&id.public_key, &signed).unwrap_err();
         assert!(matches!(err, WireError::UnsupportedVersion(99)));
     }
+
+    #[test]
+    fn wire_error_display_includes_message_for_each_variant() {
+        assert!(WireError::UnsupportedVersion(99).to_string().contains("99"));
+        assert!(WireError::UnpinnedPeer("node-x".into()).to_string().contains("node-x"));
+        assert!(WireError::SignatureDecode("bad".into()).to_string().contains("bad"));
+        assert!(WireError::EventIdMismatch.to_string().contains("event id"));
+        assert!(WireError::BadSignature.to_string().contains("ed25519"));
+        assert!(WireError::Serialize("oops".into()).to_string().contains("oops"));
+        // Db variant requires a rusqlite::Error to construct.
+        let db_err: WireError = rusqlite::Error::QueryReturnedNoRows.into();
+        assert!(db_err.to_string().contains("db error"));
+    }
+
+    #[test]
+    fn verify_top_level_rejects_unsupported_version_before_peer_lookup() {
+        let db = fresh_db();
+        let id = identity::ensure(&db).unwrap();
+        let mut signed = sign(&id, sample_event(), 1).unwrap();
+        signed.v = 42;
+        let err = db.with_conn(|c| {
+            match verify(c, &signed) {
+                Err(e) => Ok(e),
+                Ok(()) => panic!("expected err"),
+            }
+        }).unwrap();
+        assert!(matches!(err, WireError::UnsupportedVersion(42)));
+    }
 }
