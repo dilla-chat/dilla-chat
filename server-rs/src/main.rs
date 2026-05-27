@@ -1229,6 +1229,125 @@ mod tests {
         assert!(load_secrets_from_files(&mut cfg).is_err());
     }
 
+    // ── env-var-driven file branches of load_secrets_from_files ──────
+    //
+    // These tests mutate std::env globally; the mutex serializes them so
+    // parallel cargo-test workers don't race on the shared environment.
+    // Same pattern as api::gif::GIPHY_ENV_LOCK.
+    static SECRETS_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    fn lock_secrets_env() -> std::sync::MutexGuard<'static, ()> {
+        SECRETS_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    #[test]
+    fn load_secrets_from_files_overrides_jwt_secret_from_file() {
+        let _g = lock_secrets_env();
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("jwt.secret");
+        std::fs::write(&path, "jwt-from-file").unwrap();
+        std::env::set_var("DILLA_JWT_SECRET_FILE", path.to_str().unwrap());
+        std::env::remove_var("DILLA_JWT_SECRET");
+        let mut cfg = Config::default();
+        let res = load_secrets_from_files(&mut cfg);
+        let jwt = std::env::var("DILLA_JWT_SECRET").ok();
+        std::env::remove_var("DILLA_JWT_SECRET_FILE");
+        std::env::remove_var("DILLA_JWT_SECRET");
+        res.unwrap();
+        assert_eq!(jwt.as_deref(), Some("jwt-from-file"));
+    }
+
+    #[test]
+    fn load_secrets_from_files_skips_empty_jwt_secret_file_var() {
+        let _g = lock_secrets_env();
+        std::env::set_var("DILLA_JWT_SECRET_FILE", "");
+        std::env::remove_var("DILLA_JWT_SECRET");
+        let mut cfg = Config::default();
+        load_secrets_from_files(&mut cfg).unwrap();
+        // empty path → branch body skipped → env var stays unset.
+        let jwt = std::env::var("DILLA_JWT_SECRET").ok();
+        std::env::remove_var("DILLA_JWT_SECRET_FILE");
+        assert!(jwt.is_none());
+    }
+
+    #[test]
+    fn load_secrets_from_files_overrides_join_secret_from_file() {
+        let _g = lock_secrets_env();
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("join.secret");
+        std::fs::write(&path, "join-from-file").unwrap();
+        std::env::set_var("DILLA_JOIN_SECRET_FILE", path.to_str().unwrap());
+        let mut cfg = Config::default();
+        cfg.join_secret = "in-config".into();
+        let res = load_secrets_from_files(&mut cfg);
+        std::env::remove_var("DILLA_JOIN_SECRET_FILE");
+        res.unwrap();
+        assert_eq!(cfg.join_secret, "join-from-file");
+    }
+
+    #[test]
+    fn load_secrets_from_files_overrides_cf_turn_api_token_from_file() {
+        let _g = lock_secrets_env();
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("cf.token");
+        std::fs::write(&path, "cf-token-from-file").unwrap();
+        std::env::set_var("DILLA_CF_TURN_API_TOKEN_FILE", path.to_str().unwrap());
+        let mut cfg = Config::default();
+        let res = load_secrets_from_files(&mut cfg);
+        std::env::remove_var("DILLA_CF_TURN_API_TOKEN_FILE");
+        res.unwrap();
+        assert_eq!(cfg.cf_turn_api_token, "cf-token-from-file");
+    }
+
+    #[test]
+    fn load_secrets_from_files_overrides_otel_api_key_from_file() {
+        let _g = lock_secrets_env();
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("otel.key");
+        std::fs::write(&path, "otel-key-from-file").unwrap();
+        std::env::set_var("DILLA_OTEL_API_KEY_FILE", path.to_str().unwrap());
+        let mut cfg = Config::default();
+        let res = load_secrets_from_files(&mut cfg);
+        std::env::remove_var("DILLA_OTEL_API_KEY_FILE");
+        res.unwrap();
+        assert_eq!(cfg.otel_api_key, "otel-key-from-file");
+    }
+
+    #[test]
+    fn load_secrets_from_files_overrides_sentry_dsn_from_file() {
+        let _g = lock_secrets_env();
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("sentry.dsn");
+        std::fs::write(&path, "https://abc@sentry.io/1\n").unwrap();
+        std::env::set_var("DILLA_SENTRY_DSN_FILE", path.to_str().unwrap());
+        let mut cfg = Config::default();
+        let res = load_secrets_from_files(&mut cfg);
+        std::env::remove_var("DILLA_SENTRY_DSN_FILE");
+        res.unwrap();
+        assert_eq!(cfg.sentry_dsn, "https://abc@sentry.io/1");
+    }
+
+    #[test]
+    fn load_secrets_from_files_returns_err_when_join_secret_file_missing() {
+        let _g = lock_secrets_env();
+        std::env::set_var("DILLA_JOIN_SECRET_FILE", "/no/such/file/join-xyz");
+        let mut cfg = Config::default();
+        let res = load_secrets_from_files(&mut cfg);
+        std::env::remove_var("DILLA_JOIN_SECRET_FILE");
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn load_secrets_from_files_skips_empty_join_secret_file_var() {
+        let _g = lock_secrets_env();
+        std::env::set_var("DILLA_JOIN_SECRET_FILE", "");
+        let mut cfg = Config::default();
+        cfg.join_secret = "kept".into();
+        let res = load_secrets_from_files(&mut cfg);
+        std::env::remove_var("DILLA_JOIN_SECRET_FILE");
+        res.unwrap();
+        assert_eq!(cfg.join_secret, "kept");
+    }
+
     // ── JWT-secret strength enforcement (success branches only) ───────
 
     // enforce_jwt_secret_strength has std::process::exit(1) calls in
