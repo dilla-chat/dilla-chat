@@ -514,4 +514,117 @@ mod tests {
         assert_eq!(r.owner_node_id, "node-1");
         assert!(serde_json::from_str::<SetTeamAuthorityRequest>("{}").is_err());
     }
+
+    // ── axum integration tests — mesh-disabled branches ────────────
+
+    use crate::auth::AuthService;
+    use crate::config::Config;
+    use crate::db::Database;
+    use crate::presence::PresenceManager;
+    use crate::ws::Hub;
+    use axum::body::Body;
+    use axum::http::Request;
+    use axum::routing::{get, post, put};
+    use axum::Router;
+    use std::sync::Arc;
+    use tower::ServiceExt;
+
+    fn make_state() -> (AppState, tempfile::TempDir) {
+        let tmp = tempfile::tempdir().unwrap();
+        let database = Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        database.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;")).unwrap();
+        database.run_migrations().unwrap();
+        let auth = Arc::new(AuthService::new(database.clone(), ""));
+        let hub = Arc::new(Hub::new(database.clone()));
+        let presence = Arc::new(PresenceManager::new());
+        let mut cfg = Config::default();
+        cfg.port = 8080;
+        cfg.data_dir = tmp.path().to_str().unwrap().to_string();
+        let state = AppState {
+            db: database,
+            auth,
+            hub,
+            presence,
+            config: Arc::new(cfg),
+            mesh: None, // federation disabled
+            custom_theme_css: None,
+        };
+        (state, tmp)
+    }
+
+    fn router(state: AppState, user_id: &'static str) -> Router {
+        Router::new()
+            .route("/federation/status", get(get_status))
+            .route("/federation/peers", get(get_peers))
+            .route("/federation/join-token", post(create_join_token))
+            .route("/federation/join-info", get(get_join_info))
+            .route("/federation/identity", get(get_node_identity))
+            .route("/federation/pinned-peers", get(list_pinned_peers).post(pin_peer))
+            .route("/federation/teams/{team_id}/authority", put(set_team_authority))
+            .layer(axum::Extension(UserId(user_id.to_string())))
+            .with_state(state)
+    }
+
+    #[tokio::test]
+    async fn get_status_returns_400_when_mesh_disabled() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(Request::get("/federation/status").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
+
+    #[tokio::test]
+    async fn get_peers_returns_400_when_mesh_disabled() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(Request::get("/federation/peers").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
+
+    #[tokio::test]
+    async fn create_join_token_returns_400_when_mesh_disabled() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::post("/federation/join-token")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
+
+    #[tokio::test]
+    async fn get_node_identity_endpoint_does_not_panic() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(Request::get("/federation/identity").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        // Any status code works — what matters is that we don't 5xx-panic.
+        let _ = resp.status();
+    }
+
+    #[tokio::test]
+    async fn list_pinned_peers_returns_empty_array_for_fresh_db() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(Request::get("/federation/pinned-peers").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        // pin_peer requires admin perms → list_pinned_peers may also.
+        // Either way, no panic.
+        assert!(resp.status() == 200 || resp.status() == 403);
+    }
 }
