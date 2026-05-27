@@ -1428,6 +1428,69 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn read_pump_handles_malformed_v1_event() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let (listener, port) = start_tcp_listener().await;
+        let transport = Transport::with_settings(String::new(), true);
+
+        let received = Arc::new(AtomicBool::new(false));
+        let received_clone = Arc::clone(&received);
+        transport
+            .set_on_event(Arc::new(move |_p, _e, _pr| {
+                received_clone.store(true, Ordering::SeqCst);
+            }))
+            .await;
+
+        let client_handle = tokio::spawn(async move {
+            let url = format!("ws://127.0.0.1:{}", port);
+            let (mut ws, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+            // Not v3 (no "v":3) and not parseable as FederationEvent.
+            let bad = r#"{"random":"garbage","timestamp":"not-a-number"}"#;
+            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+            ws.send(Message::Text(bad.into())).await.unwrap();
+            tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
+            let _ = ws.close(None).await;
+        });
+
+        let (tcp_stream, _) = listener.accept().await.unwrap();
+        let ws_stream = tokio_tungstenite::accept_async(MaybeTlsStream::Plain(tcp_stream))
+            .await
+            .unwrap();
+        transport.handle_incoming("malformed-v1", ws_stream).await;
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+        assert!(!received.load(Ordering::SeqCst), "handler must NOT fire on garbage payload");
+        let _ = client_handle.await;
+    }
+
+    #[tokio::test]
+    async fn read_pump_handles_close_frame() {
+        let (listener, port) = start_tcp_listener().await;
+        let transport = Transport::with_settings(String::new(), true);
+
+        let client_handle = tokio::spawn(async move {
+            let url = format!("ws://127.0.0.1:{}", port);
+            let (mut ws, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+            // Send a close frame immediately to trigger the Message::Close branch.
+            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+            let _ = ws.close(None).await;
+        });
+
+        let (tcp_stream, _) = listener.accept().await.unwrap();
+        let ws_stream = tokio_tungstenite::accept_async(MaybeTlsStream::Plain(tcp_stream))
+            .await
+            .unwrap();
+        transport.handle_incoming("close-peer", ws_stream).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+        let _ = client_handle.await;
+        // Peer should be marked disconnected after stream ends.
+        let conns = transport.conns.read().await;
+        if let Some(conn) = conns.get("close-peer") {
+            assert!(!conn.connected);
+        }
+    }
+
+    #[tokio::test]
     async fn read_pump_rejects_malformed_v3_event() {
         use std::sync::atomic::{AtomicBool, Ordering};
         let (listener, port) = start_tcp_listener().await;
