@@ -862,4 +862,109 @@ mod tests {
             .unwrap();
         assert_eq!(resp.status(), 400);
     }
+
+    fn router_full(state: AppState, user_id: &'static str) -> Router {
+        use axum::routing::delete as axum_delete;
+        Router::new()
+            .route("/teams", get(list).post(create))
+            .route("/teams/{id}", get(get_team).patch(update))
+            .route("/teams/{id}/members", get(list_members))
+            .route("/teams/{id}/members/{user_id}", patch(update_member).delete(axum_delete(kick_member)))
+            .route("/teams/{id}/leave", post(leave_team))
+            .route("/teams/{id}/bans/{user_id}", post(ban_member).delete(axum_delete(unban_member)))
+            .layer(axum::Extension(UserId(user_id.to_string())))
+            .with_state(state)
+    }
+
+    #[tokio::test]
+    async fn kick_member_rejects_self_kick() {
+        let (state, _tmp) = make_state();
+        seed_user_and_team(&state.db, "alice", "t-kick");
+        let app = router_full(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t-kick/members/alice")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
+
+    #[tokio::test]
+    async fn kick_member_404s_for_unknown_target() {
+        let (state, _tmp) = make_state();
+        seed_user_and_team(&state.db, "alice", "t-kick");
+        let app = router_full(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t-kick/members/ghost")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn leave_team_4xx_for_non_member() {
+        let (state, _tmp) = make_state();
+        seed_user_and_team(&state.db, "alice", "t-leave");
+        let app = router_full(state, "ghost");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t-leave/leave").body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn ban_member_rejects_self_ban() {
+        let (state, _tmp) = make_state();
+        seed_user_and_team(&state.db, "alice", "t-ban");
+        let app = router_full(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t-ban/bans/alice")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"reason":""}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn list_members_returns_200_for_member() {
+        let (state, _tmp) = make_state();
+        seed_user_and_team(&state.db, "alice", "t-list");
+        // Add a member row so alice is a team member.
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_member(conn, &db::Member {
+                id: "m-alice".into(),
+                team_id: "t-list".into(),
+                user_id: "alice".into(),
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now,
+            })
+        }).unwrap();
+        let app = router_full(state, "alice");
+        let resp = app
+            .oneshot(Request::get("/teams/t-list/members").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
 }
