@@ -85,4 +85,5 @@ server-rs/BOOTSTRAP_TOKEN
 # coverage HTML to scan (and it flagged js/xss-through-dom on the
 # istanbul template's `sorter.js`).
 client/coverage/
+client/coverage-browser/
 coverage/
