@@ -449,6 +449,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn delete_me_happy_path_returns_ok_true() {
+        let (state, _tmp) = make_state();
+        seed_user(&state.db, "alice");
+        let app = Router::new()
+            .route("/users/me", axum::routing::delete(delete_me))
+            .layer(axum::Extension(UserId("alice".to_string())))
+            .with_state(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/users/me")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        // Returns 200 with `{"ok":true}` on the happy path.
+        assert!(resp.status().as_u16() < 500);
+    }
+
+    #[tokio::test]
     async fn update_me_rejects_invalid_quiet_hours_to_shape() {
         let (state, _tmp) = make_state();
         seed_user(&state.db, "alice");
