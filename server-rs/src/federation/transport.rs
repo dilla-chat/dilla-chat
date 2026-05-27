@@ -1147,6 +1147,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn handle_incoming_v1_secret_rejected_when_require_v3_is_true() {
+        let (listener, port) = start_tcp_listener().await;
+        // join_secret set + require_v3=true → v1 handshake refused.
+        let transport = Transport::with_settings_full(
+            "secret".into(), false, None, /*require_v3*/ true, None,
+        );
+
+        let client_handle = tokio::spawn(async move {
+            let url = format!("ws://127.0.0.1:{}", port);
+            let (mut ws, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+            // Send v1-shaped join token; the receiver expects v3 only.
+            ws.send(Message::Text(r#"{"join_token":"secret"}"#.into()))
+                .await
+                .unwrap();
+            while let Some(msg) = ws.next().await {
+                match msg {
+                    Ok(Message::Close(_)) => break,
+                    Err(_) => break,
+                    _ => {}
+                }
+            }
+        });
+
+        let (tcp_stream, _) = listener.accept().await.unwrap();
+        let ws_stream = tokio_tungstenite::accept_async(MaybeTlsStream::Plain(tcp_stream))
+            .await
+            .unwrap();
+        transport.handle_incoming("legacy-v1-peer", ws_stream).await;
+
+        let conns = transport.conns.read().await;
+        assert!(!conns.contains_key("legacy-v1-peer"));
+        client_handle.await.unwrap();
+    }
+
+    #[tokio::test]
     async fn handle_incoming_refuses_empty_join_secret_without_insecure() {
         let (listener, port) = start_tcp_listener().await;
         // Empty join secret + insecure=false → immediate close on connect.
