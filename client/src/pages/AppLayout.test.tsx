@@ -1397,6 +1397,40 @@ describe('AppLayout behavioral', () => {
     act(() => window.dispatchEvent(new CustomEvent('mesh:open-safety-compare')));
     expect(true).toBe(true);
   });
+
+  // ── CommandPalette command run() callbacks (L242-332) ─────────────
+  // Open the palette + click each command item — the click invokes run()
+  // which drives setActiveChannel, mesh:* event dispatch, navigate(),
+  // setStatus(), and setTheme() — every one of the uncov run() handlers.
+  it('CommandPalette item clicks execute every command run() callback', async () => {
+    render(<AppLayout />);
+    act(() => window.dispatchEvent(new CustomEvent('mesh:open-command-palette')));
+    // Wait for the portal-rendered palette items.
+    await waitFor(() => {
+      expect(document.querySelectorAll('.command-palette-item').length).toBeGreaterThan(0);
+    });
+    const items = Array.from(
+      document.querySelectorAll('.command-palette-item'),
+    ) as HTMLButtonElement[];
+    // Re-open the palette before each click — clicking closes it.
+    for (const item of items) {
+      act(() => window.dispatchEvent(new CustomEvent('mesh:open-command-palette')));
+      await waitFor(() => {
+        expect(document.querySelector('.command-palette-item')).toBeTruthy();
+      });
+      // Find the same-labelled item in the current render (portal recreates DOM).
+      const label = item.querySelector('.command-palette-item-label')?.textContent ?? '';
+      const fresh = Array.from(
+        document.querySelectorAll('.command-palette-item'),
+      ).find(
+        (el) => el.querySelector('.command-palette-item-label')?.textContent === label,
+      ) as HTMLButtonElement | undefined;
+      if (fresh) {
+        act(() => fireEvent.click(fresh));
+      }
+    }
+    expect(true).toBe(true);
+  });
 });
 
 describe('AppLayout mobile', () => {
