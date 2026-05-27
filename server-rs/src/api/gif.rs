@@ -20,6 +20,14 @@ use crate::auth::UserId;
 use crate::db;
 use crate::error::AppError;
 
+/// Base URL for the Giphy API. Production: `https://api.giphy.com`.
+/// Override via `DILLA_GIPHY_API_BASE` for integration tests that point
+/// at a local wiremock server.
+fn giphy_api_base() -> String {
+    std::env::var("DILLA_GIPHY_API_BASE")
+        .unwrap_or_else(|_| "https://api.giphy.com".to_string())
+}
+
 /// Minimal percent-encoder for query-string values. We only need it for
 /// the user-supplied query and the operator's API key, both of which are
 /// short. RFC 3986 unreserved set: A-Z a-z 0-9 - _ . ~
@@ -78,15 +86,18 @@ pub async fn search(
     // limit>=2 switches to /search and returns a list — the client uses
     // this to render a small picker so the user can choose before
     // sending. Same response envelope: { results: [{ url, preview }] }.
+    let base = giphy_api_base();
     let endpoint = if limit == 1 {
         format!(
-            "https://api.giphy.com/v1/gifs/translate?api_key={}&s={}",
+            "{}/v1/gifs/translate?api_key={}&s={}",
+            base,
             percent_encode(key),
             percent_encode(q),
         )
     } else {
         format!(
-            "https://api.giphy.com/v1/gifs/search?api_key={}&q={}&limit={}&rating=pg-13",
+            "{}/v1/gifs/search?api_key={}&q={}&limit={}&rating=pg-13",
+            base,
             percent_encode(key),
             percent_encode(q),
             limit,
@@ -591,6 +602,203 @@ mod tests {
             )
             .await
             .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    // ── HTTP-level tests using wiremock so the full search() flow runs ─
+
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    use std::sync::Mutex;
+
+    // Tests below mutate DILLA_GIPHY_API_BASE which is process-global.
+    // Serialize them to avoid the env-var racing between concurrent tests.
+    static GIPHY_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn lock_env_var() -> std::sync::MutexGuard<'static, ()> {
+        // poisoned lock is fine — a panicking previous test still cleared the env var.
+        GIPHY_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    async fn seed_member_with_giphy_key(state: &AppState, key: &str) {
+        let now = db::now_str();
+        let key = key.to_string();
+        state.db.with_conn(|conn| {
+            db::create_user(conn, &db::User {
+                id: "alice".into(),
+                username: "alice".into(),
+                display_name: "Alice".into(),
+                public_key: vec![1u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_team(conn, &db::Team {
+                id: "t1".into(),
+                name: "T".into(),
+                created_by: "alice".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_member(conn, &db::Member {
+                id: "m-alice".into(),
+                team_id: "t1".into(),
+                user_id: "alice".into(),
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now.clone(),
+            })?;
+            db::set_setting(conn, "team:t1:giphy_api_key", &key)
+        }).unwrap();
+    }
+
+    fn translate_response_body() -> serde_json::Value {
+        serde_json::json!({
+            "data": {
+                "images": {
+                    "downsized": { "url": "https://media.giphy.com/x.gif" },
+                    "fixed_height_small": { "url": "https://media.giphy.com/preview.gif" }
+                },
+                "url": "https://giphy.com/gifs/x"
+            }
+        })
+    }
+
+    fn search_response_body() -> serde_json::Value {
+        serde_json::json!({
+            "data": [
+                {
+                    "images": {
+                        "downsized": { "url": "https://media.giphy.com/a.gif" },
+                        "fixed_height_small": { "url": "https://media.giphy.com/pa.gif" }
+                    },
+                },
+                {
+                    "images": {
+                        "original": { "url": "https://media.giphy.com/b.gif" }
+                    },
+                },
+                {
+                    "images": { "fixed_height": { "url": "https://media.giphy.com/c.gif" } },
+                }
+            ]
+        })
+    }
+
+    #[tokio::test]
+    async fn search_translate_happy_path_with_local_mock() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/gifs/translate"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(translate_response_body()))
+            .mount(&server)
+            .await;
+        let _env_guard = lock_env_var();
+        std::env::set_var("DILLA_GIPHY_API_BASE", server.uri());
+        let (state, _tmp) = make_state();
+        seed_member_with_giphy_key(&state, "test-key-123").await;
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(Request::get("/teams/t1/gif/search?q=cat").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        std::env::remove_var("DILLA_GIPHY_API_BASE");
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn search_with_limit_uses_search_endpoint() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/gifs/search"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(search_response_body()))
+            .mount(&server)
+            .await;
+        let _env_guard = lock_env_var();
+        std::env::set_var("DILLA_GIPHY_API_BASE", server.uri());
+        let (state, _tmp) = make_state();
+        seed_member_with_giphy_key(&state, "test-key").await;
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::get("/teams/t1/gif/search?q=cat&limit=3")
+                    .body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        std::env::remove_var("DILLA_GIPHY_API_BASE");
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn search_502_when_giphy_returns_error() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/gifs/translate"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+        let _env_guard = lock_env_var();
+        std::env::set_var("DILLA_GIPHY_API_BASE", server.uri());
+        let (state, _tmp) = make_state();
+        seed_member_with_giphy_key(&state, "key").await;
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(Request::get("/teams/t1/gif/search?q=cat").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        std::env::remove_var("DILLA_GIPHY_API_BASE");
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn search_404_when_giphy_returns_no_matches() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/gifs/translate"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({ "data": null })))
+            .mount(&server)
+            .await;
+        let _env_guard = lock_env_var();
+        std::env::set_var("DILLA_GIPHY_API_BASE", server.uri());
+        let (state, _tmp) = make_state();
+        seed_member_with_giphy_key(&state, "key").await;
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(Request::get("/teams/t1/gif/search?q=cat").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        std::env::remove_var("DILLA_GIPHY_API_BASE");
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn search_502_when_response_lacks_usable_urls() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/gifs/translate"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "data": { "no_images_at_all": true }
+                })),
+            )
+            .mount(&server)
+            .await;
+        let _env_guard = lock_env_var();
+        std::env::set_var("DILLA_GIPHY_API_BASE", server.uri());
+        let (state, _tmp) = make_state();
+        seed_member_with_giphy_key(&state, "key").await;
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(Request::get("/teams/t1/gif/search?q=cat").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        std::env::remove_var("DILLA_GIPHY_API_BASE");
         assert!(resp.status().as_u16() >= 400);
     }
 
