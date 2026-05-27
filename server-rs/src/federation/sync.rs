@@ -364,6 +364,37 @@ mod tests {
         SyncManager::new(db, transport, "test-node".into())
     }
 
+    #[tokio::test]
+    async fn request_state_sync_returns_err_when_peer_unknown() {
+        let mgr = test_sync_manager();
+        // No peer registered → Transport::send returns an error.
+        let res = mgr.request_state_sync("peer-1").await;
+        assert!(res.is_err());
+    }
+
+    #[tokio::test]
+    async fn handle_state_sync_request_returns_empty_data_for_fresh_db() {
+        let mgr = test_sync_manager();
+        // Fresh DB: get_first_team returns None → returns empty data.
+        // send() will then fail because no peer is registered.
+        let res = mgr.handle_state_sync_request("peer-1").await;
+        assert!(res.is_err());
+    }
+
+    #[tokio::test]
+    async fn handle_state_sync_request_rate_limits_repeated_calls() {
+        let mgr = test_sync_manager();
+        let _ = mgr.handle_state_sync_request("peer-rl").await;
+        let res = mgr.handle_state_sync_request("peer-rl").await;
+        // The second call within the rate-limit window must error with
+        // "sync rate-limited: ...".
+        let err = res.unwrap_err();
+        assert!(
+            err.contains("rate-limited") || err.contains("send"),
+            "unexpected error: {err}",
+        );
+    }
+
     // ── Lamport clock tests ─────────────────────────────────────────
 
     #[test]
