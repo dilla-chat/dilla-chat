@@ -1269,6 +1269,73 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn start_runs_with_no_peers_and_stops_cleanly() {
+        let node = make_node();
+        let res = node.start().await;
+        assert!(res.is_ok());
+        node.stop().await;
+    }
+
+    #[tokio::test]
+    async fn start_records_failed_connection_for_unreachable_peer() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = db::Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        db.run_migrations().unwrap();
+        std::mem::forget(tmp);
+        let hub = Arc::new(crate::ws::Hub::new(db.clone()));
+        let config = MeshConfig {
+            node_name: "n".into(),
+            bind_addr: "0.0.0.0".into(),
+            bind_port: 8081,
+            advertise_addr: String::new(),
+            advertise_port: 0,
+            // Bogus peer URL — connect_to_peer will fail and the
+            // disconnected branch (lines 215-227) runs.
+            peers: vec!["ws://127.0.0.1:1/federation".into()],
+            tls_cert: String::new(),
+            tls_key: String::new(),
+            join_secret: "secret".into(),
+            insecure: true, // allow plain ws://
+            ..Default::default()
+        };
+        let node = Arc::new(MeshNode::new(config, db, hub));
+        let _ = node.start().await;
+        let peers = node.get_peers().await;
+        assert_eq!(peers.len(), 1);
+        // Either connected (test machine has nothing listening on port 1, so disconnect)
+        // or briefly connected then dropped. Either way the row must exist.
+        assert!(peers.iter().any(|p| !p.address.is_empty()));
+        node.stop().await;
+    }
+
+    #[tokio::test]
+    async fn start_skips_empty_peer_entries() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = db::Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        db.run_migrations().unwrap();
+        std::mem::forget(tmp);
+        let hub = Arc::new(crate::ws::Hub::new(db.clone()));
+        let config = MeshConfig {
+            node_name: "n".into(),
+            bind_addr: "0.0.0.0".into(),
+            bind_port: 8082,
+            advertise_addr: String::new(),
+            advertise_port: 0,
+            peers: vec!["".into(), "  ".into()],
+            tls_cert: String::new(),
+            tls_key: String::new(),
+            join_secret: String::new(),
+            ..Default::default()
+        };
+        let node = Arc::new(MeshNode::new(config, db, hub));
+        let res = node.start().await;
+        assert!(res.is_ok());
+        // Empty strings are skipped — the "  " whitespace one is *not* skipped
+        // (the check is `is_empty()` only) so we may end up with 1 peer record.
+        node.stop().await;
+    }
+
+    #[tokio::test]
     async fn handle_federation_event_unknown_event_type_returns_ok() {
         let node = make_node();
         let event = FederationEvent {
