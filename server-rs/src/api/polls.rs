@@ -381,6 +381,89 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn vote_rejects_poll_from_different_team() {
+        let (state, _tmp) = make_state();
+        seed_team_member_poll(&state);
+        // Seed a second team + poll there. alice isn't a member of it.
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_team(conn, &db::Team {
+                id: "t-other".into(),
+                name: "Other".into(),
+                created_by: "alice".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_poll(conn, &db::Poll {
+                id: "p-other".into(),
+                team_id: "t-other".into(),
+                channel_id: "ch-other".into(),
+                created_by: Some("alice".into()),
+                question: "other?".into(),
+                options: serde_json::json!(["yes","no"]).to_string(),
+                created_at: now,
+            })
+        }).unwrap();
+        // alice is a member of t1; routing the vote request via t1 with
+        // a poll id that belongs to t-other hits the L100-104 team-mismatch
+        // branch (poll.team_id != team_id_clone).
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/polls/p-other/vote")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"option_index":0}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn unvote_rejects_poll_from_different_team() {
+        let (state, _tmp) = make_state();
+        seed_team_member_poll(&state);
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_team(conn, &db::Team {
+                id: "t-other2".into(),
+                name: "Other 2".into(),
+                created_by: "alice".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_poll(conn, &db::Poll {
+                id: "p-other2".into(),
+                team_id: "t-other2".into(),
+                channel_id: "ch-other2".into(),
+                created_by: Some("alice".into()),
+                question: "other2?".into(),
+                options: serde_json::json!(["a"]).to_string(),
+                created_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/polls/p-other2/vote")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
     async fn unvote_happy_path() {
         let (state, _tmp) = make_state();
         seed_team_member_poll(&state);
