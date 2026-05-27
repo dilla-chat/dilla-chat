@@ -1484,6 +1484,34 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn handle_federation_event_member_joined_returns_ok() {
+        let node = make_node();
+        let event = FederationEvent {
+            event_type: FED_EVENT_MEMBER_JOINED.to_string(),
+            node_name: "peer-node".into(),
+            timestamp: 1,
+            payload: serde_json::json!({"peer_addr":"peer-1"}),
+        };
+        let prov = transport::EventProvenance { origin_node_id: None, seq: None, event_id: None };
+        let res = node.handle_federation_event("peer-1", event, prov).await;
+        assert!(res.is_ok());
+    }
+
+    #[tokio::test]
+    async fn handle_federation_event_member_left_returns_ok() {
+        let node = make_node();
+        let event = FederationEvent {
+            event_type: FED_EVENT_MEMBER_LEFT.to_string(),
+            node_name: "peer-node".into(),
+            timestamp: 1,
+            payload: serde_json::json!({"peer_addr":"peer-1"}),
+        };
+        let prov = transport::EventProvenance { origin_node_id: None, seq: None, event_id: None };
+        let res = node.handle_federation_event("peer-1", event, prov).await;
+        assert!(res.is_ok());
+    }
+
+    #[tokio::test]
     async fn handle_federation_event_unknown_event_type_returns_ok() {
         let node = make_node();
         let event = FederationEvent {
