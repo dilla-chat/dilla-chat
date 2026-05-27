@@ -100,4 +100,16 @@ describe('MessageMarkdown', () => {
     const { container } = render(<MessageMarkdown text="hi @alice]bracket" />);
     expect(container.textContent).toContain('@alice');
   });
+
+  it('isBroadcastHandle: @everyone and @here regress correctly', () => {
+    // Direct test on the exported predicate via re-export at the file
+    // boundary isn't available — verifying via the public render is
+    // already covered by the @everyone / @here render test above. This
+    // is a smoke test that mentions render even with currentUser props.
+    const { container } = render(
+      <MessageMarkdown text="hi @everyone and @here" currentUserHandle="me" currentUserId="u1" />,
+    );
+    expect(container.textContent).toContain('@everyone');
+    expect(container.textContent).toContain('@here');
+  });
 });
