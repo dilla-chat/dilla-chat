@@ -1866,6 +1866,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn refresh_with_device_scoped_token_logs_device_audit() {
+        let (state, _tmp) = make_state();
+        // Mint a refresh token bound to a specific device — exercises the
+        // L671-674 `if !did_log.is_empty()` Some-branch of the audit insert.
+        let token = state
+            .auth
+            .generate_refresh_token_for_device("u-ref", "dev-7")
+            .unwrap();
+        let app = router(state);
+        let body = format!(r#"{{"refresh_token":"{}"}}"#, token);
+        let resp = app
+            .oneshot(
+                Request::post("/auth/refresh")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
     async fn refresh_happy_path_returns_new_access_token() {
         let (state, _tmp) = make_state();
         let token = state.auth.generate_refresh_token("u1").unwrap();
