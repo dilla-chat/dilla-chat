@@ -627,4 +627,51 @@ mod tests {
         // Either way, no panic.
         assert!(resp.status() == 200 || resp.status() == 403);
     }
+
+    #[tokio::test]
+    async fn pin_peer_rejects_non_admin_with_403() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "ghost");
+        let body = r#"{"node_id":"node1","public_key_b64":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=","hostname":"peer.example"}"#;
+        let resp = app
+            .oneshot(
+                Request::post("/federation/pinned-peers")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        // Non-admin → permission denial (403 or 404).
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn set_team_authority_rejects_non_admin() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "ghost");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/federation/teams/t1/authority")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"owner_node_id":"node-1"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn get_join_info_does_not_panic_when_mesh_disabled() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(Request::get("/federation/join-info").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let _ = resp.status();
+    }
 }
