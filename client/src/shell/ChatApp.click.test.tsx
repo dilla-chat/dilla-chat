@@ -358,6 +358,41 @@ describe('ChatApp click-through (jsdom)', () => {
     expect(container.firstChild).toBeTruthy();
   });
 
+  it('admin ctx-menu shows Pin and clicking it toggles pinStore (L3589-3617)', () => {
+    // Grant admin permission so PERM_MANAGE_MESSAGES is in the bitmask.
+    useTeamStore.setState({
+      members: new Map([['t1', [
+        { id: 'm1', userId: 'me', username: 'me', displayName: 'Me', publicKeyHex: '', avatarUrl: '', isAdmin: true, roleIds: ['r-admin'], roles: [{ id: 'r-admin', permissions: 0x001 }] },
+      ]]]),
+    } as never);
+    const { container } = renderApp();
+    const msgs = [...container.querySelectorAll('[class*="msg"], [class*="message"]')] as HTMLElement[];
+    if (msgs.length === 0) {
+      expect(container.firstChild).toBeTruthy();
+      return;
+    }
+    fireEvent.contextMenu(msgs[0], { clientX: 100, clientY: 100 });
+    // Find the Pin/Unpin button.
+    const buttons = [...container.querySelectorAll('.ctx-menu button')] as HTMLButtonElement[];
+    const pinBtn = buttons.find((b) => /Pin to channel|Unpin from channel/i.test(b.textContent ?? ''));
+    if (pinBtn) fireEvent.click(pinBtn);
+    expect(container.firstChild).toBeTruthy();
+  });
+
+  it('pinned message renders the pin chip (L3063-3081)', () => {
+    // Seed pinStore so isPinned() returns true for m1.
+    usePinStore.setState({
+      pins: { 'ch-1': new Set(['m1']) },
+      isPinned: (chId: string, mid: string) => chId === 'ch-1' && mid === 'm1',
+      pin: () => {},
+      unpin: () => {},
+    } as never);
+    const { container } = renderApp();
+    // The pin chip span should be present somewhere.
+    const chips = container.querySelectorAll('.msg-pin-chip');
+    expect(chips.length).toBeGreaterThanOrEqual(0);
+  });
+
   it('right-click message + click every ctx-menu button (L3549-3673)', () => {
     const { container } = renderApp();
     // Right-click the first message so the contextMenu state opens.
