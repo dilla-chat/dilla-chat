@@ -526,4 +526,92 @@ mod tests {
             .unwrap();
         assert!(resp.status().as_u16() >= 400);
     }
+
+    #[tokio::test]
+    async fn upload_returns_403_for_non_member() {
+        let (state, _tmp) = make_state();
+        let app = Router::new()
+            .route("/teams/{team_id}/attachments", axum::routing::post(upload))
+            .layer(axum::Extension(UserId("ghost".to_string())))
+            .with_state(state);
+        // Minimal multipart body — just enough to pass the multipart parser
+        // before the membership check rejects us.
+        let boundary = "----test-boundary";
+        let body = format!(
+            "--{}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.bin\"\r\nContent-Type: application/octet-stream\r\n\r\nhello\r\n--{}--\r\n",
+            boundary, boundary
+        );
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/attachments")
+                    .header("content-type", format!("multipart/form-data; boundary={}", boundary))
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 403);
+    }
+
+    #[tokio::test]
+    async fn upload_rejects_invalid_team_id() {
+        let (state, _tmp) = make_state();
+        // Seed a real member so we pass the membership gate, then hit the
+        // path-traversal check.
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_user(conn, &db::User {
+                id: "alice".into(),
+                username: "alice".into(),
+                display_name: "Alice".into(),
+                public_key: vec![1u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_team(conn, &db::Team {
+                id: "../etc".into(),
+                name: "T".into(),
+                description: String::new(),
+                icon_url: String::new(),
+                created_by: "alice".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                federated: false,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_member(conn, &db::Member {
+                id: "m1".into(),
+                team_id: "../etc".into(),
+                user_id: "alice".into(),
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now,
+            })
+        }).unwrap();
+        let app = Router::new()
+            .route("/teams/{team_id}/attachments", axum::routing::post(upload))
+            .layer(axum::Extension(UserId("alice".to_string())))
+            .with_state(state);
+        let boundary = "----b";
+        let body = format!(
+            "--{}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"x\"\r\nContent-Type: text/plain\r\n\r\nok\r\n--{}--\r\n",
+            boundary, boundary
+        );
+        let resp = app
+            .oneshot(
+                Request::post("/teams/..%2Fetc/attachments")
+                    .header("content-type", format!("multipart/form-data; boundary={}", boundary))
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        // Either 400 (path traversal rejected) or 403/404. Just smoke.
+        assert!(resp.status().as_u16() >= 400);
+    }
 }
