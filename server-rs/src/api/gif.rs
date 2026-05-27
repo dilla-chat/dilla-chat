@@ -522,4 +522,86 @@ mod tests {
             .unwrap();
         assert!(resp.status().as_u16() >= 400);
     }
+
+    fn seed_member(state: &AppState, uid: &str, tid: &str) {
+        let now = db::now_str();
+        let uid = uid.to_string();
+        let tid = tid.to_string();
+        state.db.with_conn(|conn| {
+            db::create_user(conn, &db::User {
+                id: uid.clone(),
+                username: uid.clone(),
+                display_name: uid.clone(),
+                public_key: uid.as_bytes().iter().chain([0u8; 32].iter()).take(32).copied().collect(),
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_team(conn, &db::Team {
+                id: tid.clone(),
+                name: "T".into(),
+                description: String::new(),
+                icon_url: String::new(),
+                created_by: uid.clone(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                federated: false,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_member(conn, &db::Member {
+                id: format!("m-{}-{}", uid, tid),
+                team_id: tid,
+                user_id: uid,
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now,
+            })
+        }).unwrap();
+    }
+
+    #[tokio::test]
+    async fn search_returns_503_when_key_not_configured() {
+        let (state, _tmp) = make_state();
+        seed_member(&state, "alice", "t1");
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(Request::get("/teams/t1/gif/search?q=cat").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 503);
+    }
+
+    #[tokio::test]
+    async fn embed_rejects_invalid_team_id_with_traversal() {
+        let (state, _tmp) = make_state();
+        seed_member(&state, "alice", "../etc");
+        let app = router(state, "alice");
+        // Even though giphy_url and member check pass, the team_id traversal
+        // guard should fire (or one of the upstream guards). Just assert 4xx.
+        let resp = app
+            .oneshot(
+                Request::post("/teams/..%2Fetc/gif/embed")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"url":"https://media.giphy.com/x.gif"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn search_rejects_whitespace_only_query() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(Request::get("/teams/t1/gif/search?q=%20%20%20").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
 }
