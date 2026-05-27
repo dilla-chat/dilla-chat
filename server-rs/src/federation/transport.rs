@@ -813,6 +813,99 @@ mod tests {
         );
     }
 
+    #[test]
+    fn validate_v3_handshake_rejects_malformed_nonce_base64() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = crate::db::Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        db.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;")).unwrap();
+        db.run_migrations().unwrap();
+        let identity = Arc::new(crate::federation::identity::ensure(&db).unwrap());
+        let t = Transport::with_settings_full(
+            String::new(), false, Some(identity), false, Some(db),
+        );
+        let hs = r#"{"v":3,"node_id":"n1","nonce":"!!!not-base64","signature":""}"#;
+        assert_eq!(
+            t.validate_v3_handshake(hs),
+            Err("v3 nonce not valid base64"),
+        );
+    }
+
+    #[test]
+    fn validate_v3_handshake_rejects_short_nonce() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = crate::db::Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        db.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;")).unwrap();
+        db.run_migrations().unwrap();
+        let identity = Arc::new(crate::federation::identity::ensure(&db).unwrap());
+        let t = Transport::with_settings_full(
+            String::new(), false, Some(identity), false, Some(db),
+        );
+        // Valid base64 but only 3 bytes after decode → too short
+        let hs = r#"{"v":3,"node_id":"n1","nonce":"YWJj","signature":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}"#;
+        assert_eq!(
+            t.validate_v3_handshake(hs),
+            Err("v3 nonce too short"),
+        );
+    }
+
+    #[test]
+    fn validate_v3_handshake_rejects_malformed_signature_base64() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = crate::db::Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        db.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;")).unwrap();
+        db.run_migrations().unwrap();
+        let identity = Arc::new(crate::federation::identity::ensure(&db).unwrap());
+        let t = Transport::with_settings_full(
+            String::new(), false, Some(identity), false, Some(db),
+        );
+        let hs = r#"{"v":3,"node_id":"n1","nonce":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=","signature":"!!!bad"}"#;
+        assert_eq!(
+            t.validate_v3_handshake(hs),
+            Err("v3 signature not valid base64"),
+        );
+    }
+
+    #[test]
+    fn validate_v3_handshake_rejects_wrong_length_signature() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = crate::db::Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        db.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;")).unwrap();
+        db.run_migrations().unwrap();
+        let identity = Arc::new(crate::federation::identity::ensure(&db).unwrap());
+        let t = Transport::with_settings_full(
+            String::new(), false, Some(identity), false, Some(db),
+        );
+        // Valid base64 nonce (24 bytes) + signature only 4 bytes after decode → wrong length
+        let hs = r#"{"v":3,"node_id":"n1","nonce":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=","signature":"AAAAAA=="}"#;
+        assert_eq!(
+            t.validate_v3_handshake(hs),
+            Err("v3 signature wrong length"),
+        );
+    }
+
+    #[test]
+    fn validate_v3_handshake_rejects_unpinned_peer() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = crate::db::Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        db.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;")).unwrap();
+        db.run_migrations().unwrap();
+        let identity = Arc::new(crate::federation::identity::ensure(&db).unwrap());
+        let t = Transport::with_settings_full(
+            String::new(), false, Some(identity), false, Some(db),
+        );
+        // Well-formed body but the originator node_id isn't in the pinned-peer table.
+        // Signature: 64 zero bytes = base64 "AAAA"*21 + "AA==" (88 chars total)
+        let sig_b64 = "A".repeat(84) + "AA==";
+        let hs = format!(
+            r#"{{"v":3,"node_id":"unpinned-node","nonce":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=","signature":"{}"}}"#,
+            sig_b64
+        );
+        assert_eq!(
+            t.validate_v3_handshake(&hs),
+            Err("v3 origin peer not pinned"),
+        );
+    }
+
     // ── send / broadcast / peer_statuses / stop ─────────────────────
 
     #[tokio::test]
