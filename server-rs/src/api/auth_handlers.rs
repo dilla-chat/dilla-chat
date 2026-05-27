@@ -2019,6 +2019,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn logout_happy_path_revokes_valid_token() {
+        let (state, _tmp) = make_state();
+        // Generate a valid JWT directly via the auth service.
+        let token = state.auth.generate_jwt("u-logout").unwrap();
+        let app = router(state);
+        let resp = app
+            .oneshot(
+                Request::post("/auth/logout")
+                    .header("authorization", format!("Bearer {}", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
     async fn verify_rejects_when_user_device_is_revoked() {
         use base64::Engine as _;
         use ed25519_dalek::{Signer, SigningKey};
