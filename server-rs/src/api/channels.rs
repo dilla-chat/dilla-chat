@@ -1196,6 +1196,120 @@ mod axum_tests {
     }
 
     #[tokio::test]
+    async fn update_channel_category_creates_new_group_when_unknown() {
+        let (state, _tmp) = make_state();
+        seed_alice_team_and_channel(&state);
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/teams/t1/channels/ch1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"category":"Engineering"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn update_channel_category_empty_string_clears_group() {
+        let (state, _tmp) = make_state();
+        seed_alice_team_and_channel(&state);
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/teams/t1/channels/ch1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"category":""}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn set_access_happy_path_with_real_role() {
+        let (state, _tmp) = make_state();
+        seed_alice_team_and_channel(&state);
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_role(conn, &db::Role {
+                id: "r1".into(),
+                team_id: "t1".into(),
+                name: "Mod".into(),
+                color: "#000".into(),
+                position: 1,
+                permissions: 0,
+                is_default: false,
+                created_at: now.clone(),
+                updated_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/teams/t1/channels/ch1/access")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"role_ids":["r1"]}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn set_access_rejects_role_from_different_team() {
+        let (state, _tmp) = make_state();
+        seed_alice_team_and_channel(&state);
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_team(conn, &db::Team {
+                id: "t-other".into(),
+                name: "Other".into(),
+                created_by: "alice".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_role(conn, &db::Role {
+                id: "r-other".into(),
+                team_id: "t-other".into(),
+                name: "Other".into(),
+                color: "#000".into(),
+                position: 1,
+                permissions: 0,
+                is_default: false,
+                created_at: now.clone(),
+                updated_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/teams/t1/channels/ch1/access")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"role_ids":["r-other"]}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
     async fn delete_channel_happy_path() {
         let (state, _tmp) = make_state();
         seed_alice_team_and_channel(&state);
