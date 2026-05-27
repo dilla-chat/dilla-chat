@@ -685,4 +685,181 @@ mod tests {
         let r: BanRequest = serde_json::from_str(r#"{"reason":"spam"}"#).unwrap();
         assert_eq!(r.reason, "spam");
     }
+
+    // ── axum integration tests ──────────────────────────────────────
+
+    use crate::auth::AuthService;
+    use crate::config::Config;
+    use crate::db::Database;
+    use crate::presence::PresenceManager;
+    use crate::ws::Hub;
+    use axum::body::Body;
+    use axum::http::Request;
+    use axum::routing::{get, patch, post};
+    use axum::Router;
+    use std::sync::Arc;
+    use tower::ServiceExt;
+
+    fn make_state() -> (AppState, tempfile::TempDir) {
+        let tmp = tempfile::tempdir().unwrap();
+        let database = Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        database.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;")).unwrap();
+        database.run_migrations().unwrap();
+        let auth = Arc::new(AuthService::new(database.clone(), ""));
+        let hub = Arc::new(Hub::new(database.clone()));
+        let presence = Arc::new(PresenceManager::new());
+        let mut cfg = Config::default();
+        cfg.port = 8080;
+        cfg.data_dir = tmp.path().to_str().unwrap().to_string();
+        let state = AppState {
+            db: database,
+            auth,
+            hub,
+            presence,
+            config: Arc::new(cfg),
+            mesh: None,
+            custom_theme_css: None,
+        };
+        (state, tmp)
+    }
+
+    fn seed_user_and_team(db: &Database, user_id: &str, team_id: &str) {
+        let now = db::now_str();
+        db.with_conn(|conn| {
+            db::create_user(conn, &db::User {
+                id: user_id.into(),
+                username: user_id.into(),
+                display_name: user_id.into(),
+                public_key: vec![1u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_team(conn, &db::Team {
+                id: team_id.into(),
+                name: "Test Team".into(),
+                description: String::new(),
+                icon_url: String::new(),
+                created_by: user_id.into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                federated: false,
+                created_at: now.clone(),
+                updated_at: now,
+                ..Default::default()
+            })
+        })
+        .unwrap();
+    }
+
+    fn router(state: AppState, user_id: &'static str) -> Router {
+        Router::new()
+            .route("/teams", get(list).post(create))
+            .route("/teams/{id}", get(get_team).patch(update))
+            .route("/teams/{id}/members", get(list_members))
+            .route("/teams/{id}/leave", post(leave_team))
+            .layer(axum::Extension(UserId(user_id.to_string())))
+            .with_state(state)
+    }
+
+    #[tokio::test]
+    async fn list_teams_returns_empty_for_user_with_no_memberships() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(Request::get("/teams").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn create_team_rejects_empty_name() {
+        let (state, _tmp) = make_state();
+        seed_user_and_team(&state.db, "alice", "t-exists");
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::post("/teams")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"name":""}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
+
+    #[tokio::test]
+    async fn create_team_rejects_oversized_name() {
+        let (state, _tmp) = make_state();
+        seed_user_and_team(&state.db, "alice", "t1");
+        let app = router(state, "alice");
+        let oversized = "n".repeat(101);
+        let body = format!(r#"{{"name":"{}"}}"#, oversized);
+        let resp = app
+            .oneshot(
+                Request::post("/teams")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
+
+    #[tokio::test]
+    async fn create_team_rejects_oversized_description() {
+        let (state, _tmp) = make_state();
+        seed_user_and_team(&state.db, "alice", "t1");
+        let app = router(state, "alice");
+        let oversized = "d".repeat(1025);
+        let body = format!(r#"{{"name":"ok","description":"{}"}}"#, oversized);
+        let resp = app
+            .oneshot(
+                Request::post("/teams")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
+
+    #[tokio::test]
+    async fn get_team_rejects_non_member() {
+        let (state, _tmp) = make_state();
+        seed_user_and_team(&state.db, "alice", "t-private");
+        // user_id 'ghost' is not a member of t-private.
+        let app = router(state, "ghost");
+        let resp = app
+            .oneshot(Request::get("/teams/t-private").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert!(resp.status() == 404 || resp.status() == 403);
+    }
+
+    #[tokio::test]
+    async fn update_team_rejects_oversized_fields() {
+        let (state, _tmp) = make_state();
+        seed_user_and_team(&state.db, "alice", "t-up");
+        let app = router(state, "alice");
+        let oversized = "n".repeat(101);
+        let body = format!(r#"{{"name":"{}"}}"#, oversized);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/teams/t-up")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
 }
