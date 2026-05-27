@@ -1259,6 +1259,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stop_closes_connected_peers() {
+        let (listener, port) = start_tcp_listener().await;
+        let transport = Transport::with_settings(String::new(), true);
+
+        let client_handle = tokio::spawn(async move {
+            let url = format!("ws://127.0.0.1:{}", port);
+            let (mut ws, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+            // Read until close (which the server-side stop() will send).
+            while let Some(msg) = ws.next().await {
+                match msg {
+                    Ok(Message::Close(_)) => break,
+                    Err(_) => break,
+                    _ => {}
+                }
+            }
+        });
+
+        let (tcp_stream, _) = listener.accept().await.unwrap();
+        let ws_stream = tokio_tungstenite::accept_async(MaybeTlsStream::Plain(tcp_stream))
+            .await
+            .unwrap();
+        transport.handle_incoming("p1", ws_stream).await;
+
+        // Stop the transport — this should send Close(None) to the
+        // registered peer and clear the conns map.
+        transport.stop().await;
+        let conns = transport.conns.read().await;
+        assert!(conns.is_empty());
+
+        let _ = client_handle.await;
+    }
+
+    #[tokio::test]
     async fn read_pump_dispatches_legacy_v1_event_to_handler() {
         use std::sync::atomic::{AtomicBool, Ordering};
         let (listener, port) = start_tcp_listener().await;
