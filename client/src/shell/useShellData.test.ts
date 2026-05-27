@@ -427,6 +427,71 @@ describe('useShellData', () => {
     expect(msg.attachment.src).toContain('att-1');
   });
 
+  it('MESSAGES includes channel polls mapped to kind=poll (L356-371)', () => {
+    useTeamStore.setState({
+      activeTeamId: 't1',
+      teams: new Map([['t1', { id: 't1', name: 'T' }]]),
+      channels: new Map([['t1', [{ id: 'ch-1', name: 'g', type: 'text' }]]]),
+      members: new Map([['t1', []]]),
+    } as never);
+    useAuthStore.setState({ teams: new Map([['t1', { user: { id: 'me' } }]]) } as never);
+    usePollStore.setState({
+      polls: new Map([
+        ['ch-1', [
+          {
+            id: 'p1',
+            createdBy: 'u-creator',
+            createdAt: '2026-02-01T00:00:00Z',
+            question: 'lunch?',
+            options: ['pizza', 'salad'],
+            tallies: [3, 1],
+            voters: [['me', 'u2', 'u3'], ['u4']],
+          },
+        ]],
+      ]),
+    } as never);
+    const { result } = renderHook(() => useShellData());
+    const msgs = result.current.MESSAGES['ch-1'];
+    const poll = msgs.find((m: { kind?: string }) => m.kind === 'poll') as Record<string, unknown>;
+    expect(poll).toBeDefined();
+    expect(poll.id).toBe('p1');
+    expect(poll.question).toBe('lunch?');
+    expect(poll.author).toBe('u-creator');
+    expect((poll.options as Array<{ label: string; votes: number; mine: boolean }>)).toEqual([
+      { label: 'pizza', votes: 3, mine: true },
+      { label: 'salad', votes: 1, mine: false },
+    ]);
+  });
+
+  it('channel poll without createdBy or createdAt uses defaults (L359-360)', () => {
+    useTeamStore.setState({
+      activeTeamId: 't1',
+      teams: new Map([['t1', { id: 't1', name: 'T' }]]),
+      channels: new Map([['t1', [{ id: 'ch-1', name: 'g', type: 'text' }]]]),
+      members: new Map([['t1', []]]),
+    } as never);
+    useAuthStore.setState({ teams: new Map([['t1', { user: { id: 'me' } }]]) } as never);
+    usePollStore.setState({
+      polls: new Map([
+        ['ch-1', [
+          {
+            id: 'p2',
+            createdBy: '',
+            createdAt: '',
+            question: 'binary?',
+            options: ['a', 'b'],
+            tallies: [0, 0],
+            voters: [[], []],
+          },
+        ]],
+      ]),
+    } as never);
+    const { result } = renderHook(() => useShellData());
+    const poll = result.current.MESSAGES['ch-1'].find((m: { kind?: string }) => m.kind === 'poll') as Record<string, unknown>;
+    expect(poll.author).toBe('');
+    expect(poll.at).toBeInstanceOf(Date);
+  });
+
   it('the memo recomputes when activeTeamId changes', () => {
     useTeamStore.setState({
       teams: new Map([
