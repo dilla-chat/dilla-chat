@@ -1214,6 +1214,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn read_pump_dispatches_legacy_v1_event_to_handler() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let (listener, port) = start_tcp_listener().await;
+        let transport = Transport::with_settings(String::new(), true);
+
+        // Install a handler that flips a flag when an event arrives.
+        let received = Arc::new(AtomicBool::new(false));
+        let received_clone = Arc::clone(&received);
+        transport
+            .set_on_event(Arc::new(move |_peer, _event, _prov| {
+                received_clone.store(true, Ordering::SeqCst);
+            }))
+            .await;
+
+        let client_handle = tokio::spawn(async move {
+            let url = format!("ws://127.0.0.1:{}", port);
+            let (mut ws, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+            // Send a v1-shaped federation event. `event_type` is wire-renamed to "type".
+            let event = serde_json::json!({
+                "type": "test",
+                "node_name": "remote",
+                "timestamp": 42,
+                "payload": null,
+            });
+            // Small delay so the server-side handle_incoming gets past
+            // its setup and the read pump is listening when we send.
+            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+            ws.send(Message::Text(event.to_string().into())).await.unwrap();
+            // Give the read pump time to dispatch.
+            tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
+            let _ = ws.close(None).await;
+        });
+
+        let (tcp_stream, _) = listener.accept().await.unwrap();
+        let ws_stream = tokio_tungstenite::accept_async(MaybeTlsStream::Plain(tcp_stream))
+            .await
+            .unwrap();
+        transport.handle_incoming("relay-peer", ws_stream).await;
+
+        // Wait for the spawned read pump to process the event.
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+        assert!(received.load(Ordering::SeqCst), "expected on_event handler to fire");
+        let _ = client_handle.await;
+    }
+
+    #[tokio::test]
     async fn send_succeeds_when_peer_connected_after_handshake() {
         let (listener, port) = start_tcp_listener().await;
         let transport = Transport::with_settings(String::new(), true);
