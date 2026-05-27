@@ -283,6 +283,79 @@ describe('ChannelSettingsModal deep', () => {
     for (const b of [...container.querySelectorAll('button')] as HTMLButtonElement[]) try { fireEvent.click(b); } catch { /* */ }
     expect(container.firstChild).toBeTruthy();
   });
+
+  it('Save sends topic + slow + category to api.updateChannel', async () => {
+    apiMocks.updateChannel.mockResolvedValueOnce({});
+    const onClose = vi.fn();
+    const { container } = render(wrap(<ChannelSettingsModal channel={channel} onClose={onClose} />));
+    const inputs = [...container.querySelectorAll('input')] as HTMLInputElement[];
+    // First input is topic, third is slow.
+    fireEvent.change(inputs[0], { target: { value: 'new topic' } });
+    if (inputs[2]) fireEvent.change(inputs[2], { target: { value: '10' } });
+    const save = Array.from(container.querySelectorAll('button')).find((b) => /^save/i.test((b.textContent ?? '').trim())) as HTMLButtonElement;
+    fireEvent.click(save);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(apiMocks.updateChannel).toHaveBeenCalled();
+    const args = apiMocks.updateChannel.mock.calls[0];
+    expect(args[0]).toBe('t1');
+    expect(args[1]).toBe('ch-1');
+    expect((args[2] as Record<string, unknown>).topic).toBe('new topic');
+  });
+
+  it('Save handles API error', async () => {
+    apiMocks.updateChannel.mockRejectedValueOnce(new Error('perm denied'));
+    const onClose = vi.fn();
+    const { container } = render(wrap(<ChannelSettingsModal channel={channel} onClose={onClose} />));
+    const save = Array.from(container.querySelectorAll('button')).find((b) => /^save/i.test((b.textContent ?? '').trim())) as HTMLButtonElement;
+    fireEvent.click(save);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('perm denied');
+  });
+
+  it('Delete flow: confirm → remove calls api.deleteChannel', async () => {
+    apiMocks.deleteChannel.mockResolvedValueOnce(undefined);
+    useTeamStore.setState({
+      activeTeamId: 't1',
+      activeChannelId: 'ch-1',
+      channels: new Map([['t1', [{ id: 'ch-1', teamId: 't1', name: 'general', type: 'text' }, { id: 'ch-2', teamId: 't1', name: 'random', type: 'text' }] as never]]),
+      groups: new Map([['t1', []]]),
+    } as never);
+    const onClose = vi.fn();
+    const { container } = render(wrap(<ChannelSettingsModal channel={channel} onClose={onClose} />));
+    fireEvent.click(
+      Array.from(container.querySelectorAll('button')).find(
+        (b) => /delete kanal…/i.test(b.textContent ?? ''),
+      ) as HTMLButtonElement,
+    );
+    fireEvent.click(
+      Array.from(container.querySelectorAll('button')).find(
+        (b) => (b.textContent ?? '').trim() === 'Delete kanal',
+      ) as HTMLButtonElement,
+    );
+    await new Promise((r) => setTimeout(r, 5));
+    expect(apiMocks.deleteChannel).toHaveBeenCalledWith('t1', 'ch-1');
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('Delete flow: api error stays in modal', async () => {
+    apiMocks.deleteChannel.mockRejectedValueOnce(new Error('cannot delete'));
+    const onClose = vi.fn();
+    const { container } = render(wrap(<ChannelSettingsModal channel={channel} onClose={onClose} />));
+    fireEvent.click(
+      Array.from(container.querySelectorAll('button')).find(
+        (b) => /delete kanal…/i.test(b.textContent ?? ''),
+      ) as HTMLButtonElement,
+    );
+    fireEvent.click(
+      Array.from(container.querySelectorAll('button')).find(
+        (b) => (b.textContent ?? '').trim() === 'Delete kanal',
+      ) as HTMLButtonElement,
+    );
+    await new Promise((r) => setTimeout(r, 5));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('cannot delete');
+  });
 });
 
 describe('ChannelAccessModal deep', () => {
