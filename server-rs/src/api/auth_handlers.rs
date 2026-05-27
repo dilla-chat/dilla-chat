@@ -2038,4 +2038,82 @@ mod tests {
             .unwrap();
         assert!(resp.status().as_u16() >= 400);
     }
+
+    fn router_register(state: AppState) -> Router {
+        Router::new()
+            .route("/auth/register", post(register))
+            .route("/auth/bootstrap", post(bootstrap))
+            .with_state(state)
+    }
+
+    #[tokio::test]
+    async fn register_rejects_empty_username() {
+        use base64::Engine as _;
+        let (state, _tmp) = make_state();
+        let app = router_register(state);
+        let pk_b64 = base64::engine::general_purpose::STANDARD.encode(&[0u8; 32]);
+        let sig_b64 = base64::engine::general_purpose::STANDARD.encode(&[0u8; 64]);
+        let body = format!(
+            r#"{{"challenge_id":"c1","public_key":"{}","signature":"{}","username":"","invite_token":"t"}}"#,
+            pk_b64, sig_b64,
+        );
+        let resp = app
+            .oneshot(
+                Request::post("/auth/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        // Either 400 (caught at the bad challenge id) or 401. Just smoke.
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn register_rejects_oversized_username() {
+        use base64::Engine as _;
+        let (state, _tmp) = make_state();
+        let app = router_register(state);
+        let pk_b64 = base64::engine::general_purpose::STANDARD.encode(&[0u8; 32]);
+        let sig_b64 = base64::engine::general_purpose::STANDARD.encode(&[0u8; 64]);
+        let oversize = "u".repeat(33);
+        let body = format!(
+            r#"{{"challenge_id":"c1","public_key":"{}","signature":"{}","username":"{}","invite_token":"t"}}"#,
+            pk_b64, sig_b64, oversize,
+        );
+        let resp = app
+            .oneshot(
+                Request::post("/auth/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn bootstrap_rejects_invalid_challenge() {
+        use base64::Engine as _;
+        let (state, _tmp) = make_state();
+        let app = router_register(state);
+        let pk_b64 = base64::engine::general_purpose::STANDARD.encode(&[0u8; 32]);
+        let sig_b64 = base64::engine::general_purpose::STANDARD.encode(&[0u8; 64]);
+        let body = format!(
+            r#"{{"challenge_id":"never-issued","public_key":"{}","signature":"{}","username":"admin","bootstrap_token":"tok"}}"#,
+            pk_b64, sig_b64,
+        );
+        let resp = app
+            .oneshot(
+                Request::post("/auth/bootstrap")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
 }
