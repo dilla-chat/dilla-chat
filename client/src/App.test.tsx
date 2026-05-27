@@ -2,8 +2,6 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
-
 vi.mock('./i18n', () => ({}));
 vi.mock('./services/telemetry', () => ({ recordException: vi.fn() }));
 vi.mock('./services/keyStore', () => ({ hasIdentity: vi.fn(async () => false) }));

@@ -23,7 +23,7 @@ describe('SearchPalette navigation + interactions', () => {
   });
 
   it('ArrowDown advances selected hit', () => {
-    const { container } = render(
+    render(
       <SearchPalette open onClose={onClose} scopedChannelName="general" search={search} onSelectHit={onSelectHit} />,
     );
     const input = document.querySelector('input') as HTMLInputElement;
@@ -34,7 +34,7 @@ describe('SearchPalette navigation + interactions', () => {
   });
 
   it('ArrowUp stays at 0 from the top', () => {
-    const { container } = render(
+    render(
       <SearchPalette open onClose={onClose} scopedChannelName="general" search={search} onSelectHit={onSelectHit} />,
     );
     const input = document.querySelector('input') as HTMLInputElement;
@@ -48,7 +48,7 @@ describe('SearchPalette navigation + interactions', () => {
   });
 
   it('mouseEnter on a hit sets it as selected', () => {
-    const { container } = render(
+    render(
       <SearchPalette open onClose={onClose} scopedChannelName="general" search={search} onSelectHit={onSelectHit} />,
     );
     fireEvent.change(document.querySelector('input') as HTMLInputElement, { target: { value: 'world' } });
@@ -58,7 +58,7 @@ describe('SearchPalette navigation + interactions', () => {
   });
 
   it('clicking a hit calls onSelectHit + onClose', () => {
-    const { container } = render(
+    render(
       <SearchPalette open onClose={onClose} scopedChannelName="general" search={search} onSelectHit={onSelectHit} />,
     );
     fireEvent.change(document.querySelector('input') as HTMLInputElement, { target: { value: 'world' } });
@@ -77,7 +77,7 @@ describe('SearchPalette navigation + interactions', () => {
   });
 
   it('shows "No matches" when query is set but no hits', () => {
-    const { container } = render(
+    render(
       <SearchPalette open onClose={onClose} scopedChannelName="general" search={() => []} onSelectHit={onSelectHit} />,
     );
     fireEvent.change(document.querySelector('input') as HTMLInputElement, { target: { value: 'nothing' } });
