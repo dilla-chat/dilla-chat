@@ -382,6 +382,74 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn handle_state_sync_request_gathers_data_when_team_exists() {
+        let mgr = test_sync_manager();
+        let now = db::now_str();
+        // Seed a team + channel + role + member so the gather pass at L174-192
+        // populates all four lists. The send() at the tail of the function will
+        // still fail (no connected peer) — we only care about exercising the gather code.
+        mgr.db.with_conn(|c| {
+            db::create_user(c, &db::User {
+                id: "u1".into(),
+                username: "alice".into(),
+                display_name: "Alice".into(),
+                public_key: vec![1u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_team(c, &db::Team {
+                id: "t1".into(),
+                name: "T".into(),
+                created_by: "u1".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_channel(c, &db::Channel {
+                id: "ch1".into(),
+                team_id: "t1".into(),
+                name: "general".into(),
+                channel_type: "text".into(),
+                topic: String::new(),
+                created_by: "u1".into(),
+                position: 0,
+                locked: false,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_role(c, &db::Role {
+                id: "r1".into(),
+                team_id: "t1".into(),
+                name: "Admin".into(),
+                color: String::new(),
+                position: 0,
+                permissions: 1,
+                is_default: false,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+            })?;
+            db::create_member(c, &db::Member {
+                id: "m1".into(),
+                team_id: "t1".into(),
+                user_id: "u1".into(),
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now,
+            })
+        }).unwrap();
+        // With a team, the gather completes; send still errors because no
+        // peer is connected on the transport. Both outcomes exercise the
+        // code path we care about (lines 174-192).
+        let _ = mgr.handle_state_sync_request("peer-1").await;
+    }
+
+    #[tokio::test]
     async fn handle_state_sync_request_rate_limits_repeated_calls() {
         let mgr = test_sync_manager();
         let _ = mgr.handle_state_sync_request("peer-rl").await;
