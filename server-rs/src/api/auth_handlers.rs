@@ -2019,6 +2019,124 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn register_returns_409_for_duplicate_username() {
+        use base64::Engine as _;
+        use ed25519_dalek::{Signer, SigningKey};
+
+        let (state, _tmp) = make_state();
+        let now = crate::db::now_str();
+        // Pre-seed a user with username "newbie" so the new registration's
+        // check_username_and_key_available hits the conflict path.
+        state.db.with_conn(|conn| {
+            crate::db::create_user(conn, &crate::db::User {
+                id: "existing".into(),
+                username: "newbie".into(),
+                display_name: "Already taken".into(),
+                public_key: vec![88u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            crate::db::create_team(conn, &crate::db::Team {
+                id: "t-dup".into(),
+                name: "Dup".into(),
+                created_by: "existing".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            crate::db::create_invite(conn, &crate::db::Invite {
+                id: "inv-dup".into(),
+                team_id: "t-dup".into(),
+                token: "valid-dup-token".into(),
+                created_by: "existing".into(),
+                max_uses: None,
+                uses: 0,
+                expires_at: None,
+                revoked: false,
+                created_at: now,
+            })
+        }).unwrap();
+
+        let signing_key = SigningKey::from_bytes(&[111u8; 32]);
+        let pk_bytes = signing_key.verifying_key().to_bytes();
+        let (nonce, challenge_id) = state.auth.generate_challenge().unwrap();
+        let signature = signing_key.sign(&nonce);
+        let pk_b64 = base64::engine::general_purpose::STANDARD.encode(pk_bytes);
+        let sig_b64 = base64::engine::general_purpose::STANDARD.encode(signature.to_bytes());
+
+        let body = format!(
+            r#"{{"username":"newbie","challenge_id":"{}","public_key":"{}","signature":"{}","invite_token":"valid-dup-token"}}"#,
+            challenge_id, pk_b64, sig_b64
+        );
+        let app = Router::new()
+            .route("/auth/register", post(register))
+            .with_state(state);
+        let resp = app
+            .oneshot(
+                Request::post("/auth/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        // 409 Conflict from the NotFound → Conflict map.
+        assert_eq!(resp.status(), 409);
+    }
+
+    #[tokio::test]
+    async fn register_400_for_revoked_invite() {
+        use base64::Engine as _;
+        use ed25519_dalek::{Signer, SigningKey};
+
+        let (state, _tmp) = make_state();
+        let now = crate::db::now_str();
+        state.db.with_conn(|conn| {
+            crate::db::create_invite(conn, &crate::db::Invite {
+                id: "inv-revoked".into(),
+                team_id: "t-x".into(),
+                token: "revoked-token".into(),
+                created_by: "x".into(),
+                max_uses: None,
+                uses: 0,
+                expires_at: None,
+                revoked: true,
+                created_at: now,
+            })
+        }).unwrap();
+
+        let signing_key = SigningKey::from_bytes(&[112u8; 32]);
+        let pk_bytes = signing_key.verifying_key().to_bytes();
+        let (nonce, challenge_id) = state.auth.generate_challenge().unwrap();
+        let signature = signing_key.sign(&nonce);
+        let pk_b64 = base64::engine::general_purpose::STANDARD.encode(pk_bytes);
+        let sig_b64 = base64::engine::general_purpose::STANDARD.encode(signature.to_bytes());
+
+        let body = format!(
+            r#"{{"username":"freshuser","challenge_id":"{}","public_key":"{}","signature":"{}","invite_token":"revoked-token"}}"#,
+            challenge_id, pk_b64, sig_b64
+        );
+        let app = Router::new()
+            .route("/auth/register", post(register))
+            .with_state(state);
+        let resp = app
+            .oneshot(
+                Request::post("/auth/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        // Forbidden → BadRequest via the register handler's map.
+        assert_eq!(resp.status(), 400);
+    }
+
+    #[tokio::test]
     async fn logout_happy_path_revokes_valid_token() {
         let (state, _tmp) = make_state();
         // Generate a valid JWT directly via the auth service.
