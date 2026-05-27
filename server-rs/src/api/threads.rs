@@ -457,4 +457,128 @@ mod tests {
             .unwrap();
         assert!(resp.status().as_u16() >= 400);
     }
+
+    fn seed_team_with_message(state: &AppState) {
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_user(conn, &db::User {
+                id: "alice".into(),
+                username: "alice".into(),
+                display_name: "Alice".into(),
+                public_key: vec![1u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_team(conn, &db::Team {
+                id: "t1".into(),
+                name: "T".into(),
+                created_by: "alice".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_member(conn, &db::Member {
+                id: "m1".into(),
+                team_id: "t1".into(),
+                user_id: "alice".into(),
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now.clone(),
+            })?;
+            db::create_channel(conn, &db::Channel {
+                id: "ch1".into(),
+                team_id: "t1".into(),
+                name: "general".into(),
+                channel_type: "text".into(),
+                topic: String::new(),
+                created_by: "alice".into(),
+                position: 0,
+                locked: false,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_message(conn, &db::Message {
+                id: "msg-parent".into(),
+                channel_id: "ch1".into(),
+                dm_channel_id: String::new(),
+                author_id: "alice".into(),
+                content: "parent".into(),
+                msg_type: "text".into(),
+                thread_id: String::new(),
+                edited_at: None,
+                deleted: false,
+                lamport_ts: 0,
+                reply_to_message_id: None,
+                created_at: now,
+            })
+        }).unwrap();
+    }
+
+    #[tokio::test]
+    async fn create_thread_404_for_unknown_parent_message() {
+        let (state, _tmp) = make_state();
+        seed_team_with_message(&state);
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/channels/ch1/threads")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"parent_message_id":"no-such-message","title":""}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn create_thread_happy_path_creates_thread() {
+        let (state, _tmp) = make_state();
+        seed_team_with_message(&state);
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/channels/ch1/threads")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"parent_message_id":"msg-parent","title":"side discussion"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn create_thread_idempotent_returns_existing_for_same_parent() {
+        let (state, _tmp) = make_state();
+        seed_team_with_message(&state);
+        let app1 = router(state.clone(), "alice");
+        let r1 = app1
+            .oneshot(
+                Request::post("/teams/t1/channels/ch1/threads")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"parent_message_id":"msg-parent","title":"first"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(r1.status(), 200);
+        let app2 = router(state, "alice");
+        let r2 = app2
+            .oneshot(
+                Request::post("/teams/t1/channels/ch1/threads")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"parent_message_id":"msg-parent","title":"second"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(r2.status(), 200);
+    }
 }
