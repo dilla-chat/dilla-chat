@@ -1276,3 +1276,89 @@ mod tests {
         let local = make_msg("m1", None, false);
         assert!(!should_update_message(&remote, &local));
     }
+
+// ── handle_state_sync_response branches ─────────────────────────
+
+#[cfg(test)]
+mod sync_response_tests {
+    use super::*;
+    use crate::db::{self, Database};
+    use std::sync::Arc;
+
+    fn test_sync_manager() -> SyncManager {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        db.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;")).unwrap();
+        db.run_migrations().unwrap();
+        std::mem::forget(tmp);
+        let transport = Arc::new(Transport::new());
+        SyncManager::new(db, transport, "test-node".into())
+    }
+
+    #[tokio::test]
+    async fn handle_state_sync_response_rejects_oversize_channel_count() {
+        let mgr = test_sync_manager();
+        let channels = (0..101).map(|i| db::Channel {
+            id: format!("ch-{i}"),
+            team_id: "t1".into(),
+            name: format!("ch-{i}"),
+            channel_type: "text".into(),
+            ..Default::default()
+        }).collect();
+        let data = StateSyncData { channels, messages: vec![], members: vec![], roles: vec![] };
+        let res = mgr.handle_state_sync_response(data).await;
+        assert!(res.is_err());
+    }
+
+    #[tokio::test]
+    async fn handle_state_sync_response_empty_payload_succeeds() {
+        let mgr = test_sync_manager();
+        let data = StateSyncData { channels: vec![], messages: vec![], members: vec![], roles: vec![] };
+        let res = mgr.handle_state_sync_response(data).await;
+        assert!(res.is_ok(), "empty merge should succeed: {:?}", res);
+    }
+
+    #[tokio::test]
+    async fn handle_state_sync_response_merges_new_channels_and_roles() {
+        let mgr = test_sync_manager();
+        // Seed users + team so foreign-key checks pass.
+        mgr.db.with_conn(|c| {
+            c.execute_batch("PRAGMA foreign_keys = OFF;")?;
+            c.execute("INSERT INTO users (id, username, public_key, created_at, updated_at) VALUES ('u1', 'a', x'01', datetime('now'), datetime('now'))", [])?;
+            c.execute("INSERT INTO teams (id, name, created_by, created_at, updated_at) VALUES ('t1', 'T', 'u1', datetime('now'), datetime('now'))", [])?;
+            Ok::<(), rusqlite::Error>(())
+        }).unwrap();
+        let now = db::now_str();
+        let ch = db::Channel {
+            id: "ch-merge".into(),
+            team_id: "t1".into(),
+            name: "merged".into(),
+            channel_type: "text".into(),
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            ..Default::default()
+        };
+        let role = db::Role {
+            id: "r-merge".into(),
+            team_id: "t1".into(),
+            name: "merged-role".into(),
+            color: String::new(),
+            position: 0,
+            permissions: 1,
+            is_default: false,
+            created_at: now.clone(),
+            updated_at: now,
+        };
+        let data = StateSyncData {
+            channels: vec![ch],
+            messages: vec![],
+            members: vec![],
+            roles: vec![role],
+        };
+        let res = mgr.handle_state_sync_response(data).await;
+        assert!(res.is_ok(), "merge failed: {:?}", res);
+        // Verify the merged channel landed.
+        let got = mgr.db.with_conn(|c| db::get_channel_by_id(c, "ch-merge")).unwrap();
+        assert!(got.is_some());
+    }
+}
