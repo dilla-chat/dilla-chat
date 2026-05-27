@@ -2019,6 +2019,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn bootstrap_happy_path_consumes_token_and_creates_team() {
+        use base64::Engine as _;
+        use ed25519_dalek::{Signer, SigningKey};
+
+        let (state, _tmp) = make_state();
+        // Seed a valid bootstrap token.
+        state.db.with_conn(|conn| {
+            crate::db::create_bootstrap_token(conn, "valid-bootstrap")
+        }).unwrap();
+
+        let signing_key = SigningKey::from_bytes(&[77u8; 32]);
+        let pk_bytes = signing_key.verifying_key().to_bytes();
+        let (nonce, challenge_id) = state.auth.generate_challenge().unwrap();
+        let signature = signing_key.sign(&nonce);
+        let pk_b64 = base64::engine::general_purpose::STANDARD.encode(pk_bytes);
+        let sig_b64 = base64::engine::general_purpose::STANDARD.encode(signature.to_bytes());
+
+        let body = format!(
+            r#"{{"username":"bootstrap-admin","challenge_id":"{}","public_key":"{}","signature":"{}","bootstrap_token":"valid-bootstrap","team_name":"FirstTeam"}}"#,
+            challenge_id, pk_b64, sig_b64
+        );
+        let app = Router::new()
+            .route("/auth/bootstrap", post(bootstrap))
+            .with_state(state);
+        let resp = app
+            .oneshot(
+                Request::post("/auth/bootstrap")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
     async fn register_happy_path_creates_user_with_valid_invite() {
         use base64::Engine as _;
         use ed25519_dalek::{Signer, SigningKey};
