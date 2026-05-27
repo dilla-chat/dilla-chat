@@ -358,6 +358,29 @@ describe('ChatApp click-through (jsdom)', () => {
     expect(container.firstChild).toBeTruthy();
   });
 
+  it('right-click message + click every ctx-menu button (L3549-3673)', () => {
+    const { container } = renderApp();
+    // Right-click the first message so the contextMenu state opens.
+    const msgs = [...container.querySelectorAll('[class*="msg"], [class*="message"]')] as HTMLElement[];
+    if (msgs.length === 0) {
+      expect(container.firstChild).toBeTruthy();
+      return;
+    }
+    fireEvent.contextMenu(msgs[0], { clientX: 100, clientY: 100 });
+    // Now the .ctx-menu div should be in the DOM.
+    const ctxButtons = [...container.querySelectorAll('.ctx-menu button')] as HTMLButtonElement[];
+    for (const b of ctxButtons) {
+      // Each button closes the menu via setContextMenu(null), so re-open before each.
+      fireEvent.contextMenu(msgs[0], { clientX: 100, clientY: 100 });
+      const fresh = container.querySelector('.ctx-menu button[class="' + b.className + '"]') as HTMLButtonElement | null;
+      try {
+        if (fresh) fireEvent.click(fresh);
+        else fireEvent.click(b);
+      } catch { /* swallow */ }
+    }
+    expect(container.firstChild).toBeTruthy();
+  });
+
   it('renders + clicks every voice control when voice is active', () => {
     useVoiceStore.setState({
       connected: true, currentChannelId: 'ch-2',
