@@ -884,6 +884,77 @@ mod tests {
     }
 
     #[test]
+    fn validate_v3_handshake_accepts_valid_signed_handshake() {
+        use ed25519_dalek::{Signer, SigningKey};
+        let tmp = tempfile::tempdir().unwrap();
+        let db = crate::db::Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        db.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;")).unwrap();
+        db.run_migrations().unwrap();
+        let identity = Arc::new(crate::federation::identity::ensure(&db).unwrap());
+
+        // Pin the remote peer with its public key so the verify step has
+        // something to look up.
+        let signing_key = SigningKey::from_bytes(&[42u8; 32]);
+        let verifying_key = signing_key.verifying_key();
+        db.with_conn(|c| {
+            crate::federation::peers::pin(c, "remote-node", &verifying_key, "peer.example")
+                .map(|_| ())
+        })
+        .unwrap();
+
+        // Build the signed handshake: signing input is `node_id || nonce`.
+        let node_id = "remote-node";
+        let nonce_bytes = vec![7u8; 24];
+        let mut signing_bytes = node_id.as_bytes().to_vec();
+        signing_bytes.extend_from_slice(&nonce_bytes);
+        let signature = signing_key.sign(&signing_bytes);
+        use base64::Engine as _;
+        let nonce_b64 = base64::engine::general_purpose::STANDARD.encode(&nonce_bytes);
+        let sig_b64 = base64::engine::general_purpose::STANDARD.encode(signature.to_bytes());
+
+        let t = Transport::with_settings_full(
+            String::new(), false, Some(identity), false, Some(db),
+        );
+        let hs = format!(
+            r#"{{"v":3,"node_id":"{}","nonce":"{}","signature":"{}"}}"#,
+            node_id, nonce_b64, sig_b64
+        );
+        assert_eq!(t.validate_v3_handshake(&hs), Ok(node_id.to_string()));
+    }
+
+    #[test]
+    fn validate_v3_handshake_rejects_bad_signature_on_pinned_peer() {
+        use ed25519_dalek::SigningKey;
+        let tmp = tempfile::tempdir().unwrap();
+        let db = crate::db::Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        db.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;")).unwrap();
+        db.run_migrations().unwrap();
+        let identity = Arc::new(crate::federation::identity::ensure(&db).unwrap());
+
+        let signing_key = SigningKey::from_bytes(&[42u8; 32]);
+        let verifying_key = signing_key.verifying_key();
+        db.with_conn(|c| {
+            crate::federation::peers::pin(c, "remote-node", &verifying_key, "peer.example")
+                .map(|_| ())
+        })
+        .unwrap();
+
+        // Use 64 zero bytes as the signature — won't verify against the pubkey.
+        use base64::Engine as _;
+        let bad_sig_b64 = base64::engine::general_purpose::STANDARD.encode([0u8; 64]);
+        let nonce_b64 = base64::engine::general_purpose::STANDARD.encode([7u8; 24]);
+
+        let t = Transport::with_settings_full(
+            String::new(), false, Some(identity), false, Some(db),
+        );
+        let hs = format!(
+            r#"{{"v":3,"node_id":"remote-node","nonce":"{}","signature":"{}"}}"#,
+            nonce_b64, bad_sig_b64
+        );
+        assert_eq!(t.validate_v3_handshake(&hs), Err("v3 signature invalid"));
+    }
+
+    #[test]
     fn validate_v3_handshake_rejects_unpinned_peer() {
         let tmp = tempfile::tempdir().unwrap();
         let db = crate::db::Database::open(tmp.path().to_str().unwrap(), "").unwrap();
