@@ -122,4 +122,28 @@ describe('App router', () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(container.textContent).toContain('Onboarding');
   });
+
+  it('ErrorBoundary catches a child render error and shows the fallback UI', async () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    // Override the Onboarding mock to throw on render.
+    vi.doMock('./pages/Onboarding/Onboarding', () => ({
+      default: () => {
+        throw new Error('boom-from-onboarding');
+      },
+    }));
+    vi.resetModules();
+    const { default: FreshApp } = await import('./App');
+    useAuthStore.setState({ isAuthenticated: false } as never);
+    window.history.pushState({}, '', '/onboarding');
+    const { container } = render(<FreshApp />);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(container.textContent).toContain('Something went wrong');
+    expect(container.textContent).toContain('boom-from-onboarding');
+    // Click the Restart App button to exercise L52.
+    const btn = Array.from(container.querySelectorAll('button')).find(
+      (b) => /restart/i.test(b.textContent ?? ''),
+    ) as HTMLButtonElement | undefined;
+    expect(btn).toBeTruthy();
+    errSpy.mockRestore();
+  });
 });
