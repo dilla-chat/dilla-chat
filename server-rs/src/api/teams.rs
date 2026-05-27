@@ -967,4 +967,136 @@ mod tests {
             .unwrap();
         assert_eq!(resp.status(), 200);
     }
+
+    fn seed_team_with_member(state: &AppState, team_id: &str, owner_id: &str, member_id: &str) {
+        let now = db::now_str();
+        let team_id = team_id.to_string();
+        let owner_id = owner_id.to_string();
+        let member_id = member_id.to_string();
+        state.db.with_conn(|conn| {
+            let mut pk_o = vec![0u8; 32];
+            for (i, b) in owner_id.bytes().enumerate().take(32) { pk_o[i] = b; }
+            let mut pk_m = vec![0u8; 32];
+            for (i, b) in member_id.bytes().enumerate().take(32) { pk_m[i] = b; }
+            db::create_user(conn, &db::User {
+                id: owner_id.clone(),
+                username: owner_id.clone(),
+                display_name: owner_id.clone(),
+                public_key: pk_o,
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_user(conn, &db::User {
+                id: member_id.clone(),
+                username: member_id.clone(),
+                display_name: member_id.clone(),
+                public_key: pk_m,
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_team(conn, &db::Team {
+                id: team_id.clone(),
+                name: "T".into(),
+                created_by: owner_id.clone(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_member(conn, &db::Member {
+                id: format!("m-{}", owner_id),
+                team_id: team_id.clone(),
+                user_id: owner_id,
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now.clone(),
+            })?;
+            db::create_member(conn, &db::Member {
+                id: format!("m-{}", member_id),
+                team_id,
+                user_id: member_id,
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now,
+            })
+        }).unwrap();
+    }
+
+    #[tokio::test]
+    async fn update_team_happy_path_as_owner() {
+        let (state, _tmp) = make_state();
+        seed_user_and_team(&state.db, "alice", "t-up");
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/teams/t-up")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"name":"renamed","description":"d"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn update_member_nickname_as_owner_succeeds() {
+        let (state, _tmp) = make_state();
+        seed_team_with_member(&state, "t1", "alice", "bob");
+        let app = router_full(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/teams/t1/members/bob")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"nickname":"Bobby"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn kick_member_happy_path() {
+        let (state, _tmp) = make_state();
+        seed_team_with_member(&state, "t1", "alice", "bob");
+        let app = router_full(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/members/bob")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn leave_team_happy_path_for_non_admin_member() {
+        let (state, _tmp) = make_state();
+        seed_team_with_member(&state, "t1", "alice", "bob");
+        // bob has no admin role, alice is owner — bob can leave.
+        let app = router_full(state, "bob");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/leave").body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
 }
