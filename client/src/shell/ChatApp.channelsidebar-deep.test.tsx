@@ -67,6 +67,9 @@ const baseProps = {
 };
 
 beforeEach(() => {
+  (window as unknown as { SHELL_DATA?: { currentUserId?: string } }).SHELL_DATA = {
+    currentUserId: 'me',
+  };
   useTeamStore.setState({
     activeTeamId: 't1', activeChannelId: 'ch-1',
     teams: new Map([['t1', { id: 't1', name: 'Acme' }]]),
@@ -125,6 +128,59 @@ describe('ChannelSidebar groups and collapse', () => {
       try { fireEvent.contextMenu(h); } catch { /* */ }
     }
     expect(container.firstChild).toBeTruthy();
+  });
+
+  it('right-click on a real group (g:*) opens menu with access + settings (L2055-2065)', () => {
+    // PERM_ADMIN is the high bit (0x80000000 in usePermissions).
+    // Give the user the admin role so perms.has(PERM_MANAGE_CHANNELS) is true.
+    useTeamStore.setState({
+      members: new Map([
+        ['t1', [{ id: 'm1', userId: 'me', isAdmin: true, roleIds: ['r-admin'], roles: [{ id: 'r-admin', permissions: 0x001 }] }]],
+      ]),
+    } as never);
+    const captured: CustomEvent[] = [];
+    const cb = (e: Event) => captured.push(e as CustomEvent);
+    window.addEventListener('dilla:open-menu', cb);
+    const { container } = render(wrap(<ChannelSidebar {...baseProps} channels={channels} />));
+    const headers = Array.from(container.querySelectorAll('.cat-collapsible')) as HTMLElement[];
+    for (const h of headers) fireEvent.contextMenu(h, { clientX: 10, clientY: 20 });
+    window.removeEventListener('dilla:open-menu', cb);
+    expect(captured.length).toBeGreaterThanOrEqual(1);
+    const items = (captured[0].detail as { items: Array<{ label?: string }> }).items;
+    expect(items.some((it) => it.label === 'Manage access')).toBe(true);
+    expect(items.some((it) => it.label === 'Group settings')).toBe(true);
+  });
+
+  it('group context menu "Manage access" + "Group settings" dispatch their events', () => {
+    useTeamStore.setState({
+      members: new Map([
+        ['t1', [{ id: 'm1', userId: 'me', isAdmin: true, roleIds: ['r-admin'], roles: [{ id: 'r-admin', permissions: 0x001 }] }]],
+      ]),
+    } as never);
+    let menuItems: Array<{ label?: string; onClick?: () => void }> = [];
+    const cb = (e: Event) => {
+      menuItems = (e as CustomEvent).detail.items;
+    };
+    window.addEventListener('dilla:open-menu', cb);
+    const { container } = render(wrap(<ChannelSidebar {...baseProps} channels={channels} />));
+    const headers = Array.from(container.querySelectorAll('.cat-collapsible')) as HTMLElement[];
+    for (const h of headers) {
+      fireEvent.contextMenu(h);
+      if (menuItems.length > 0) break;
+    }
+    window.removeEventListener('dilla:open-menu', cb);
+    const accessCalls: CustomEvent[] = [];
+    const settingsCalls: CustomEvent[] = [];
+    const accessCb = (e: Event) => accessCalls.push(e as CustomEvent);
+    const settingsCb = (e: Event) => settingsCalls.push(e as CustomEvent);
+    window.addEventListener('dilla:open-group-access', accessCb);
+    window.addEventListener('dilla:open-group-settings', settingsCb);
+    menuItems.find((it) => it.label === 'Manage access')?.onClick?.();
+    menuItems.find((it) => it.label === 'Group settings')?.onClick?.();
+    window.removeEventListener('dilla:open-group-access', accessCb);
+    window.removeEventListener('dilla:open-group-settings', settingsCb);
+    expect(accessCalls.length).toBe(1);
+    expect(settingsCalls.length).toBe(1);
   });
 
   it('renders with restricted channels (locked group)', () => {
