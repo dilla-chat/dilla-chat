@@ -1897,4 +1897,145 @@ mod tests {
             .unwrap();
         assert!(resp.status() == 200 || resp.status() == 401);
     }
+
+    fn router_full(state: AppState) -> Router {
+        Router::new()
+            .route("/auth/challenge", post(challenge))
+            .route("/auth/verify", post(verify))
+            .route("/auth/refresh", post(refresh))
+            .route("/auth/logout", post(logout))
+            .with_state(state)
+    }
+
+    #[tokio::test]
+    async fn challenge_rejects_invalid_base64_public_key() {
+        let (state, _tmp) = make_state();
+        let app = router_full(state);
+        let resp = app
+            .oneshot(
+                Request::post("/auth/challenge")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"public_key":"not!base64"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
+
+    #[tokio::test]
+    async fn challenge_rejects_wrong_length_public_key() {
+        let (state, _tmp) = make_state();
+        let app = router_full(state);
+        let resp = app
+            .oneshot(
+                Request::post("/auth/challenge")
+                    .header("content-type", "application/json")
+                    // 3 bytes (YWJj = "abc"), not 32.
+                    .body(Body::from(r#"{"public_key":"YWJj"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
+
+    #[tokio::test]
+    async fn challenge_returns_nonce_for_valid_32_byte_public_key() {
+        use base64::Engine as _;
+        let (state, _tmp) = make_state();
+        let app = router_full(state);
+        let pk_b64 = base64::engine::general_purpose::STANDARD.encode(&[0u8; 32]);
+        let body = format!(r#"{{"public_key":"{}"}}"#, pk_b64);
+        let resp = app
+            .oneshot(
+                Request::post("/auth/challenge")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn verify_rejects_invalid_base64_public_key() {
+        let (state, _tmp) = make_state();
+        let app = router_full(state);
+        let body = r#"{"challenge_id":"c1","public_key":"!!bad","signature":"AAAA"}"#;
+        let resp = app
+            .oneshot(
+                Request::post("/auth/verify")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
+
+    #[tokio::test]
+    async fn verify_rejects_invalid_base64_signature() {
+        use base64::Engine as _;
+        let (state, _tmp) = make_state();
+        let app = router_full(state);
+        let pk_b64 = base64::engine::general_purpose::STANDARD.encode(&[0u8; 32]);
+        let body = format!(r#"{{"challenge_id":"c1","public_key":"{}","signature":"!!bad"}}"#, pk_b64);
+        let resp = app
+            .oneshot(
+                Request::post("/auth/verify")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
+
+    #[tokio::test]
+    async fn verify_rejects_unknown_challenge_id() {
+        use base64::Engine as _;
+        let (state, _tmp) = make_state();
+        let app = router_full(state);
+        let pk_b64 = base64::engine::general_purpose::STANDARD.encode(&[0u8; 32]);
+        let sig_b64 = base64::engine::general_purpose::STANDARD.encode(&[0u8; 64]);
+        let body = format!(
+            r#"{{"challenge_id":"never-issued","public_key":"{}","signature":"{}"}}"#,
+            pk_b64, sig_b64,
+        );
+        let resp = app
+            .oneshot(
+                Request::post("/auth/verify")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn verify_rejects_oversized_body() {
+        let (state, _tmp) = make_state();
+        let app = router_full(state);
+        // > 16 KiB body should be rejected by the size cap.
+        let oversize = format!(
+            r#"{{"challenge_id":"c1","public_key":"{}","signature":"a"}}"#,
+            "A".repeat(20 * 1024),
+        );
+        let resp = app
+            .oneshot(
+                Request::post("/auth/verify")
+                    .header("content-type", "application/json")
+                    .body(Body::from(oversize))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
 }
