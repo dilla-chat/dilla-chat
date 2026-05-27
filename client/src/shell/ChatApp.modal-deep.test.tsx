@@ -158,6 +158,120 @@ describe('GroupSettingsModal deep', () => {
     }
     expect(container.firstChild).toBeTruthy();
   });
+
+  it('Save with same-name closes without calling API', async () => {
+    const onClose = vi.fn();
+    const { container } = render(wrap(<GroupSettingsModal group={{ id: 'g1', name: 'main' }} onClose={onClose} />));
+    // Don't change the name. Click the Save button.
+    const save = Array.from(container.querySelectorAll('button')).find((b) => /save/i.test(b.textContent ?? '')) as HTMLButtonElement;
+    fireEvent.click(save);
+    expect(onClose).toHaveBeenCalled();
+    expect(apiMocks.updateGroup).not.toHaveBeenCalled();
+  });
+
+  it('Save with empty trimmed name shows error and does not close', () => {
+    const onClose = vi.fn();
+    const { container } = render(wrap(<GroupSettingsModal group={{ id: 'g1', name: 'main' }} onClose={onClose} />));
+    const input = container.querySelector('input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '   ' } });
+    const save = Array.from(container.querySelectorAll('button')).find((b) => /save/i.test(b.textContent ?? '')) as HTMLButtonElement;
+    fireEvent.click(save);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(container.textContent).toMatch(/empty/i);
+  });
+
+  it('Save with new name calls api.updateGroup + upserts store', async () => {
+    apiMocks.updateGroup.mockResolvedValueOnce({});
+    const onClose = vi.fn();
+    const { container } = render(wrap(<GroupSettingsModal group={{ id: 'g1', name: 'main' }} onClose={onClose} />));
+    const input = container.querySelector('input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'renamed' } });
+    const save = Array.from(container.querySelectorAll('button')).find((b) => /save/i.test(b.textContent ?? '')) as HTMLButtonElement;
+    fireEvent.click(save);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(apiMocks.updateGroup).toHaveBeenCalledWith('t1', 'g1', { name: 'renamed' });
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('Save handles API error', async () => {
+    apiMocks.updateGroup.mockRejectedValueOnce(new Error('forbidden'));
+    const onClose = vi.fn();
+    const { container } = render(wrap(<GroupSettingsModal group={{ id: 'g1', name: 'main' }} onClose={onClose} />));
+    const input = container.querySelector('input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'renamed' } });
+    const save = Array.from(container.querySelectorAll('button')).find((b) => /save/i.test(b.textContent ?? '')) as HTMLButtonElement;
+    fireEvent.click(save);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('forbidden');
+  });
+
+  it('Delete flow: confirm → remove calls api.deleteGroup + clears channel groupIds', async () => {
+    apiMocks.deleteGroup.mockResolvedValueOnce(undefined);
+    // Seed a channel that points to this group so we can verify the
+    // groupId-clearing branch runs.
+    useTeamStore.setState({
+      activeTeamId: 't1',
+      channels: new Map([['t1', [{ id: 'ch-x', teamId: 't1', name: 'x', type: 'text', groupId: 'g1' }] as never]]),
+      groups: new Map([['t1', [{ id: 'g1', teamId: 't1', name: 'main' } as never]]]),
+    } as never);
+    const onClose = vi.fn();
+    const { container } = render(wrap(<GroupSettingsModal group={{ id: 'g1', name: 'main' }} onClose={onClose} />));
+    // Click "Delete group…" to enter confirm mode.
+    const triggerDelete = Array.from(container.querySelectorAll('button')).find(
+      (b) => /delete group…/i.test(b.textContent ?? ''),
+    ) as HTMLButtonElement;
+    fireEvent.click(triggerDelete);
+    // Now find the inner confirm-Delete button.
+    const confirmDel = Array.from(container.querySelectorAll('button')).find(
+      (b) => (b.textContent ?? '').trim() === 'Delete group',
+    ) as HTMLButtonElement;
+    fireEvent.click(confirmDel);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(apiMocks.deleteGroup).toHaveBeenCalledWith('t1', 'g1');
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('Delete flow: api error stays in modal with error message', async () => {
+    apiMocks.deleteGroup.mockRejectedValueOnce(new Error('no permission'));
+    const onClose = vi.fn();
+    const { container } = render(wrap(<GroupSettingsModal group={{ id: 'g1', name: 'main' }} onClose={onClose} />));
+    fireEvent.click(
+      Array.from(container.querySelectorAll('button')).find(
+        (b) => /delete group…/i.test(b.textContent ?? ''),
+      ) as HTMLButtonElement,
+    );
+    fireEvent.click(
+      Array.from(container.querySelectorAll('button')).find(
+        (b) => (b.textContent ?? '').trim() === 'Delete group',
+      ) as HTMLButtonElement,
+    );
+    await new Promise((r) => setTimeout(r, 5));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('no permission');
+  });
+
+  it('Delete flow: cancel returns to default state without calling API', () => {
+    const { container } = render(wrap(<GroupSettingsModal group={{ id: 'g1', name: 'main' }} onClose={vi.fn()} />));
+    fireEvent.click(
+      Array.from(container.querySelectorAll('button')).find(
+        (b) => /delete group…/i.test(b.textContent ?? ''),
+      ) as HTMLButtonElement,
+    );
+    fireEvent.click(
+      Array.from(container.querySelectorAll('button')).find(
+        (b) => (b.textContent ?? '').trim() === 'Cancel' && b.className.includes('btn'),
+      ) as HTMLButtonElement,
+    );
+    expect(apiMocks.deleteGroup).not.toHaveBeenCalled();
+  });
+
+  it('Escape keydown closes the modal', () => {
+    const onClose = vi.fn();
+    render(wrap(<GroupSettingsModal group={{ id: 'g1', name: 'main' }} onClose={onClose} />));
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalled();
+  });
 });
 
 describe('ChannelSettingsModal deep', () => {
