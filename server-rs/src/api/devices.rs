@@ -606,6 +606,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn revoke_device_happy_path_with_multiple_active_devices() {
+        let (state, _tmp) = make_state();
+        seed_user(&state.db, "alice");
+        // Insert 2 active devices so the last-device guard does NOT fire.
+        state.db.with_conn(|conn| {
+            db::create_device(conn, "alice", &[1u8; 32], "primary").map(|_| ())?;
+            db::create_device(conn, "alice", &[2u8; 32], "laptop").map(|_| ())
+        }).unwrap();
+        // Look up the id of the laptop device to revoke.
+        let target_id = state.db.with_conn(|conn| {
+            let dev = db::get_device_by_user_and_pubkey(conn, "alice", &[2u8; 32])?
+                .expect("laptop device should exist");
+            Ok::<String, rusqlite::Error>(dev.id)
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/devices/{}", target_id))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
     async fn enroll_complete_4xx_when_authorizer_device_is_revoked() {
         let (state, _tmp) = make_state();
         seed_user(&state.db, "alice");
