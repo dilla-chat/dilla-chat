@@ -656,6 +656,188 @@ mod tests {
         assert!(resp.status().as_u16() >= 400);
     }
 
+    fn seed_owner(state: &AppState) {
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_user(conn, &db::User {
+                id: "alice".into(),
+                username: "alice".into(),
+                display_name: "Alice".into(),
+                public_key: vec![1u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_team(conn, &db::Team {
+                id: "t1".into(),
+                name: "T".into(),
+                created_by: "alice".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now,
+                ..Default::default()
+            })
+        }).unwrap();
+    }
+
+    #[tokio::test]
+    async fn create_role_happy_path_as_owner() {
+        let (state, _tmp) = make_state();
+        seed_owner(&state);
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/roles")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r##"{"name":"Mod","color":"#abc","permissions":0}"##))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn update_role_happy_path_as_owner() {
+        let (state, _tmp) = make_state();
+        seed_owner(&state);
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_role(conn, &db::Role {
+                id: "r-up".into(),
+                team_id: "t1".into(),
+                name: "OldName".into(),
+                color: String::new(),
+                position: 1,
+                permissions: 0,
+                is_default: false,
+                created_at: now.clone(),
+                updated_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/teams/t1/roles/r-up")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r##"{"name":"NewName","color":"#fff"}"##))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn delete_role_happy_path_as_owner() {
+        let (state, _tmp) = make_state();
+        seed_owner(&state);
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_role(conn, &db::Role {
+                id: "r-del".into(),
+                team_id: "t1".into(),
+                name: "Trash".into(),
+                color: String::new(),
+                position: 1,
+                permissions: 0,
+                is_default: false,
+                created_at: now.clone(),
+                updated_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/roles/r-del")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn delete_role_rejects_default_role() {
+        let (state, _tmp) = make_state();
+        seed_owner(&state);
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_role(conn, &db::Role {
+                id: "r-default".into(),
+                team_id: "t1".into(),
+                name: "Default".into(),
+                color: String::new(),
+                position: 0,
+                permissions: 0,
+                is_default: true,
+                created_at: now.clone(),
+                updated_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/roles/r-default")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn delete_role_rejects_cross_team_role() {
+        let (state, _tmp) = make_state();
+        seed_owner(&state);
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_team(conn, &db::Team {
+                id: "t-other".into(),
+                name: "Other".into(),
+                created_by: "alice".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_role(conn, &db::Role {
+                id: "r-foreign".into(),
+                team_id: "t-other".into(),
+                name: "Foreign".into(),
+                color: String::new(),
+                position: 1,
+                permissions: 0,
+                is_default: false,
+                created_at: now.clone(),
+                updated_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/roles/r-foreign")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
     #[tokio::test]
     async fn create_role_rejects_oversized_name() {
         let (state, _tmp) = make_state();
