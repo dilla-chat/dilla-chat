@@ -606,6 +606,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn enroll_complete_happy_path_creates_new_device() {
+        use base64::Engine as _;
+        use ed25519_dalek::{Signer, SigningKey};
+        let (state, _tmp) = make_state();
+        seed_user(&state.db, "alice");
+        // Authorizer = an existing trusted Ed25519 key for alice.
+        let authorizer_sk = SigningKey::from_bytes(&[11u8; 32]);
+        let authorizer_pk = authorizer_sk.verifying_key().to_bytes();
+        state.db.with_conn(|conn| {
+            db::create_device(conn, "alice", &authorizer_pk, "primary").map(|_| ())
+        }).unwrap();
+        // Generate a challenge + sign it with the authorizer's key.
+        let (nonce, challenge_id) = state.auth.generate_challenge().unwrap();
+        let signature = authorizer_sk.sign(&nonce);
+        let new_pk_b64 = base64::engine::general_purpose::STANDARD.encode([42u8; 32]);
+        let auth_pk_b64 = base64::engine::general_purpose::STANDARD.encode(authorizer_pk);
+        let sig_b64 = base64::engine::general_purpose::STANDARD.encode(signature.to_bytes());
+        let body = format!(
+            r#"{{"challenge_id":"{}","new_device_public_key":"{}","authorizer_public_key":"{}","signature":"{}","device_label":"iPhone"}}"#,
+            challenge_id, new_pk_b64, auth_pk_b64, sig_b64
+        );
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::post("/devices/enroll-complete")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
     async fn revoke_device_happy_path_with_multiple_active_devices() {
         let (state, _tmp) = make_state();
         seed_user(&state.db, "alice");
