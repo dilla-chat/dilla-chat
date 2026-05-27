@@ -822,6 +822,63 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn delete_message_rejects_non_author_without_admin() {
+        let (state, _tmp) = make_state();
+        seed_team_channel_member(&state, "alice", "t1", "ch1");
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            // Add bob as a plain member (no admin perm).
+            db::create_user(conn, &db::User {
+                id: "bob".into(),
+                username: "bob".into(),
+                display_name: "Bob".into(),
+                public_key: vec![2u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_member(conn, &db::Member {
+                id: "m-bob".into(),
+                team_id: "t1".into(),
+                user_id: "bob".into(),
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now.clone(),
+            })?;
+            // Message authored by alice.
+            db::create_message(conn, &db::Message {
+                id: "m-by-alice".into(),
+                channel_id: "ch1".into(),
+                dm_channel_id: String::new(),
+                author_id: "alice".into(),
+                content: "alice's note".into(),
+                msg_type: "text".into(),
+                thread_id: String::new(),
+                edited_at: None,
+                deleted: false,
+                lamport_ts: 0,
+                reply_to_message_id: None,
+                created_at: now,
+            })
+        }).unwrap();
+        // bob (not author, no admin) tries to delete.
+        let app = router(state, "bob");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/channels/ch1/messages/m-by-alice/del")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
     async fn delete_message_rejects_already_deleted() {
         let (state, _tmp) = make_state();
         seed_team_channel_member(&state, "alice", "t1", "ch1");
