@@ -101,8 +101,8 @@ export default function AddPeerWizard({ open, onClose, onComplete }: Readonly<Pr
         if (step !== 'handshake') onClose();
       }}
     >
-      <div
-        role="dialog"
+      <dialog
+        open
         aria-label="Add federation peer"
         className="add-peer"
         onClick={(e) => e.stopPropagation()}
@@ -243,7 +243,7 @@ export default function AddPeerWizard({ open, onClose, onComplete }: Readonly<Pr
             </>
           )}
         </div>
-      </div>
+      </dialog>
     </button>
   );
 

@@ -96,8 +96,8 @@ export default function CommandPalette({ open, onClose, commands }: Readonly<Pro
       onClick={onClose}
     >
       {/* Inner card stops click propagation so clicking inside doesn't dismiss */}
-      <div
-        role="dialog"
+      <dialog
+        open
         aria-label="Command palette"
         className="command-palette"
         onClick={(e) => e.stopPropagation()}
@@ -157,7 +157,7 @@ export default function CommandPalette({ open, onClose, commands }: Readonly<Pro
             </div>
           ))}
         </div>
-      </div>
+      </dialog>
     </button>
   );
 

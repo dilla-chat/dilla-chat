@@ -68,8 +68,8 @@ export default function NewServerModal({
       aria-label="Close new server modal"
       onClick={onClose}
     >
-      <div
-        role="dialog"
+      <dialog
+        open
         aria-label="Add team"
         className="new-server-modal"
         onClick={(e) => e.stopPropagation()}
@@ -170,7 +170,7 @@ export default function NewServerModal({
             {mode === 'create' ? 'Create →' : 'Join →'}
           </button>
         </footer>
-      </div>
+      </dialog>
     </button>
   );
 

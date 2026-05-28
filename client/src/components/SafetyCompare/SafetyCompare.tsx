@@ -62,8 +62,8 @@ export default function SafetyCompare({
       aria-label="Close safety comparison"
       onClick={onClose}
     >
-      <div
-        role="dialog"
+      <dialog
+        open
         aria-label="Safety number comparison"
         className="safety-compare"
         onClick={(e) => e.stopPropagation()}
@@ -144,7 +144,7 @@ export default function SafetyCompare({
             Mark verified ✓
           </button>
         </footer>
-      </div>
+      </dialog>
     </button>
   );
 

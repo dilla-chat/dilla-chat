@@ -99,8 +99,8 @@ export default function SearchPalette({
       aria-label="Close search palette"
       onClick={onClose}
     >
-      <div
-        role="dialog"
+      <dialog
+        open
         aria-label="Search palette"
         className="search-palette"
         onClick={(e) => e.stopPropagation()}
@@ -177,7 +177,7 @@ export default function SearchPalette({
             );
           })}
         </div>
-      </div>
+      </dialog>
     </button>
   );
 

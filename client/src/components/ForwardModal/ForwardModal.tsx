@@ -84,8 +84,8 @@ export default function ForwardModal({
       aria-label="Close forward modal"
       onClick={onClose}
     >
-      <div
-        role="dialog"
+      <dialog
+        open
         aria-label="Forward message"
         className="forward-modal"
         onClick={(e) => e.stopPropagation()}
@@ -161,7 +161,7 @@ export default function ForwardModal({
             Cancel
           </button>
         </footer>
-      </div>
+      </dialog>
     </button>
   );
 
