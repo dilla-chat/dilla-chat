@@ -1380,6 +1380,115 @@ export function VideoTile({ stream, fit = 'cover', mirror, showStats = true }: R
 // meaningful movement still fires `onClick` so the pip-swap focus-
 // toggle behavior keeps working.
 type DragHandle = 'move' | 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
+
+type PipStart = { startL: number; startT: number; startW: number; startH: number };
+type PipDelta = PipStart & { dx: number; dy: number };
+type PipResizeInput = PipDelta & { minW: number; minH: number };
+type PipBox = { l: number; t: number; w: number; h: number };
+
+function applyPipTranslate(
+  el: HTMLElement,
+  parentBox: { width: number; height: number },
+  d: PipDelta,
+): void {
+  let l = d.startL + d.dx;
+  let t = d.startT + d.dy;
+  l = Math.max(0, Math.min(l, parentBox.width - d.startW));
+  t = Math.max(0, Math.min(t, parentBox.height - d.startH));
+  el.style.left = `${l}px`;
+  el.style.top = `${t}px`;
+  el.style.right = 'auto';
+  el.style.bottom = 'auto';
+}
+
+function applyDirectionalResize(handle: DragHandle, d: PipDelta): PipBox {
+  let l = d.startL, t = d.startT, w = d.startW, h = d.startH;
+  if (handle.includes('n')) { t += d.dy; h -= d.dy; }
+  if (handle.includes('s')) { h += d.dy; }
+  if (handle.includes('w')) { l += d.dx; w -= d.dx; }
+  if (handle.includes('e')) { w += d.dx; }
+  return { l, t, w, h };
+}
+
+function enforceAspectRatio(
+  handle: DragHandle,
+  box: PipBox,
+  start: PipStart,
+): PipBox {
+  const aspect = start.startW / start.startH;
+  const onlyW = handle === 'e' || handle === 'w';
+  const onlyH = handle === 'n' || handle === 's';
+  let { w, h } = box;
+  if (onlyW) h = w / aspect;
+  else if (onlyH) w = h * aspect;
+  else if (Math.abs(w - start.startW) > Math.abs(h - start.startH) * aspect) h = w / aspect;
+  else w = h * aspect;
+  let { l, t } = box;
+  if (handle.includes('n')) t = start.startT + (start.startH - h);
+  if (handle.includes('w')) l = start.startL + (start.startW - w);
+  return { l, t, w, h };
+}
+
+function enforceMinSize(
+  handle: DragHandle,
+  box: PipBox,
+  start: PipStart,
+  minW: number,
+  minH: number,
+): PipBox {
+  let { l, t, w, h } = box;
+  if (w < minW) {
+    const ratio = minW / w;
+    w = minW;
+    h = h * ratio;
+    if (handle.includes('w')) l = start.startL + (start.startW - w);
+    if (handle.includes('n')) t = start.startT + (start.startH - h);
+  }
+  if (h < minH) {
+    const ratio = minH / h;
+    h = minH;
+    w = w * ratio;
+    if (handle.includes('w')) l = start.startL + (start.startW - w);
+    if (handle.includes('n')) t = start.startT + (start.startH - h);
+  }
+  return { l, t, w, h };
+}
+
+function enforceMaxSize(
+  box: PipBox,
+  parentBox: { width: number; height: number },
+): PipBox {
+  let { l, t, w, h } = box;
+  if (w > parentBox.width) {
+    const ratio = parentBox.width / w;
+    w = parentBox.width;
+    h = h * ratio;
+  }
+  if (h > parentBox.height) {
+    const ratio = parentBox.height / h;
+    h = parentBox.height;
+    w = w * ratio;
+  }
+  l = Math.max(0, Math.min(l, parentBox.width - w));
+  t = Math.max(0, Math.min(t, parentBox.height - h));
+  return { l, t, w, h };
+}
+
+function resolvePipResizeBox(
+  handle: DragHandle,
+  input: PipResizeInput,
+  parentBox: { width: number; height: number },
+): PipBox {
+  const start: PipStart = {
+    startL: input.startL, startT: input.startT,
+    startW: input.startW, startH: input.startH,
+  };
+  const directional = applyDirectionalResize(handle, input);
+  const ratioed = enforceAspectRatio(handle, directional, start);
+  const minClamped = enforceMinSize(handle, ratioed, start, input.minW, input.minH);
+  return enforceMaxSize(minClamped, parentBox);
+}
+
 export function FloatingPip({
   className,
   children,
@@ -1457,82 +1566,17 @@ export function FloatingPip({
       const dy = ev.clientY - startY;
       if (!moved && Math.abs(dx) + Math.abs(dy) < 4) return;
       moved = true;
-      let l = startL, t = startT, w = startW, h = startH;
       if (handle === 'move') {
-        // Pure drag — translate, never touch width/height. Setting
-        // them re-applied border-box vs content-box differences and
-        // visibly grew the PIP on every drag start.
-        l += dx; t += dy;
-        // Stay inside the parent stage — clamp so the PIP can never
-        // be dragged outside the focused video area.
-        l = Math.max(0, Math.min(l, parentBox.width - startW));
-        t = Math.max(0, Math.min(t, parentBox.height - startH));
-        el.style.left = `${l}px`;
-        el.style.top = `${t}px`;
-        el.style.right = 'auto';
-        el.style.bottom = 'auto';
+        applyPipTranslate(el, parentBox, { startL, startT, startW, startH, dx, dy });
         return;
       }
-      if (handle.includes('n')) { t += dy; h -= dy; }
-      if (handle.includes('s')) { h += dy; }
-      if (handle.includes('w')) { l += dx; w -= dx; }
-      if (handle.includes('e')) { w += dx; }
-      // Preserve the PIP's starting aspect ratio so video doesn't
-      // squash/stretch as the user resizes. For edge handles we lock
-      // the orthogonal dimension; for corners we pick whichever axis
-      // the user pushed harder and derive the other.
-      const aspect = startW / startH;
-      const onlyW = handle === 'e' || handle === 'w';
-      const onlyH = handle === 'n' || handle === 's';
-      if (onlyW) {
-        h = w / aspect;
-      } else if (onlyH) {
-        w = h * aspect;
-      } else if (Math.abs(w - startW) > Math.abs(h - startH) * aspect) {
-        h = w / aspect;
-      } else {
-        w = h * aspect;
-      }
-      // Re-anchor whichever edges were *not* grabbed so the dragged
-      // corner stays under the cursor.
-      if (handle.includes('n')) t = startT + (startH - h);
-      if (handle.includes('w')) l = startL + (startW - w);
-      // Min clamp: bump both dimensions together to keep the aspect.
-      if (w < minW) {
-        const ratio = minW / w;
-        w = minW;
-        h = h * ratio;
-        if (handle.includes('w')) l = startL + (startW - w);
-        if (handle.includes('n')) t = startT + (startH - h);
-      }
-      if (h < minH) {
-        const ratio = minH / h;
-        h = minH;
-        w = w * ratio;
-        if (handle.includes('w')) l = startL + (startW - w);
-        if (handle.includes('n')) t = startT + (startH - h);
-      }
-      // Max clamp against the parent stage — never let the PIP grow
-      // or slide past the focused video's edges. Aspect ratio is
-      // preserved by scaling both dimensions on the same ratio.
-      if (w > parentBox.width) {
-        const ratio = parentBox.width / w;
-        w = parentBox.width;
-        h = h * ratio;
-      }
-      if (h > parentBox.height) {
-        const ratio = parentBox.height / h;
-        h = parentBox.height;
-        w = w * ratio;
-      }
-      l = Math.max(0, Math.min(l, parentBox.width - w));
-      t = Math.max(0, Math.min(t, parentBox.height - h));
-      el.style.left = `${l}px`;
-      el.style.top = `${t}px`;
+      const box = resolvePipResizeBox(handle, { startL, startT, startW, startH, dx, dy, minW, minH }, parentBox);
+      el.style.left = `${box.l}px`;
+      el.style.top = `${box.t}px`;
       el.style.right = 'auto';
       el.style.bottom = 'auto';
-      el.style.width = `${w}px`;
-      el.style.height = `${h}px`;
+      el.style.width = `${box.w}px`;
+      el.style.height = `${box.h}px`;
     };
     const onUp = () => {
       document.removeEventListener('mousemove', onMove);
