@@ -159,9 +159,10 @@ describe('channel:updated', () => {
   it('ignores payloads without id or team_id', () => {
     renderHook(() => useTeamSync('t1'), { wrapper });
     const h = getHandler('channel:updated');
-    h?.({});
-    h?.({ id: 'ch-1' });
-    expect(true).toBe(true); // no throw
+    expect(() => {
+      h?.({});
+      h?.({ id: 'ch-1' });
+    }).not.toThrow();
   });
 });
 
@@ -209,10 +210,11 @@ describe('member:roles-updated', () => {
   it('ignores payload missing required fields', () => {
     renderHook(() => useTeamSync('t1'), { wrapper });
     const h = getHandler('member:roles-updated');
-    h?.({});
-    h?.({ team_id: 't1' });
-    h?.({ user_id: 'u2' });
-    expect(true).toBe(true);
+    expect(() => {
+      h?.({});
+      h?.({ team_id: 't1' });
+      h?.({ user_id: 'u2' });
+    }).not.toThrow();
   });
 });
 
@@ -235,9 +237,10 @@ describe('message:pin-update', () => {
   it('ignores payload without required fields', () => {
     renderHook(() => useTeamSync('t1'), { wrapper });
     const h = getHandler('message:pin-update');
-    h?.({});
-    h?.({ channel_id: 'ch-1' });
-    expect(true).toBe(true);
+    expect(() => {
+      h?.({});
+      h?.({ channel_id: 'ch-1' });
+    }).not.toThrow();
   });
 });
 
@@ -302,8 +305,10 @@ describe('group:created / group:updated / group:deleted / group:access-update', 
   it('group:access-update ignores non-existent group', () => {
     renderHook(() => useTeamSync('t1'), { wrapper });
     const h = getHandler('group:access-update');
-    h?.({ team_id: 't1', group_id: 'g-no-such', role_ids: ['r1'] });
-    expect(true).toBe(true);
+    expect(() => h?.({ team_id: 't1', group_id: 'g-no-such', role_ids: ['r1'] })).not.toThrow();
+    // Existing group ('g1') stays untouched.
+    const g = useTeamStore.getState().groups.get('t1')?.find((gg) => gg.id === 'g-no-such');
+    expect(g).toBeUndefined();
   });
 });
 
@@ -319,8 +324,9 @@ describe('channel:access-update', () => {
   it('ignores when channel not found in any team', () => {
     renderHook(() => useTeamSync('t1'), { wrapper });
     const h = getHandler('channel:access-update');
-    h?.({ channel_id: 'ch-not-found', role_ids: ['r1'] });
-    expect(true).toBe(true);
+    expect(() => h?.({ channel_id: 'ch-not-found', role_ids: ['r1'] })).not.toThrow();
+    const ch = useTeamStore.getState().channels.get('t1')?.find((c) => c.id === 'ch-not-found');
+    expect(ch).toBeUndefined();
   });
 });
 

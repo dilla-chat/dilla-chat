@@ -111,8 +111,9 @@ describe('thread:message:updated', () => {
   it('returns early when thread_id missing', async () => {
     renderHook(() => useThreadEvents('t1'));
     const fn = h.wsHandlers.get('thread:message:updated');
-    await fn?.({ id: 'tm-x', channel_id: 'ch-1', author_id: 'u2', content: 'x', type: 'text' });
-    expect(true).toBe(true);
+    await expect(
+      Promise.resolve(fn?.({ id: 'tm-x', channel_id: 'ch-1', author_id: 'u2', content: 'x', type: 'text' })),
+    ).resolves.toBeUndefined();
   });
 });
 
@@ -123,8 +124,6 @@ describe('thread:message:deleted', () => {
     } as never);
     renderHook(() => useThreadEvents('t1'));
     const fn = h.wsHandlers.get('thread:message:deleted');
-    fn?.({ thread_id: 'th-1', message_id: 'tm-1' });
-    // removeThreadMessage may use a different shape — just verify no throw
-    expect(true).toBe(true);
+    expect(() => fn?.({ thread_id: 'th-1', message_id: 'tm-1' })).not.toThrow();
   });
 });

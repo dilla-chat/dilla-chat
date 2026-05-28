@@ -207,8 +207,7 @@ describe('reaction:added / reaction:removed', () => {
   it('reaction:added is a no-op when message not found', () => {
     renderHook(() => useChannelEvents('t1', true));
     const fn = h.wsHandlers.get('reaction:added');
-    fn?.({ message_id: 'm-missing', channel_id: 'ch-1', user_id: 'me', emoji: '👍' });
-    expect(true).toBe(true);
+    expect(() => fn?.({ message_id: 'm-missing', channel_id: 'ch-1', user_id: 'me', emoji: '👍' })).not.toThrow();
   });
 });
 

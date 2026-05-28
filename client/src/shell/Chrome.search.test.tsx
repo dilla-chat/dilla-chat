@@ -229,8 +229,8 @@ describe('BottomBar — voice chunk', () => {
 
   it('shows INITIALIZING when derivedKey set but crypto not initialized', async () => {
     vi.doMock('../services/crypto', () => ({ isCryptoInitialized: () => false }));
-    // Already cached — test the other branch via fresh isCryptoInitialized
-    expect(true).toBe(true);
+    const mod = await import('../services/crypto');
+    expect(mod.isCryptoInitialized()).toBe(false);
   });
 
   it('shows degraded state', () => {

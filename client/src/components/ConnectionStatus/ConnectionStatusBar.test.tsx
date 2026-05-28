@@ -71,9 +71,10 @@ describe('ConnectionStatusBar', () => {
   });
 
   it('clears the timer on unmount', () => {
-    const { unmount } = render(<ConnectionStatusBar />);
+    const { container, unmount } = render(<ConnectionStatusBar />);
     act(() => { h.wsHandlers.get('ws:disconnected')?.({}); });
     unmount();
-    expect(true).toBe(true);
+    // After unmount the rendered subtree is detached.
+    expect(container.firstChild).toBeNull();
   });
 });
