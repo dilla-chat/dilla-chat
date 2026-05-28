@@ -95,7 +95,7 @@ export function StatsSparkline({
 
   const current = samples.at(-1) ?? null;
   const max = Math.max(...samples, floor);
-  const currentTone: SparkTone | 'idle' = current != null ? tone(current) : 'idle';
+  const currentTone: SparkTone | 'idle' = current == null ? 'idle' : tone(current);
   // Show only the most recent `barCount` samples; pad the head with
   // idle slots so the graph fills from the right while still showing
   // its frame on first paint.
@@ -140,7 +140,7 @@ export function VoiceDockLatency() {
       samples={samples}
       floor={30}
       tone={(v) => (v < 20 ? 'ok' : v < 35 ? 'warn' : 'bad')}
-      title={(c) => (c != null ? `live latency · current ${c}ms` : 'measuring latency…')}
+      title={(c) => (c == null ? 'measuring latency…' : `live latency · current ${c}ms`)}
     />
   );
 }
@@ -157,7 +157,7 @@ export function VoiceDockBitrate() {
       samples={samples}
       floor={32}
       tone={(v) => (v >= 16 ? 'ok' : v >= 8 ? 'warn' : 'bad')}
-      title={(c) => (c != null ? `outbound audio · current ${c}kbps` : 'measuring bitrate…')}
+      title={(c) => (c == null ? 'measuring bitrate…' : `outbound audio · current ${c}kbps`)}
     />
   );
 }

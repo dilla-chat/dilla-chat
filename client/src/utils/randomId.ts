@@ -16,7 +16,7 @@ const RADIX = 36;
 const TAIL_LEN = 6;
 
 export function randomTail(length: number = TAIL_LEN): string {
-  const source = globalThis.crypto ?? (typeof window !== 'undefined' ? globalThis.crypto : undefined);
+  const source = globalThis.crypto;
   if (!source?.getRandomValues) {
     // SSR / pre-secure-context fallback — still avoid Math.random by
     // hashing the current time, which is enough for a UI id.
@@ -47,7 +47,7 @@ export function shortId(prefix: string): string {
  */
 export function randomInt(max: number): number {
   if (max <= 0) return 0;
-  const source = globalThis.crypto ?? (typeof window !== 'undefined' ? globalThis.crypto : undefined);
+  const source = globalThis.crypto;
   if (!source?.getRandomValues) return 0;
   const bytes = new Uint32Array(1);
   source.getRandomValues(bytes);
