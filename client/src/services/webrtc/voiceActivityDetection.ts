@@ -3,6 +3,72 @@ import { useUserSettingsStore } from '../../stores/userSettingsStore';
 
 const VAD_INTERVAL_MS = 100;
 
+type VoiceStore = ReturnType<typeof useVoiceStore.getState>;
+type RemoteAnalyserEntry = { analyser: AnalyserNode; data: Uint8Array; userId: string };
+
+/** Propagate a speaking-flag transition for one remote user into the
+ *  voiceOccupants map. Pure helper extracted from the VAD tick to keep
+ *  its cognitive complexity below the rule threshold. */
+function applySpeakingTransitionToOccupants(
+  store: VoiceStore,
+  userId: string,
+  speaking: boolean,
+): void {
+  const occ = store.voiceOccupants;
+  const next: typeof occ = {};
+  let changed = false;
+  for (const [chId, list] of Object.entries(occ)) {
+    let listChanged = false;
+    const nextList = list.map((p) => {
+      if (p.user_id !== userId) return p;
+      if (p.speaking === speaking) return p;
+      listChanged = true;
+      return { ...p, speaking };
+    });
+    if (listChanged) {
+      next[chId] = nextList;
+      changed = true;
+    } else {
+      next[chId] = list;
+    }
+  }
+  if (changed) store.setVoiceOccupants(next);
+}
+
+/** Run one VAD tick against a single remote analyser. */
+function processRemoteAnalyserTick(
+  entry: RemoteAnalyserEntry,
+  vadThreshold: number,
+  emitDelta: number,
+  wasSpeaking: Map<string, boolean>,
+  lastLevel: Map<string, number>,
+  store: VoiceStore,
+): void {
+  entry.analyser.getByteFrequencyData(entry.data as unknown as Uint8Array<ArrayBuffer>);
+  const avg = entry.data.reduce((a, b) => a + b, 0) / entry.data.length;
+  const level = Math.min(avg / 80, 1);
+  const speaking = avg > vadThreshold;
+  const prev = wasSpeaking.get(entry.userId) ?? false;
+  const prevLevel = lastLevel.get(entry.userId) ?? 0;
+
+  const transition = speaking !== prev;
+  const meaningfulLevelChange =
+    speaking && Math.abs(level - prevLevel) >= emitDelta;
+  if (!transition && !meaningfulLevelChange) return;
+
+  // Snap to 0 on transition-to-silent so the UI doesn't keep showing
+  // the last animated bar value.
+  const emitLevel = speaking ? level : 0;
+  wasSpeaking.set(entry.userId, speaking);
+  lastLevel.set(entry.userId, emitLevel);
+  if (store.peers[entry.userId]) {
+    store.updatePeer(entry.userId, { voiceLevel: emitLevel, speaking });
+  }
+  if (transition) {
+    applySpeakingTransitionToOccupants(store, entry.userId, speaking);
+  }
+}
+
 export class VoiceActivityDetector {
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
@@ -55,53 +121,14 @@ export class VoiceActivityDetector {
       const userThreshold = useUserSettingsStore.getState().inputThreshold;
       const vadThreshold = Math.round(userThreshold * 100);
       for (const [, entry] of this.remoteAnalysers) {
-        entry.analyser.getByteFrequencyData(entry.data as unknown as Uint8Array<ArrayBuffer>);
-        const avg = entry.data.reduce((a, b) => a + b, 0) / entry.data.length;
-        const level = Math.min(avg / 80, 1);
-        const speaking = avg > vadThreshold;
-        const prev = wasSpeaking.get(entry.userId) ?? false;
-        const prevLevel = lastLevel.get(entry.userId) ?? 0;
-
-        const transition = speaking !== prev;
-        const meaningfulLevelChange =
-          speaking && Math.abs(level - prevLevel) >= LEVEL_EMIT_DELTA;
-
-        if (!transition && !meaningfulLevelChange) continue;
-
-        // Snap to 0 on transition-to-silent so the UI doesn't keep
-        // showing the last animated bar value.
-        const emitLevel = speaking ? level : 0;
-        wasSpeaking.set(entry.userId, speaking);
-        lastLevel.set(entry.userId, emitLevel);
-        if (store.peers[entry.userId]) {
-          store.updatePeer(entry.userId, { voiceLevel: emitLevel, speaking });
-        }
-        // Mirror the speaking flag into voiceOccupants (separate
-        // source-of-truth consumed by the channel sidebar's
-        // Active-voice rows). Only on transitions — the level
-        // doesn't need to propagate there since the sidebar only
-        // toggles a CSS class, not a per-frame meter.
-        if (transition) {
-          const occ = store.voiceOccupants;
-          const next: typeof occ = {};
-          let changed = false;
-          for (const [chId, list] of Object.entries(occ)) {
-            let listChanged = false;
-            const nextList = list.map((p) => {
-              if (p.user_id !== entry.userId) return p;
-              if (p.speaking === speaking) return p;
-              listChanged = true;
-              return { ...p, speaking };
-            });
-            if (listChanged) {
-              next[chId] = nextList;
-              changed = true;
-            } else {
-              next[chId] = list;
-            }
-          }
-          if (changed) store.setVoiceOccupants(next);
-        }
+        processRemoteAnalyserTick(
+          entry,
+          vadThreshold,
+          LEVEL_EMIT_DELTA,
+          wasSpeaking,
+          lastLevel,
+          store,
+        );
       }
     }, VAD_INTERVAL_MS);
   }
