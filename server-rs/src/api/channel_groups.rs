@@ -124,21 +124,50 @@ pub async fn create(
     json_ok(group)
 }
 
+fn validate_update_group_body(body: &UpdateGroupRequest) -> Result<(), AppError> {
+    let Some(ref n) = body.name else { return Ok(()) };
+    let t = n.trim();
+    if t.is_empty() {
+        return Err(AppError::BadRequest("name cannot be empty".into()));
+    }
+    if t.chars().count() > 100 {
+        return Err(AppError::BadRequest("name too long (max 100 chars)".into()));
+    }
+    Ok(())
+}
+
+fn apply_group_updates(
+    conn: &rusqlite::Connection,
+    g: &mut db::ChannelGroup,
+    body: UpdateGroupRequest,
+    team_id: &str,
+    group_id: &str,
+) -> Result<(), rusqlite::Error> {
+    if let Some(name) = body.name {
+        let trimmed = name.trim().to_string();
+        if db::group_name_exists(conn, team_id, &trimmed, Some(group_id))? {
+            return Err(rusqlite::Error::InvalidParameterName(
+                "group_name_conflict".into(),
+            ));
+        }
+        g.name = trimmed;
+    }
+    if let Some(pos) = body.position {
+        g.position = pos;
+    }
+    if let Some(hidden) = body.hidden_if_restricted {
+        g.hidden_if_restricted = hidden;
+    }
+    Ok(())
+}
+
 pub async fn update(
     Extension(UserId(user_id)): Extension<UserId>,
     State(state): State<AppState>,
     Path((team_id, group_id)): Path<(String, String)>,
     Json(body): Json<UpdateGroupRequest>,
 ) -> Result<Json<Value>, AppError> {
-    if let Some(ref n) = body.name {
-        let t = n.trim();
-        if t.is_empty() {
-            return Err(AppError::BadRequest("name cannot be empty".into()));
-        }
-        if t.chars().count() > 100 {
-            return Err(AppError::BadRequest("name too long (max 100 chars)".into()));
-        }
-    }
+    validate_update_group_body(&body)?;
     let team_id_clone = team_id.clone();
     let group_id_clone = group_id.clone();
     let group = spawn_db(state.db.clone(), move |conn| {
@@ -148,21 +177,7 @@ pub async fn update(
         if g.team_id != team_id_clone {
             return Err(rusqlite::Error::QueryReturnedNoRows);
         }
-        if let Some(name) = body.name {
-            let trimmed = name.trim().to_string();
-            if db::group_name_exists(conn, &team_id_clone, &trimmed, Some(&group_id_clone))? {
-                return Err(rusqlite::Error::InvalidParameterName(
-                    "group_name_conflict".into(),
-                ));
-            }
-            g.name = trimmed;
-        }
-        if let Some(pos) = body.position {
-            g.position = pos;
-        }
-        if let Some(hidden) = body.hidden_if_restricted {
-            g.hidden_if_restricted = hidden;
-        }
+        apply_group_updates(conn, &mut g, body, &team_id_clone, &group_id_clone)?;
         g.updated_at = db::now_str();
         db::update_group(conn, &g)?;
         let _ = db::insert_audit_event(
