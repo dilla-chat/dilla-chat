@@ -93,7 +93,7 @@ export function StatsSparkline({
     return () => ro.disconnect();
   }, []);
 
-  const current = samples.length ? samples[samples.length - 1] : null;
+  const current = samples.at(-1) ?? null;
   const max = Math.max(...samples, floor);
   const currentTone: SparkTone | 'idle' = current != null ? tone(current) : 'idle';
   // Show only the most recent `barCount` samples; pad the head with

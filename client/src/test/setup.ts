@@ -97,7 +97,7 @@ class MockDataTransfer {
   clearData = vi.fn();
   setDragImage = vi.fn();
 }
-if (typeof globalThis.DataTransfer === 'undefined') {
+if (globalThis.DataTransfer === undefined) {
   vi.stubGlobal('DataTransfer', MockDataTransfer);
 }
 // Patch DragEvent constructor so fireEvent.dragStart() without a

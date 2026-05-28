@@ -53,7 +53,7 @@ function isBroadcastHandle(handle: string) {
  */
 function injectMentionLinks(body: string): string {
   return body.replace(/(^|[\s(,.;:!?])@([A-Za-z0-9_.-]+)/g, (_match, lead, handle) => {
-    const escapedHandle = handle.replace(/\\/g, '\\\\').replace(/]/g, '\\]');
+    const escapedHandle = handle.replaceAll('\\', String.raw`\\`).replaceAll(']', String.raw`\]`);
     return `${lead}[@${escapedHandle}](dilla:mention/${encodeURIComponent(handle)})`;
   });
 }
