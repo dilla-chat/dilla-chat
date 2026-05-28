@@ -239,9 +239,23 @@ fn read_secret_file(env_label: &str, path: &str) -> Result<String, String> {
 /// this generalizes the convention to every other secret-bearing env
 /// var Dilla accepts. See `deploy/secrets/README.md` for the operator
 /// playbook.
+/// Read an env-var-named secret file path and return its contents,
+/// or None when the env var is unset or empty. Extracted so each
+/// `if let Ok(path) = std::env::var(...)` block in
+/// load_secrets_from_files collapses to a single statement and the
+/// outer function's cognitive complexity drops below the threshold.
+fn read_env_pointed_secret(env_var: &str) -> Result<Option<String>, String> {
+    let Ok(path) = std::env::var(env_var) else {
+        return Ok(None);
+    };
+    if path.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(read_secret_file(env_var, &path)?))
+}
+
 fn load_secrets_from_files(cfg: &mut Config) -> Result<(), String> {
-    // 1. DB passphrase — overrides cfg.db_passphrase. Same behavior as
-    //    the H9 implementation, now flowing through the shared helper.
+    // 1. DB passphrase — overrides cfg.db_passphrase.
     if !cfg.db_passphrase_file.is_empty() {
         cfg.db_passphrase =
             read_secret_file("DILLA_DB_PASSPHRASE_FILE", &cfg.db_passphrase_file)?;
@@ -249,45 +263,29 @@ fn load_secrets_from_files(cfg: &mut Config) -> Result<(), String> {
 
     // 2. JWT secret — consumed via `std::env::var("DILLA_JWT_SECRET")`
     //    in `auth::derive_jwt_secret`, so we override the env var
-    //    in-process rather than carrying it in `Config`. Rust 2021:
-    //    `set_var` is safe; on edition migration this needs an
-    //    `unsafe` block.
-    if let Ok(path) = std::env::var("DILLA_JWT_SECRET_FILE") {
-        if !path.is_empty() {
-            let value = read_secret_file("DILLA_JWT_SECRET_FILE", &path)?;
-            std::env::set_var("DILLA_JWT_SECRET", value);
-        }
+    //    in-process rather than carrying it in `Config`.
+    if let Some(value) = read_env_pointed_secret("DILLA_JWT_SECRET_FILE")? {
+        std::env::set_var("DILLA_JWT_SECRET", value);
     }
 
-    // 3. Federation join secret — overrides cfg.join_secret.
-    if let Ok(path) = std::env::var("DILLA_JOIN_SECRET_FILE") {
-        if !path.is_empty() {
-            cfg.join_secret = read_secret_file("DILLA_JOIN_SECRET_FILE", &path)?;
-        }
+    // 3. Federation join secret.
+    if let Some(value) = read_env_pointed_secret("DILLA_JOIN_SECRET_FILE")? {
+        cfg.join_secret = value;
     }
 
-    // 4. Cloudflare TURN API token — overrides cfg.cf_turn_api_token.
-    if let Ok(path) = std::env::var("DILLA_CF_TURN_API_TOKEN_FILE") {
-        if !path.is_empty() {
-            cfg.cf_turn_api_token =
-                read_secret_file("DILLA_CF_TURN_API_TOKEN_FILE", &path)?;
-        }
+    // 4. Cloudflare TURN API token.
+    if let Some(value) = read_env_pointed_secret("DILLA_CF_TURN_API_TOKEN_FILE")? {
+        cfg.cf_turn_api_token = value;
     }
 
-    // 5. OTel exporter auth header value (e.g. an Authorization or
-    //    `x-honeycomb-team` token). The header *name* is configured via
-    //    DILLA_OTEL_API_HEADER and isn't secret; the *value* is.
-    if let Ok(path) = std::env::var("DILLA_OTEL_API_KEY_FILE") {
-        if !path.is_empty() {
-            cfg.otel_api_key = read_secret_file("DILLA_OTEL_API_KEY_FILE", &path)?;
-        }
+    // 5. OTel exporter auth header value.
+    if let Some(value) = read_env_pointed_secret("DILLA_OTEL_API_KEY_FILE")? {
+        cfg.otel_api_key = value;
     }
 
-    // 6. Sentry DSN — embeds the project's ingest secret in the URL.
-    if let Ok(path) = std::env::var("DILLA_SENTRY_DSN_FILE") {
-        if !path.is_empty() {
-            cfg.sentry_dsn = read_secret_file("DILLA_SENTRY_DSN_FILE", &path)?;
-        }
+    // 6. Sentry DSN.
+    if let Some(value) = read_env_pointed_secret("DILLA_SENTRY_DSN_FILE")? {
+        cfg.sentry_dsn = value;
     }
 
     Ok(())
