@@ -652,27 +652,42 @@ async fn init_presence_manager(hub: &Arc<ws::Hub>) -> Arc<PresenceManager> {
     let mut presence_mgr = PresenceManager::new();
 
     let hub_presence = hub.clone();
-    *presence_mgr.on_broadcast.write().await = Some(Box::new(move |user_id, status_type, custom_status| {
-        let evt = ws::events::Event::new(
-            ws::events::EVENT_PRESENCE_CHANGED,
-            ws::events::PresenceUpdatePayload {
-                user_id: user_id.to_string(),
-                status_type: status_type.to_string(),
-                status_text: custom_status.to_string(),
-            },
-        );
-        if let Ok(evt) = evt {
-            if let Ok(data) = evt.to_bytes() {
-                let hub = hub_presence.clone();
-                tokio::spawn(async move {
-                    hub.broadcast_to_all(data).await;
-                });
-            }
-        }
-    }));
+    *presence_mgr.on_broadcast.write().await = Some(Box::new(
+        move |user_id, status_type, custom_status| {
+            broadcast_presence_update(&hub_presence, user_id, status_type, custom_status);
+        },
+    ));
 
     presence_mgr.start_idle_checker(std::time::Duration::from_secs(30));
     Arc::new(presence_mgr)
+}
+
+/// Build a presence:changed event from a presence-manager callback and
+/// fire-and-forget broadcast it. Extracted so the event-construction +
+/// serialization path is independently testable from the closure that
+/// captures the Hub Arc.
+pub(crate) fn broadcast_presence_update(
+    hub: &Arc<ws::Hub>,
+    user_id: &str,
+    status_type: &str,
+    custom_status: &str,
+) {
+    let evt = ws::events::Event::new(
+        ws::events::EVENT_PRESENCE_CHANGED,
+        ws::events::PresenceUpdatePayload {
+            user_id: user_id.to_string(),
+            status_type: status_type.to_string(),
+            status_text: custom_status.to_string(),
+        },
+    );
+    if let Ok(evt) = evt {
+        if let Ok(data) = evt.to_bytes() {
+            let hub = hub.clone();
+            tokio::spawn(async move {
+                hub.broadcast_to_all(data).await;
+            });
+        }
+    }
 }
 
 fn spawn_hub_event_handler(hub: &Arc<ws::Hub>, presence_mgr: &Arc<PresenceManager>, database: &Database) {
@@ -2286,6 +2301,26 @@ mod tests {
             }
             other => panic!("expected TokenWrittenToFile, got {:?}", other),
         }
+    }
+
+    // ── broadcast_presence_update ────────────────────────────────────
+
+    #[tokio::test]
+    async fn broadcast_presence_update_does_not_panic_with_zero_clients() {
+        let (db, _tmp) = test_db();
+        let hub = Arc::new(ws::Hub::new(db));
+        broadcast_presence_update(&hub, "u1", "online", "");
+        // No connected clients; tokio::spawn fires the broadcast to 0 peers.
+        // Wait a tick so the spawned task runs without orphaning.
+        tokio::task::yield_now().await;
+    }
+
+    #[tokio::test]
+    async fn broadcast_presence_update_handles_custom_status() {
+        let (db, _tmp) = test_db();
+        let hub = Arc::new(ws::Hub::new(db));
+        broadcast_presence_update(&hub, "u1", "dnd", "in a meeting");
+        tokio::task::yield_now().await;
     }
 
     // ── federation_status_payloads (pure JSON builder) ───────────────
