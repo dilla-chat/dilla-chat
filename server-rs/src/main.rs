@@ -90,15 +90,7 @@ async fn main() {
     let presence_mgr = init_presence_manager(&hub).await;
     spawn_hub_event_handler(&hub, &presence_mgr, &database);
 
-    // H-8 / A2: optional Tor exit-node list for the auth risk
-    // scorer. Absent path / unreadable file is non-fatal; the
-    // global stays None and ip_is_tor_exit returns false.
-    tor_list::init(&cfg.tor_exit_list_path);
-
-    // H-8b / A2: optional MaxMind GeoLite2 country lookup. Same
-    // opt-in posture as the Tor list — absent path is non-fatal,
-    // derive_country_from_ip falls back to "unknown".
-    geoip::init(&cfg.geoip_db_path);
+    init_auth_risk_signals(&cfg);
 
     log_federation_identity_status(&database);
 
@@ -128,6 +120,21 @@ async fn main() {
     let app = with_http_observability_middleware(app);
 
     start_server(&cfg, app).await;
+}
+
+/// Initialize the optional H-8 / A2 auth-risk signals: Tor exit-node
+/// list + MaxMind GeoLite2 country lookup. Both are absent-path-safe;
+/// missing files keep the respective globals as `None` and the scorers
+/// fall back to neutral defaults. Extracted from main() so the
+/// init-on-startup wiring is testable end-to-end.
+pub(crate) fn init_auth_risk_signals(cfg: &Config) {
+    // H-8: Tor exit-node list. Absent path / unreadable file is
+    // non-fatal; the global stays None and ip_is_tor_exit returns false.
+    tor_list::init(&cfg.tor_exit_list_path);
+    // H-8b: MaxMind GeoLite2 country lookup. Same opt-in posture as the
+    // Tor list — absent path is non-fatal, derive_country_from_ip falls
+    // back to "unknown".
+    geoip::init(&cfg.geoip_db_path);
 }
 
 /// Build the WebSocket hub with voice SFU + room manager + telemetry
@@ -1213,6 +1220,26 @@ mod tests {
     // Drive each SFUEvent variant through the extracted helper. Hub is
     // real but with no connected clients — broadcast/send are no-ops
     // but the match arms + payload construction run.
+
+    // ── init_auth_risk_signals ───────────────────────────────────────
+
+    #[test]
+    fn init_auth_risk_signals_with_empty_paths_is_safe() {
+        let mut cfg = Config::default();
+        cfg.tor_exit_list_path = String::new();
+        cfg.geoip_db_path = String::new();
+        init_auth_risk_signals(&cfg);
+        // Tor list + geoip stay None — both helpers return false/None.
+    }
+
+    #[test]
+    fn init_auth_risk_signals_with_missing_files_is_safe() {
+        let mut cfg = Config::default();
+        cfg.tor_exit_list_path = "/nonexistent/tor-exit-list.txt".into();
+        cfg.geoip_db_path = "/nonexistent/geoip.mmdb".into();
+        init_auth_risk_signals(&cfg);
+        // The init helpers swallow missing-file errors.
+    }
 
     // ── build_voice_hub + wire_sfu_event_bridge ──────────────────────
 
