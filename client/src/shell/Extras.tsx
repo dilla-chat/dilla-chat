@@ -11,6 +11,12 @@ import { shortId } from '../utils/randomId';
 
 const { useState: useT2, useEffect: useT2E, useRef: useT2R } = React;
 
+function toastIcon(kind?: string): string {
+  if (kind === 'mention') return '@';
+  if (kind === 'voice') return '◉';
+  return '●';
+}
+
 // ───────── Notification toasts ─────────
 function NotificationStack({ teaserOnly = false }) {
   const shell = useShellDataContext() as any;
@@ -65,7 +71,7 @@ function NotificationStack({ teaserOnly = false }) {
         const inner = (
           <>
             <div className="nt-icon">
-              {t.kind === 'mention' ? '@' : t.kind === 'voice' ? '◉' : '●'}
+              {toastIcon(t.kind)}
             </div>
             <div className="nt-body">
               <div className="nt-head">

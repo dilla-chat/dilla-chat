@@ -20,6 +20,12 @@ const { useState: useStateMC, useEffect: useEffectMC, useRef: useRefMC, useMemo:
 const MEMBER_NODES = {};
 const FINGERPRINTS = {};
 
+function cmdkSearchHint(queryLen: number, hitCount: number): string {
+  if (queryLen < 2) return 'type 2+ chars';
+  const plural = hitCount === 1 ? '' : 'es';
+  return `${hitCount} match${plural}`;
+}
+
 // ───────── top bar ─────────
 function TopBar({ onCmdK, onSearch, onHelp, federated = true, degraded = false, teamName = '', nodeName = 'local' }) {
   const [_tick, setTick] = useStateMC(0);
@@ -402,7 +408,7 @@ function SearchPalette({ open, onClose, onPickChannel }) {
             if (e.key === 'ArrowUp') {e.preventDefault();setIdx((i) => Math.max(0, i - 1));}
             if (e.key === 'Enter') {if (results[idx]) pick(results[idx]);}
           }} />
-          <span className="cmdk-hint">{q.length < 2 ? 'type 2+ chars' : `${results.length} match${results.length === 1 ? '' : 'es'}`}</span>
+          <span className="cmdk-hint">{cmdkSearchHint(q.length, results.length)}</span>
         </div>
         <div className="cmdk-list">
           {q.length < 2 &&
