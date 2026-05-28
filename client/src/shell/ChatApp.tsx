@@ -3156,9 +3156,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                               <div style={{ marginBottom: 4 }}>{renderText(m.text, members)}</div>
                             )}
                             {(() => {
-                              const list = m.attachments?.length > 0
-                                ? m.attachments
-                                : (m.attachment ? [m.attachment] : []);
+                              const list = resolveAttachmentList(m);
                               if (list.length === 0) return null;
                               // Lightbox-eligible images for THIS message
                               // only — Left/Right inside the modal cycles
@@ -3865,6 +3863,12 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
       })()}
     </div>
   );
+}
+
+function resolveAttachmentList(m: { attachments?: any[]; attachment?: any }): any[] {
+  if (m.attachments?.length) return m.attachments;
+  if (m.attachment) return [m.attachment];
+  return [];
 }
 
 function renderChannelTitle(channel: any, dmPartner: any) {
