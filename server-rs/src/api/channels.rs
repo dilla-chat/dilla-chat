@@ -188,12 +188,7 @@ pub async fn get_channel(
     json_ok(channel)
 }
 
-pub async fn update(
-    Extension(UserId(user_id)): Extension<UserId>,
-    State(state): State<AppState>,
-    Path((team_id, channel_id)): Path<(String, String)>,
-    Json(body): Json<UpdateChannelRequest>,
-) -> Result<Json<Value>, AppError> {
+fn validate_update_channel_body(body: &UpdateChannelRequest) -> Result<(), AppError> {
     if let Some(ref name) = body.name {
         let trimmed = name.trim();
         if trimmed.is_empty() {
@@ -208,6 +203,59 @@ pub async fn update(
             return Err(AppError::BadRequest("topic too long (max 1024 chars)".into()));
         }
     }
+    Ok(())
+}
+
+/// Resolve `channel.category` to a canonical `group_id`. Empty category
+/// clears it; non-empty matches existing (case-insensitive) or creates a
+/// fresh group. Extracted from the channels::update spawn_db closure to
+/// keep its cognitive complexity below the rule threshold.
+fn sync_group_id_from_category(
+    conn: &rusqlite::Connection,
+    channel: &mut db::Channel,
+    team_id: &str,
+) -> Result<(), rusqlite::Error> {
+    let trimmed_cat = channel.category.trim().to_string();
+    if trimmed_cat.is_empty() {
+        channel.group_id = None;
+        return Ok(());
+    }
+    let existing = db::get_groups_by_team(conn, team_id)?
+        .into_iter()
+        .find(|g| g.name.trim().eq_ignore_ascii_case(&trimmed_cat));
+    if let Some(g) = existing {
+        channel.group_id = Some(g.id);
+        return Ok(());
+    }
+    let now = db::now_str();
+    let new_group = db::ChannelGroup {
+        id: db::new_id(),
+        team_id: team_id.to_string(),
+        name: trimmed_cat,
+        position: 0,
+        created_at: now.clone(),
+        updated_at: now,
+        hidden_if_restricted: false,
+    };
+    db::create_group(conn, &new_group)?;
+    channel.group_id = Some(new_group.id);
+    Ok(())
+}
+
+fn channel_update_audit_action(prev_locked: bool, now_locked: bool) -> &'static str {
+    if prev_locked == now_locked {
+        return "channel.update";
+    }
+    if now_locked { "channel.lock" } else { "channel.unlock" }
+}
+
+pub async fn update(
+    Extension(UserId(user_id)): Extension<UserId>,
+    State(state): State<AppState>,
+    Path((team_id, channel_id)): Path<(String, String)>,
+    Json(body): Json<UpdateChannelRequest>,
+) -> Result<Json<Value>, AppError> {
+    validate_update_channel_body(&body)?;
 
     let channel = spawn_db(state.db.clone(), move |conn| {
         require_permission(conn, &user_id, &team_id, db::PERM_MANAGE_CHANNELS)?;
@@ -215,41 +263,11 @@ pub async fn update(
         let mut channel = get_channel_for_team(conn, &channel_id, &team_id)?;
         let prev_locked = channel.locked;
         apply_channel_updates(&mut channel, &body);
-        // Keep the canonical group_id in sync with the legacy `category`
-        // string — empty category clears the group; non-empty resolves
-        // to an existing group (case-insensitive) or creates a fresh
-        // one. Mirrors the create-channel resolution so the sidebar
-        // reorders the channel under the new group without a re-sync.
         if body.category.is_some() {
-            let trimmed_cat = channel.category.trim().to_string();
-            channel.group_id = if trimmed_cat.is_empty() {
-                None
-            } else {
-                let existing = db::get_groups_by_team(conn, &team_id)?
-                    .into_iter()
-                    .find(|g| g.name.trim().eq_ignore_ascii_case(&trimmed_cat));
-                if let Some(g) = existing {
-                    Some(g.id)
-                } else {
-                    let now = db::now_str();
-                    let new_group = db::ChannelGroup {
-                        id: db::new_id(),
-                        team_id: team_id.clone(),
-                        name: trimmed_cat,
-                        position: 0,
-                        created_at: now.clone(),
-                        updated_at: now,
-                        hidden_if_restricted: false,
-                    };
-                    db::create_group(conn, &new_group)?;
-                    Some(new_group.id)
-                }
-            };
+            sync_group_id_from_category(conn, &mut channel, &team_id)?;
         }
-        // After applying the rename, make sure no sibling channel of the
-        // same type already owns the normalized name. The unique index
-        // would catch this anyway, but pre-checking lets us surface a
-        // 409 with a clear message instead of a sqlite constraint dump.
+        // Surface a 409 on rename collisions before the unique-index
+        // dumps a constraint error.
         if body.name.is_some()
             && channel_name_exists(conn, &team_id, &channel.name, &channel.channel_type, Some(&channel.id))?
         {
@@ -259,11 +277,7 @@ pub async fn update(
         }
         db::update_channel(conn, &channel)?;
 
-        let action = if prev_locked != channel.locked {
-            if channel.locked { "channel.lock" } else { "channel.unlock" }
-        } else {
-            "channel.update"
-        };
+        let action = channel_update_audit_action(prev_locked, channel.locked);
         let _ = db::insert_audit_event(
             conn,
             &team_id,
@@ -420,33 +434,43 @@ async fn evict_inaccessible_peers(state: &AppState, team_id: &str, channel_id: &
 
     let sfu = state.hub.voice_sfu.as_ref().cloned();
     for uid in losers {
-        if let Some(ref sfu) = sfu {
-            sfu.handle_leave(channel_id, &uid).await;
-        }
-        room_mgr.remove_peer(channel_id, &uid).await;
+        evict_one_inaccessible_peer(state, &sfu, &room_mgr, channel_id, &uid).await;
+    }
+}
 
-        if let Ok(evt) = crate::ws::events::Event::new(
-            crate::ws::events::EVENT_VOICE_USER_LEFT,
-            crate::ws::events::VoiceUserLeftPayload {
-                channel_id: channel_id.to_string(),
-                user_id: uid.clone(),
-            },
-        ) {
-            if let Ok(bytes) = evt.to_bytes() {
-                state.hub.broadcast_to_all(bytes).await;
-            }
-        }
+async fn evict_one_inaccessible_peer(
+    state: &AppState,
+    sfu: &Option<std::sync::Arc<dyn crate::ws::hub::VoiceSFU>>,
+    room_mgr: &std::sync::Arc<crate::voice::RoomManager>,
+    channel_id: &str,
+    uid: &str,
+) {
+    if let Some(ref sfu) = sfu {
+        sfu.handle_leave(channel_id, uid).await;
+    }
+    room_mgr.remove_peer(channel_id, uid).await;
 
-        if let Ok(evt) = crate::ws::events::Event::new(
-            "voice:force-disconnect",
-            serde_json::json!({
-                "channel_id": channel_id,
-                "reason": "access_revoked",
-            }),
-        ) {
-            if let Ok(bytes) = evt.to_bytes() {
-                state.hub.send_to_user(&uid, bytes).await;
-            }
+    if let Ok(evt) = crate::ws::events::Event::new(
+        crate::ws::events::EVENT_VOICE_USER_LEFT,
+        crate::ws::events::VoiceUserLeftPayload {
+            channel_id: channel_id.to_string(),
+            user_id: uid.to_string(),
+        },
+    ) {
+        if let Ok(bytes) = evt.to_bytes() {
+            state.hub.broadcast_to_all(bytes).await;
+        }
+    }
+
+    if let Ok(evt) = crate::ws::events::Event::new(
+        "voice:force-disconnect",
+        serde_json::json!({
+            "channel_id": channel_id,
+            "reason": "access_revoked",
+        }),
+    ) {
+        if let Ok(bytes) = evt.to_bytes() {
+            state.hub.send_to_user(uid, bytes).await;
         }
     }
 }
