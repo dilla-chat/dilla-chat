@@ -365,10 +365,10 @@ describe('UserPanel integration', () => {
 
   it('renders for each of online/idle/dnd/offline status', () => {
     for (const status of ['online', 'idle', 'dnd', 'offline']) {
-      const { unmount } = render(wrap(<UserPanel member={{ ...ME, status }} />));
+      const { container, unmount } = render(wrap(<UserPanel member={{ ...ME, status }} />));
+      expect(container.firstChild).not.toBeNull();
       unmount();
     }
-    expect(true).toBe(true);
   });
 });
 

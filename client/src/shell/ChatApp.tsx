@@ -2557,7 +2557,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
   const SLASH_COMMANDS = [
     { cmd: '/me',      args: '<action>',  desc: 'narrate an action in italics' },
     { cmd: '/code',    args: '<language>', desc: 'start a code block' },
-    { cmd: '/shrug',   args: '',          desc: "appends ¯\\_(ツ)_/¯" },
+    { cmd: '/shrug',   args: '',          desc: String.raw`appends ¯\_(ツ)_/¯` },
     { cmd: '/poll',    args: '<question> | <opt1> | <opt2>', desc: 'post a poll · react with numbers to vote' },
     { cmd: '/giphy',   args: '<search>',  desc: 'post a giphy search link' },
     { cmd: '/topic',   args: '<text>',    desc: "set the channel topic (needs manage-channels)" },
@@ -5395,7 +5395,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     if (text === '/me') return { kind: 'text', text };
     if (text.startsWith('/shrug')) {
       const rest = text.slice(6).trim();
-      return { kind: 'text', text: (rest ? rest + ' ' : '') + '¯\\_(ツ)_/¯' };
+      return { kind: 'text', text: (rest ? rest + ' ' : '') + String.raw`¯\_(ツ)_/¯` };
     }
     if (text.startsWith('/poll ')) {
       const args = text.slice(6).split('|').map(s => s.trim()).filter(Boolean);

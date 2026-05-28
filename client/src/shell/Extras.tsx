@@ -438,9 +438,9 @@ function AddPeerWizard({ open, onClose }) {
                 {(() => {
                   const host = nodeName === 'local' ? 'localhost' : nodeName;
                   return (
-                    <pre className="apw-snippet">{`dilla-server \\
-  --team "${teamName}" \\
-  --peers ${host}:8081 \\
+                    <pre className="apw-snippet">{String.raw`dilla-server \
+  --team "${teamName}" \
+  --peers ${host}:8081 \
   --join-token eyJraWQiOiJoczI1NiIsInR5cCI6IkpXVCJ9
     .eyJpc3MiOiJnYmctMSIsImV4cCI6MTc3OTAxMjkw…
     .Aq4FZ_kQXg2vV1iJsK5JmZ1cT_R7…`}</pre>

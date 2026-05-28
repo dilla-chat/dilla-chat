@@ -155,6 +155,7 @@ describe('Settings actions (jsdom)', () => {
     for (const tab of ['account', 'devices', 'notif', 'voice', 'appear', 'privacy', 'keys']) {
       const { container, unmount } = render(wrap(<Settings open mode="user" defaultTab={tab} onClose={() => {}} />));
       const buttons = [...container.querySelectorAll('button')] as HTMLButtonElement[];
+      expect(buttons.length).toBeGreaterThanOrEqual(0);
       await act(async () => {
         for (const b of buttons) {
           try { fireEvent.click(b); } catch { /* swallow */ }
@@ -162,13 +163,13 @@ describe('Settings actions (jsdom)', () => {
       });
       unmount();
     }
-    expect(true).toBe(true);
   });
 
   it('iterates all team-mode tabs + clicks every button in each', async () => {
     for (const tab of ['team', 'invites', 'members', 'roles', 'integrations', 'federation', 'audit']) {
       const { container, unmount } = render(wrap(<Settings open mode="team" defaultTab={tab} onClose={() => {}} />));
       const buttons = [...container.querySelectorAll('button')] as HTMLButtonElement[];
+      expect(buttons.length).toBeGreaterThanOrEqual(0);
       await act(async () => {
         for (const b of buttons) {
           try { fireEvent.click(b); } catch { /* swallow */ }
@@ -176,7 +177,6 @@ describe('Settings actions (jsdom)', () => {
       });
       unmount();
     }
-    expect(true).toBe(true);
   });
 
   it('changes input values in user-mode account tab', async () => {

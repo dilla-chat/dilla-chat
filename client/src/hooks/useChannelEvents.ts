@@ -40,7 +40,7 @@ function maybeFireMentionNotification(
   if (myRecord?.name) myHandles.push(myRecord.name);
   if (myRecord?.username) myHandles.push(myRecord.username);
   const handlePattern = myHandles.length
-    ? new RegExp('@(' + myHandles.map((h) => h.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')\\b', 'i')
+    ? new RegExp('@(' + myHandles.map((h) => h.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`)).join('|') + String.raw`)\b`, 'i')
     : null;
   const isBroadcast = /@(everyone|here)\b/i.test(content);
   const isDirect = handlePattern ? handlePattern.test(content) : false;

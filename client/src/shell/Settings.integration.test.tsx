@@ -207,13 +207,14 @@ describe('Settings integration (jsdom)', () => {
     const userTabs = ['account', 'devices', 'notif', 'voice', 'appear', 'privacy', 'keys'];
     const teamTabs = ['team', 'invites', 'members', 'roles', 'integrations', 'federation', 'audit'];
     for (const tab of userTabs) {
-      const { unmount } = render(wrap(<Settings open mode="user" defaultTab={tab} onClose={() => {}} />));
+      const { container, unmount } = render(wrap(<Settings open mode="user" defaultTab={tab} onClose={() => {}} />));
+      expect(container.firstChild).not.toBeNull();
       unmount();
     }
     for (const tab of teamTabs) {
-      const { unmount } = render(wrap(<Settings open mode="team" defaultTab={tab} onClose={() => {}} />));
+      const { container, unmount } = render(wrap(<Settings open mode="team" defaultTab={tab} onClose={() => {}} />));
+      expect(container.firstChild).not.toBeNull();
       unmount();
     }
-    expect(true).toBe(true);
   });
 });
