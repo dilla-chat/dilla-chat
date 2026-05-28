@@ -110,7 +110,7 @@ function connectBtnLabel(connecting: boolean, mode: string, useRecovery: boolean
   return useRecovery ? 'Recover identity' : 'Unlock';
 }
 
-function CornerMarker({ x, y }: { x: number; y: number }) {
+function CornerMarker({ x, y }: Readonly<{ x: number; y: number }>) {
   return (
     <g>
       <rect x={x} y={y} width="7" height="7" fill="var(--accent)" />

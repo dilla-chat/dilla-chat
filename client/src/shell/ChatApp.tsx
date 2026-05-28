@@ -3483,8 +3483,8 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                   setDraft(v);
                   const pos = e.target.selectionStart;
                   const before = v.slice(0, pos);
-                  const mm = before.match(/(?:^|\s)@(\w*)$/);
-                  const sm = before.match(/^\/(\w*)$/);
+                  const mm = /(?:^|\s)@(\w*)$/.exec(before);
+                  const sm = /^\/(\w*)$/.exec(before);
                   if (mm) { setMention({ query: mm[1].toLowerCase() }); setMentionIdx(0); setSlash(null); }
                   else if (sm) { setSlash({ query: sm[1].toLowerCase() }); setSlashIdx(0); setMention(null); }
                   else { setMention(null); setSlash(null); }
@@ -3982,7 +3982,7 @@ export function detectUnfurls(text) {
 
 // ───────────── main pane: voice channel ─────────────
 export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute, setMute, deaf, setDeaf, cam, setCam, screen, setScreen, rich, membersOpen, onToggleMembers }) {
-  const nodes = (globalThis.MeshChrome && globalThis.MeshChrome.MEMBER_NODES) || {};
+  const nodes = globalThis.MeshChrome?.MEMBER_NODES || {};
   const participants = (channel.participants || []).map(id => members.byId[id]);
   const isConnected = voiceConnection?.channelId === channel.id;
   const meIsAdmin = !!members?.byId?.[currentUserId()]?.isAdmin;
@@ -4515,7 +4515,7 @@ export function MemberList({ members, voiceConnection, rich, federated }) {
   const onlineDefault: any[] = [];
   members.MEMBERS.forEach((m: any) => {
     if (m.status === 'offline') { offline.push(m); return; }
-    const top = (m.roles && m.roles[0]) || null;
+    const top = m.roles?.[0] || null;
     if (!top) { onlineDefault.push(m); return; }
     const key = top.id;
     if (!groups[key]) {

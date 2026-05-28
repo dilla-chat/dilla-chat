@@ -41,7 +41,7 @@ interface AppShellProps {
   ready: boolean;
 }
 
-export default function AppShell({ ready }: AppShellProps) {
+export default function AppShell({ ready }: Readonly<AppShellProps>) {
   const [cmdOpen, setCmdOpen] = useState(false);
   const [srchOpen, setSrchOpen] = useState(false);
   const [srchScope, setSrchScope] = useState<string | null>(null);
