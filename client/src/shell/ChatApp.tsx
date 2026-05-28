@@ -4541,7 +4541,7 @@ export function MemberList({ members, voiceConnection, rich, federated }) {
     const node = nodes[m.id] || '';
     const fed = node && !node.includes('gbg-1');
     return (
-      <div className={'member' + (off ? ' offline' : '')}
+      <button type="button" className={'member' + (off ? ' offline' : '')}
            onClick={(e) => {
              const r = e.currentTarget.getBoundingClientRect();
              globalThis.dispatchEvent(new CustomEvent('dilla:open-profile', {
@@ -4627,22 +4627,22 @@ export function MemberList({ members, voiceConnection, rich, federated }) {
              ] } }));
            }}>
         <Avatar member={m} />
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div className="member-name">{m.name}</div>
-          <div className="member-status">{m.custom || m.status}</div>
-        </div>
+        <span style={{ minWidth: 0, flex: 1, display: 'block' }}>
+          <span className="member-name" style={{ display: 'block' }}>{m.name}</span>
+          <span className="member-status" style={{ display: 'block' }}>{m.custom || m.status}</span>
+        </span>
         {rich && fed && federated && (
           <span className="node-tag fed" title={`Account hosted on federated node "${node}" — relayed to gbg-1 over the dilla mesh.`}>
             {node.replace('.io','').replace('.dilla.local','')}
           </span>
         )}
         {rich && fps[m.id] && (
-          <div className="member-fingerprint">
-            <div style={{ color: 'var(--accent)', marginBottom: 2 }}>SAFETY NUMBER · {node || 'local'}</div>
+          <span className="member-fingerprint">
+            <span style={{ color: 'var(--accent)', marginBottom: 2 }}>SAFETY NUMBER · {node || 'local'}</span>
             {fps[m.id]}
-          </div>
+          </span>
         )}
-      </div>
+      </button>
     );
   }
 
