@@ -18,6 +18,113 @@ interface AuditEvent {
   details?: string | null;
 }
 
+type AuditDescribeContext = {
+  detail: Record<string, unknown> | null;
+  targetUser: string | null;
+  name: string;
+};
+
+function buildAuditContext(
+  e: AuditEvent,
+  membersById: Map<string, { username?: string }>,
+): AuditDescribeContext {
+  let detail: Record<string, unknown> | null = null;
+  if (e.details) {
+    try { detail = JSON.parse(e.details); } catch { /* leave null */ }
+  }
+  const targetUser = e.target_type === 'user' && e.target_id
+    ? membersById.get(e.target_id)?.username ?? null
+    : null;
+  const name = (detail && (detail.name as string ?? detail.reason as string)) || '';
+  return { detail, targetUser, name };
+}
+
+function describeRoleAction(action: string, name: string): string | null {
+  switch (action) {
+    case 'role.create':  return `created role ${name || '—'}`;
+    case 'role.update':  return `updated role ${name || '—'}`;
+    case 'role.delete':  return `deleted role ${name || '—'}`;
+    case 'role.reorder': return `reordered roles`;
+    default: return null;
+  }
+}
+
+function describeChannelAction(
+  action: string,
+  name: string,
+  detailType: string | undefined,
+): string | null {
+  switch (action) {
+    case 'channel.create':         return `created channel #${name || '—'}${detailType ? ' · ' + detailType : ''}`;
+    case 'channel.delete':         return `deleted channel #${name || '—'}`;
+    case 'channel.lock':           return `locked channel #${name || '—'}`;
+    case 'channel.unlock':         return `unlocked channel #${name || '—'}`;
+    case 'channel.update':         return `updated channel #${name || '—'}`;
+    case 'channel.access.update':  return `changed access for channel`;
+    default: return null;
+  }
+}
+
+function describeGroupAction(action: string, name: string): string | null {
+  switch (action) {
+    case 'group.create': return `created group ${name || '—'}`;
+    case 'group.update': return `updated group ${name || '—'}`;
+    case 'group.delete': return `deleted group ${name || '—'}`;
+    case 'group.access': return `changed access for group ${name || '—'}`;
+    default: return null;
+  }
+}
+
+function describeMemberAction(
+  action: string,
+  ctx: AuditDescribeContext,
+  e: AuditEvent,
+): string | null {
+  const who = ctx.targetUser ?? e.target_id ?? '?';
+  const detailReason = ctx.detail?.reason as string | undefined;
+  switch (action) {
+    case 'member.roles.update': return `changed roles for @${who}`;
+    case 'member.kick':         return `kicked @${who}`;
+    case 'member.leave':        return `left the team`;
+    case 'member.ban': {
+      const suffix = detailReason ? ` — ${detailReason}` : '';
+      return `banned @${who}${suffix}`;
+    }
+    default: return null;
+  }
+}
+
+function describeMiscAction(action: string, ctx: AuditDescribeContext): string | null {
+  const detailMaxUses = ctx.detail?.max_uses as number | undefined;
+  const detailExpiresAt = ctx.detail?.expires_at as string | undefined;
+  switch (action) {
+    case 'message.pin':              return `pinned a message`;
+    case 'message.unpin':            return `unpinned a message`;
+    case 'team.update':              return `updated team settings${ctx.name ? ' · ' + ctx.name : ''}`;
+    case 'invite.create':            return `created an invite${detailMaxUses ? ' · max ' + detailMaxUses : ''}${detailExpiresAt ? ' · expires ' + detailExpiresAt : ''}`;
+    case 'invite.revoke':            return `revoked an invite`;
+    case 'integration.giphy.set':    return `set Giphy API key`;
+    case 'integration.giphy.clear':  return `cleared Giphy API key`;
+    default: return null;
+  }
+}
+
+function describeAuditEvent(
+  e: AuditEvent,
+  membersById: Map<string, { username?: string }>,
+): string {
+  const ctx = buildAuditContext(e, membersById);
+  const detailType = ctx.detail?.type as string | undefined;
+  return (
+    describeRoleAction(e.action, ctx.name)
+    ?? describeChannelAction(e.action, ctx.name, detailType)
+    ?? describeGroupAction(e.action, ctx.name)
+    ?? describeMemberAction(e.action, ctx, e)
+    ?? describeMiscAction(e.action, ctx)
+    ?? e.action
+  );
+}
+
 export default function AuditLogTab({ teamId }: Readonly<{ teamId: string }>) {
   const { t } = useTranslation();
   const members = useTeamStore((s) => s.members.get(teamId) ?? []);
@@ -43,50 +150,7 @@ export default function AuditLogTab({ teamId }: Readonly<{ teamId: string }>) {
   }, [teamId, t]);
 
   function describe(e: AuditEvent): string {
-    let detail: Record<string, unknown> | null = null;
-    if (e.details) {
-      try { detail = JSON.parse(e.details); } catch { /* leave null */ }
-    }
-    const targetUser = e.target_type === 'user' && e.target_id
-      ? membersById.get(e.target_id)?.username
-      : null;
-    const name = (detail && (detail.name as string ?? detail.reason as string)) || '';
-    const detailType = detail?.type as string | undefined;
-    const detailMaxUses = detail?.max_uses as number | undefined;
-    const detailExpiresAt = detail?.expires_at as string | undefined;
-    const detailReason = detail?.reason as string | undefined;
-    switch (e.action) {
-      case 'role.create':            return `created role ${name || '—'}`;
-      case 'role.update':            return `updated role ${name || '—'}`;
-      case 'role.delete':            return `deleted role ${name || '—'}`;
-      case 'role.reorder':           return `reordered roles`;
-      case 'channel.create':         return `created channel #${name || '—'}${detailType ? ' · ' + detailType : ''}`;
-      case 'channel.delete':         return `deleted channel #${name || '—'}`;
-      case 'channel.lock':           return `locked channel #${name || '—'}`;
-      case 'channel.unlock':         return `unlocked channel #${name || '—'}`;
-      case 'channel.update':         return `updated channel #${name || '—'}`;
-      case 'channel.access.update':  return `changed access for channel`;
-      case 'group.create':           return `created group ${name || '—'}`;
-      case 'group.update':           return `updated group ${name || '—'}`;
-      case 'group.delete':           return `deleted group ${name || '—'}`;
-      case 'group.access':           return `changed access for group ${name || '—'}`;
-      case 'member.roles.update':    return `changed roles for @${targetUser ?? e.target_id ?? '?'}`;
-      case 'member.kick':            return `kicked @${targetUser ?? e.target_id ?? '?'}`;
-      case 'member.leave':           return `left the team`;
-      case 'member.ban': {
-        const who = targetUser ?? e.target_id ?? '?';
-        const suffix = detailReason ? ` — ${detailReason}` : '';
-        return `banned @${who}${suffix}`;
-      }
-      case 'message.pin':            return `pinned a message`;
-      case 'message.unpin':          return `unpinned a message`;
-      case 'team.update':            return `updated team settings${name ? ' · ' + name : ''}`;
-      case 'invite.create':          return `created an invite${detailMaxUses ? ' · max ' + detailMaxUses : ''}${detailExpiresAt ? ' · expires ' + detailExpiresAt : ''}`;
-      case 'invite.revoke':          return `revoked an invite`;
-      case 'integration.giphy.set':  return `set Giphy API key`;
-      case 'integration.giphy.clear':return `cleared Giphy API key`;
-      default:                       return e.action;
-    }
+    return describeAuditEvent(e, membersById);
   }
 
   return (
