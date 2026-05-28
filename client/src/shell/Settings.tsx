@@ -1101,7 +1101,7 @@ export function UserVoice() {
                 else bg = 'var(--danger)';
                 return (
                   <span
-                    key={i}
+                    key={`cell-${i}-${bg}`}
                     style={{
                       background: bg,
                       opacity: i < litCells ? 1 : 0.18,
@@ -1301,10 +1301,10 @@ export function UserPrivacy() {
       <Group title="Your safety number" hint="Have a friend compare this number out-of-band before trusting your messages.">
         <div className="set-fingerprint">
           <div className="set-fp-block">
-            {block1.map((row, i) => <div key={i}>{row}</div>)}
+            {block1.map((row, i) => <div key={`b1-${i}-${row}`}>{row}</div>)}
           </div>
           <div className="set-fp-block">
-            {block2.map((row, i) => <div key={i}>{row}</div>)}
+            {block2.map((row, i) => <div key={`b2-${i}-${row}`}>{row}</div>)}
           </div>
           <div className="set-fp-actions">
             <Btn onClick={() => {

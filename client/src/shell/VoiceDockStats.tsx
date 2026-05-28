@@ -37,7 +37,7 @@ export function MiniMeter() {
   return (
     <span className="mini-meter">
       {[0, 1, 2, 3].map((i) => (
-        <span key={i} className="mm-bar" style={{ height: 3 + Math.round(v(i) * 6) }} />
+        <span key={`mm-${i}`} className="mm-bar" style={{ height: 3 + Math.round(v(i) * 6) }} />
       ))}
     </span>
   );

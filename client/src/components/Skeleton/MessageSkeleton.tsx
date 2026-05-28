@@ -17,7 +17,7 @@ export default memo(function MessageSkeleton({ count = 5 }: Readonly<Props>) {
   return (
     <>
       {items.map((width, i) => (
-        <div key={i} className="skeleton-message">
+        <div key={`skel-${i}-${width}`} className="skeleton-message">
           <Skeleton
             width={34}
             height={34}

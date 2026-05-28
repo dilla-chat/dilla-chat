@@ -1680,12 +1680,12 @@ export function ScreenTile({ member, pip, showStats = false }: Readonly<{ member
       <div className="screen-body">
         <div className="screen-sidebar">
           {Array.from({ length: 7 }).map((_, i) => (
-            <span key={i} className="screen-side-line" style={{ width: (50 + ((i * 17) % 40)) + '%' }} />
+            <span key={`side-${i}`} className="screen-side-line" style={{ width: (50 + ((i * 17) % 40)) + '%' }} />
           ))}
         </div>
         <div className="screen-editor">
           {lines.map((w, i) => (
-            <div key={i} className="screen-row">
+            <div key={`row-${i}-${w}`} className="screen-row">
               <span className="screen-num">{i + 1}</span>
               <span className="screen-line" style={{ width: w + '%' }} />
             </div>
@@ -5890,9 +5890,9 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
           <div className="ctx-menu"
                style={{ left: Math.min(menuPop.x, globalThis.innerWidth - 220), top: Math.min(menuPop.y, globalThis.innerHeight - (menuPop.items.length * 36 + 16)) }}>
             {menuPop.items.map((it, i) => it.sep ? (
-              <div key={i} className="ctx-sep" />
+              <div key={`sep-${i}`} className="ctx-sep" />
             ) : (
-              <button key={i} className={it.danger ? 'danger' : ''} disabled={!!it.disabled} onClick={() => { if (it.disabled) return; it.onClick && it.onClick(); setMenuPop(null); }}>
+              <button key={`item-${i}-${it.label}`} className={it.danger ? 'danger' : ''} disabled={!!it.disabled} onClick={() => { if (it.disabled) return; it.onClick && it.onClick(); setMenuPop(null); }}>
                 {it.icon}
                 {it.label}
               </button>

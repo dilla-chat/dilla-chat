@@ -883,7 +883,7 @@ export function ConnectStep({
       {log.length > 0 && (
         <pre className="onb-log">
           {log.map((l, i) => (
-            <div key={i} className={'onb-log-line' + (l.err ? ' err' : '')}>
+            <div key={`onb-${i}-${l.line}`} className={'onb-log-line' + (l.err ? ' err' : '')}>
               <span className={'onb-log-prompt' + (l.err ? ' err' : '')}>
                 {l.err ? '✗' : '›'}
               </span>{' '}
@@ -1041,7 +1041,7 @@ export function IdentityStep({
             <div className="onb-strength-bars">
               {[0, 1, 2, 3].map((i) => (
                 <span
-                  key={i}
+                  key={`sb-${i}`}
                   className={'onb-sb' + (i < strength.score ? ' on' : '')}
                   style={{ background: i < strength.score ? strength.color : undefined }}
                 />
