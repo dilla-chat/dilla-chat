@@ -3372,17 +3372,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
             </button>
           </div>
           <div className="composer-typing">
-            {slowModeLock ? (
-              <span style={{ opacity: 0.8 }}>
-                <Icon.Lock size={10} /> Slow mode — {slowModeLock.secondsLeft}s before you can post again
-              </span>
-            ) : typing.length > 0 ? (
-              <>{typing.join(', ')} {typing.length === 1 ? 'is' : 'are'} typing{' '}<span className="dot">.</span><span className="dot">.</span><span className="dot">.</span></>
-            ) : (
-              <span style={{ opacity: 0.6 }}>
-                <Icon.Shield size={10} /> messages are end-to-end encrypted with Signal Protocol
-              </span>
-            )}
+            {composerStatus(slowModeLock, typing)}
           </div>
         </div>
       </div>
@@ -3926,6 +3916,26 @@ function buildVoiceChannelMenu(
     );
   }
   return items;
+}
+
+function composerStatus(slowModeLock: { secondsLeft: number } | null | undefined, typing: string[]): React.ReactNode {
+  if (slowModeLock) {
+    return (
+      <span style={{ opacity: 0.8 }}>
+        <Icon.Lock size={10} /> Slow mode — {slowModeLock.secondsLeft}s before you can post again
+      </span>
+    );
+  }
+  if (typing.length > 0) {
+    return (
+      <>{typing.join(', ')} {typing.length === 1 ? 'is' : 'are'} typing{' '}<span className="dot">.</span><span className="dot">.</span><span className="dot">.</span></>
+    );
+  }
+  return (
+    <span style={{ opacity: 0.6 }}>
+      <Icon.Shield size={10} /> messages are end-to-end encrypted with Signal Protocol
+    </span>
+  );
 }
 
 function buildVoiceCardMenu(args: {
