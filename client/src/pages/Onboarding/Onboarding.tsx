@@ -82,6 +82,57 @@ export function passphraseStrength(p: string) {
   return { score: s, label: labels[s], color: colors[s] };
 }
 
+type ConnectLogEntry = { line: string; err?: boolean };
+
+async function runRecoveryFlow(args: {
+  recoveryServer: string;
+  recoveryUsername: string;
+  recoveryKeyInput: string;
+  setConnectLog: (updater: (p: ConnectLogEntry[]) => ConnectLogEntry[]) => void;
+  setPublicKey: (v: string) => void;
+  setDerivedKey: (v: string) => void;
+  addTeam: (teamId: string, token: string, user: User | null, info: Record<string, unknown> | null, baseUrl?: string) => void;
+  navigate: (path: string) => void;
+}): Promise<void> {
+  const { recoveryServer, recoveryUsername, recoveryKeyInput, setConnectLog, setPublicKey, setDerivedKey, addTeam, navigate } = args;
+  const recoveryBytes = decodeRecoveryKey(recoveryKeyInput.trim());
+  const recoveryKeyB64 = toBase64(recoveryBytes);
+  const recoveryUrl = normalizeServerUrl(recoveryServer);
+
+  setConnectLog((p) => [...p, { line: 'fetching identity blob from server' }]);
+  const blobResp = await fetch(
+    `${recoveryUrl}/api/v1/identity/blob?username=${encodeURIComponent(recoveryUsername)}`,
+  );
+  if (!blobResp.ok) throw new Error('Failed to fetch identity blob from server');
+  const { blob } = await blobResp.json();
+  await importIdentityBlob(blob);
+  setConnectLog((p) => [...p, { line: '  ✓ blob imported · unlocking' }]);
+
+  const identity = await unlockWithRecovery(recoveryBytes);
+  await initCrypto(identity, recoveryKeyB64);
+  const pubKeyB64 = btoa(String.fromCodePoint(...identity.publicKeyBytes));
+  setPublicKey(pubKeyB64);
+  setDerivedKey(recoveryKeyB64);
+  localStorage.setItem('dilla_username', recoveryUsername);
+
+  const tempId = 'recovery-temp';
+  api.addTeam(tempId, recoveryUrl);
+  const challenge = await api.requestChallenge(tempId, pubKeyB64);
+  const nonceBytes = fromBase64(challenge.nonce);
+  const sigBytes = await signChallenge(identity.signingKey, nonceBytes);
+  const signature = toBase64(sigBytes);
+  const verified = (await api.verifyChallenge(
+    tempId, challenge.challenge_id, pubKeyB64, signature,
+  )) as { user: User; token: string; team_id?: string };
+  api.removeTeam(tempId);
+  const teamId = verified.team_id || tempId;
+  api.addTeam(teamId, recoveryUrl);
+  api.setToken(teamId, verified.token);
+  addTeam(teamId, verified.token, verified.user, null, recoveryUrl);
+  setConnectLog((p) => [...p, { line: '  ✓ identity recovered · opening Dilla' }]);
+  await activateTeamAndNavigate(teamId, navigate);
+}
+
 function onbLogPrefix(l: { line: string; err?: boolean }): string {
   if (l.line.startsWith('$')) return '';
   return l.err ? '✗' : '›';
@@ -217,55 +268,15 @@ export default function Onboarding() {
 
     try {
       if (mode === 'existing' && useRecovery) {
-        // Recovery sub-flow: fetch the server-stored identity blob, import
-        // it into IndexedDB, unlock with the recovery key, then authenticate
-        // against the server. Mirrors the legacy RecoverFromServer.tsx
-        // flow inline (no separate route needed).
         if (!recoveryServer || !recoveryUsername || !recoveryKeyInput.trim()) {
           setConnectError('Enter server, username, and recovery key.');
           setConnecting(false);
           return;
         }
-        const recoveryBytes = decodeRecoveryKey(recoveryKeyInput.trim());
-        const recoveryKeyB64 = toBase64(recoveryBytes);
-        const recoveryUrl = normalizeServerUrl(recoveryServer);
-
-        setConnectLog((p) => [...p, { line: 'fetching identity blob from server' }]);
-        const blobResp = await fetch(
-          `${recoveryUrl}/api/v1/identity/blob?username=${encodeURIComponent(recoveryUsername)}`,
-        );
-        if (!blobResp.ok) throw new Error('Failed to fetch identity blob from server');
-        const { blob } = await blobResp.json();
-        await importIdentityBlob(blob);
-        setConnectLog((p) => [...p, { line: '  ✓ blob imported · unlocking' }]);
-
-        const identity = await unlockWithRecovery(recoveryBytes);
-        await initCrypto(identity, recoveryKeyB64);
-        const pubKeyB64 = btoa(String.fromCodePoint(...identity.publicKeyBytes));
-        setPublicKey(pubKeyB64);
-        setDerivedKey(recoveryKeyB64);
-        localStorage.setItem('dilla_username', recoveryUsername);
-
-        // Authenticate to recover a JWT for this server.
-        const tempId = 'recovery-temp';
-        api.addTeam(tempId, recoveryUrl);
-        const challenge = await api.requestChallenge(tempId, pubKeyB64);
-        const nonceBytes = fromBase64(challenge.nonce);
-        const sigBytes = await signChallenge(identity.signingKey, nonceBytes);
-        const signature = toBase64(sigBytes);
-        const verified = (await api.verifyChallenge(
-          tempId,
-          challenge.challenge_id,
-          pubKeyB64,
-          signature,
-        )) as { user: User; token: string; team_id?: string };
-        api.removeTeam(tempId);
-        const teamId = verified.team_id || tempId;
-        api.addTeam(teamId, recoveryUrl);
-        api.setToken(teamId, verified.token);
-        addTeam(teamId, verified.token, verified.user, null, recoveryUrl);
-        setConnectLog((p) => [...p, { line: '  ✓ identity recovered · opening Dilla' }]);
-        await activateTeamAndNavigate(teamId, navigate);
+        await runRecoveryFlow({
+          recoveryServer, recoveryUsername, recoveryKeyInput,
+          setConnectLog, setPublicKey, setDerivedKey, addTeam, navigate,
+        });
         return;
       }
 
