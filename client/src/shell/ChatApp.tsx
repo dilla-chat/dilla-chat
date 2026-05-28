@@ -1735,7 +1735,7 @@ export function ServerRail({ servers, activeServer, onPick }) {
              onDragStart={(e) => { setDragId(s.id); e.dataTransfer.effectAllowed = 'move'; }}
              onDragOver={(e) => { e.preventDefault(); setOverId(s.id); }}
              onDragLeave={() => { if (overId === s.id) setOverId(null); }}
-             onDrop={(e) => { e.preventDefault(); if (dragId && dragId !== s.id) reorder(dragId, s.id); setDragId(null); setOverId(null); }}
+             onDrop={(e) => { e.preventDefault(); if (dragId && dragId !== s.id) { reorder(dragId, s.id); } setDragId(null); setOverId(null); }}
              onDragEnd={() => { setDragId(null); setOverId(null); }}
              onClick={() => onPick(s.id)}
              onContextMenu={(e) => {
@@ -2038,7 +2038,7 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
                   <div className="voice-participants">
                     {(c.participants || []).map(pid => {
                       const m = members.byId[pid];
-                      const peer = c.voicePeers && c.voicePeers[pid];
+                      const peer = c.voicePeers?.[pid];
                       // For self, the local toggles are the source of
                       // truth (the peer object the server echoes back
                       // may not carry our local mute/cam/screen flags
@@ -2140,7 +2140,7 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
                  onDragStart={(e) => { setDragId(c.id); e.dataTransfer.effectAllowed = 'move'; }}
                  onDragOver={(e) => { e.preventDefault(); setOverId(c.id); }}
                  onDragLeave={(e) => { if (overId === c.id) setOverId(null); }}
-                 onDrop={(e) => { e.preventDefault(); if (dragId && dragId !== c.id) reorderTextCh(dragId, c.id); setDragId(null); setOverId(null); }}
+                 onDrop={(e) => { e.preventDefault(); if (dragId && dragId !== c.id) { reorderTextCh(dragId, c.id); } setDragId(null); setOverId(null); }}
                  onDragEnd={() => { setDragId(null); setOverId(null); }}
                  className={'channel-row' + (c.id === activeChannel ? ' active' : '') + (c.unread > 0 ? ' unread' : '') + (mutedChannels.has(c.id) ? ' muted' : '') + (overId === c.id && dragId && dragId !== c.id ? ' drop-target' : '') + (dragId === c.id ? ' dragging' : '')}
                  onClick={() => onPickChannel(c.id)}
@@ -3024,7 +3024,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
           const dayKey = g.at.toDateString();
           const showDay = !seenDays.has(dayKey);
           seenDays.add(dayKey);
-          const showUnreadAbove = unreadAt && g.children && g.children[0] && g.children[0].id === unreadAt;
+          const showUnreadAbove = unreadAt && g.children?.[0]?.id === unreadAt;
           const author = members.byId[g.author] || { name: g.author, color: '#666', initials: '??' };
           if (g.base.kind === 'system') {
             return (
@@ -3074,7 +3074,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                       return (
                         <div className="reply-ref"
                              onClick={() => {
-                               const el = feedRef.current && feedRef.current.querySelector('[data-msg-id="' + orig.id + '"]');
+                               const el = feedRef.current?.querySelector('[data-msg-id="' + orig.id + '"]');
                                if (el) {
                                  el.classList.add('msg-flash');
                                  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -4398,7 +4398,7 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
                       <div className="voice-fs-group" role="group" aria-label="Fullscreen mode">
                         <button
                           className={'voice-fs-opt' + (!tabFs && !browserFs ? ' is-active' : '')}
-                          onClick={() => { if (tabFs) setTabFs(false); if (browserFs) toggleBrowserFullscreen(); }}
+                          onClick={() => { if (tabFs) { setTabFs(false); } if (browserFs) { toggleBrowserFullscreen(); } }}
                           title="Normal — focus mode within the chat pane"
                         >
                           normal
@@ -5094,7 +5094,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
       const memberId = e.detail;
       if (!memberId) return;
       const optimisticId = 'dm-' + memberId;
-      if (!data.DMS.find(d => d.id === optimisticId)) {
+      if (!data.DMS.some(d => d.id === optimisticId)) {
         data.DMS.push({ id: optimisticId, with: memberId, preview: '', at: new Date(), unread: 0 });
       }
       setActiveDM(optimisticId);
@@ -5114,7 +5114,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     }
     function onPickChannel(e) {
       const id = e.detail;
-      if (data.CHANNELS.find(c => c.id === id)) {
+      if (data.CHANNELS.some(c => c.id === id)) {
         setActiveChannel(id); setActiveView({ kind: 'channel', id }); setTab('kanals');
       }
     }
@@ -5251,7 +5251,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   useEffect(() => {
     if (!controller) return;
     controller.pickChannel = (id) => {
-      if (data.CHANNELS.find(c => c.id === id)) {
+      if (data.CHANNELS.some(c => c.id === id)) {
         setActiveChannel(id); setTab('kanals'); setActiveView({ kind: 'channel', id });
       }
     };
@@ -6016,7 +6016,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
             // when offline / on /mesh. On /app the server returns the real
             // channel id; we re-route to it once the round-trip completes.
             const optimisticId = 'dm-' + id;
-            if (!data.DMS.find(d => d.id === optimisticId)) {
+            if (!data.DMS.some(d => d.id === optimisticId)) {
               data.DMS.push({ id: optimisticId, with: id, preview: '', at: new Date(), unread: 0 });
             }
             setActiveDM(optimisticId);
