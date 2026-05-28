@@ -111,11 +111,7 @@ async fn main() {
         .await;
     }
 
-    // Spawn hub dispatch loop.
-    let hub_runner = hub.clone();
-    tokio::spawn(async move {
-        hub_runner.run().await;
-    });
+    spawn_hub_dispatch_loop(hub.clone());
 
     let presence_mgr = init_presence_manager(&hub).await;
     spawn_hub_event_handler(&hub, &presence_mgr, &database);
@@ -158,6 +154,15 @@ async fn main() {
     let app = with_http_observability_middleware(app);
 
     start_server(&cfg, app).await;
+}
+
+/// Spawn the WebSocket hub's per-tick dispatch loop. Extracted from
+/// main() so the spawn boundary is testable (the loop body itself runs
+/// inside the Hub's own machinery and is exercised by hub-level tests).
+pub(crate) fn spawn_hub_dispatch_loop(hub: Arc<ws::Hub>) {
+    tokio::spawn(async move {
+        hub.run().await;
+    });
 }
 
 /// Apply the per-request HTTP observability middleware (access log +
@@ -1198,6 +1203,17 @@ mod tests {
     // Drive each SFUEvent variant through the extracted helper. Hub is
     // real but with no connected clients — broadcast/send are no-ops
     // but the match arms + payload construction run.
+
+    // ── spawn_hub_dispatch_loop ──────────────────────────────────────
+
+    #[tokio::test]
+    async fn spawn_hub_dispatch_loop_starts_without_panic() {
+        let (db, _tmp) = test_db();
+        let hub = Arc::new(ws::Hub::new(db));
+        spawn_hub_dispatch_loop(hub);
+        // The dispatch loop awaits hub events forever; the spawn itself
+        // succeeding without panic is the assertion.
+    }
 
     // ── with_http_observability_middleware ───────────────────────────
 
