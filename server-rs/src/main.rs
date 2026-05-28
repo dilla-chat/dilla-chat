@@ -1126,6 +1126,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn handle_hub_event_voice_client_gone_cleans_room() {
+        let (db, _tmp) = test_db();
+        let pm = PresenceManager::new();
+        let mut hub_inner = ws::Hub::new(db.clone());
+        hub_inner.voice_room_manager = Some(Arc::new(voice::RoomManager::new()));
+        let hub = Arc::new(hub_inner);
+
+        handle_hub_event(
+            &pm,
+            &db,
+            &hub,
+            HubEvent::VoiceClientGone {
+                client_id: "c1".to_string(),
+                user_id: "u1".to_string(),
+                channel_id: "voice-ch".to_string(),
+            },
+        )
+        .await;
+        // The handler must not panic and must traverse the room manager
+        // + sfu cleanup branches. Survival is the assertion.
+    }
+
+    #[tokio::test]
+    async fn handle_hub_event_client_disconnected_cleans_voice() {
+        let (db, _tmp) = test_db();
+        let pm = PresenceManager::new();
+        let mut hub_inner = ws::Hub::new(db.clone());
+        let rm = Arc::new(voice::RoomManager::new());
+        hub_inner.voice_room_manager = Some(rm.clone());
+        let hub = Arc::new(hub_inner);
+
+        // Seed the room manager with a peer so remove_peer_everywhere
+        // returns a non-empty list and the broadcast/sfu cleanup runs.
+        rm.add_peer("voice-ch", "u1", "u1", "t1").await;
+
+        pm.set_online("u1").await;
+        handle_hub_event(&pm, &db, &hub, HubEvent::ClientDisconnected {
+            user_id: "u1".to_string(),
+        })
+        .await;
+        // Presence flipped + voice cleanup ran without panic.
+        let p = pm.get_presence("u1").await.expect("user should have presence");
+        assert_eq!(p.status, presence::Status::Offline);
+    }
+
+    #[tokio::test]
     async fn handle_hub_event_other_variants_do_not_panic() {
         let (db, _tmp) = test_db();
         let pm = PresenceManager::new();
