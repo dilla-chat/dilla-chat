@@ -110,7 +110,7 @@ export function useShellSync() {
         channel_name: string;
       }) => {
         if (!data?.caller_username) return;
-        window.dispatchEvent(
+        globalThis.dispatchEvent(
           new CustomEvent('mesh:incoming-call', {
             detail: {
               callerName: data.caller_username,

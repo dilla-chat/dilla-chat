@@ -62,7 +62,7 @@ declare global {
  */
 export function installTrustedTypesPolicy(): void {
   // Browsers without TT support (Safari/Firefox today) skip silently.
-  const tt = typeof window !== 'undefined' ? window.trustedTypes : undefined;
+  const tt = (globalThis as typeof globalThis & { trustedTypes?: TrustedTypePolicyFactory }).trustedTypes;
   if (!tt || typeof tt.createPolicy !== 'function') return;
 
   try {

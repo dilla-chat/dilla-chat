@@ -52,7 +52,7 @@ interface StagedAttachment {
 // AppShell overwrites globalThis.SHELL_DATA with the live `useShellData()`
 // on every render, so this initial write is just the pre-mount
 // placeholder shape (empty arrays/maps; never mock content).
-const w = window as unknown as Record<string, unknown>;
+const w = globalThis as unknown as Record<string, unknown>;
 w.SHELL_DATA = EMPTY_SHELL_DATA;
 w.THEMES = THEMES;
 w.Icon = Icon;

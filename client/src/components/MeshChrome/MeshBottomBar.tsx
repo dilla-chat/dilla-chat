@@ -65,7 +65,7 @@ export default function MeshBottomBar() {
         className="mb-chunk mb-clickable"
         title="Click for federation settings"
         onClick={() =>
-          window.dispatchEvent(new CustomEvent('mesh:open-federation'))
+          globalThis.dispatchEvent(new CustomEvent('mesh:open-federation'))
         }
       >
         <span className="mb-k">node</span> {nodeName || 'local'}
@@ -78,7 +78,7 @@ export default function MeshBottomBar() {
             className="mb-chunk mb-clickable"
             title="Click for peer status"
             onClick={() =>
-              window.dispatchEvent(new CustomEvent('mesh:open-federation'))
+              globalThis.dispatchEvent(new CustomEvent('mesh:open-federation'))
             }
           >
             <span className="mb-k">peers</span>{' '}
@@ -109,7 +109,7 @@ export default function MeshBottomBar() {
         }
         title={e2eTitle}
         onClick={() =>
-          window.dispatchEvent(new CustomEvent('mesh:open-privacy'))
+          globalThis.dispatchEvent(new CustomEvent('mesh:open-privacy'))
         }
       >
         <span className="mb-k">e2e</span> {e2eLabel}
@@ -121,7 +121,7 @@ export default function MeshBottomBar() {
           className="mb-chunk mb-voice mb-clickable"
           title="Click for voice settings"
           onClick={() =>
-            window.dispatchEvent(new CustomEvent('mesh:open-voice-settings'))
+            globalThis.dispatchEvent(new CustomEvent('mesh:open-voice-settings'))
           }
         >
           <span className="mb-k">voice</span> SRTP · OPUS 48kHz @ 96kbps

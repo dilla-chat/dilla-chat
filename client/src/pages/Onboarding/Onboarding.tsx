@@ -115,7 +115,7 @@ export default function Onboarding() {
     queryMode && ['bootstrap', 'invite', 'existing'].includes(queryMode) ? queryMode : 'bootstrap',
   );
   const [server, setServer] = useState(
-    queryServer || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8080'),
+    queryServer || (typeof globalThis !== 'undefined' && globalThis.location ? globalThis.location.origin : 'http://localhost:8080'),
   );
   const [token, setToken] = useState(queryToken);
   const [team, setTeam] = useState('');

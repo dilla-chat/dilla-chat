@@ -31,7 +31,7 @@ import './settings.css';
 // ChatApp does `const SettingsModal = window.Settings` and renders it when
 // settings.open. Wire the ported Settings component onto window once at
 // module load (idempotent).
-(window as unknown as { Settings: typeof Settings }).Settings = Settings;
+(globalThis as unknown as { Settings: typeof Settings }).Settings = Settings;
 
 interface AppShellProps {
   /** Set when the underlying message/DM/thread stores are populated.

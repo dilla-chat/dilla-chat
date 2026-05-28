@@ -52,7 +52,7 @@ export default function MeshTopBar() {
           type="button"
           className="mt-key"
           onClick={() =>
-            window.dispatchEvent(new CustomEvent('mesh:open-command-palette'))
+            globalThis.dispatchEvent(new CustomEvent('mesh:open-command-palette'))
           }
         >
           <span className="mt-kbd">⌘K</span> CMD
@@ -61,7 +61,7 @@ export default function MeshTopBar() {
           type="button"
           className="mt-key"
           onClick={() =>
-            window.dispatchEvent(new CustomEvent('mesh:open-search'))
+            globalThis.dispatchEvent(new CustomEvent('mesh:open-search'))
           }
         >
           <span className="mt-kbd">/</span> SEARCH
@@ -70,7 +70,7 @@ export default function MeshTopBar() {
           type="button"
           className="mt-key"
           onClick={() =>
-            window.dispatchEvent(new CustomEvent('mesh:open-shortcuts'))
+            globalThis.dispatchEvent(new CustomEvent('mesh:open-shortcuts'))
           }
         >
           <span className="mt-kbd">?</span> HELP
