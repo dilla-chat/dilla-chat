@@ -1158,6 +1158,16 @@ mod tests {
     // but the match arms + payload construction run.
 
     #[tokio::test]
+    async fn spawn_hub_event_handler_starts_without_panic() {
+        let (db, _tmp) = test_db();
+        let hub = Arc::new(ws::Hub::new(db.clone()));
+        let pm = Arc::new(PresenceManager::new());
+        spawn_hub_event_handler(&hub, &pm, &db);
+        // Spawned task subscribes to hub.event_tx() and idles. Survival
+        // confirms the spawn + subscribe pipeline doesn't crash.
+    }
+
+    #[tokio::test]
     async fn handle_sfu_event_ice_candidate_does_not_panic() {
         use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
         let (db, _tmp) = test_db();
