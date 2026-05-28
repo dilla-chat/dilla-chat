@@ -45,6 +45,13 @@ const EMPTY_DATA = {
 // Tiny initials helper — handoff used "TH" / "AD" / "BE" 2-char caps,
 // always two letters. For multi-word names take first letter of the
 // first two words; for single-word names take the first two letters.
+function resolveThreadLastReplyAt(th: { last_message_at?: string | null }, replies: Array<{ createdAt: string | Date }>): Date {
+  if (th.last_message_at) return new Date(th.last_message_at);
+  const last = replies.at(-1);
+  if (last) return new Date(last.createdAt);
+  return new Date();
+}
+
 function initialsOf(name: string) {
   const words = name.split(/\s+/).filter(Boolean);
   let initials = '';
@@ -328,7 +335,7 @@ export function useShellData() {
         const replies = threadMessages[th.id] ?? [];
         threadByParent[th.parent_message_id] = {
           count: th.message_count ?? replies.length,
-          lastReplyAt: th.last_message_at ? new Date(th.last_message_at) : (replies.at(-1) ? new Date(replies.at(-1).createdAt) : new Date()),
+          lastReplyAt: resolveThreadLastReplyAt(th, replies),
           participants: [...new Set(replies.map((r) => r.authorId))],
         };
       }
