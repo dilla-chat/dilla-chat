@@ -2772,15 +2772,6 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
     }
   }
 
-  // Compute day dividers
-  const dividers = useMemo(() => {
-    const map = {};
-    groups.forEach((g, i) => {
-      const k = g.at.toDateString();
-      if (!map[k]) map[k] = i;
-    });
-    return map;
-  }, [groups]);
   const seenDays = new Set();
 
   // Drag-and-drop attach. dragOver flips on first dragenter that
@@ -4515,7 +4506,6 @@ export function MemberList({ members, voiceConnection, rich, federated }) {
     groups[key].push(m);
   });
   groupOrder.sort((a, b) => (groupMeta[b].position ?? 0) - (groupMeta[a].position ?? 0));
-  const onlineCount = members.MEMBERS.filter((m: any) => m.status !== 'offline').length;
 
   function Row({ m }) {
     const off = m.status === 'offline';
@@ -4946,7 +4936,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     // second as entries cross the expiry threshold.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typingUsersForActive, myUserId, typingTick]);
-  const [dmTyping, setDmTyping] = useState({}); // channelId -> [names]
+  const [dmTyping] = useState({}); // channelId -> [names]
   const [settings, setSettings] = useState({ open: false, mode: 'user', tab: null });
   const [membersOpen, setMembersOpen] = useState(true);
   const [profilePop, setProfilePop] = useState(null);

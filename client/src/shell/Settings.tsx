@@ -97,6 +97,13 @@ function leaveOrSignOut(args: { mode: string; onClose: () => void; navigate: (pa
   else void performSignOut(args);
 }
 
+function toStr(v: unknown): string {
+  if (v == null) return '';
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  return '';
+}
+
 function giphyHint(configured: boolean | null | undefined): string {
   if (configured == null) return 'Loading…';
   if (configured) return 'A key is on file. Paste a new one to replace it, or clear it below.';
@@ -758,13 +765,13 @@ export function UserDevices() {
         <div className="set-hint">No devices enrolled yet.</div>
       )}
       {devices.map((d) => {
-        const id = String(d.id ?? d.device_id ?? '');
-        const label = String(d.device_label ?? d.label ?? 'Unlabelled device');
-        const revokedAt = d.revoked_at ? String(d.revoked_at) : '';
-        const lastSeenIp = d.last_seen_ip ? String(d.last_seen_ip) : '';
-        const lastSeenCountry = d.last_seen_country ? String(d.last_seen_country) : '';
-        const lastSeenAt = d.last_seen_at ? String(d.last_seen_at) : '';
-        const createdAt = d.created_at ? String(d.created_at) : '';
+        const id = toStr(d.id ?? d.device_id);
+        const label = toStr(d.device_label ?? d.label) || 'Unlabelled device';
+        const revokedAt = toStr(d.revoked_at);
+        const lastSeenIp = toStr(d.last_seen_ip);
+        const lastSeenCountry = toStr(d.last_seen_country);
+        const lastSeenAt = toStr(d.last_seen_at);
+        const createdAt = toStr(d.created_at);
         const active = !revokedAt;
         return (
           <div key={id} className="set-row" style={{

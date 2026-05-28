@@ -35,6 +35,12 @@ const IMG_EXT = /\.(gif|png|jpe?g|webp|avif)(\?|$)/i;
 // is treated as a per-user mention regardless of whether the handle
 // actually resolves — the user typing @nobody still gets the same chip
 // (so we don't have to plumb the full member list into every call).
+function altTextOf(children: unknown, href: string): string {
+  if (Array.isArray(children)) return children.filter((c) => typeof c === 'string').join('');
+  if (typeof children === 'string') return children;
+  return href;
+}
+
 function isBroadcastHandle(handle: string) {
   return handle === 'everyone' || handle === 'here';
 }
@@ -129,7 +135,7 @@ export default function MessageMarkdown({
           <a href={href} target="_blank" rel="noopener noreferrer" {...rest}>
             <img
               src={href}
-              alt={Array.isArray(children) ? children.join('') : String(children ?? href)}
+              alt={altTextOf(children, href)}
               className="mm-inline-image"
             />
           </a>
