@@ -1,9 +1,3 @@
-.file-preview-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-xs);
-  margin-top: var(--spacing-xs);
-}
 
 /* Image */
 .file-preview-image-container {
@@ -79,12 +73,6 @@
   max-width: 25rem;
 }
 
-.file-preview-audio-info {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  margin-bottom: var(--spacing-sm);
-}
 
 .file-preview-audio-icon {
   font-size: var(--font-size-xl);
@@ -102,16 +90,6 @@
 }
 
 /* File card */
-.file-preview-card {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-  background: var(--bg-secondary);
-  border: 0.0625rem solid var(--border-color);
-  border-radius: var(--radius-lg);
-  padding: 0.625rem 0.875rem;
-  max-width: 25rem;
-}
 
 .file-preview-card-icon {
   font-size: 1.75rem;
@@ -126,30 +104,9 @@
   gap: 0.125rem;
 }
 
-.file-preview-card-name {
-  font-size: var(--font-size-base);
-  color: var(--text-link);
-  font-weight: var(--font-weight-medium);
-}
 
-.file-preview-card-size {
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-}
 
-.file-preview-card-download {
-  background: none;
-  border: none;
-  font-size: var(--font-size-xl);
-  color: var(--interactive-normal);
-  text-decoration: none;
-  padding: var(--spacing-xs);
-  flex-shrink: 0;
-}
 
-.file-preview-card-download:hover {
-  color: var(--interactive-hover);
-}
 
 /* ====================================================================
    Mesh design — relocated from mesh-overrides.css. Single source of

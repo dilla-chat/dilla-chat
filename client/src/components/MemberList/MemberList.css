@@ -1,20 +1,8 @@
-.member-list {
-  width: var(--member-sidebar-width);
-  background: var(--bg-secondary);
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  padding: var(--spacing-xl) 0 var(--spacing-sm);
-  box-shadow: -0.0625rem 0 0 var(--divider);
-}
 
 .member-list-header {
   padding: 0 var(--spacing-lg) var(--spacing-lg);
 }
 
-.member-role-group {
-  padding-top: var(--spacing-lg);
-}
 
 .member-role-header {
   padding: 0 var(--spacing-sm) var(--spacing-xs) var(--spacing-lg);
@@ -23,54 +11,17 @@
   gap: var(--spacing-xs);
 }
 
-.member-item {
-  background: none;
-  border: none;
-  width: calc(100% - var(--spacing-lg));
-  text-align: left;
-  font-family: inherit;
-  font-size: inherit;
-  color: inherit;
-  display: flex;
-  align-items: center;
-  padding: var(--spacing-xs) var(--spacing-md);
-  margin: var(--spacing-xs) var(--spacing-sm) 0;
-  gap: var(--spacing-md);
-  cursor: pointer;
-  border-radius: var(--radius-md);
-  height: 2.625rem;
-  box-sizing: border-box;
-  outline: none;
-  transition: background-color var(--duration-fast) var(--ease-out);
-}
 
 .member-item:focus-visible {
   background: var(--bg-modifier-hover);
   box-shadow: inset 0 0 0 0.0625rem var(--brand-alpha-25);
 }
 
-.member-item:hover {
-  background: var(--bg-modifier-hover);
-}
 
 .member-item.offline {
   opacity: 0.5;
 }
 
-.member-avatar {
-  width: 2rem;
-  height: 2rem;
-  border-radius: var(--radius-md);
-  background: var(--bg-accent);
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--font-size-base);
-  font-weight: var(--font-weight-medium);
-  flex-shrink: 0;
-  position: relative;
-}
 
 .member-avatar[data-status="online"]::after,
 .member-avatar[data-status="idle"]::after,

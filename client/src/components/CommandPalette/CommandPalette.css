@@ -1,50 +1,6 @@
-.command-palette-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: var(--z-modal);
-  background: rgba(7, 8, 9, 0.6);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: 5rem;
-  border: none;
-  margin: 0;
-  cursor: default;
-  /* Reset button-element styles so the overlay behaves like a backdrop */
-  font: inherit;
-  text-align: inherit;
-  color: inherit;
-}
 
-.command-palette {
-  width: 35rem;
-  max-width: calc(100vw - 2rem);
-  background: var(--surface, var(--bg-floating));
-  border: 0.0625rem solid var(--accent, var(--brand-500));
-  border-radius: var(--r-md, 0.125rem);
-  box-shadow: var(--shadow-2, 0 0.75rem 1.875rem rgba(0, 0, 0, 0.6));
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  color: var(--fg, var(--text-primary));
-  display: flex;
-  flex-direction: column;
-  max-height: calc(100vh - 10rem);
-  overflow: hidden;
-  cursor: default;
-}
 
-.command-palette-prompt {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 0.875rem;
-  border-bottom: 0.0625rem solid var(--hairline, var(--divider));
-}
 
-.command-palette-prompt-glyph {
-  color: var(--accent, var(--brand-500));
-  font-weight: 700;
-}
 
 .command-palette-input {
   flex: 1;
@@ -107,14 +63,6 @@
   flex-direction: column;
 }
 
-.command-palette-section-label {
-  padding: 0.5rem 0.875rem 0.25rem;
-  font-size: 0.625rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--fg-3, var(--text-muted));
-}
 
 .command-palette-item {
   display: flex;

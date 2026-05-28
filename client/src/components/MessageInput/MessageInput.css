@@ -1,11 +1,5 @@
 /* ===== Slack-style Floating Composer ===== */
 
-.message-input-wrapper {
-  flex-shrink: 0;
-  position: relative;
-  padding: 0;
-  z-index: 10;
-}
 
 .message-input-wrapper::before {
   content: '';
@@ -36,15 +30,6 @@
 }
 
 /* Typing indicator above the composer */
-.typing-indicator {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-  padding: var(--spacing-xs) var(--spacing-md);
-  min-height: 1.125rem;
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-}
 
 .typing-indicator-avatars {
   display: flex;
@@ -125,34 +110,9 @@
   font-size: var(--font-size-xs);
 }
 
-.reply-preview-author {
-  color: var(--brand-500);
-  font-weight: var(--font-weight-medium);
-}
 
-.reply-preview-content {
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-  min-width: 0;
-}
 
-.reply-preview-close {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: var(--spacing-xs);
-  font-size: var(--font-size-base);
-  flex-shrink: 0;
-  transition: color var(--duration-fast) var(--ease-out);
-}
 
-.reply-preview-close:hover {
-  color: var(--text-primary);
-}
 
 /* ===== Row 1: Formatting toolbar (TOP) ===== */
 /* Deprecated — formatting now in bottom bar */
@@ -163,31 +123,12 @@
   min-height: 1.375rem;
 }
 
-.message-input-textarea {
-  width: 100%;
-  background: none;
-  border: none;
-  box-sizing: border-box;
-  color: var(--text-normal);
-  font-size: var(--font-size-base);
-  font-family: inherit;
-  padding: 0;
-  margin: 0;
-  resize: none;
-  outline: none;
-  max-height: 18.75rem;
-  line-height: 1.375rem;
-  display: block;
-}
 
 .message-input-textarea:focus {
   box-shadow: none;
   border-color: transparent;
 }
 
-.message-input-textarea::placeholder {
-  color: var(--text-muted);
-}
 
 /* ===== Bottom bar: attach + formatting + emoji + send ===== */
 .message-input-bottom-bar {

@@ -1,53 +1,7 @@
-.mention-autocomplete {
-  position: fixed;
-  background: var(--bg-floating);
-  border: 0.0625rem solid var(--border-color);
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-xs);
-  min-width: 12.5rem;
-  max-width: 17.5rem;
-  box-shadow: 0 var(--spacing-sm) 2rem rgba(0, 0, 0, 0.5);
-  z-index: var(--z-dropdown);
-}
 
-.mention-autocomplete-item {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  width: 100%;
-  padding: var(--spacing-sm) var(--spacing-sm);
-  border: none;
-  border-radius: var(--radius-md);
-  background: none;
-  color: var(--text-secondary);
-  font-size: var(--font-size-sm);
-  font-family: inherit;
-  cursor: pointer;
-  text-align: left;
-  transition: background-color var(--duration-fast) var(--ease-out);
-}
 
-.mention-autocomplete-item.selected {
-  background: var(--brand-alpha-10);
-  color: var(--text-primary);
-}
 
-.mention-autocomplete-avatar {
-  width: 1.375rem;
-  height: 1.375rem;
-  border-radius: var(--radius-sm);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-size: var(--font-size-micro);
-  font-weight: var(--font-weight-semibold);
-  flex-shrink: 0;
-}
 
-.mention-autocomplete-name {
-  font-weight: var(--font-weight-medium);
-}
 
 /* ====================================================================
    Mesh design — relocated from mesh-overrides.css. Single source of
