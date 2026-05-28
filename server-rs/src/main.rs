@@ -466,53 +466,83 @@ fn init_database(cfg: &Config) -> Database {
     }
 }
 
-fn check_first_start(database: &Database, auth_svc: &AuthService, cfg: &Config) {
+/// First-start outcome — drives main()'s eprintln/exit without baking
+/// process::exit into the helper itself. Pure logic; tests can pattern
+/// match every variant without crashing.
+#[derive(Debug)]
+pub(crate) enum FirstStartOutcome {
+    /// Users already exist — no bootstrap action needed.
+    HasUsers,
+    /// First start: token generated AND file written. main() prints the
+    /// "find your token at <path>" banner.
+    TokenWrittenToFile { token_path: PathBuf },
+    /// First start: token generated but file write failed. main() prints
+    /// the fallback banner with the token inline + a warning.
+    TokenStderrFallback { token: String, token_path: PathBuf, write_error: String },
+    /// `database.has_users()` failed — main() should exit 1.
+    HasUsersError(String),
+    /// `auth_svc.generate_bootstrap_token()` failed — main() should exit 1.
+    BootstrapTokenError(String),
+}
+
+pub(crate) fn first_start_outcome(
+    database: &Database,
+    auth_svc: &AuthService,
+    cfg: &Config,
+) -> FirstStartOutcome {
     match database.has_users() {
-        Ok(false) => {
-            match auth_svc.generate_bootstrap_token() {
-                Ok(token) => {
-                    let path = PathBuf::from(&cfg.data_dir).join("BOOTSTRAP_TOKEN");
-                    match write_bootstrap_token_file(&path, &token) {
-                        Ok(()) => {
-                            // VULN-009: never print the token itself.
-                            // Tell the operator where to find it and
-                            // that it self-destructs after 15 minutes.
-                            eprintln!();
-                            eprintln!("  *** First-time setup ***");
-                            eprintln!("  Open http://<your-host>:{}/setup in a browser", cfg.port);
-                            eprintln!("  Bootstrap token has been written to:");
-                            eprintln!("    {} (mode 0600, expires in 15 minutes)", path.display());
-                            eprintln!();
-                        }
-                        Err(e) => {
-                            // Fall back to stderr so the operator
-                            // isn't locked out — but loudly flag that
-                            // they should restart with a writable
-                            // DATA_DIR to get the safer behavior.
-                            tracing::error!(
-                                error = %e,
-                                "failed to write bootstrap token file — falling back to stderr (VULN-009 unmitigated until DATA_DIR is writable)"
-                            );
-                            eprintln!();
-                            eprintln!("  *** First-time setup ***");
-                            eprintln!("  Open http://<your-host>:{}/setup in a browser", cfg.port);
-                            eprintln!("  Bootstrap token: {}", token);
-                            eprintln!("  (could not write {} — fix permissions to suppress this banner)", path.display());
-                            eprintln!();
-                        }
-                    }
-                }
-                Err(e) => {
-                    tracing::error!("failed to generate bootstrap token: {}", e);
-                    std::process::exit(1);
+        Ok(true) => FirstStartOutcome::HasUsers,
+        Ok(false) => match auth_svc.generate_bootstrap_token() {
+            Ok(token) => {
+                let path = PathBuf::from(&cfg.data_dir).join("BOOTSTRAP_TOKEN");
+                match write_bootstrap_token_file(&path, &token) {
+                    Ok(()) => FirstStartOutcome::TokenWrittenToFile { token_path: path },
+                    Err(e) => FirstStartOutcome::TokenStderrFallback {
+                        token,
+                        token_path: path,
+                        write_error: e.to_string(),
+                    },
                 }
             }
+            Err(e) => FirstStartOutcome::BootstrapTokenError(e.to_string()),
+        },
+        Err(e) => FirstStartOutcome::HasUsersError(e.to_string()),
+    }
+}
+
+fn check_first_start(database: &Database, auth_svc: &AuthService, cfg: &Config) {
+    match first_start_outcome(database, auth_svc, cfg) {
+        FirstStartOutcome::HasUsers => {}
+        FirstStartOutcome::TokenWrittenToFile { token_path } => {
+            // VULN-009: never print the token itself. Tell the operator
+            // where to find it and that it self-destructs after 15 minutes.
+            eprintln!();
+            eprintln!("  *** First-time setup ***");
+            eprintln!("  Open http://<your-host>:{}/setup in a browser", cfg.port);
+            eprintln!("  Bootstrap token has been written to:");
+            eprintln!("    {} (mode 0600, expires in 15 minutes)", token_path.display());
+            eprintln!();
         }
-        Err(e) => {
+        FirstStartOutcome::TokenStderrFallback { token, token_path, write_error } => {
+            tracing::error!(
+                error = %write_error,
+                "failed to write bootstrap token file — falling back to stderr (VULN-009 unmitigated until DATA_DIR is writable)"
+            );
+            eprintln!();
+            eprintln!("  *** First-time setup ***");
+            eprintln!("  Open http://<your-host>:{}/setup in a browser", cfg.port);
+            eprintln!("  Bootstrap token: {}", token);
+            eprintln!("  (could not write {} — fix permissions to suppress this banner)", token_path.display());
+            eprintln!();
+        }
+        FirstStartOutcome::BootstrapTokenError(e) => {
+            tracing::error!("failed to generate bootstrap token: {}", e);
+            std::process::exit(1);
+        }
+        FirstStartOutcome::HasUsersError(e) => {
             tracing::error!("failed to check users: {}", e);
             std::process::exit(1);
         }
-        _ => {}
     }
 }
 
@@ -1641,5 +1671,57 @@ mod tests {
         // Doesn't panic, doesn't write a bootstrap token file because
         // a user is present.
         check_first_start(&db, &auth, &cfg);
+    }
+
+    // ── first_start_outcome (pure variant) ───────────────────────────
+
+    #[tokio::test]
+    async fn first_start_outcome_has_users_when_seeded() {
+        let (db, _tmp) = test_db();
+        seed_user(&db, "u1");
+        let auth = AuthService::new(db.clone(), "");
+        let cfg = Config::default();
+        match first_start_outcome(&db, &auth, &cfg) {
+            FirstStartOutcome::HasUsers => {}
+            other => panic!("expected HasUsers, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn first_start_outcome_writes_token_file_on_empty_db() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        db.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;")).unwrap();
+        db.run_migrations().unwrap();
+        let auth = AuthService::new(db.clone(), "");
+        let mut cfg = Config::default();
+        cfg.data_dir = tmp.path().to_str().unwrap().to_string();
+        match first_start_outcome(&db, &auth, &cfg) {
+            FirstStartOutcome::TokenWrittenToFile { token_path } => {
+                assert!(token_path.exists(), "token file should exist");
+                assert!(token_path.ends_with("BOOTSTRAP_TOKEN"));
+                let contents = std::fs::read_to_string(&token_path).unwrap();
+                assert!(!contents.is_empty());
+            }
+            other => panic!("expected TokenWrittenToFile, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn first_start_outcome_stderr_fallback_when_data_dir_unwritable() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        db.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;")).unwrap();
+        db.run_migrations().unwrap();
+        let auth = AuthService::new(db.clone(), "");
+        let mut cfg = Config::default();
+        cfg.data_dir = "/this/path/does/not/exist/for/token/write".into();
+        match first_start_outcome(&db, &auth, &cfg) {
+            FirstStartOutcome::TokenStderrFallback { token, write_error, .. } => {
+                assert!(!token.is_empty());
+                assert!(!write_error.is_empty());
+            }
+            other => panic!("expected TokenStderrFallback, got {:?}", other),
+        }
     }
 }
