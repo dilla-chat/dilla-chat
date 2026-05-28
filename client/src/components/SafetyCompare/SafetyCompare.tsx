@@ -82,7 +82,7 @@ export default function SafetyCompare({
             <div className="safety-compare-name">{yourName}</div>
             <div className={`safety-compare-fingerprint ${pulsing ? 'pulsing' : ''}`}>
               {yoursChunks.map((chunk, idx) => (
-                <span key={`y-${idx}`} className="safety-compare-block">
+                <span key={`y-${idx}-${chunk}`} className="safety-compare-block">
                   {chunk}
                 </span>
               ))}
@@ -98,7 +98,7 @@ export default function SafetyCompare({
             <div className={`safety-compare-fingerprint ${pulsing ? 'pulsing' : ''}`}>
               {theirsChunks.map((chunk, idx) => (
                 <span
-                  key={`t-${idx}`}
+                  key={`t-${idx}-${chunk}`}
                   className={`safety-compare-block ${
                     yoursChunks[idx] && yoursChunks[idx] !== chunk ? 'diff' : ''
                   }`}

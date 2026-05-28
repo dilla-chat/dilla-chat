@@ -228,7 +228,11 @@ function CommandPalette({ open, onClose, onPickChannel, commands }) {
   const inputRef = useRefMC(null);
   const source = commands?.length ? commands : COMMANDS;
   const filtered = source.filter((c) => !q || c.cmd.toLowerCase().includes(q.toLowerCase()) || c.sec.toLowerCase().includes(q.toLowerCase()));
-  useEffectMC(() => {if (open && inputRef.current) inputRef.current.focus();setIdx(0);setQ('');}, [open]);
+  useEffectMC(() => {
+    if (open && inputRef.current) inputRef.current.focus();
+    setIdx(0);
+    setQ('');
+  }, [open]);
   if (!open) return null;
 
   const sections = [...new Set(filtered.map((c) => c.sec))];
@@ -294,7 +298,11 @@ function SearchPalette({ open, onClose, onPickChannel }) {
   const [q, setQ] = useStateMC('');
   const [idx, setIdx] = useStateMC(0);
   const inputRef = useRefMC(null);
-  useEffectMC(() => {if (open && inputRef.current) inputRef.current.focus();setIdx(0);setQ('');}, [open]);
+  useEffectMC(() => {
+    if (open && inputRef.current) inputRef.current.focus();
+    setIdx(0);
+    setQ('');
+  }, [open]);
 
   // Parse query into structured filters. The tips row advertises three
   // operators: from:<author> in:#<channel> has:<image|file|link>. They

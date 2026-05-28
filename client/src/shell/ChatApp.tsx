@@ -3258,7 +3258,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                                     const dot = `hsl(${hue} 65% 55%)`;
                                     const bar = `hsl(${hue} 60% 50% / 0.5)`;
                                     return (
-                                      <div key={oi}
+                                      <div key={`poll-${m.id}-${oi}-${o.label}`}
                                            className={'poll-opt' + (o.mine ? ' mine' : '')}
                                            onClick={() => onVote && onVote(m.id, oi)}>
                                         <div className="poll-bar" style={{ width: ((o.votes || 0) / total * 100) + '%', background: bar }} />
@@ -3275,7 +3275,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                               </div>
                             )}
                             {m.kind === 'text' && detectUnfurls(m.text).map((u, ui) => (
-                              <Unfurl key={ui} url={u.url} host={u.host} />
+                              <Unfurl key={`unfurl-${m.id}-${ui}-${u.url}`} url={u.url} host={u.host} />
                             ))}
                             {m.edited && <span className="msg-edited" title={'edited ' + (m.editedAt ? timeShort(new Date(m.editedAt)) : '')}>(edited)</span>}
                           </>
