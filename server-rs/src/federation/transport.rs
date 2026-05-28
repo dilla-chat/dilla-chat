@@ -540,26 +540,31 @@ impl Transport {
                         break;
                     }
                 }
-
-                let peers = transport.peers.read().await.clone();
-                for addr in &peers {
-                    let needs_reconnect = {
-                        let conns = transport.conns.read().await;
-                        match conns.get(addr) {
-                            Some(conn) => !conn.connected,
-                            None => true,
-                        }
-                    };
-
-                    if needs_reconnect {
-                        tracing::debug!(peer = %addr, "attempting reconnection");
-                        if let Err(e) = transport.connect_to_peer(addr).await {
-                            tracing::debug!(peer = %addr, "reconnection failed: {}", e);
-                        }
-                    }
-                }
+                transport.reconnect_disconnected_peers().await;
             }
         });
+    }
+
+    /// Single pass of the reconnect loop: walk every registered peer
+    /// and reconnect any that are missing or marked disconnected.
+    /// Extracted so the body is testable without driving a 10s tick.
+    pub(crate) async fn reconnect_disconnected_peers(&self) {
+        let peers = self.peers.read().await.clone();
+        for addr in &peers {
+            let needs_reconnect = {
+                let conns = self.conns.read().await;
+                match conns.get(addr) {
+                    Some(conn) => !conn.connected,
+                    None => true,
+                }
+            };
+            if needs_reconnect {
+                tracing::debug!(peer = %addr, "attempting reconnection");
+                if let Err(e) = self.connect_to_peer(addr).await {
+                    tracing::debug!(peer = %addr, "reconnection failed: {}", e);
+                }
+            }
+        }
     }
 
     /// Start the ping loop. Sends WebSocket pings to all connected peers every 30 seconds.
@@ -576,19 +581,25 @@ impl Transport {
                         break;
                     }
                 }
-
-                let conns = transport.conns.read().await;
-                for (addr, conn) in conns.iter() {
-                    if !conn.connected {
-                        continue;
-                    }
-                    let mut sink = conn.sink.lock().await;
-                    if let Err(e) = sink.send(Message::Ping(vec![].into())).await {
-                        tracing::warn!(peer = %addr, "ping failed: {}", e);
-                    }
-                }
+                transport.ping_connected_peers().await;
             }
         });
+    }
+
+    /// Single pass of the ping loop: send a WS Ping frame to every
+    /// connected peer. Extracted so the body is testable without
+    /// driving the 30s interval.
+    pub(crate) async fn ping_connected_peers(&self) {
+        let conns = self.conns.read().await;
+        for (addr, conn) in conns.iter() {
+            if !conn.connected {
+                continue;
+            }
+            let mut sink = conn.sink.lock().await;
+            if let Err(e) = sink.send(Message::Ping(vec![].into())).await {
+                tracing::warn!(peer = %addr, "ping failed: {}", e);
+            }
+        }
     }
 
     /// Stop the transport. Closes all peer connections and signals background loops to exit.
@@ -1311,6 +1322,30 @@ mod tests {
         // Handler must NOT have fired — require_v3 rejected the v1 frame.
         assert!(!received.load(Ordering::SeqCst));
         let _ = client_handle.await;
+    }
+
+    #[tokio::test]
+    async fn reconnect_disconnected_peers_iterates_zero_peers_cleanly() {
+        let t = Transport::new();
+        // Fresh transport has no registered peers — the loop body
+        // exits immediately without panic.
+        t.reconnect_disconnected_peers().await;
+    }
+
+    #[tokio::test]
+    async fn reconnect_disconnected_peers_attempts_unknown_peer() {
+        let t = Transport::new();
+        // Force a peer into the address book without a backing connection;
+        // the reconnect pass will see no conn entry → attempts connect_to_peer
+        // → that fails (no listener) → log + continue without panic.
+        t.peers.write().await.push("127.0.0.1:1".into());
+        t.reconnect_disconnected_peers().await;
+    }
+
+    #[tokio::test]
+    async fn ping_connected_peers_iterates_zero_peers_cleanly() {
+        let t = Transport::new();
+        t.ping_connected_peers().await;
     }
 
     #[tokio::test]
