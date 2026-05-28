@@ -132,6 +132,68 @@ describe('MeshBottomBar', () => {
     expect(container.textContent).toMatch(/build [\w-]+/i);
   });
 
+  it('shows PLAIN SQLITE warning when db is not encrypted', async () => {
+    vi.resetModules();
+    vi.doMock('../../hooks/useServerConfig', () => ({
+      useServerConfig: () => ({
+        domain: 'test.local',
+        rp_id: 'test.local',
+        has_custom_theme: false,
+        db_encrypted: false,
+        tls_enabled: false,
+      }),
+    }));
+    const { default: Bar } = await import('./MeshBottomBar');
+    const { container } = render(<Bar />);
+    expect(container.textContent).toMatch(/PLAIN SQLITE · UNENCRYPTED/);
+    // mb-warn class on the db chunk reflects the unencrypted state.
+    expect(container.querySelector('.mb-chunk.mb-warn')).toBeTruthy();
+    vi.doUnmock('../../hooks/useServerConfig');
+  });
+
+  it('shows LOCKED e2e state when derivedKey is null', async () => {
+    vi.resetModules();
+    vi.doMock('../../stores/authStore', () => ({
+      useAuthStore: (selector: (s: { derivedKey: string | null }) => unknown) =>
+        selector({ derivedKey: null }),
+    }));
+    vi.doMock('../../services/crypto', () => ({ isCryptoInitialized: () => false }));
+    const { default: Bar } = await import('./MeshBottomBar');
+    const { container } = render(<Bar />);
+    expect(container.textContent).toMatch(/LOCKED/);
+    expect(container.querySelector('button.mb-warn')).toBeTruthy();
+    vi.doUnmock('../../stores/authStore');
+    vi.doUnmock('../../services/crypto');
+  });
+
+  it('shows INITIALIZING e2e state when derivedKey is set but crypto not initialized', async () => {
+    vi.resetModules();
+    vi.doMock('../../stores/authStore', () => ({
+      useAuthStore: (selector: (s: { derivedKey: string | null }) => unknown) =>
+        selector({ derivedKey: 'xx' }),
+    }));
+    vi.doMock('../../services/crypto', () => ({ isCryptoInitialized: () => false }));
+    const { default: Bar } = await import('./MeshBottomBar');
+    const { container } = render(<Bar />);
+    expect(container.textContent).toMatch(/INITIALIZING…/);
+    vi.doUnmock('../../stores/authStore');
+    vi.doUnmock('../../services/crypto');
+  });
+
+  it('shows active SIGNAL e2e label when crypto initialized', async () => {
+    vi.resetModules();
+    vi.doMock('../../stores/authStore', () => ({
+      useAuthStore: (selector: (s: { derivedKey: string | null }) => unknown) =>
+        selector({ derivedKey: 'xx' }),
+    }));
+    vi.doMock('../../services/crypto', () => ({ isCryptoInitialized: () => true }));
+    const { default: Bar } = await import('./MeshBottomBar');
+    const { container } = render(<Bar />);
+    expect(container.textContent).toMatch(/SIGNAL · X3DH · AES-256-GCM/);
+    vi.doUnmock('../../stores/authStore');
+    vi.doUnmock('../../services/crypto');
+  });
+
   it('clicking the voice chunk dispatches mesh:open-voice-settings (L115)', async () => {
     vi.resetModules();
     vi.doMock('../../stores/voiceStore', () => ({
