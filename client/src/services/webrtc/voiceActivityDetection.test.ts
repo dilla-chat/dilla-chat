@@ -89,14 +89,18 @@ describe('VoiceActivityDetector.updateLocalLevel — sidebar mirror', () => {
 describe('VoiceActivityDetector.startRemoteVAD timer', () => {
   it('startRemoteVAD does not throw without remote streams', () => {
     const vad = new VoiceActivityDetector();
-    vad.startRemoteVAD({} as never, 'me');
-    vi.advanceTimersByTime(500);
-    vad.stopRemoteVAD();
+    expect(() => {
+      vad.startRemoteVAD({} as never, 'me');
+      vi.advanceTimersByTime(500);
+      vad.stopRemoteVAD();
+    }).not.toThrow();
   });
 
   it('stopRemoteVAD is idempotent', () => {
     const vad = new VoiceActivityDetector();
-    vad.stopRemoteVAD();
-    vad.stopRemoteVAD();
+    expect(() => {
+      vad.stopRemoteVAD();
+      vad.stopRemoteVAD();
+    }).not.toThrow();
   });
 });

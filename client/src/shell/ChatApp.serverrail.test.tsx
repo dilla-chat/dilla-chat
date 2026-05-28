@@ -202,6 +202,7 @@ describe('ServerRail context-menu actions', () => {
     const { container } = render(wrap(<Fresh servers={servers} activeServer="t1" onPick={vi.fn()} />));
     const items = dispatchMenu(container);
     const leave = items.find((it) => it.label === 'Leave team');
+    expect(leave).toBeTruthy();
     // Run the onClick — it awaits the confirm, then api.leaveTeam.
     await leave?.onClick?.();
   });

@@ -225,8 +225,8 @@ describe('MockApiService — DMs', () => {
     const sent = await svc.sendDMMessage('t', dm.id, 'soon-to-delete');
     const mid = (sent as { id?: string }).id;
     if (mid) await svc.deleteDMMessage('t', dm.id, mid);
-    await svc.addDMMembers();
-    await svc.removeDMMember();
+    expect(await svc.addDMMembers()).toBeUndefined();
+    expect(await svc.removeDMMember()).toBeUndefined();
   });
 });
 
@@ -243,8 +243,12 @@ describe('MockApiService — threads', () => {
   it('updateThread + deleteThread', async () => {
     const svc = newService();
     const t = await svc.createThread('t', 'ch-1', 'msg-1');
-    await svc.updateThread('t', (t as { id: string }).id, 'new title');
-    await svc.deleteThread('t', (t as { id: string }).id);
+    const id = (t as { id: string }).id;
+    const updated = await svc.updateThread('t', id, 'new title');
+    expect(updated).toBeDefined();
+    await svc.deleteThread('t', id);
+    const after = await svc.getThread('t', id);
+    expect(after).toBeFalsy();
   });
 
   it('thread messages CRUD', async () => {
@@ -384,9 +388,11 @@ describe('MockApiService — blocks / pins / groups', () => {
   });
 
   it('pin / unpin message', async () => {
-    const svc = newService();
+    const svc = newService() as unknown as { pins: Map<string, string[]>; pinMessage: (t: string, c: string, m: string) => Promise<void>; unpinMessage: (t: string, c: string, m: string) => Promise<void> };
     await svc.pinMessage('t', 'ch-1', 'm1');
+    expect(svc.pins.get('ch-1')).toContain('m1');
     await svc.unpinMessage('t', 'ch-1', 'm1');
+    expect(svc.pins.get('ch-1') ?? []).not.toContain('m1');
   });
 
   it('groups CRUD + setGroupAccess', async () => {

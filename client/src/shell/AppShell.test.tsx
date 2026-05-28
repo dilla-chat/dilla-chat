@@ -225,7 +225,7 @@ describe('AppShell', () => {
     seedTeam('A', undefined, [{ id: 'c1', name: 'general', type: 'text' }]);
     const { getByTestId } = render(<AppShell ready />);
     fireEvent.click(getByTestId('cmdk-btn'));
-    fireEvent.click(getByTestId('cmd-pick'));
+    expect(() => fireEvent.click(getByTestId('cmd-pick'))).not.toThrow();
   });
 
   it('SearchPalette onClose closes the palette (covers L217)', () => {
