@@ -157,6 +157,115 @@ async fn log_revoked_device_login(
     .await;
 }
 
+/// Persist the current login's risk signals (ip / ua / country) and
+/// bump current_session_started_at on the device row.
+async fn record_device_login_async(
+    db: crate::db::Database,
+    device_id: String,
+    ip: Option<String>,
+    ua: Option<String>,
+    country: Option<String>,
+) {
+    let _ = spawn_db(db, move |conn| {
+        db::record_device_login(
+            conn,
+            &device_id,
+            ip.as_deref(),
+            ua.as_deref(),
+            country.as_deref(),
+        )
+    })
+    .await;
+}
+
+/// Fan a per-team `device.risk_event` audit row out for elevated risk,
+/// then push a `security:device-risk` WS event when the score crosses
+/// the 80-out-of-100 threshold. Best-effort — failures here must not
+/// break login.
+async fn handle_risky_login(
+    state: &AppState,
+    user_id: &str,
+    device_id: &str,
+    risk_score: u32,
+    ip: Option<String>,
+    country: Option<String>,
+) {
+    let user_id_q = user_id.to_string();
+    let device_id_q = device_id.to_string();
+    let ip_for_audit = ip.clone();
+    let country_for_audit = country.clone();
+    let _ = spawn_db(state.db.clone(), move |conn| {
+        let teams = db::list_user_teams(conn, &user_id_q).unwrap_or_default();
+        for team_id in teams {
+            let _ = db::insert_audit_event(
+                conn,
+                &team_id,
+                Some(&user_id_q),
+                "device.risk_event",
+                Some("device"),
+                Some(&device_id_q),
+                Some(&json!({
+                    "risk_score": risk_score,
+                    "ip": ip_for_audit,
+                    "country": country_for_audit,
+                })),
+            );
+        }
+        Ok(())
+    })
+    .await;
+
+    if risk_score < 80 {
+        return;
+    }
+    let evt = crate::ws::events::Event::new(
+        "security:device-risk",
+        json!({
+            "device_id": device_id,
+            "risk_score": risk_score,
+            "country": country,
+            "ip_hint": ip.as_ref().map(|s| ip_hint(s)),
+        }),
+    );
+    if let Ok(evt) = evt {
+        if let Ok(data) = evt.to_bytes() {
+            state.hub.send_to_user(user_id, data).await;
+        }
+    }
+}
+
+/// A5: success-side audit event — per-team fan-out so each team sees
+/// every login from its members.
+async fn log_login_success(
+    state: &AppState,
+    user_id: &str,
+    device_id: &str,
+    ip: Option<String>,
+    country: Option<String>,
+) {
+    let user_id_q = user_id.to_string();
+    let device_id_q = device_id.to_string();
+    let _ = spawn_db(state.db.clone(), move |conn| {
+        let teams = db::list_user_teams(conn, &user_id_q).unwrap_or_default();
+        for team_id in teams {
+            let _ = db::insert_audit_event(
+                conn,
+                &team_id,
+                Some(&user_id_q),
+                "auth.login",
+                Some("device"),
+                Some(&device_id_q),
+                Some(&json!({
+                    "ip": ip,
+                    "country": country,
+                })),
+            );
+        }
+        Ok(())
+    })
+    .await;
+}
+
 pub async fn verify(
     State(state): State<AppState>,
     req: Request,
@@ -226,9 +335,8 @@ pub async fn verify(
         }
     }
 
-    // A2: stamp risk signals + bump current_session_started_at. We
-    // also compare against the *previous* signals to compute a risk
-    // score — see below.
+    // A2: stamp risk signals + bump current_session_started_at, then
+    // compare against the previous signals to compute a risk score.
     let prev_signals = device.as_ref().map(|d| {
         (
             d.last_seen_ip.clone(),
@@ -239,70 +347,12 @@ pub async fn verify(
     let country = derive_country_from_ip(ip.as_deref());
 
     if let Some(ref d) = device {
-        let did = d.id.clone();
-        let ip_q = ip.clone();
-        let ua_q = ua.clone();
-        let country_q = country.clone();
-        let _ = spawn_db(state.db.clone(), move |conn| {
-            db::record_device_login(
-                conn,
-                &did,
-                ip_q.as_deref(),
-                ua_q.as_deref(),
-                country_q.as_deref(),
-            )
-        })
-        .await;
+        record_device_login_async(state.db.clone(), d.id.clone(), ip.clone(), ua.clone(), country.clone()).await;
     }
 
-    // A2: compute a simple risk score from the delta between this
-    // login's signals and the previously-recorded ones. Heuristic-
-    // only — never a hard block. High-risk events fire a WS event to
-    // the user's other devices so they see the change in real time.
     let risk_score = compute_risk_score(prev_signals.as_ref(), ip.as_deref(), ua.as_deref(), country.as_deref());
     if risk_score >= 50 {
-        let user_id_log = user.id.clone();
-        let device_id_log = device_id.clone();
-        let ip_log = ip.clone();
-        let country_log = country.clone();
-        let _ = spawn_db(state.db.clone(), move |conn| {
-            let teams = db::list_user_teams(conn, &user_id_log).unwrap_or_default();
-            for team_id in teams {
-                let _ = db::insert_audit_event(
-                    conn,
-                    &team_id,
-                    Some(&user_id_log),
-                    "device.risk_event",
-                    Some("device"),
-                    Some(&device_id_log),
-                    Some(&json!({
-                        "risk_score": risk_score,
-                        "ip": ip_log,
-                        "country": country_log,
-                    })),
-                );
-            }
-            Ok(())
-        })
-        .await;
-
-        if risk_score >= 80 {
-            // Best-effort dispatch — failures here mustn't break login.
-            let evt = crate::ws::events::Event::new(
-                "security:device-risk",
-                json!({
-                    "device_id": device_id,
-                    "risk_score": risk_score,
-                    "country": country,
-                    "ip_hint": ip.as_ref().map(|s| ip_hint(s)),
-                }),
-            );
-            if let Ok(evt) = evt {
-                if let Ok(data) = evt.to_bytes() {
-                    state.hub.send_to_user(&user.id, data).await;
-                }
-            }
-        }
+        handle_risky_login(&state, &user.id, &device_id, risk_score, ip.clone(), country.clone()).await;
     }
 
     let token = state.auth.generate_jwt_for_device(&user.id, &device_id)?;
@@ -310,31 +360,7 @@ pub async fn verify(
         .auth
         .generate_refresh_token_for_device(&user.id, &device_id)?;
 
-    // A5: success-side audit event. Same per-team fan-out as the
-    // failure path so audit officers see every login from their team.
-    let user_id_log = user.id.clone();
-    let device_id_log = device_id.clone();
-    let ip_log = ip.clone();
-    let country_log = country.clone();
-    let _ = spawn_db(state.db.clone(), move |conn| {
-        let teams = db::list_user_teams(conn, &user_id_log).unwrap_or_default();
-        for team_id in teams {
-            let _ = db::insert_audit_event(
-                conn,
-                &team_id,
-                Some(&user_id_log),
-                "auth.login",
-                Some("device"),
-                Some(&device_id_log),
-                Some(&json!({
-                    "ip": ip_log,
-                    "country": country_log,
-                })),
-            );
-        }
-        Ok(())
-    })
-    .await;
+    log_login_success(&state, &user.id, &device_id, ip.clone(), country.clone()).await;
 
     // H-13a: issue an httpOnly cookie alongside the JSON body. Cookie
     // max-age matches the 1 h access-token expiry; clients that
