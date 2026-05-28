@@ -220,6 +220,43 @@ pub(in crate::ws) async fn handle_message_send(
     });
 }
 
+fn apply_message_edit(
+    conn: &rusqlite::Connection,
+    message_id: &str,
+    new_content: &str,
+    actor_user_id: &str,
+) -> Result<bool, rusqlite::Error> {
+    let Some(msg) = db::get_message_by_id(conn, message_id)? else {
+        return Ok(false);
+    };
+    if msg.author_id != actor_user_id {
+        return Ok(false);
+    }
+    let is_noop = msg.content == new_content;
+    db::update_message_content(conn, message_id, new_content)?;
+    if is_noop {
+        return Ok(true);
+    }
+    // Resolve team via channel to populate the audit row. DM-channel
+    // edits skip the audit log — dm_channels has its own audit story.
+    if let Ok(Some(channel)) = db::get_channel_by_id(conn, &msg.channel_id) {
+        let details = serde_json::json!({
+            "channel_id": msg.channel_id,
+            "edited_at": db::now_str(),
+        });
+        let _ = db::insert_audit_event(
+            conn,
+            &channel.team_id,
+            Some(actor_user_id),
+            "message.edit",
+            Some("message"),
+            Some(message_id),
+            Some(&details),
+        );
+    }
+    Ok(true)
+}
+
 pub(in crate::ws) async fn handle_message_edit(hub: &Hub, user_id: &str, payload: serde_json::Value) {
     let p: MessageEditPayload = match serde_json::from_value(payload) {
         Ok(p) => p,
@@ -234,38 +271,7 @@ pub(in crate::ws) async fn handle_message_edit(hub: &Hub, user_id: &str, payload
     let content = p.content.clone();
     let uid = user_id.to_string();
     let edited = tokio::task::spawn_blocking(move || {
-        db.with_conn(|conn| {
-            if let Ok(Some(msg)) = db::get_message_by_id(conn, &mid) {
-                if msg.author_id == uid {
-                    // Skip the audit row on a no-op same-content edit
-                    // to keep the audit log clean. H5 / MSG-AUDIT-1.
-                    let is_noop = msg.content == content;
-                    db::update_message_content(conn, &mid, &content)?;
-                    if !is_noop {
-                        // Resolve team via channel to populate the audit
-                        // row. DM-channel edits skip the audit log —
-                        // dm_channels has its own audit story.
-                        if let Ok(Some(channel)) = db::get_channel_by_id(conn, &msg.channel_id) {
-                            let details = serde_json::json!({
-                                "channel_id": msg.channel_id,
-                                "edited_at": db::now_str(),
-                            });
-                            let _ = db::insert_audit_event(
-                                conn,
-                                &channel.team_id,
-                                Some(&uid),
-                                "message.edit",
-                                Some("message"),
-                                Some(&mid),
-                                Some(&details),
-                            );
-                        }
-                    }
-                    return Ok(true);
-                }
-            }
-            Ok(false)
-        })
+        db.with_conn(|conn| apply_message_edit(conn, &mid, &content, &uid))
     })
     .await
     .unwrap_or(Ok(false))
@@ -289,6 +295,37 @@ pub(in crate::ws) async fn handle_message_edit(hub: &Hub, user_id: &str, payload
     });
 }
 
+fn apply_message_delete(
+    conn: &rusqlite::Connection,
+    message_id: &str,
+    actor_user_id: &str,
+) -> Result<bool, rusqlite::Error> {
+    let Some(msg) = db::get_message_by_id(conn, message_id)? else {
+        return Ok(false);
+    };
+    // Idempotence — don't double-log a soft-delete. H5 / MSG-AUDIT-1.
+    if msg.deleted || msg.author_id != actor_user_id {
+        return Ok(false);
+    }
+    db::soft_delete_message(conn, message_id)?;
+    if let Ok(Some(channel)) = db::get_channel_by_id(conn, &msg.channel_id) {
+        let details = serde_json::json!({
+            "channel_id": msg.channel_id,
+            "deleted_at": db::now_str(),
+        });
+        let _ = db::insert_audit_event(
+            conn,
+            &channel.team_id,
+            Some(actor_user_id),
+            "message.delete",
+            Some("message"),
+            Some(message_id),
+            Some(&details),
+        );
+    }
+    Ok(true)
+}
+
 pub(in crate::ws) async fn handle_message_delete(hub: &Hub, user_id: &str, payload: serde_json::Value) {
     let p: MessageDeletePayload = match serde_json::from_value(payload) {
         Ok(p) => p,
@@ -302,35 +339,7 @@ pub(in crate::ws) async fn handle_message_delete(hub: &Hub, user_id: &str, paylo
     let mid = p.message_id.clone();
     let uid = user_id.to_string();
     let deleted = tokio::task::spawn_blocking(move || {
-        db.with_conn(|conn| {
-            if let Ok(Some(msg)) = db::get_message_by_id(conn, &mid) {
-                // Idempotence — don't double-log a soft-delete. H5 /
-                // MSG-AUDIT-1.
-                if msg.deleted {
-                    return Ok(false);
-                }
-                if msg.author_id == uid {
-                    db::soft_delete_message(conn, &mid)?;
-                    if let Ok(Some(channel)) = db::get_channel_by_id(conn, &msg.channel_id) {
-                        let details = serde_json::json!({
-                            "channel_id": msg.channel_id,
-                            "deleted_at": db::now_str(),
-                        });
-                        let _ = db::insert_audit_event(
-                            conn,
-                            &channel.team_id,
-                            Some(&uid),
-                            "message.delete",
-                            Some("message"),
-                            Some(&mid),
-                            Some(&details),
-                        );
-                    }
-                    return Ok(true);
-                }
-            }
-            Ok(false)
-        })
+        db.with_conn(|conn| apply_message_delete(conn, &mid, &uid))
     })
     .await
     .unwrap_or(Ok(false))
