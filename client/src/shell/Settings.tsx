@@ -97,6 +97,76 @@ function leaveOrSignOut(args: { mode: string; onClose: () => void; navigate: (pa
   else void performSignOut(args);
 }
 
+function parseAuditDetails(details: string | null | undefined): Record<string, unknown> | null {
+  if (!details) return null;
+  try { return JSON.parse(details) as Record<string, unknown>; } catch { return null; }
+}
+
+function describeRoleAudit(action: string, name: string): string | null {
+  switch (action) {
+    case 'role.create':  return `created role ${name || '—'}`;
+    case 'role.update':  return `updated role ${name || '—'}`;
+    case 'role.delete':  return `deleted role ${name || '—'}`;
+    case 'role.reorder': return `reordered roles`;
+    default: return null;
+  }
+}
+
+function describeChannelAudit(action: string, name: string, detail: Record<string, unknown> | null): string | null {
+  const detailType = detail?.type as string | undefined;
+  switch (action) {
+    case 'channel.create':        return `created channel #${name || '—'}${detailType ? ' · ' + detailType : ''}`;
+    case 'channel.delete':        return `deleted channel #${name || '—'}`;
+    case 'channel.lock':          return `locked channel #${name || '—'}`;
+    case 'channel.unlock':        return `unlocked channel #${name || '—'}`;
+    case 'channel.update':        return `updated channel #${name || '—'}`;
+    case 'channel.access.update': return `changed access for channel`;
+    default: return null;
+  }
+}
+
+function describeMemberAudit(action: string, targetUser: string | null, e: { target_id?: string }, detail: Record<string, unknown> | null): string | null {
+  const who = targetUser || e.target_id || '?';
+  switch (action) {
+    case 'member.roles.update': return `changed roles for @${who}`;
+    case 'member.kick':         return `kicked @${who}`;
+    case 'member.ban': {
+      const reason = detail?.reason as string | undefined;
+      return `banned @${who}${reason ? ` — ${reason}` : ''}`;
+    }
+    default: return null;
+  }
+}
+
+function describeMiscAudit(action: string, name: string, detail: Record<string, unknown> | null): string | null {
+  if (action === 'team.update') return `updated team settings${name ? ' · ' + name : ''}`;
+  if (action === 'invite.create') {
+    const max = detail?.max_uses as number | undefined;
+    const exp = detail?.expires_at as string | undefined;
+    return `created an invite${max ? ' · max ' + max : ''}${exp ? ' · expires ' + exp : ''}`;
+  }
+  if (action === 'invite.revoke') return `revoked an invite`;
+  return null;
+}
+
+function describeAuditEventInline(
+  e: { action: string; target_id?: string; target_type?: string; details?: string },
+  membersById: Map<string, { username?: string }>,
+): string {
+  const detail = parseAuditDetails(e.details);
+  const targetUser = e.target_type === 'user' && e.target_id
+    ? membersById.get(e.target_id)?.username ?? null
+    : null;
+  const name = (detail && ((detail.name as string) || (detail.reason as string))) || '';
+  return (
+    describeRoleAudit(e.action, name)
+    ?? describeChannelAudit(e.action, name, detail)
+    ?? describeMemberAudit(e.action, targetUser, e, detail)
+    ?? describeMiscAudit(e.action, name, detail)
+    ?? e.action
+  );
+}
+
 function toStr(v: unknown): string {
   if (v == null) return '';
   if (typeof v === 'string') return v;
@@ -2521,35 +2591,7 @@ export function TeamAudit() {
   }
 
   function describe(e: any) {
-    let detail: any = null;
-    if (e.details) {
-      try { detail = JSON.parse(e.details); } catch { /* leave null */ }
-    }
-    const targetUser = e.target_type === 'user' && e.target_id ? membersById.get(e.target_id)?.username : null;
-    const name = (detail && (detail.name || detail.reason)) || '';
-    switch (e.action) {
-      case 'role.create':   return `created role ${name || '—'}`;
-      case 'role.update':   return `updated role ${name || '—'}`;
-      case 'role.delete':   return `deleted role ${name || '—'}`;
-      case 'role.reorder':  return `reordered roles`;
-      case 'channel.create': return `created channel #${name || '—'}${detail?.type ? ' · ' + detail.type : ''}`;
-      case 'channel.delete': return `deleted channel #${name || '—'}`;
-      case 'channel.lock':   return `locked channel #${name || '—'}`;
-      case 'channel.unlock': return `unlocked channel #${name || '—'}`;
-      case 'channel.update': return `updated channel #${name || '—'}`;
-      case 'channel.access.update': return `changed access for channel`;
-      case 'member.roles.update': return `changed roles for @${targetUser || e.target_id}`;
-      case 'member.kick':    return `kicked @${targetUser || e.target_id}`;
-      case 'member.ban': {
-        const who = targetUser || e.target_id;
-        const suffix = detail?.reason ? ` — ${detail.reason}` : '';
-        return `banned @${who}${suffix}`;
-      }
-      case 'team.update':    return `updated team settings${name ? ' · ' + name : ''}`;
-      case 'invite.create':  return `created an invite${detail?.max_uses ? ' · max ' + detail.max_uses : ''}${detail?.expires_at ? ' · expires ' + detail.expires_at : ''}`;
-      case 'invite.revoke':  return `revoked an invite`;
-      default: return e.action;
-    }
+    return describeAuditEventInline(e, membersById);
   }
 
   return (
