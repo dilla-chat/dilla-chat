@@ -3071,9 +3071,8 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                             // "Sending…" for optimistic, "Delivered" once
                             // the echo lands, with the server timestamp.
                             const isLocal = typeof m.id === 'string' && m.id.startsWith('new-');
-                            const tip = isLocal
-                              ? 'Sending…'
-                              : `Delivered · ${m.at instanceof Date ? m.at.toLocaleString() : ''}`;
+                            const deliveryTime = m.at instanceof Date ? m.at.toLocaleString() : '';
+                            const tip = isLocal ? 'Sending…' : `Delivered · ${deliveryTime}`;
                             return (
                               <span className="msg-seen" title={tip}>
                                 <svg width="14" height="10" viewBox="0 0 14 10" fill="none">
@@ -3843,6 +3842,12 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
   );
 }
 
+function voiceCardKindClass(kind: 'screen' | 'cam' | 'avatar'): string {
+  if (kind === 'screen') return ' has-screen';
+  if (kind === 'cam') return ' has-cam';
+  return '';
+}
+
 function resolveVoiceCardState(args: {
   participant: { id: string };
   isConnected: boolean;
@@ -4275,7 +4280,7 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
               <div key={p.id}
                    className={'voice-card'
                      + (speaking ? ' speaking' : '')
-                     + (renderKind === 'screen' ? ' has-screen' : renderKind === 'cam' ? ' has-cam' : '')
+                     + voiceCardKindClass(renderKind)
                      + (isMini ? ' mini' : '')
                      + (isMini && effectiveFocused && p.id === effectiveFocused.id ? ' is-focused' : '')
                      + (focusable && !isMini ? ' focusable' : '')}
