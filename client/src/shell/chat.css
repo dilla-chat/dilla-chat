@@ -696,6 +696,18 @@
   padding: 24px;
   animation: dilla-feed-in 0.15s ease-out both;
 }
+/* Invisible click-to-dismiss button covering the scrim. The button
+ * sits behind the modal card (lower z-index in the same overlay) so
+ * clicks outside the card dismiss while clicks inside don't. */
+.modal-overlay-dismiss {
+  position: absolute; inset: 0;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: default;
+  z-index: 0;
+}
 /* Top-aligned variant for the command + search palettes — content sits
    80px from the top instead of vertically centered. */
 .modal-overlay--top {

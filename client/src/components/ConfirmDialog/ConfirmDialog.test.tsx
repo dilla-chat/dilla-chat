@@ -153,9 +153,9 @@ describe('ConfirmDialog', () => {
     act(() => {
       void dillaConfirm({ body: 'go?' }).then((r) => (result = r));
     });
-    const overlay = container.querySelector('.modal-overlay') as HTMLElement;
+    const dismiss = container.querySelector('.modal-overlay-dismiss') as HTMLElement;
     await act(async () => {
-      fireEvent.click(overlay);
+      fireEvent.click(dismiss);
       await Promise.resolve();
     });
     expect(result).toBe(false);

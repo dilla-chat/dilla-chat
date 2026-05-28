@@ -48,16 +48,17 @@ export default function ConfirmDialog() {
   const cancelLabel = pending.cancelLabel || 'Cancel';
 
   return (
-    <div
-      className="modal-overlay"
-      onClick={() => answer(false)}
-      onKeyDown={(e) => { if (e.key === 'Escape') answer(false); }}
-      role="presentation"
-    >
+    <div className="modal-overlay">
+      <button
+        type="button"
+        className="modal-overlay-dismiss"
+        aria-label={cancelLabel}
+        onClick={() => answer(false)}
+      />
       <div
         className="modal-card confirm-card"
         onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => { if (e.key === 'Escape') answer(false); else e.stopPropagation(); }}
         role="dialog"
         aria-modal="true"
       >
