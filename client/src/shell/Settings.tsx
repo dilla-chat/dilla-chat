@@ -478,7 +478,9 @@ export function CropModal({
                 ) : null;
               })()}
               {crop && (
-                <div
+                <button
+                  type="button"
+                  aria-label="Drag to reposition crop area"
                   className="crop-box"
                   onMouseDown={(e) => startDrag(e, 'move')}
                   style={{ left: crop.x, top: crop.y, width: crop.size, height: crop.size }}
@@ -487,7 +489,7 @@ export function CropModal({
                   <span className="crop-handle ne" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'ne'); }} />
                   <span className="crop-handle sw" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'sw'); }} />
                   <span className="crop-handle se" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'se'); }} />
-                </div>
+                </button>
               )}
             </div>
           </div>

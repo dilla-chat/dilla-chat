@@ -282,7 +282,7 @@ export default function Onboarding() {
         // passkey dialog entirely. Otherwise, only attempt passkey when
         // credentials were actually registered (passphrase-only enrollments
         // leave credentials empty so the picker doesn't pop up either).
-        const hasPasskey = !passphrase && info && info.credentials.length > 0;
+        const hasPasskey = !passphrase && (info?.credentials.length ?? 0) > 0;
 
         if (hasPasskey && info) {
           try {

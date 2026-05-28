@@ -171,7 +171,7 @@ export default function AuditLogTab({ teamId }: Readonly<{ teamId: string }>) {
           {t('audit.empty', 'No audit events yet — admin actions (role changes, channel locks, kicks/bans, …) will appear here.')}
         </p>
       )}
-      {!error && events && events.length > 0 && (
+      {!error && events?.length ? (
         <div className="audit-log">
           {events.map((e) => {
             const actor = e.actor_user_id ? membersById.get(e.actor_user_id) : null;
@@ -195,7 +195,7 @@ export default function AuditLogTab({ teamId }: Readonly<{ teamId: string }>) {
             );
           })}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
