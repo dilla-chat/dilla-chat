@@ -39,6 +39,7 @@ export default function TeamRailContextMenu({
     <div
       className="team-rail-menu"
       role="menu"
+      tabIndex={-1}
       style={{ left: x, top: y }}
       onClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => e.stopPropagation()}

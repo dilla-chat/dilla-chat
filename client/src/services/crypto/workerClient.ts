@@ -116,15 +116,10 @@ export async function safetyNumberInWorker(
     const { generateSafetyNumber } = await import('./safetyNumbers');
     return generateSafetyNumber(ourIdentityKey, ourId, theirIdentityKey, theirId);
   }
-  const toB64 = (b: Uint8Array) => {
-    let s = '';
-    for (const byte of b) s += String.fromCodePoint(byte);
-    return btoa(s);
-  };
   return call<string>('safetyNumber.compute', {
-    ourIdentityKey: toB64(ourIdentityKey),
+    ourIdentityKey: bytesToB64(ourIdentityKey),
     ourId,
-    theirIdentityKey: toB64(theirIdentityKey),
+    theirIdentityKey: bytesToB64(theirIdentityKey),
     theirId,
   });
 }

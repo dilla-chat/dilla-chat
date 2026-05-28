@@ -448,11 +448,7 @@ export function ChannelAccessModal({ channel, onClose }) {
   }, [onClose]);
 
   function toggle(roleId: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(roleId)) next.delete(roleId); else next.add(roleId);
-      return next;
-    });
+    setSelected((prev) => toggleRoleInSet(prev, roleId));
   }
 
   async function save() {
@@ -547,11 +543,7 @@ export function GroupAccessModal({ group, onClose }: Readonly<{ group: { id: str
   }, [onClose]);
 
   function toggle(roleId: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(roleId)) next.delete(roleId); else next.add(roleId);
-      return next;
-    });
+    setSelected((prev) => toggleRoleInSet(prev, roleId));
   }
 
   async function save() {
@@ -3848,6 +3840,12 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
       })()}
     </div>
   );
+}
+
+function toggleRoleInSet(prev: Set<string>, roleId: string): Set<string> {
+  const next = new Set(prev);
+  if (next.has(roleId)) next.delete(roleId); else next.add(roleId);
+  return next;
 }
 
 function toggleThreadReaction(prev: any[], replyId: string, emoji: string): any[] {

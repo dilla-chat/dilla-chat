@@ -346,28 +346,20 @@ export default function Onboarding() {
       // bootstrap and invite: validate server reachable, then advance.
       // Real token validation happens inside api.bootstrap / api.register
       // in the keygen step (an explicit pre-flight only exists for invite).
-      try {
-        const res = await fetch(`${url}/api/v1/health`, { signal: AbortSignal.timeout(5000) });
-        if (!res.ok) throw new Error(`Server returned ${res.status}`);
-        setConnectLog((p) => [...p, { line: 'tls handshake · ok' }]);
-      } catch (e) {
-        throw e;
-      }
+      const res = await fetch(`${url}/api/v1/health`, { signal: AbortSignal.timeout(5000) });
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      setConnectLog((p) => [...p, { line: 'tls handshake · ok' }]);
 
       if (mode === 'invite') {
-        try {
-          const info = (await api.getInviteInfo(url, token)) as {
-            team_name?: string;
-            created_by?: string;
-          };
-          if (info.team_name) {
-            setTeam(info.team_name);
-            setConnectLog((p) => [...p, { line: `invite valid · team "${info.team_name}"` }]);
-          } else {
-            setConnectLog((p) => [...p, { line: 'invite valid' }]);
-          }
-        } catch (e) {
-          throw e;
+        const info = (await api.getInviteInfo(url, token)) as {
+          team_name?: string;
+          created_by?: string;
+        };
+        if (info.team_name) {
+          setTeam(info.team_name);
+          setConnectLog((p) => [...p, { line: `invite valid · team "${info.team_name}"` }]);
+        } else {
+          setConnectLog((p) => [...p, { line: 'invite valid' }]);
         }
       } else {
         setConnectLog((p) => [...p, { line: 'ready · bootstrap token will be validated next' }]);
