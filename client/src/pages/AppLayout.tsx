@@ -252,85 +252,84 @@ export default function AppLayout() {
         run: () => setActiveChannel(ch.id),
       });
     }
-    cmds.push({
-      id: 'voice.simulate-incoming',
-      label: 'Simulate: incoming call',
-      hint: 'dev',
-      section: 'VOICE',
-      run: () =>
-        globalThis.dispatchEvent(
-          new CustomEvent('mesh:incoming-call', {
-            detail: { callerName: 'Ada Lovelace', channelName: 'voice-lounge' },
-          }),
-        ),
-    });
-
-    // FEDERATION
-    cmds.push({
-      id: 'fed.add-peer',
-      label: 'Add a federation peer',
-      hint: 'opens 4-step wizard',
-      section: 'FEDERATION',
-      run: () =>
-        globalThis.dispatchEvent(new CustomEvent('mesh:open-add-peer')),
-    });
-    cmds.push({
-      id: 'fed.peers',
-      label: 'Show peer status',
-      hint: 'opens federation settings',
-      section: 'FEDERATION',
-      run: () => navigate('/app/settings'),
-    });
-    cmds.push({
-      id: 'fed.simulate-degraded',
-      label: 'Simulate: peer drop',
-      hint: 'dev',
-      section: 'FEDERATION',
-      run: () => useMeshStore.getState().setStatus('degraded'),
-    });
-    cmds.push({
-      id: 'fed.simulate-ok',
-      label: 'Simulate: peers OK',
-      hint: 'dev',
-      section: 'FEDERATION',
-      run: () => useMeshStore.getState().setStatus('ok'),
-    });
-
-    // ENCRYPTION
-    cmds.push({
-      id: 'enc.verify',
-      label: 'Verify safety number',
-      hint: 'side-by-side fingerprint compare',
-      section: 'ENCRYPTION',
-      run: () =>
-        globalThis.dispatchEvent(new CustomEvent('mesh:open-safety-compare')),
-    });
-    cmds.push({
-      id: 'enc.settings',
-      label: 'Open privacy & encryption settings',
-      section: 'ENCRYPTION',
-      run: () => navigate('/app/user-settings'),
-    });
-
-    // ACCOUNT
-    cmds.push({
-      id: 'acct.settings',
-      label: 'Open user settings',
-      section: 'ACCOUNT',
-      run: () => navigate('/app/user-settings'),
-    });
-    cmds.push({
-      id: 'acct.theme.mesh',
-      label: 'Switch to mesh theme',
-      section: 'ACCOUNT',
-      run: () => useUserSettingsStore.getState().setTheme('mesh'),
-    });
-    cmds.push({
-      id: 'acct.theme.dark',
-      label: 'Switch to dark theme',
-      section: 'ACCOUNT',
-      run: () => useUserSettingsStore.getState().setTheme('dark'),
-    });
+    cmds.push(
+      {
+        id: 'voice.simulate-incoming',
+        label: 'Simulate: incoming call',
+        hint: 'dev',
+        section: 'VOICE',
+        run: () =>
+          globalThis.dispatchEvent(
+            new CustomEvent('mesh:incoming-call', {
+              detail: { callerName: 'Ada Lovelace', channelName: 'voice-lounge' },
+            }),
+          ),
+      },
+      // FEDERATION
+      {
+        id: 'fed.add-peer',
+        label: 'Add a federation peer',
+        hint: 'opens 4-step wizard',
+        section: 'FEDERATION',
+        run: () =>
+          globalThis.dispatchEvent(new CustomEvent('mesh:open-add-peer')),
+      },
+      {
+        id: 'fed.peers',
+        label: 'Show peer status',
+        hint: 'opens federation settings',
+        section: 'FEDERATION',
+        run: () => navigate('/app/settings'),
+      },
+      {
+        id: 'fed.simulate-degraded',
+        label: 'Simulate: peer drop',
+        hint: 'dev',
+        section: 'FEDERATION',
+        run: () => useMeshStore.getState().setStatus('degraded'),
+      },
+      {
+        id: 'fed.simulate-ok',
+        label: 'Simulate: peers OK',
+        hint: 'dev',
+        section: 'FEDERATION',
+        run: () => useMeshStore.getState().setStatus('ok'),
+      },
+      // ENCRYPTION
+      {
+        id: 'enc.verify',
+        label: 'Verify safety number',
+        hint: 'side-by-side fingerprint compare',
+        section: 'ENCRYPTION',
+        run: () =>
+          globalThis.dispatchEvent(new CustomEvent('mesh:open-safety-compare')),
+      },
+      {
+        id: 'enc.settings',
+        label: 'Open privacy & encryption settings',
+        section: 'ENCRYPTION',
+        run: () => navigate('/app/user-settings'),
+      },
+      // ACCOUNT
+      {
+        id: 'acct.settings',
+        label: 'Open user settings',
+        section: 'ACCOUNT',
+        run: () => navigate('/app/user-settings'),
+      },
+      {
+        id: 'acct.theme.mesh',
+        label: 'Switch to mesh theme',
+        section: 'ACCOUNT',
+        run: () => useUserSettingsStore.getState().setTheme('mesh'),
+      },
+      {
+        id: 'acct.theme.dark',
+        label: 'Switch to dark theme',
+        section: 'ACCOUNT',
+        run: () => useUserSettingsStore.getState().setTheme('dark'),
+      },
+    );
 
     return cmds;
   }, [teamChannels, setActiveChannel, navigate]);
