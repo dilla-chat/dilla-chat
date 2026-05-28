@@ -385,27 +385,42 @@ describe('WebRTCService', () => {
     });
 
     it('cleans up stale screen + webcam streams from voiceStore (L99-107)', async () => {
-      const stopFn = vi.fn();
-      const fakeStream = { getTracks: () => [{ stop: stopFn }] } as unknown as MediaStream;
-      const setLocalScreenStream = vi.fn();
-      const setLocalWebcamStream = vi.fn();
-      const setScreenSharing = vi.fn();
-      const setWebcamSharing = vi.fn();
-      useVoiceStore.setState({
-        localScreenStream: fakeStream,
-        localWebcamStream: fakeStream,
-        setLocalScreenStream,
-        setLocalWebcamStream,
-        setScreenSharing,
-        setWebcamSharing,
-      } as never);
-      await webrtcService.connect('ch-1', 'team-1');
-      // Each stream is stopped + the corresponding setters are called with null/false.
-      expect(stopFn).toHaveBeenCalled();
-      expect(setLocalScreenStream).toHaveBeenCalledWith(null);
-      expect(setScreenSharing).toHaveBeenCalledWith(false);
-      expect(setLocalWebcamStream).toHaveBeenCalledWith(null);
-      expect(setWebcamSharing).toHaveBeenCalledWith(false);
+      // Capture originals so we can restore after the spy-injection.
+      const orig = useVoiceStore.getState();
+      const origSetLocalScreenStream = orig.setLocalScreenStream;
+      const origSetLocalWebcamStream = orig.setLocalWebcamStream;
+      const origSetScreenSharing = orig.setScreenSharing;
+      const origSetWebcamSharing = orig.setWebcamSharing;
+      try {
+        const stopFn = vi.fn();
+        const fakeStream = { getTracks: () => [{ stop: stopFn }] } as unknown as MediaStream;
+        const setLocalScreenStream = vi.fn();
+        const setLocalWebcamStream = vi.fn();
+        const setScreenSharing = vi.fn();
+        const setWebcamSharing = vi.fn();
+        useVoiceStore.setState({
+          localScreenStream: fakeStream,
+          localWebcamStream: fakeStream,
+          setLocalScreenStream,
+          setLocalWebcamStream,
+          setScreenSharing,
+          setWebcamSharing,
+        } as never);
+        await webrtcService.connect('ch-1', 'team-1');
+        expect(stopFn).toHaveBeenCalled();
+        expect(setLocalScreenStream).toHaveBeenCalledWith(null);
+        expect(setScreenSharing).toHaveBeenCalledWith(false);
+        expect(setLocalWebcamStream).toHaveBeenCalledWith(null);
+        expect(setWebcamSharing).toHaveBeenCalledWith(false);
+      } finally {
+        // Restore the real zustand actions so subsequent tests work.
+        useVoiceStore.setState({
+          setLocalScreenStream: origSetLocalScreenStream,
+          setLocalWebcamStream: origSetLocalWebcamStream,
+          setScreenSharing: origSetScreenSharing,
+          setWebcamSharing: origSetWebcamSharing,
+        } as never);
+      }
     });
 
     it('registers WS listeners', async () => {
