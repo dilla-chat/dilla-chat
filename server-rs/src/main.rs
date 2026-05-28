@@ -124,66 +124,11 @@ async fn main() {
     // never connects. The callback is sync (Fn, not async), so each
     // event spawns a short task to do the async broadcast.
     {
-        use voice::SFUEvent;
-        use ws::events::*;
         let hub_for_sfu = hub.clone();
         sfu.set_on_event(move |_channel_id, evt| {
             let hub = hub_for_sfu.clone();
             tokio::spawn(async move {
-                match evt {
-                    SFUEvent::ICECandidate {
-                        channel_id,
-                        user_id,
-                        candidate,
-                    } => {
-                        let payload = VoiceICECandidatePayload {
-                            channel_id,
-                            candidate: candidate.candidate.clone(),
-                            sdp_mid: candidate.sdp_mid.clone().unwrap_or_default(),
-                            sdp_mline_index: candidate.sdp_mline_index.unwrap_or(0),
-                        };
-                        if let Ok(evt) = Event::new(EVENT_VOICE_ICE_CANDIDATE, payload) {
-                            if let Ok(bytes) = evt.to_bytes() {
-                                hub.send_to_user(&user_id, bytes).await;
-                            }
-                        }
-                    }
-                    SFUEvent::Renegotiate {
-                        channel_id,
-                        user_id,
-                        offer,
-                    } => {
-                        let payload = VoiceOfferPayload {
-                            channel_id,
-                            sdp: offer.sdp.clone(),
-                        };
-                        if let Ok(evt) = Event::new(EVENT_VOICE_OFFER, payload) {
-                            if let Ok(bytes) = evt.to_bytes() {
-                                hub.send_to_user(&user_id, bytes).await;
-                            }
-                        }
-                    }
-                    SFUEvent::PeerDropped { channel_id, user_id } => {
-                        // ICE failed / PC closed / browser reload —
-                        // clean up the RoomManager entry and tell every
-                        // client. The explicit voice:leave path doesn't
-                        // go through here (it handles its own broadcast).
-                        if let Some(room_mgr) = &hub.voice_room_manager {
-                            room_mgr.remove_peer(&channel_id, &user_id).await;
-                        }
-                        if let Ok(evt) = Event::new(
-                            EVENT_VOICE_USER_LEFT,
-                            VoiceUserLeftPayload {
-                                channel_id: channel_id.clone(),
-                                user_id: user_id.clone(),
-                            },
-                        ) {
-                            if let Ok(bytes) = evt.to_bytes() {
-                                hub.broadcast_to_all(bytes).await;
-                            }
-                        }
-                    }
-                }
+                handle_sfu_event(&hub, evt).await;
             });
         })
         .await;
@@ -661,6 +606,66 @@ fn spawn_hub_event_handler(hub: &Arc<ws::Hub>, presence_mgr: &Arc<PresenceManage
             handle_hub_event(&pm, &db_evt, &hub_for_evt, event).await;
         }
     });
+}
+
+/// Dispatch an SFU event to the connected WS clients. Extracted from
+/// the closure in main() so the per-variant logic is independently
+/// testable (no real RTCPeerConnection needed).
+pub(crate) async fn handle_sfu_event(hub: &Arc<ws::Hub>, evt: voice::SFUEvent) {
+    use voice::SFUEvent;
+    use ws::events::*;
+    match evt {
+        SFUEvent::ICECandidate {
+            channel_id,
+            user_id,
+            candidate,
+        } => {
+            let payload = VoiceICECandidatePayload {
+                channel_id,
+                candidate: candidate.candidate.clone(),
+                sdp_mid: candidate.sdp_mid.clone().unwrap_or_default(),
+                sdp_mline_index: candidate.sdp_mline_index.unwrap_or(0),
+            };
+            if let Ok(evt) = Event::new(EVENT_VOICE_ICE_CANDIDATE, payload) {
+                if let Ok(bytes) = evt.to_bytes() {
+                    hub.send_to_user(&user_id, bytes).await;
+                }
+            }
+        }
+        SFUEvent::Renegotiate {
+            channel_id,
+            user_id,
+            offer,
+        } => {
+            let payload = VoiceOfferPayload {
+                channel_id,
+                sdp: offer.sdp.clone(),
+            };
+            if let Ok(evt) = Event::new(EVENT_VOICE_OFFER, payload) {
+                if let Ok(bytes) = evt.to_bytes() {
+                    hub.send_to_user(&user_id, bytes).await;
+                }
+            }
+        }
+        SFUEvent::PeerDropped { channel_id, user_id } => {
+            // ICE failed / PC closed / browser reload — clean up the
+            // RoomManager entry and tell every client.
+            if let Some(room_mgr) = &hub.voice_room_manager {
+                room_mgr.remove_peer(&channel_id, &user_id).await;
+            }
+            if let Ok(evt) = Event::new(
+                EVENT_VOICE_USER_LEFT,
+                VoiceUserLeftPayload {
+                    channel_id: channel_id.clone(),
+                    user_id: user_id.clone(),
+                },
+            ) {
+                if let Ok(bytes) = evt.to_bytes() {
+                    hub.broadcast_to_all(bytes).await;
+                }
+            }
+        }
+    }
 }
 
 async fn handle_hub_event(
@@ -1144,6 +1149,116 @@ mod tests {
 
         let p = pm.get_presence("u1").await.expect("user should have presence");
         assert_eq!(p.status, presence::Status::Dnd);
+    }
+
+    // ── handle_sfu_event (SFU → WS bridge) ───────────────────────────
+    //
+    // Drive each SFUEvent variant through the extracted helper. Hub is
+    // real but with no connected clients — broadcast/send are no-ops
+    // but the match arms + payload construction run.
+
+    #[tokio::test]
+    async fn handle_sfu_event_ice_candidate_does_not_panic() {
+        use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
+        let (db, _tmp) = test_db();
+        let hub = Arc::new(ws::Hub::new(db));
+        let candidate = Box::new(RTCIceCandidateInit {
+            candidate: "candidate:1 1 udp 1 192.0.2.1 1234 typ host".into(),
+            sdp_mid: Some("0".into()),
+            sdp_mline_index: Some(0),
+            username_fragment: None,
+        });
+        handle_sfu_event(
+            &hub,
+            voice::SFUEvent::ICECandidate {
+                channel_id: "ch1".into(),
+                user_id: "u1".into(),
+                candidate,
+            },
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn handle_sfu_event_ice_candidate_with_no_sdp_mid_uses_default() {
+        use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
+        let (db, _tmp) = test_db();
+        let hub = Arc::new(ws::Hub::new(db));
+        let candidate = Box::new(RTCIceCandidateInit {
+            candidate: "candidate:2".into(),
+            sdp_mid: None,
+            sdp_mline_index: None,
+            username_fragment: None,
+        });
+        // Exercises the unwrap_or_default branches.
+        handle_sfu_event(
+            &hub,
+            voice::SFUEvent::ICECandidate {
+                channel_id: "ch1".into(),
+                user_id: "u1".into(),
+                candidate,
+            },
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn handle_sfu_event_renegotiate_does_not_panic() {
+        use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
+        let (db, _tmp) = test_db();
+        let hub = Arc::new(ws::Hub::new(db));
+        // Use the `offer` constructor which builds a valid descriptor.
+        let offer = Box::new(
+            RTCSessionDescription::offer(
+                "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n".into(),
+            )
+            .unwrap(),
+        );
+        handle_sfu_event(
+            &hub,
+            voice::SFUEvent::Renegotiate {
+                channel_id: "ch1".into(),
+                user_id: "u1".into(),
+                offer,
+            },
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn handle_sfu_event_peer_dropped_removes_from_room_manager() {
+        let (db, _tmp) = test_db();
+        let mut hub_inner = ws::Hub::new(db);
+        let rm = Arc::new(voice::RoomManager::new());
+        rm.add_peer("ch1", "u1", "u1", "t1").await;
+        hub_inner.voice_room_manager = Some(rm.clone());
+        let hub = Arc::new(hub_inner);
+        handle_sfu_event(
+            &hub,
+            voice::SFUEvent::PeerDropped {
+                channel_id: "ch1".into(),
+                user_id: "u1".into(),
+            },
+        )
+        .await;
+        // After PeerDropped the room manager no longer lists this user.
+        let peers = rm.get_room("ch1").await.unwrap_or_default();
+        assert!(peers.iter().all(|p| p.user_id != "u1"));
+    }
+
+    #[tokio::test]
+    async fn handle_sfu_event_peer_dropped_without_room_manager_is_noop() {
+        let (db, _tmp) = test_db();
+        let hub = Arc::new(ws::Hub::new(db));
+        // No voice_room_manager set — handler must not panic.
+        handle_sfu_event(
+            &hub,
+            voice::SFUEvent::PeerDropped {
+                channel_id: "ch1".into(),
+                user_id: "u1".into(),
+            },
+        )
+        .await;
     }
 
     #[tokio::test]
