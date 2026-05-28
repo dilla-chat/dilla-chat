@@ -242,6 +242,7 @@ fn test_router(state: AppState) -> Router {
         )
         .route("/api/v1/prekeys/{user_id}", get(super::prekeys::get_bundle))
         .route("/api/v1/auth/ws-ticket", post(super::ws_ticket))
+        .route("/ws", get(super::ws_handler))
         .route("/api/v1/auth/logout", post(super::auth_handlers::logout))
         .route("/api/v1/federation/status", get(super::federation::get_status))
         .route("/api/v1/federation/peers", get(super::federation::get_peers))
@@ -3222,6 +3223,69 @@ async fn api_route_without_auth_returns_unauthorized() {
         StatusCode::UNAUTHORIZED,
         "protected API routes should require auth"
     );
+}
+
+// ── ws_handler 401 paths (L606-624) ──────────────────────────────
+//
+// WebSocketUpgrade requires the Upgrade/Connection/Sec-WebSocket-Key
+// headers to even reach our handler body. With valid upgrade headers
+// but an invalid token/ticket, the handler returns 401 BEFORE
+// ws.on_upgrade runs — testable from a normal oneshot request.
+
+fn ws_upgrade_request_builder(path: &str) -> axum::http::request::Builder {
+    Request::builder()
+        .method("GET")
+        .uri(path)
+        .header("connection", "upgrade")
+        .header("upgrade", "websocket")
+        .header("sec-websocket-version", "13")
+        .header("sec-websocket-key", "dGhlIHNhbXBsZSBub25jZQ==")
+}
+
+#[tokio::test]
+async fn ws_handler_returns_401_for_invalid_ticket() {
+    let (state, _tmp) = test_app_state();
+    let app = test_router(state);
+    let resp = app
+        .oneshot(
+            ws_upgrade_request_builder("/ws?ticket=this-is-not-a-valid-ticket")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 401);
+}
+
+#[tokio::test]
+async fn ws_handler_returns_401_for_invalid_token_when_no_ticket() {
+    let (state, _tmp) = test_app_state();
+    let app = test_router(state);
+    let resp = app
+        .oneshot(
+            ws_upgrade_request_builder("/ws?token=not-a-valid-jwt")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 401);
+}
+
+#[tokio::test]
+async fn ws_handler_returns_401_when_no_token_or_ticket() {
+    let (state, _tmp) = test_app_state();
+    let app = test_router(state);
+    let resp = app
+        .oneshot(
+            ws_upgrade_request_builder("/ws")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    // Falls through to validate_jwt("") which rejects → 401.
+    assert_eq!(resp.status(), 401);
 }
 
 #[tokio::test]
