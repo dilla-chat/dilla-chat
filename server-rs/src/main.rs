@@ -70,37 +70,14 @@ async fn main() {
     enforce_jwt_secret_strength(&cfg);
 
     let database = init_database(&cfg);
-    let node_name_for_auth = if cfg.node_name.is_empty() {
-        format!("node-{}", cfg.port)
-    } else {
-        cfg.node_name.clone()
-    };
     let auth_svc = Arc::new(AuthService::with_node_name(
         database.clone(),
         &cfg.db_passphrase,
-        node_name_for_auth,
+        derive_node_name_for_auth(&cfg),
     ));
     check_first_start(&database, &auth_svc, &cfg);
 
-    // GC expired JWT revocation rows in the background so the table
-    // stays bounded.
-    {
-        let db = database.clone();
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
-            interval.tick().await; // skip the immediate first tick
-            loop {
-                interval.tick().await;
-                let _ = tokio::task::spawn_blocking({
-                    let db = db.clone();
-                    move || {
-                        let _ = db.with_conn(|c| db::gc_revoked_jtis(c));
-                    }
-                })
-                .await;
-            }
-        });
-    }
+    spawn_jwt_revocation_gc(database.clone());
 
     let sfu = Arc::new(voice::SFU::new());
     configure_turn_provider(&sfu, &cfg).await;
@@ -377,6 +354,37 @@ fn enforce_jwt_secret_strength(cfg: &Config) {
             std::process::exit(1);
         }
     }
+}
+
+/// Derive the per-node identifier used to scope JWTs. Falls back to a
+/// "node-<port>" string when the operator hasn't explicitly set
+/// DILLA_NODE_NAME — pure logic, fully testable.
+pub(crate) fn derive_node_name_for_auth(cfg: &Config) -> String {
+    if cfg.node_name.is_empty() {
+        format!("node-{}", cfg.port)
+    } else {
+        cfg.node_name.clone()
+    }
+}
+
+/// Spawn the background task that GC's expired JWT-revocation rows.
+/// Extracted from main() so the spawn + first-tick skip + interval
+/// shape are testable without driving 3600s of wall-clock.
+pub(crate) fn spawn_jwt_revocation_gc(db: Database) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
+        interval.tick().await; // skip the immediate first tick
+        loop {
+            interval.tick().await;
+            let _ = tokio::task::spawn_blocking({
+                let db = db.clone();
+                move || {
+                    let _ = db.with_conn(|c| db::gc_revoked_jtis(c));
+                }
+            })
+            .await;
+        }
+    });
 }
 
 /// Construct the application state passed to every route handler.
@@ -1180,6 +1188,42 @@ mod tests {
     // Drive each SFUEvent variant through the extracted helper. Hub is
     // real but with no connected clients — broadcast/send are no-ops
     // but the match arms + payload construction run.
+
+    // ── derive_node_name_for_auth ────────────────────────────────────
+
+    #[test]
+    fn derive_node_name_for_auth_falls_back_to_port() {
+        let mut cfg = Config::default();
+        cfg.node_name = String::new();
+        cfg.port = 1234;
+        assert_eq!(derive_node_name_for_auth(&cfg), "node-1234");
+    }
+
+    #[test]
+    fn derive_node_name_for_auth_uses_explicit_name() {
+        let mut cfg = Config::default();
+        cfg.node_name = "my-node".into();
+        cfg.port = 9999;
+        assert_eq!(derive_node_name_for_auth(&cfg), "my-node");
+    }
+
+    #[test]
+    fn derive_node_name_for_auth_default_port_zero() {
+        // Config::default() leaves port at 0 — verifies the format!
+        // still works with edge-case port values.
+        let cfg = Config::default();
+        assert_eq!(derive_node_name_for_auth(&cfg), "node-0");
+    }
+
+    // ── spawn_jwt_revocation_gc ──────────────────────────────────────
+
+    #[tokio::test]
+    async fn spawn_jwt_revocation_gc_starts_without_panic() {
+        let (db, _tmp) = test_db();
+        // The spawned task waits 3600s on first tick before doing
+        // anything; we just verify the spawn itself doesn't crash.
+        spawn_jwt_revocation_gc(db);
+    }
 
     // ── build_app_state ──────────────────────────────────────────────
 
