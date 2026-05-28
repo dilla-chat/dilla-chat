@@ -50,6 +50,41 @@ import { useUserSettingsStore } from '../stores/userSettingsStore';
 import { useMessageStore } from '../stores/messageStore';
 import './AppLayout.css';
 
+function searchMessages(
+  query: string,
+  scope: string,
+  teamChannels: Array<{ id: string; name: string }>,
+  activeChannel: { id: string } | null,
+): SearchHit[] {
+  const q = query.toLowerCase();
+  const messages = useMessageStore.getState().messages;
+  const hits: SearchHit[] = [];
+  const filterChannelId = scope === 'channel' ? (activeChannel?.id ?? null) : null;
+  for (const [chId, msgs] of messages) {
+    if (filterChannelId && chId !== filterChannelId) continue;
+    const channel = teamChannels.find((c) => c.id === chId);
+    if (!channel) continue;
+    for (const m of msgs) {
+      if (m.deleted) continue;
+      if (!m.content.toLowerCase().includes(q)) continue;
+      hits.push({
+        id: m.id,
+        channelId: chId,
+        channelName: channel.name,
+        author: m.username,
+        timestamp: new Date(m.createdAt).toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        }),
+        body: m.content,
+      });
+      if (hits.length >= 60) return hits;
+    }
+  }
+  return hits;
+}
+
 export default function AppLayout() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -914,36 +949,7 @@ export default function AppLayout() {
         open={searchPaletteOpen}
         onClose={() => setSearchPaletteOpen(false)}
         scopedChannelName={activeChannel?.name ?? null}
-        search={(query, scope) => {
-          const q = query.toLowerCase();
-          const messages = useMessageStore.getState().messages;
-          const hits: SearchHit[] = [];
-          const filterChannelId =
-            scope === 'channel' ? (activeChannel?.id ?? null) : null;
-          for (const [chId, msgs] of messages) {
-            if (filterChannelId && chId !== filterChannelId) continue;
-            const channel = teamChannels.find((c) => c.id === chId);
-            if (!channel) continue;
-            for (const m of msgs) {
-              if (m.deleted) continue;
-              if (!m.content.toLowerCase().includes(q)) continue;
-              hits.push({
-                id: m.id,
-                channelId: chId,
-                channelName: channel.name,
-                author: m.username,
-                timestamp: new Date(m.createdAt).toLocaleTimeString([], {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                  hour12: false,
-                }),
-                body: m.content,
-              });
-              if (hits.length >= 60) return hits;
-            }
-          }
-          return hits;
-        }}
+        search={(query, scope) => searchMessages(query, scope, teamChannels, activeChannel ?? null)}
         onSelectHit={(hit) => handleJumpToMessage(hit.channelId, hit.id)}
       />
     </>
