@@ -155,13 +155,20 @@ async fn main() {
     // operators see via `journalctl -u dilla`) and records OTel spans/metrics
     // on top. Metric/span calls become noops when OTel is disabled, so this
     // is essentially free in that mode but still gives us the access log.
-    let metrics = std::sync::Arc::new(observability::Metrics::new());
-    let app = app.layer(axum::middleware::from_fn_with_state(
-        metrics,
-        observability::http_middleware,
-    ));
+    let app = with_http_observability_middleware(app);
 
     start_server(&cfg, app).await;
+}
+
+/// Apply the per-request HTTP observability middleware (access log +
+/// optional OTel spans/metrics). Extracted from main() so the
+/// middleware-wiring side of the code is independently testable.
+pub(crate) fn with_http_observability_middleware(app: axum::Router) -> axum::Router {
+    let metrics = std::sync::Arc::new(observability::Metrics::new());
+    app.layer(axum::middleware::from_fn_with_state(
+        metrics,
+        observability::http_middleware,
+    ))
 }
 
 /// Read a single secret from a file at `path`, trim trailing whitespace
@@ -1191,6 +1198,25 @@ mod tests {
     // Drive each SFUEvent variant through the extracted helper. Hub is
     // real but with no connected clients — broadcast/send are no-ops
     // but the match arms + payload construction run.
+
+    // ── with_http_observability_middleware ───────────────────────────
+
+    #[tokio::test]
+    async fn with_http_observability_middleware_returns_a_layered_router() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use axum::routing::get;
+        use axum::Router;
+        use tower::ServiceExt;
+
+        let inner = Router::new().route("/health", get(|| async { "ok" }));
+        let layered = with_http_observability_middleware(inner);
+        let resp = layered
+            .oneshot(Request::get("/health").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
 
     // ── log_federation_identity_status ───────────────────────────────
 
