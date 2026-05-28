@@ -2217,16 +2217,6 @@ export function UserPanel({ member }) {
     { id: 'offline', label: 'Invisible', hint: 'appears offline · still receive messages' },
   ];
 
-  // Persist presence changes via api.updatePresence so other team members
-  // see the new status/custom message live (server broadcasts presence:changed
-  // → usePresenceEvents → store → UI).
-  function persistPresence(nextStatus: string, nextCustom: string) {
-    const teamId = useTeamStore.getState().activeTeamId;
-    if (!teamId || isMockSession()) return;
-    api.updatePresence(teamId, nextStatus, nextCustom || undefined).catch((err) =>
-      console.warn('[UserPanel] updatePresence failed', err),
-    );
-  }
 
   // No identity yet (data still loading, or post-sign-in race) — render
   // an empty slot rather than crashing on `member.name`.
@@ -4121,6 +4111,14 @@ function toggleRoleInSet(prev: Set<string>, roleId: string): Set<string> {
   const next = new Set(prev);
   if (next.has(roleId)) next.delete(roleId); else next.add(roleId);
   return next;
+}
+
+function persistPresence(nextStatus: string, nextCustom: string): void {
+  const teamId = useTeamStore.getState().activeTeamId;
+  if (!teamId || isMockSession()) return;
+  api.updatePresence(teamId, nextStatus, nextCustom || undefined).catch((err) =>
+    console.warn('[UserPanel] updatePresence failed', err),
+  );
 }
 
 function applyToggleReaction(m: any, emoji: string): any {

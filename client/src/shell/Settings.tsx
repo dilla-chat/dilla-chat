@@ -174,6 +174,17 @@ function describeRotationResult(rotated: number): string {
   return `Rotated sender keys for ${rotated} ${noun}.`;
 }
 
+function applyAvatarUrl(url: string, userId?: string): void {
+  if (!userId) return;
+  const ts = useTeamStore.getState();
+  for (const [teamId, list] of ts.members) {
+    const idx = list.findIndex((m) => m.userId === userId);
+    if (idx < 0) continue;
+    const next = list.map((m, i) => (i === idx ? { ...m, avatarUrl: url } : m));
+    ts.setMembers(teamId, next);
+  }
+}
+
 function clampCrop(next: { x: number; y: number; size: number }, w: number, h: number) {
   const size = Math.max(40, Math.min(next.size, w, h));
   const x = Math.max(0, Math.min(next.x, w - size));
@@ -671,16 +682,6 @@ export function AvatarUploader() {
     }
   }
 
-  function applyAvatarUrl(url: string, userId?: string) {
-    if (!userId) return;
-    const ts = useTeamStore.getState();
-    for (const [teamId, list] of ts.members) {
-      const idx = list.findIndex((m) => m.userId === userId);
-      if (idx < 0) continue;
-      const next = list.map((m, i) => (i === idx ? { ...m, avatarUrl: url } : m));
-      ts.setMembers(teamId, next);
-    }
-  }
 
   const avatarColor = me?.color || 'var(--muted)';
   const initials = me?.initials || '?';
