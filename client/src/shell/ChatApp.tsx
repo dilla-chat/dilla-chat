@@ -1383,7 +1383,7 @@ export function VideoTile({ stream, fit = 'cover', mirror, showStats = true }: R
             zIndex: 2,
           }}
         >
-          {stats.w}×{stats.h} · {stats.fps}fps{bitrate != null ? ` · ${bitrate} kbps` : ''}
+          {stats.w}×{stats.h} · {stats.fps}fps{bitrate == null ? '' : ` · ${bitrate} kbps`}
         </div>
       )}
     </div>
@@ -3233,7 +3233,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                                   // Seed each poll's color sequence from a
                                   // hash of its id so colors stay stable
                                   // across reloads and matching options.
-                                  const seed = [...String(m.id || '')].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 360, 0);
+                                  const seed = [...String(m.id || '')].reduce((a, c) => (a * 31 + (c.codePointAt(0) ?? 0)) % 360, 0);
                                   return m.options.map((o, oi) => {
                                     const hue = (seed + Math.round((360 / m.options.length) * oi)) % 360;
                                     const dot = `hsl(${hue} 65% 55%)`;

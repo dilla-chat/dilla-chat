@@ -439,7 +439,23 @@ export default function Onboarding() {
           );
           const passkey = await registerPasskey(username.trim(), userIdBytes, prfSalt, url);
           push(`  credential: ${passkey.credentialName}`);
-          if (!passkey.prfSupported) {
+          if (passkey.prfSupported) {
+            push('  ✓ prf evaluated · 32 bytes derived');
+            const prfDerivedKeyB64 = prfOutputToBase64(passkey.prfOutput);
+            const prfKeyBytes = fromBase64(prfDerivedKeyB64);
+            const created = await createIdentity(url, prfKeyBytes, prfSalt, [
+              {
+                id: passkey.credentialId,
+                name: passkey.credentialName,
+                created_at: new Date().toISOString(),
+              },
+            ]);
+            publicKeyB64 = created.publicKeyB64;
+            publicKeyHex = created.publicKeyHex;
+            identity = created.identity;
+            derivedKey = prfDerivedKeyB64;
+            setRecoveryKey(encodeRecoveryKey(created.recoveryKey));
+          } else {
             if (keyProtect === 'hardware') {
               throw new Error(
                 'This passkey does not support the PRF extension required for key derivation. Use "Both" or "Passphrase" instead.',
@@ -460,22 +476,6 @@ export default function Onboarding() {
             publicKeyHex = created.publicKeyHex;
             identity = created.identity;
             derivedKey = publicKeyB64;
-            setRecoveryKey(encodeRecoveryKey(created.recoveryKey));
-          } else {
-            push('  ✓ prf evaluated · 32 bytes derived');
-            const prfDerivedKeyB64 = prfOutputToBase64(passkey.prfOutput);
-            const prfKeyBytes = fromBase64(prfDerivedKeyB64);
-            const created = await createIdentity(url, prfKeyBytes, prfSalt, [
-              {
-                id: passkey.credentialId,
-                name: passkey.credentialName,
-                created_at: new Date().toISOString(),
-              },
-            ]);
-            publicKeyB64 = created.publicKeyB64;
-            publicKeyHex = created.publicKeyHex;
-            identity = created.identity;
-            derivedKey = prfDerivedKeyB64;
             setRecoveryKey(encodeRecoveryKey(created.recoveryKey));
           }
         } else {

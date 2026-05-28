@@ -366,7 +366,7 @@ export async function pairwiseSessionBootstrapBobInWorker(
 
 function bytesToB64(b: Uint8Array): string {
   let s = '';
-  for (const byte of b) s += String.fromCharCode(byte);
+  for (const byte of b) s += String.fromCodePoint(byte);
   return btoa(s);
 }
 
