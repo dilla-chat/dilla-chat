@@ -2120,18 +2120,8 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
                      onDoubleClick={() => { if (canJoinChannel(c)) onJoinVoice?.(c.id); }}
                      onContextMenu={(e) => {
                        e.preventDefault();
-                       const joinAllowed = canJoinChannel(c);
-                       globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
-                         { label: joinAllowed ? 'Join voice' : 'Locked', disabled: !joinAllowed, icon: joinAllowed ? <Icon.Speaker size={13} /> : <Icon.Lock size={13} />, onClick: () => { if (joinAllowed) { onPickChannel(c.id); onJoinVoice?.(c.id); } } },
-                         { label: 'Copy link', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6 10l4-4M6 6l4 4" stroke="currentColor" strokeWidth="1.4"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/></svg>, onClick: () => { navigator.clipboard?.writeText(('dilla://' + nodeHost + '/k/') + c.id); globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Voice kanal link copied.', duration: 2000 } })); } },
-                         ...(perms.has(PERM_MANAGE_CHANNELS) ? [
-                           { sep: true },
-                           c.groupId
-                             ? { label: 'Access is handled by group', icon: <Icon.Lock size={12} />, disabled: true, onClick: () => {} }
-                             : { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-channel-access', { detail: c.id })) },
-                           { label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-channel-settings', { detail: c.id })) },
-                         ] : []),
-                       ] } }));
+                       const items = buildVoiceChannelMenu(c, canJoinChannel(c), perms.has(PERM_MANAGE_CHANNELS), nodeHost, onPickChannel, onJoinVoice);
+                       globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items } }));
                      }}>
                   <span className="ch-glyph"><Icon.Speaker size={14} /></span>
                   <span className="ch-name">{c.name}</span>
@@ -3816,6 +3806,41 @@ async function leaveTeamFromRail(s: { name: string }): Promise<void> {
     console.warn('[ChatApp] leave team failed', err);
     globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: s.name, author: 'system', text: 'Leave failed: ' + (err as Error).message, duration: 4000 } }));
   }
+}
+
+function buildVoiceChannelMenu(
+  c: { id: string; name: string; groupId?: string },
+  joinAllowed: boolean,
+  canManageChannels: boolean,
+  nodeHost: string,
+  onPickChannel: (id: string) => void,
+  onJoinVoice: ((id: string) => void) | undefined,
+): any[] {
+  const items: any[] = [
+    {
+      label: joinAllowed ? 'Join voice' : 'Locked',
+      disabled: !joinAllowed,
+      icon: joinAllowed ? <Icon.Speaker size={13} /> : <Icon.Lock size={13} />,
+      onClick: () => { if (joinAllowed) { onPickChannel(c.id); onJoinVoice?.(c.id); } },
+    },
+    {
+      label: 'Copy link',
+      icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6 10l4-4M6 6l4 4" stroke="currentColor" strokeWidth="1.4"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/></svg>,
+      onClick: () => {
+        navigator.clipboard?.writeText(('dilla://' + nodeHost + '/k/') + c.id);
+        globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Voice kanal link copied.', duration: 2000 } }));
+      },
+    },
+  ];
+  if (canManageChannels) {
+    items.push({ sep: true });
+    items.push(c.groupId
+      ? { label: 'Access is handled by group', icon: <Icon.Lock size={12} />, disabled: true, onClick: () => {} }
+      : { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-channel-access', { detail: c.id })) },
+    );
+    items.push({ label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-channel-settings', { detail: c.id })) });
+  }
+  return items;
 }
 
 function buildVoiceParticipantMenu(
