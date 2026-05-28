@@ -134,8 +134,7 @@ export default function ForwardModal({
               <button
                 key={t.id}
                 type="button"
-                role="option"
-                aria-selected={selected}
+                aria-pressed={selected}
                 className={`forward-modal-row ${selected ? 'selected' : ''}`}
                 onClick={() => {
                   onForward(t);

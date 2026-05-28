@@ -4412,7 +4412,7 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
                       </button>
                     )}
                     {effectiveFocused.kind === 'screen' && (
-                      <div className="voice-fs-group" role="group" aria-label="Fullscreen mode">
+                      <fieldset className="voice-fs-group" aria-label="Fullscreen mode">
                         <button
                           className={'voice-fs-opt' + (!tabFs && !browserFs ? ' is-active' : '')}
                           onClick={() => { if (tabFs) { setTabFs(false); } if (browserFs) { toggleBrowserFullscreen(); } }}
@@ -4440,7 +4440,7 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
                         >
                           screen
                         </button>
-                      </div>
+                      </fieldset>
                     )}
                   </div>
                   {cardFor(focusedMember, false, effectiveFocused.kind)}

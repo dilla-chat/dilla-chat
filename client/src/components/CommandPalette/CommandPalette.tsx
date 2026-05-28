@@ -138,8 +138,7 @@ export default function CommandPalette({ open, onClose, commands }: Readonly<Pro
                   <button
                     key={cmd.id}
                     type="button"
-                    role="option"
-                    aria-selected={selected}
+                    aria-pressed={selected}
                     className={`command-palette-item ${selected ? 'selected' : ''}`}
                     onClick={() => {
                       cmd.run();

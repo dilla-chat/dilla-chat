@@ -149,8 +149,7 @@ export default function SearchPalette({
               <button
                 key={hit.id}
                 type="button"
-                role="option"
-                aria-selected={selected}
+                aria-pressed={selected}
                 className={`search-palette-hit ${selected ? 'selected' : ''}`}
                 onClick={() => {
                   onSelectHit(hit);
