@@ -605,6 +605,29 @@ mod tests {
         assert!(resp.status().as_u16() >= 400);
     }
 
+    #[tokio::test]
+    async fn embed_fails_safe_outbound_on_unresolvable_giphy_subdomain() {
+        // is_giphy_url accepts the subdomain. The member check passes.
+        // safe_outbound_url then resolves DNS — using a host that
+        // intentionally fails RFC 6761 .invalid TLD (or just doesn't
+        // resolve to anything) forces the SSRF guard to bail with Err,
+        // exercising the early `?` propagation at L227.
+        let (state, _tmp) = make_state();
+        seed_member(&state, "alice", "t1");
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/gif/embed")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"url":"https://definitely-does-not-resolve.giphy.com/x.gif"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        // SSRF guard fails → 4xx/5xx. Just confirm we didn't 2xx.
+        assert!(resp.status().as_u16() >= 400);
+    }
+
     // ── HTTP-level tests using wiremock so the full search() flow runs ─
 
     use wiremock::matchers::{method, path};
