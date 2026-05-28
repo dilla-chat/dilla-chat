@@ -89,50 +89,41 @@ pub async fn safe_outbound_url(raw_url: &str) -> Result<SafeOutbound, AppError> 
 /// - IPv4 broadcast / multicast / unspecified
 /// - AWS metadata service (169.254.169.254) — covered by link-local
 /// - IPv6 IPv4-mapped of any of the above
+fn is_public_ipv4(v4: &std::net::Ipv4Addr) -> bool {
+    if v4.is_loopback()
+        || v4.is_link_local()
+        || v4.is_private()
+        || v4.is_broadcast()
+        || v4.is_multicast()
+        || v4.is_unspecified()
+        || v4.is_documentation()
+    {
+        return false;
+    }
+    // Carrier-grade NAT 100.64/10 — not strictly RFC-1918 but
+    // not internet-routable either.
+    let o = v4.octets();
+    !(o[0] == 100 && (64..=127).contains(&o[1]))
+}
+
+fn is_public_ipv6(v6: &std::net::Ipv6Addr) -> bool {
+    if v6.is_loopback() || v6.is_multicast() || v6.is_unspecified() {
+        return false;
+    }
+    if let Some(v4) = v6.to_ipv4_mapped() {
+        return is_public_ipv4(&v4);
+    }
+    let seg = v6.segments();
+    // fe80::/10 link-local, fc00::/7 unique-local, 2001:db8::/32 docs.
+    !((seg[0] & 0xffc0) == 0xfe80
+        || (seg[0] & 0xfe00) == 0xfc00
+        || (seg[0] == 0x2001 && seg[1] == 0x0db8))
+}
+
 fn is_public_ip(ip: &IpAddr) -> bool {
     match ip {
-        IpAddr::V4(v4) => {
-            if v4.is_loopback()
-                || v4.is_link_local()
-                || v4.is_private()
-                || v4.is_broadcast()
-                || v4.is_multicast()
-                || v4.is_unspecified()
-                || v4.is_documentation()
-            {
-                return false;
-            }
-            // Carrier-grade NAT 100.64/10 — not strictly RFC-1918 but
-            // not internet-routable either.
-            let o = v4.octets();
-            if o[0] == 100 && (64..=127).contains(&o[1]) {
-                return false;
-            }
-            true
-        }
-        IpAddr::V6(v6) => {
-            if v6.is_loopback() || v6.is_multicast() || v6.is_unspecified() {
-                return false;
-            }
-            // Map IPv4-mapped to v4 and recurse.
-            if let Some(v4) = v6.to_ipv4_mapped() {
-                return is_public_ip(&IpAddr::V4(v4));
-            }
-            let seg = v6.segments();
-            // fe80::/10 link-local
-            if (seg[0] & 0xffc0) == 0xfe80 {
-                return false;
-            }
-            // fc00::/7 unique-local
-            if (seg[0] & 0xfe00) == 0xfc00 {
-                return false;
-            }
-            // 2001:db8::/32 documentation
-            if seg[0] == 0x2001 && seg[1] == 0x0db8 {
-                return false;
-            }
-            true
-        }
+        IpAddr::V4(v4) => is_public_ipv4(v4),
+        IpAddr::V6(v6) => is_public_ipv6(v6),
     }
 }
 
