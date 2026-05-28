@@ -24,15 +24,13 @@ export function useServerConfig(): ServerConfig | null {
     // needs no setState here — calling it would be a synchronous-
     // setState-in-effect that triggers a redundant render.
     if (cache) return;
-    if (!inflight) {
-      inflight = fetch('/api/v1/config')
-        .then((res) => (res.ok ? (res.json() as Promise<ServerConfig>) : null))
-        .then((data) => {
-          if (data) cache = data;
-          return data;
-        })
-        .catch(() => null);
-    }
+    inflight ??= fetch('/api/v1/config')
+      .then((res) => (res.ok ? (res.json() as Promise<ServerConfig>) : null))
+      .then((data) => {
+        if (data) cache = data;
+        return data;
+      })
+      .catch(() => null);
     let cancelled = false;
     inflight.then((data) => {
       if (!cancelled && data) setConfig(data);

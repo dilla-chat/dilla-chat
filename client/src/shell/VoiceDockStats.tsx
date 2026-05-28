@@ -108,7 +108,7 @@ export function StatsSparkline({
       <div className="vd-spark-head">
         <span className="vd-k">{label}</span>
         <span className={'vd-spark-cur vd-spark-' + currentTone}>
-          {current != null ? current : 0}
+          {current ?? 0}
           <span className="vd-u">{unit}</span>
         </span>
       </div>

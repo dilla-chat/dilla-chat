@@ -4154,7 +4154,7 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
                      + (isMini && effectiveFocused && p.id === effectiveFocused.id ? ' is-focused' : '')
                      + (focusable && !isMini ? ' focusable' : '')}
                    data-node={node}
-                   data-latency={peerLatencies[p.id] != null ? peerLatencies[p.id] : '--'}
+                   data-latency={peerLatencies[p.id] ?? '--'}
                    onContextMenu={(e) => {
                      e.preventDefault();
                      window.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
