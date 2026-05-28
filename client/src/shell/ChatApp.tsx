@@ -2831,7 +2831,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                         {threads.map(tm => {
                           const a = members.byId[tm.author] || { name: tm.author, color: '#666', initials: '??' };
                           return (
-                            <div key={tm.id} className="pin-row"
+                            <button type="button" key={tm.id} className="pin-row"
                                  onClick={() => {
                                    setThreadsOpen(false);
                                    globalThis.dispatchEvent(new CustomEvent('dilla:open-thread', { detail: { channelId: channel.id, messageId: tm.id } }));
@@ -2856,7 +2856,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                                   </div>
                                 </div>
                               </div>
-                            </div>
+                            </button>
                           );
                         })}
                       </div>
@@ -2932,7 +2932,8 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                       {pinnedMsgs.map(pm => {
                         const a = members.byId[pm.author] || { name: pm.author, color: '#666', initials: '??' };
                         return (
-                          <div
+                          <button
+                            type="button"
                             key={pm.id}
                             className="pin-row"
                             onClick={() => {
@@ -2959,7 +2960,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                               <div className="pin-meta"><span className="pin-author">{a.name}</span> <span className="pin-time">· {timeShort(pm.at)}</span></div>
                               <div className="pin-text">{pm.text}</div>
                             </div>
-                          </div>
+                          </button>
                         );
                       })}
                     </div>

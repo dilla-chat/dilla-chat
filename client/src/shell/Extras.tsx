@@ -103,13 +103,13 @@ function NotificationStack({ teaserOnly = false }) {
             {inner}
           </button>
         ) : (
-          <div
+          <output
             key={t.id}
             className={className}
             onMouseEnter={() => pauseDismiss(t.id)}
           >
             {inner}
-          </div>
+          </output>
         );
       })}
     </div>
