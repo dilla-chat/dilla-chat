@@ -288,15 +288,15 @@ export function GroupCombobox({ value, onChange, existing }: Readonly<{
       {open && !value && (matches.length > 0 || canCreate) && (
         <div className="grp-pop">
           {matches.map((g) => (
-            <div key={g} className="grp-opt" onMouseDown={(e) => { e.preventDefault(); commit(g); }}>
+            <button type="button" key={g} className="grp-opt" onMouseDown={(e) => { e.preventDefault(); commit(g); }}>
               <span className="grp-pill grp-pill-static">{g}</span>
-            </div>
+            </button>
           ))}
           {canCreate && (
-            <div className="grp-opt grp-opt-new" onMouseDown={(e) => { e.preventDefault(); commit(draft); }}>
+            <button type="button" className="grp-opt grp-opt-new" onMouseDown={(e) => { e.preventDefault(); commit(draft); }}>
               <span className="grp-opt-new-label">+ Create</span>
               <span className="grp-pill grp-pill-static">{draft.trim()}</span>
-            </div>
+            </button>
           )}
         </div>
       )}
@@ -1069,7 +1069,7 @@ export function ResizeHandle({ kind, value, onResize, min = 180, max = 380 }) {
     globalThis.addEventListener('mousemove', move);
     globalThis.addEventListener('mouseup', up);
   }
-  return <div className={'resize-handle resize-' + kind} onMouseDown={onDown} title="drag to resize" />;
+  return <button type="button" aria-label="drag to resize" className={'resize-handle resize-' + kind} onMouseDown={onDown} title="drag to resize" />;
 }
 
 // Thread panel — opens when clicking a thread-preview on a message.
@@ -1182,7 +1182,7 @@ export function ThreadPanel({ channelId, messageId, members, onClose, onReact })
                 {r.reactions && (
                   <div className="rxns">
                     {r.reactions.map((rx, i) => (
-                      <span key={i}
+                      <button type="button" key={`${rx.e}-${i}`}
                             className={'rxn' + (rx.mine ? ' mine' : '')}
                             onClick={() => {
                               setReplies(prev => prev.map(rr => {
@@ -1202,7 +1202,7 @@ export function ThreadPanel({ channelId, messageId, members, onClose, onReact })
                               }));
                             }}>
                         <span>{rx.e}</span><span>{rx.n}</span>
-                      </span>
+                      </button>
                     ))}
                   </div>
                 )}
