@@ -3755,6 +3755,22 @@ async function leaveTeamFromRail(s: { name: string }): Promise<void> {
   }
 }
 
+function pruneExpiredSlowLocks(
+  prev: Record<string, { strikes: number; until: number }>,
+): Record<string, { strikes: number; until: number }> {
+  const now = Date.now();
+  let changed = false;
+  const next: Record<string, { strikes: number; until: number }> = {};
+  for (const [cid, lock] of Object.entries(prev)) {
+    if (lock.until <= now) {
+      changed = true;
+      continue;
+    }
+    next[cid] = lock;
+  }
+  return changed ? next : prev;
+}
+
 async function unblockMember(memberId: string): Promise<void> {
   const teamId = useTeamStore.getState().activeTeamId;
   useBlockStore.getState().unblock(memberId);
@@ -4910,21 +4926,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     if (!hasActive) return;
     const id = globalThis.setInterval(() => {
       tickSlowLocks((n) => n + 1);
-      setSlowLocks((prev) => {
-        const now = Date.now();
-        let changed = false;
-        const next: Record<string, { strikes: number; until: number }> = {};
-        for (const [cid, lock] of Object.entries(prev)) {
-          if (lock.until <= now) {
-            // Cooldown elapsed — reset strikes so a single late send doesn't
-            // immediately re-lock; user has to hit slow mode three times again.
-            changed = true;
-            continue;
-          }
-          next[cid] = lock;
-        }
-        return changed ? next : prev;
-      });
+      setSlowLocks((prev) => pruneExpiredSlowLocks(prev));
     }, 1000);
     return () => globalThis.clearInterval(id);
   }, [slowLocks]);
