@@ -73,7 +73,11 @@ export default function AuditLogTab({ teamId }: Readonly<{ teamId: string }>) {
       case 'member.roles.update':    return `changed roles for @${targetUser ?? e.target_id ?? '?'}`;
       case 'member.kick':            return `kicked @${targetUser ?? e.target_id ?? '?'}`;
       case 'member.leave':           return `left the team`;
-      case 'member.ban':             return `banned @${targetUser ?? e.target_id ?? '?'}${detailReason ? ` — ${detailReason}` : ''}`;
+      case 'member.ban': {
+        const who = targetUser ?? e.target_id ?? '?';
+        const suffix = detailReason ? ` — ${detailReason}` : '';
+        return `banned @${who}${suffix}`;
+      }
       case 'message.pin':            return `pinned a message`;
       case 'message.unpin':          return `unpinned a message`;
       case 'team.update':            return `updated team settings${name ? ' · ' + name : ''}`;

@@ -1827,7 +1827,7 @@ export function TeamInvites() {
       <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <Btn onClick={create}>+ New invite link</Btn>
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--fg-3)' }}>
-          uses
+          <span>uses</span>
           <select className="set-input" value={maxUsesOpt} onChange={(e) => setMaxUsesOpt(e.target.value)} style={{ width: 80 }}>
             <option value="inf">∞</option>
             <option value="1">1</option>
@@ -1837,7 +1837,7 @@ export function TeamInvites() {
           </select>
         </label>
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--fg-3)' }}>
-          expires
+          <span>expires</span>
           <select className="set-input" value={expiresOpt} onChange={(e) => setExpiresOpt(e.target.value)} style={{ width: 90 }}>
             <option value="never">Never</option>
             <option value="1">1 hour</option>
@@ -2502,7 +2502,11 @@ export function TeamAudit() {
       case 'channel.access.update': return `changed access for channel`;
       case 'member.roles.update': return `changed roles for @${targetUser || e.target_id}`;
       case 'member.kick':    return `kicked @${targetUser || e.target_id}`;
-      case 'member.ban':     return `banned @${targetUser || e.target_id}${detail?.reason ? ` — ${detail.reason}` : ''}`;
+      case 'member.ban': {
+        const who = targetUser || e.target_id;
+        const suffix = detail?.reason ? ` — ${detail.reason}` : '';
+        return `banned @${who}${suffix}`;
+      }
       case 'team.update':    return `updated team settings${name ? ' · ' + name : ''}`;
       case 'invite.create':  return `created an invite${detail?.max_uses ? ' · max ' + detail.max_uses : ''}${detail?.expires_at ? ' · expires ' + detail.expires_at : ''}`;
       case 'invite.revoke':  return `revoked an invite`;
