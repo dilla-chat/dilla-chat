@@ -87,3 +87,4 @@ server-rs/BOOTSTRAP_TOKEN
 client/coverage/
 client/coverage-browser/
 coverage/
+.claude/scheduled_tasks.lock
