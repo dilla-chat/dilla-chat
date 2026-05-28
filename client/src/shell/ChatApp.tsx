@@ -3836,6 +3836,32 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
   );
 }
 
+function resolveVoiceCardState(args: {
+  participant: { id: string };
+  isConnected: boolean;
+  mute: boolean; deaf: boolean; cam: boolean; screen: boolean;
+  channelOccupants?: Array<{ user_id: string; muted?: boolean; deafened?: boolean }>;
+  voicePeers?: Record<string, { webcam_sharing?: boolean; screen_sharing?: boolean }>;
+  localScreenStream?: MediaStream | null;
+  localWebcamStream?: MediaStream | null;
+  remoteScreenStreams?: Record<string, MediaStream | null>;
+  remoteWebcamStreams?: Record<string, MediaStream | null>;
+}) {
+  const { participant: p, mute, deaf, cam, screen, channelOccupants, voicePeers } = args;
+  const isSelf = p.id === currentUserId();
+  const occupant = isSelf ? null : channelOccupants?.find((o) => o.user_id === p.id);
+  const peerVoice = isSelf ? null : voicePeers?.[p.id];
+  const mineMuted = isSelf ? mute : !!occupant?.muted;
+  const mineDeaf = isSelf ? deaf : !!occupant?.deafened;
+  const showScreen = isSelf
+    ? screen && !!args.localScreenStream
+    : !!peerVoice?.screen_sharing && !!args.remoteScreenStreams?.[p.id];
+  const showCam = isSelf
+    ? cam && !!args.localWebcamStream
+    : !!peerVoice?.webcam_sharing && !!args.remoteWebcamStreams?.[p.id];
+  return { isSelf, mineMuted, mineDeaf, showScreen, showCam };
+}
+
 function flashMessage(container: HTMLElement | null, id: string): void {
   const el = container?.querySelector('[data-msg-id="' + id + '"]');
   if (!el) return;
@@ -4224,38 +4250,18 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
         {(() => {
           function cardFor(p, isMini, focusKind?: 'cam' | 'screen') {
             const speaking = p.id === 'ada' && isConnected;
-            // For self, mute/deaf come straight from the local store (synced
-            // with webrtcService). For peers, look them up in voiceOccupants
-            // which is fed by voice:mute-update and voice:rooms-snapshot.
-            const isSelf = p.id === currentUserId();
-            const occupant = isSelf ? null : channelOccupants?.find((o) => o.user_id === p.id);
-            const mineMuted = isSelf ? mute : !!occupant?.muted;
-            const mineDeaf = isSelf ? deaf : !!occupant?.deafened;
-            const mineCam = isSelf && cam;
-            const mineScreen = isSelf && screen;
-            // For peers we gate on BOTH the UI flag and the stream
-            // being present. The stream now persists across toggles
-            // (sender uses replaceTrack for off/on so no new ontrack
-            // fires on resume), so the flag is what tells us whether
-            // the peer is currently sharing — we keep the stream alive
-            // so the existing <video> element resumes when frames
-            // come back, without remounting.
-            const peerVoice = isSelf ? null : voicePeers?.[p.id];
-            const peerSharingScreen = !!peerVoice?.screen_sharing;
-            const peerSharingCam = !!peerVoice?.webcam_sharing;
-            const showScreen = isSelf
-              ? mineScreen && !!localScreenStream
-              : peerSharingScreen && !!remoteScreenStreams?.[p.id];
-            const showCam = isSelf
-              ? mineCam && !!localWebcamStream
-              : peerSharingCam && !!remoteWebcamStreams?.[p.id];
+            const cardState = resolveVoiceCardState({
+              participant: p,
+              isConnected,
+              mute, deaf, cam, screen,
+              channelOccupants,
+              voicePeers,
+              localScreenStream, localWebcamStream,
+              remoteScreenStreams, remoteWebcamStreams,
+            });
+            const { isSelf, mineMuted, mineDeaf, showScreen, showCam } = cardState;
             const node = (nodes[p.id] || '').split('.')[0] || 'local';
             const focusable = showScreen || showCam;
-            // In focus mode, render JUST the requested stream. Outside
-            // focus, show webcam when on, otherwise the avatar — we
-            // never render a screen share as a thumbnail because the
-            // auto-focus effect promotes it to the main stage for
-            // every viewer the moment someone starts sharing.
             const renderKind: 'screen' | 'cam' | 'avatar' =
               focusKind ?? (showCam ? 'cam' : 'avatar');
             return (
