@@ -1585,17 +1585,18 @@ export function FloatingPip({
       ref={ref}
       className={className}
       title={title}
+      role="presentation"
       onMouseDown={(e) => start('move', e)}
     >
       {children}
-      <span className="pip-edge pip-n"  onMouseDown={(e) => start('n', e)} />
-      <span className="pip-edge pip-s"  onMouseDown={(e) => start('s', e)} />
-      <span className="pip-edge pip-e"  onMouseDown={(e) => start('e', e)} />
-      <span className="pip-edge pip-w"  onMouseDown={(e) => start('w', e)} />
-      <span className="pip-edge pip-nw" onMouseDown={(e) => start('nw', e)} />
-      <span className="pip-edge pip-ne" onMouseDown={(e) => start('ne', e)} />
-      <span className="pip-edge pip-se" onMouseDown={(e) => start('se', e)} />
-      <span className="pip-edge pip-sw" onMouseDown={(e) => start('sw', e)} />
+      <button type="button" aria-label="Resize PIP from top edge" className="pip-edge pip-n"  onMouseDown={(e) => start('n', e)} />
+      <button type="button" aria-label="Resize PIP from bottom edge" className="pip-edge pip-s"  onMouseDown={(e) => start('s', e)} />
+      <button type="button" aria-label="Resize PIP from right edge" className="pip-edge pip-e"  onMouseDown={(e) => start('e', e)} />
+      <button type="button" aria-label="Resize PIP from left edge" className="pip-edge pip-w"  onMouseDown={(e) => start('w', e)} />
+      <button type="button" aria-label="Resize PIP from top-left" className="pip-edge pip-nw" onMouseDown={(e) => start('nw', e)} />
+      <button type="button" aria-label="Resize PIP from top-right" className="pip-edge pip-ne" onMouseDown={(e) => start('ne', e)} />
+      <button type="button" aria-label="Resize PIP from bottom-right" className="pip-edge pip-se" onMouseDown={(e) => start('se', e)} />
+      <button type="button" aria-label="Resize PIP from bottom-left" className="pip-edge pip-sw" onMouseDown={(e) => start('sw', e)} />
     </div>
   );
 }
