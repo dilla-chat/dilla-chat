@@ -36,6 +36,67 @@ const EMPTY_LIST: never[] = [];
 // Debounced save helper for autosaved text fields. The handler clears any
 // in-flight timer and schedules a new one — keeps API traffic to one POST
 // per ~700ms of idle, matching typical settings UX.
+async function performLeaveTeam(args: { onClose: () => void; navigate: (path: string) => void }): Promise<void> {
+  const teamId = useTeamStore.getState().activeTeamId;
+  const teamName = teamId
+    ? useTeamStore.getState().teams.get(teamId)?.name ?? 'this team'
+    : 'this team';
+  if (!teamId) return;
+  const confirmed = await dillaConfirm({
+    title: 'Leave ' + teamName + '?',
+    body: 'You\'ll lose access to its channels and messages until you re-join with an invite.',
+    confirmLabel: 'Leave team',
+    danger: true,
+  });
+  if (!confirmed) return;
+  try {
+    if (!isMockSession()) await api.leaveTeam(teamId);
+    const auth = useAuthStore.getState();
+    if (typeof (auth as { removeTeam?: (id: string) => void }).removeTeam === 'function') {
+      (auth as { removeTeam: (id: string) => void }).removeTeam(teamId);
+    }
+    const ts = useTeamStore.getState();
+    const next = Array.from(ts.teams.keys()).find((id) => id !== teamId);
+    if (next) ts.setActiveTeam(next);
+    args.onClose();
+    if (!next) args.navigate('/join');
+  } catch (err) {
+    const msg = (err as Error).message || 'Could not leave the team.';
+    globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'system', text: msg, duration: 4500 } }));
+  }
+}
+
+async function performSignOut(args: { onClose: () => void; navigate: (path: string) => void }): Promise<void> {
+  args.onClose();
+  if (!isMockSession()) {
+    const auth = useAuthStore.getState();
+    const seen = new Set<string>();
+    const calls: Array<Promise<boolean>> = [];
+    for (const [, server] of auth.servers) {
+      if (!server.baseUrl || !server.token || seen.has(server.baseUrl)) continue;
+      seen.add(server.baseUrl);
+      calls.push(api.logoutServer(server.baseUrl, server.token));
+    }
+    if (calls.length > 0) {
+      const results = await Promise.all(calls);
+      if (results.some((ok) => !ok)) {
+        globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: {
+          author: 'system',
+          text: 'Signed out locally, but the server-side token revocation may have failed for one or more servers. The token will expire on its own.',
+          duration: 6000,
+        }}));
+      }
+    }
+  }
+  try { useAuthStore.getState().logout(); } catch { /* ignore */ }
+  args.navigate('/login');
+}
+
+function leaveOrSignOut(args: { mode: string; onClose: () => void; navigate: (path: string) => void }): void {
+  if (args.mode === 'team') void performLeaveTeam(args);
+  else void performSignOut(args);
+}
+
 function giphyHint(configured: boolean | null | undefined): string {
   if (configured == null) return 'Loading…';
   if (configured) return 'A key is on file. Paste a new one to replace it, or clear it below.';
@@ -128,81 +189,7 @@ function Settings({ open, mode, defaultTab, onClose }) {
           <div className="set-nav-foot">
             <button
               className="set-nav-item danger"
-              onClick={async () => {
-                if (mode === 'team') {
-                  // Self-leave. Server enforces the sole-admin guard with
-                  // a 409 we surface verbatim. On success, drop the team
-                  // from authStore + teamStore so the rail updates without
-                  // a reload, and bounce to /join if it was the last team.
-                  const teamId = useTeamStore.getState().activeTeamId;
-                  const teamName = teamId
-                    ? useTeamStore.getState().teams.get(teamId)?.name ?? 'this team'
-                    : 'this team';
-                  if (!teamId) return;
-                  if (!(await dillaConfirm({
-                    title: 'Leave ' + teamName + '?',
-                    body: 'You\'ll lose access to its channels and messages until you re-join with an invite.',
-                    confirmLabel: 'Leave team',
-                    danger: true,
-                  }))) return;
-                  try {
-                    if (!isMockSession()) await api.leaveTeam(teamId);
-                    // Best-effort store cleanup. authStore's removeTeam drops
-                    // the WS connection + token; teamStore wipes channels /
-                    // members / etc. as a side effect of activeTeamId
-                    // becoming null.
-                    const auth = useAuthStore.getState();
-                    if (typeof (auth as { removeTeam?: (id: string) => void }).removeTeam === 'function') {
-                      (auth as { removeTeam: (id: string) => void }).removeTeam(teamId);
-                    }
-                    const ts = useTeamStore.getState();
-                    const next = Array.from(ts.teams.keys()).find((id) => id !== teamId);
-                    if (next) {
-                      ts.setActiveTeam(next);
-                    }
-                    onClose();
-                    if (!next) navigate('/join');
-                  } catch (err) {
-                    const msg = (err as Error).message || 'Could not leave the team.';
-                    globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'system', text: msg, duration: 4500 } }));
-                  }
-                  return;
-                }
-                // Sign out: F5 — revoke the bearer JWT server-side first
-                // so a stolen copy of the token (sessionStorage snapshot,
-                // process dump, etc.) becomes unusable immediately via the
-                // server-side jwt_revocations table (step 5 H2). When the
-                // server is unreachable we still clear local state — but
-                // surface an in-app warning so the user knows the
-                // server-side revocation didn't go through.
-                onClose();
-                if (!isMockSession()) {
-                  const auth = useAuthStore.getState();
-                  // Revoke once per server (NOT per team) — a single
-                  // jti revocation invalidates every team on that
-                  // server because they share a token.
-                  const seen = new Set<string>();
-                  const calls: Array<Promise<boolean>> = [];
-                  for (const [, server] of auth.servers) {
-                    if (!server.baseUrl || !server.token || seen.has(server.baseUrl)) continue;
-                    seen.add(server.baseUrl);
-                    calls.push(api.logoutServer(server.baseUrl, server.token));
-                  }
-                  if (calls.length > 0) {
-                    const results = await Promise.all(calls);
-                    const anyFailed = results.some((ok) => !ok);
-                    if (anyFailed) {
-                      globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: {
-                        author: 'system',
-                        text: 'Signed out locally, but the server-side token revocation may have failed for one or more servers. The token will expire on its own.',
-                        duration: 6000,
-                      }}));
-                    }
-                  }
-                }
-                try { useAuthStore.getState().logout(); } catch { /* ignore */ }
-                navigate('/login');
-              }}
+              onClick={() => leaveOrSignOut({ mode, onClose, navigate })}
             >
               {mode === 'team' ? 'Leave team' : 'Sign out'}
             </button>
