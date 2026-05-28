@@ -62,17 +62,17 @@ export default function NewServerModal({
   };
 
   const body = (
-    <button
-      type="button"
-      className="new-server-modal-overlay"
-      aria-label="Close new server modal"
-      onClick={onClose}
-    >
+    <div className="new-server-modal-wrap">
+      <button
+        type="button"
+        className="new-server-modal-overlay"
+        aria-label="Close new server modal"
+        onClick={onClose}
+      />
       <dialog
         open
         aria-label="Add team"
         className="new-server-modal"
-        onClick={(e) => e.stopPropagation()}
         onCancel={onClose}
       >
         <header className="new-server-modal-header">
@@ -171,7 +171,7 @@ export default function NewServerModal({
           </button>
         </footer>
       </dialog>
-    </button>
+    </div>
   );
 
   return createPortal(body, document.body);

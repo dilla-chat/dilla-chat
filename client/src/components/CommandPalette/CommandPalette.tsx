@@ -89,18 +89,17 @@ export default function CommandPalette({ open, onClose, commands }: Readonly<Pro
   let flatIdx = 0;
 
   const body = (
-    <button
-      type="button"
-      className="command-palette-overlay"
-      aria-label="Close command palette"
-      onClick={onClose}
-    >
-      {/* Inner card stops click propagation so clicking inside doesn't dismiss */}
+    <div className="command-palette-wrap">
+      <button
+        type="button"
+        className="command-palette-overlay"
+        aria-label="Close command palette"
+        onClick={onClose}
+      />
       <dialog
         open
         aria-label="Command palette"
         className="command-palette"
-        onClick={(e) => e.stopPropagation()}
         onCancel={onClose}
       >
         <div className="command-palette-prompt">
@@ -157,7 +156,7 @@ export default function CommandPalette({ open, onClose, commands }: Readonly<Pro
           ))}
         </div>
       </dialog>
-    </button>
+    </div>
   );
 
   return createPortal(body, document.body);

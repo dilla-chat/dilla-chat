@@ -109,7 +109,18 @@
    truth; theming via tokens.
    ==================================================================== */
 
+.command-palette-wrap {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 5rem;
+}
+
 .command-palette {
+  position: relative;
   background: var(--surface);
   border: 0.0625rem solid var(--accent);
   box-shadow: 0 0 0 0.0625rem var(--accent), 0 1.5rem 3.125rem rgba(0, 0, 0, 0.5);
@@ -117,9 +128,15 @@
 }
 
 .command-palette-overlay {
+  position: absolute;
+  inset: 0;
   background: color-mix(in oklab, var(--bg) 70%, transparent);
   backdrop-filter: blur(0.125rem);
   -webkit-backdrop-filter: blur(0.125rem);
+  border: none;
+  margin: 0;
+  padding: 0;
+  cursor: default;
 }
 
 .command-palette-prompt {

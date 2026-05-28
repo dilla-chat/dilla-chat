@@ -99,19 +99,19 @@ export default function AddPeerWizard({ open, onClose, onComplete }: Readonly<Pr
   };
 
   const body = (
-    <button
-      type="button"
-      className="add-peer-overlay"
-      aria-label="Close add peer wizard"
-      onClick={() => {
-        if (step !== 'handshake') onClose();
-      }}
-    >
+    <div className="add-peer-wrap">
+      <button
+        type="button"
+        className="add-peer-overlay"
+        aria-label="Close add peer wizard"
+        onClick={() => {
+          if (step !== 'handshake') onClose();
+        }}
+      />
       <dialog
         open
         aria-label="Add federation peer"
         className="add-peer"
-        onClick={(e) => e.stopPropagation()}
         onCancel={onClose}
       >
         <header className="add-peer-header">
@@ -250,7 +250,7 @@ export default function AddPeerWizard({ open, onClose, onComplete }: Readonly<Pr
           )}
         </div>
       </dialog>
-    </button>
+    </div>
   );
 
   return createPortal(body, document.body);

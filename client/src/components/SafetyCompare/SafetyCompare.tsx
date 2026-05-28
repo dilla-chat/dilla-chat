@@ -56,17 +56,17 @@ export default function SafetyCompare({
   const match = yours.replace(/\s+/g, '') === theirs.replace(/\s+/g, '');
 
   const body = (
-    <button
-      type="button"
-      className="safety-compare-overlay"
-      aria-label="Close safety comparison"
-      onClick={onClose}
-    >
+    <div className="safety-compare-wrap">
+      <button
+        type="button"
+        className="safety-compare-overlay"
+        aria-label="Close safety comparison"
+        onClick={onClose}
+      />
       <dialog
         open
         aria-label="Safety number comparison"
         className="safety-compare"
-        onClick={(e) => e.stopPropagation()}
         onCancel={onClose}
       >
         <header className="safety-compare-header">
@@ -145,7 +145,7 @@ export default function SafetyCompare({
           </button>
         </footer>
       </dialog>
-    </button>
+    </div>
   );
 
   return createPortal(body, document.body);

@@ -1,21 +1,28 @@
-.new-server-modal-overlay {
+.new-server-modal-wrap {
   position: fixed;
   inset: 0;
   z-index: var(--z-modal);
-  background: rgba(7, 8, 9, 0.7);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 1.5rem;
+}
+
+.new-server-modal-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(7, 8, 9, 0.7);
   border: none;
   margin: 0;
   cursor: default;
   font: inherit;
   text-align: inherit;
   color: inherit;
+  padding: 0;
 }
 
 .new-server-modal {
+  position: relative;
   width: 27.5rem;
   max-width: 100%;
   background: var(--surface, var(--bg-floating));
