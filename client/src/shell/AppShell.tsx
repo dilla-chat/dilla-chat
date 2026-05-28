@@ -47,7 +47,7 @@ export default function AppShell({ ready }: AppShellProps) {
   const [srchScope, setSrchScope] = useState<string | null>(null);
 
   const openShortcuts = () =>
-    window.dispatchEvent(
+    globalThis.dispatchEvent(
       new CustomEvent('dilla:open-settings', { detail: { mode: 'user', tab: 'keys' } }),
     );
   // Column widths are tracked here so the ResizeHandle in ChatApp can drive
@@ -77,13 +77,13 @@ export default function AppShell({ ready }: AppShellProps) {
     const onRing = (e: Event) => setRingCall((e as CustomEvent).detail ?? { from: 'ada', kind: 'voice' });
     const onSafety = (e: Event) => setSafetyId((e as CustomEvent).detail ?? null);
     const onAddPeer = () => setAddPeerOpen(true);
-    window.addEventListener('dilla:incoming-call', onRing);
-    window.addEventListener('dilla:verify-safety', onSafety);
-    window.addEventListener('dilla:add-peer', onAddPeer);
+    globalThis.addEventListener('dilla:incoming-call', onRing);
+    globalThis.addEventListener('dilla:verify-safety', onSafety);
+    globalThis.addEventListener('dilla:add-peer', onAddPeer);
     return () => {
-      window.removeEventListener('dilla:incoming-call', onRing);
-      window.removeEventListener('dilla:verify-safety', onSafety);
-      window.removeEventListener('dilla:add-peer', onAddPeer);
+      globalThis.removeEventListener('dilla:incoming-call', onRing);
+      globalThis.removeEventListener('dilla:verify-safety', onSafety);
+      globalThis.removeEventListener('dilla:add-peer', onAddPeer);
     };
   }, []);
   const controllerRef = useRef<{ pickChannel?: (id: string) => void; getVoiceConn?: () => unknown }>({});
@@ -110,11 +110,11 @@ export default function AppShell({ ready }: AppShellProps) {
       setSrchScope(detail);
       setSrchOpen(true);
     }
-    window.addEventListener('keydown', onKey);
-    window.addEventListener('dilla:open-search', onSrch);
+    globalThis.addEventListener('keydown', onKey);
+    globalThis.addEventListener('dilla:open-search', onSrch);
     return () => {
-      window.removeEventListener('keydown', onKey);
-      window.removeEventListener('dilla:open-search', onSrch);
+      globalThis.removeEventListener('keydown', onKey);
+      globalThis.removeEventListener('dilla:open-search', onSrch);
     };
   }, [cmdOpen, srchOpen]);
 

@@ -95,10 +95,10 @@ export default function MessageList({
     const GAP = 12;
     let x = rect.right + GAP;
     // If it would overflow viewport, place it to the left instead
-    if (x + POPUP_WIDTH > window.innerWidth - 16) {
+    if (x + POPUP_WIDTH > globalThis.innerWidth - 16) {
       x = Math.max(16, rect.left - POPUP_WIDTH - GAP);
     }
-    const y = Math.min(rect.top, window.innerHeight - 360);
+    const y = Math.min(rect.top, globalThis.innerHeight - 360);
     setProfilePopup({ member, x, y });
   };
 
@@ -330,7 +330,7 @@ export default function MessageList({
                       <button
                         className="message-action-btn clickable"
                         onClick={() =>
-                          window.dispatchEvent(
+                          globalThis.dispatchEvent(
                             new CustomEvent('mesh:open-forward', {
                               detail: {
                                 messageId: msg.id,

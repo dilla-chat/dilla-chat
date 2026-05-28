@@ -30,8 +30,8 @@ function NotificationStack({ teaserOnly = false }) {
         delete timers.current[id];
       }, dur);
     }
-    window.addEventListener('dilla:notify', add);
-    return () => window.removeEventListener('dilla:notify', add);
+    globalThis.addEventListener('dilla:notify', add);
+    return () => globalThis.removeEventListener('dilla:notify', add);
   }, []);
 
   function dismiss(id) {
@@ -56,8 +56,8 @@ function NotificationStack({ teaserOnly = false }) {
           // fall back to the channel name for notify events from
           // older code paths that only pass the human label.
           if (target) {
-            window.dispatchEvent(new CustomEvent('dilla:pickchannel', { detail: target }));
-            window.focus();
+            globalThis.dispatchEvent(new CustomEvent('dilla:pickchannel', { detail: target }));
+            globalThis.focus();
           }
           dismiss(t.id);
         };
@@ -172,8 +172,8 @@ function IncomingCall({ call, onAccept, onDecline }) {
       if (e.key === 'Escape') onDecline();
       if (e.key === 'Enter')  onAccept();
     }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    globalThis.addEventListener('keydown', onKey);
+    return () => globalThis.removeEventListener('keydown', onKey);
   }, [call, onAccept, onDecline]);
   if (!call) return null;
   const m = shell?.byId?.[call.from];
@@ -510,8 +510,8 @@ function ConnectionBanner() {
   const [state, setState] = useT2(null); // null | 'offline' | 'reconnecting' | 'degraded'
   useT2E(() => {
     function on(e) { setState(e.detail); }
-    window.addEventListener('dilla:connection', on);
-    return () => window.removeEventListener('dilla:connection', on);
+    globalThis.addEventListener('dilla:connection', on);
+    return () => globalThis.removeEventListener('dilla:connection', on);
   }, []);
   if (!state) return null;
   const config = {
