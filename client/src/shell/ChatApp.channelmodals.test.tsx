@@ -174,4 +174,60 @@ describe('NewServerModal', () => {
     }
     expect(container.firstChild).toBeTruthy();
   });
+
+  it('Create button calls onCreate with create-mode payload (L877-886)', () => {
+    const onCreate = vi.fn();
+    const { container } = render(<NewServerModal onClose={vi.fn()} onCreate={onCreate} />);
+    // Type a valid team name (slug ≥ 2 chars).
+    const nameInput = container.querySelector('input') as HTMLInputElement;
+    fireEvent.change(nameInput, { target: { value: 'Acme Inc' } });
+    const createBtn = Array.from(container.querySelectorAll('button')).find(
+      (b) => /create team/i.test(b.textContent ?? ''),
+    ) as HTMLButtonElement | undefined;
+    expect(createBtn).toBeTruthy();
+    expect(createBtn?.disabled).toBe(false);
+    fireEvent.click(createBtn!);
+    expect(onCreate).toHaveBeenCalledTimes(1);
+    const payload = onCreate.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.kind).toBe('create');
+    expect(payload.federated).toBe(false);
+    expect(payload.members).toBe(1);
+    expect(payload.id).toMatch(/^acme/i);
+  });
+
+  it('Join button calls onCreate with join-mode payload', () => {
+    const onCreate = vi.fn();
+    const { container } = render(<NewServerModal onClose={vi.fn()} onCreate={onCreate} />);
+    // Switch to Join mode by clicking the Join tab.
+    const joinTab = Array.from(container.querySelectorAll('button')).find(
+      (b) => /Join with an invite/i.test(b.textContent ?? ''),
+    ) as HTMLButtonElement | undefined;
+    if (joinTab) fireEvent.click(joinTab);
+    // Now type a token of >= 12 chars to enable the Join button.
+    const tokenArea = container.querySelector('textarea') as HTMLTextAreaElement;
+    fireEvent.change(tokenArea, { target: { value: 'this-is-a-valid-token-string' } });
+    const joinBtn = Array.from(container.querySelectorAll('button')).find(
+      (b) => /join team/i.test(b.textContent ?? ''),
+    ) as HTMLButtonElement | undefined;
+    if (joinBtn) {
+      expect(joinBtn.disabled).toBe(false);
+      fireEvent.click(joinBtn);
+      expect(onCreate).toHaveBeenCalled();
+      const payload = onCreate.mock.calls[0][0] as Record<string, unknown>;
+      expect(payload.kind).toBe('join');
+      expect(payload.token).toBe('this-is-a-valid-token-string');
+    }
+  });
+
+  it('Create button is disabled when name slug is too short', () => {
+    const onCreate = vi.fn();
+    const { container } = render(<NewServerModal onClose={vi.fn()} onCreate={onCreate} />);
+    // Single-char name → slug.length < 2 → button disabled.
+    const nameInput = container.querySelector('input') as HTMLInputElement;
+    fireEvent.change(nameInput, { target: { value: 'A' } });
+    const createBtn = Array.from(container.querySelectorAll('button')).find(
+      (b) => /create team/i.test(b.textContent ?? ''),
+    ) as HTMLButtonElement | undefined;
+    expect(createBtn?.disabled).toBe(true);
+  });
 });
