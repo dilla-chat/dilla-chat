@@ -256,10 +256,6 @@
   box-shadow: 0 0 0.5rem var(--success-alpha-40);
 }
 
-.fullscreen-thumbnail.focused {
-  border-color: var(--brand);
-}
-
 .fullscreen-thumbnail-video {
   width: 4.5rem;
   height: 2.5rem;

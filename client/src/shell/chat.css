@@ -266,6 +266,7 @@
   font-size: 10px;
   font-weight: 700;
   padding: 1px 6px;
+  animation: dilla-unread-in 0.2s ease-out both;
   border-radius: 999px;
   min-width: 18px;
   text-align: center;
@@ -464,6 +465,7 @@
 }
 .voice-dock-controls {
   display: flex; gap: 4px;
+  transition: padding-top 220ms ease, border-color 220ms ease;
 }
 /* Only draw the separator when the stats row is sitting above us
    AND not in its collapsed (.is-hidden) state — outside a voice
@@ -473,9 +475,6 @@
 .voice-dock-stats:not(.is-hidden) + .voice-dock-controls {
   padding-top: 8px;
   border-top: 1px solid var(--hairline);
-}
-.voice-dock-controls {
-  transition: padding-top 220ms ease, border-color 220ms ease;
 }
 .vctrl {
   flex: 1;
@@ -1130,6 +1129,7 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  animation: dilla-feed-in 0.18s ease-out both;
   /* Extra bottom padding lets the newest message scroll up *past*
      the composer overlay so it's never trapped beneath. The 3.5rem
      matches the negative margin-top on .composer-wrap. */
@@ -1567,6 +1567,7 @@
   padding: var(--row-pad, 6px 18px);
   position: relative;
   transition: background .08s;
+  animation: dilla-msg-in 0.22s ease-out both;
 }
 .msg:hover { background: color-mix(in oklab, var(--fg) 3%, transparent); }
 .msg.has-mention { background: color-mix(in oklab, var(--mention) 8%, transparent); border-left: 2px solid var(--mention); padding-left: 16px; }
@@ -1580,7 +1581,10 @@
   font-weight: 600;
   color: var(--fg);
   font-size: 13.5px;
+  cursor: pointer;
+  transition: color .12s;
 }
+.msg .author:hover { color: var(--accent); }
 .msg .at {
   font-family: var(--font-mono);
   font-size: 10.5px;
@@ -1855,6 +1859,7 @@ img.attach-img {
   padding: 2px 7px;
   border-radius: var(--r-pill);
   background: var(--surface-2);
+  animation: dilla-rxn-pop 0.22s ease-out both;
   font-size: 11.5px;
   color: var(--fg-2);
   cursor: pointer;
@@ -1879,6 +1884,7 @@ img.attach-img {
   background: var(--bg-2);
   border-left: 1px solid var(--hairline-2);
   display: flex; flex-direction: column;
+  animation: dilla-thread-in 0.22s cubic-bezier(.3,.7,.4,1) both;
   min-width: 0;
   min-height: 0;
 }
@@ -1911,6 +1917,7 @@ img.attach-img {
   display: grid;
   grid-template-columns: 32px 1fr;
   gap: 10px;
+  animation: dilla-msg-in 0.18s ease-out both;
   padding: 8px 4px;
   border-radius: var(--r-sm);
   transition: background .08s;
@@ -2031,16 +2038,12 @@ img.attach-img {
   font-family: var(--font-mono);
   min-height: 1.125rem;
 }
-.composer-typing .dot { animation: blink 1.4s infinite; }
-.composer-typing .dot:nth-child(2) { animation-delay: .2s; }
-.composer-typing .dot:nth-child(3) { animation-delay: .4s; }
 /* Small gap between the word "typing" and the animated ellipsis
    so the dots read as a separate beat. Only the first dot gets a
    margin so the trio stays tightly grouped. */
 .composer-typing .dot:first-of-type {
   margin-inline-start: 0.25rem;
 }
-@keyframes blink { 0%, 60%, 100% { opacity: 0.2; } 30% { opacity: 1; } }
 .composer-input {
   display: flex; align-items: center; gap: 4px;
   padding: 8px 8px 8px 10px;
@@ -2242,8 +2245,6 @@ img.attach-img {
 /* The scroll-to-latest button is .btn.btn--primary.btn--pill.btn--mono
    with call-site inline positioning; the composer-wrap is the
    relatively-positioned anchor for it. */
-.composer-wrap { position: relative; }
-
 /* Context menu */
 .ctx-overlay {
   position: fixed; inset: 0;
@@ -2419,10 +2420,13 @@ img.attach-img {
   position: relative;
   border: 1px solid var(--hairline);
   transition: transform .15s, border-color .15s;
+  animation: dilla-voice-in 0.28s cubic-bezier(.3,.7,.4,1) both;
 }
 .voice-card.speaking {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent), 0 8px 24px var(--accent-soft);
+  animation: dilla-voice-in 0.28s cubic-bezier(.3,.7,.4,1) both,
+             dilla-speaking-pulse 2.4s ease-in-out 0.3s infinite;
 }
 .voice-card .voice-media {
   position: relative;        /* offsetParent for nested FloatingPip */
@@ -3009,13 +3013,6 @@ img.attach-img {
 .voice-controls-bar .ctrl.danger { background: var(--danger); color: white; border-color: var(--danger); }
 .voice-controls-bar .ctrl.danger:hover { background: color-mix(in oklab, var(--danger) 80%, black); }
 
-/* ───── Author name clickable ───── */
-.msg .author {
-  cursor: pointer;
-  transition: color .12s;
-}
-.msg .author:hover { color: var(--accent); }
-
 /* ───── Profile popover ───── */
 .pop-profile {
   position: fixed;
@@ -3224,14 +3221,6 @@ img.attach-img {
   to   { opacity: 1; transform: scale(1); }
 }
 
-.msg            { animation: dilla-msg-in     0.22s ease-out both; }
-.tp-msg         { animation: dilla-msg-in     0.18s ease-out both; }
-.feed           { animation: dilla-feed-in    0.18s ease-out both; }
-.voice-card     { animation: dilla-voice-in   0.28s cubic-bezier(.3,.7,.4,1) both; }
-.voice-card.speaking { animation: dilla-voice-in 0.28s cubic-bezier(.3,.7,.4,1) both,
-                                  dilla-speaking-pulse 2.4s ease-in-out 0.3s infinite; }
-.rxn            { animation: dilla-rxn-pop    0.22s ease-out both; }
-.thread-panel   { animation: dilla-thread-in  0.22s cubic-bezier(.3,.7,.4,1) both; }
 .settings       { animation: dilla-settings-in 0.18s ease-out both; }
 .pop-profile,
 .emoji-pick,
@@ -3240,7 +3229,6 @@ img.attach-img {
    row remounted (role regroup, presence flip), which read as a "vibrate"
    on the dot — especially during voice activity that updates surrounding
    state. The dot doesn't need an entrance animation. */
-.unread-pill    { animation: dilla-unread-in 0.2s ease-out both; }
 
 /* Subtle hover lift on channel rows + members for tactile feel */
 .channel-row, .member, .voice-participant, .rxn, .vctrl, .icon-btn,
@@ -3271,7 +3259,6 @@ img.attach-img {
   .thread-panel, .settings, .pop-profile, .emoji-pick, .cmdk,
   .presence, .unread-pill, .composer-typing .dot { animation: none !important; }
 }
-.chat[data-style="slate"] .channel-row.active { background: var(--surface-hi); }
 .chat[data-style="slate"] .rail { background: var(--bg-2); }
 .chat[data-style="slate"] .side { background: var(--surface-2); }
 .chat[data-style="slate"] .main { background: var(--surface); }
