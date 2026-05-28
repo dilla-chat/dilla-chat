@@ -2256,6 +2256,72 @@ mod tests {
 
     // ── init_database happy path ─────────────────────────────────────
 
+    #[test]
+    fn init_database_returns_db_on_default_cfg() {
+        // init_database is the thin wrapper around init_database_result
+        // that translates Err → log + exit. Cover the Ok branch (the
+        // Err branches are unreachable via test because they call
+        // std::process::exit).
+        let tmp = tempfile::tempdir().unwrap();
+        let mut cfg = Config::default();
+        cfg.data_dir = tmp.path().to_str().unwrap().to_string();
+        cfg.port = 8080;
+        cfg.insecure = true;
+        let db = init_database(&cfg);
+        db.with_conn(|c| {
+            let _: i64 = c
+                .query_row("SELECT COUNT(*) FROM users", [], |row| row.get(0))
+                .unwrap();
+            Ok::<_, rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+
+    // ── enforce_jwt_secret_strength (non-exit branches) ──────────────
+
+    #[test]
+    fn enforce_jwt_secret_strength_no_op_when_strong_pass() {
+        let _g = lock_jwt_env();
+        std::env::remove_var("DILLA_JWT_SECRET");
+        let mut cfg = Config::default();
+        cfg.db_passphrase = "a".repeat(32);
+        cfg.insecure = false;
+        enforce_jwt_secret_strength(&cfg);
+    }
+
+    #[test]
+    fn enforce_jwt_secret_strength_no_op_when_explicit_secret_set() {
+        let _g = lock_jwt_env();
+        std::env::set_var("DILLA_JWT_SECRET", "explicit-jwt-secret-32-bytes-padding");
+        let mut cfg = Config::default();
+        cfg.db_passphrase = String::new();
+        cfg.insecure = false;
+        enforce_jwt_secret_strength(&cfg);
+        std::env::remove_var("DILLA_JWT_SECRET");
+    }
+
+    #[test]
+    fn enforce_jwt_secret_strength_warns_on_insecure_empty_pass() {
+        let _g = lock_jwt_env();
+        std::env::remove_var("DILLA_JWT_SECRET");
+        let mut cfg = Config::default();
+        cfg.db_passphrase = String::new();
+        cfg.insecure = true;
+        // Warns + continues; no exit.
+        enforce_jwt_secret_strength(&cfg);
+    }
+
+    #[test]
+    fn enforce_jwt_secret_strength_warns_on_insecure_short_pass() {
+        let _g = lock_jwt_env();
+        std::env::remove_var("DILLA_JWT_SECRET");
+        let mut cfg = Config::default();
+        cfg.db_passphrase = "short".into();
+        cfg.insecure = true;
+        // Warns + continues; no exit.
+        enforce_jwt_secret_strength(&cfg);
+    }
+
     // ── check_first_start when users already exist (skip path) ────────
 
     #[tokio::test]
