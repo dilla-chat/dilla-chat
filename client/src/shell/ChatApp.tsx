@@ -402,17 +402,19 @@ export function NewChannelModal({ onClose, onCreate }) {
             {slug && <div className="modal-hint">URL: <code>dilla://{nodeHost}/k/{slug}</code></div>}
           </div>
           <div className="modal-row">
-            <label>Topic <span className="modal-opt">optional</span></label>
-            <input value={topic} onChange={e => setTopic(e.target.value)} placeholder="what's this kanal for?" />
+            <label>Topic <span className="modal-opt">optional</span>
+              <input value={topic} onChange={e => setTopic(e.target.value)} placeholder="what's this kanal for?" />
+            </label>
           </div>
           <div className="modal-row">
-            <label>Group <span className="modal-opt">optional</span></label>
-            <GroupCombobox value={group} onChange={setGroup} existing={existingGroups} />
+            <label>Group <span className="modal-opt">optional</span>
+              <GroupCombobox value={group} onChange={setGroup} existing={existingGroups} />
+            </label>
             <div className="modal-hint">Groups collapse together in the sidebar. Leave blank for the default list.</div>
           </div>
           <div className="modal-row modal-row-h">
             <div>
-              <label>Private kanal</label>
+              <div style={{ fontWeight: 600 }}>Private kanal</div>
               <div className="modal-hint">{priv ? 'only invited members can see this.' : 'anyone on the team can join.'}</div>
             </div>
             <button className="set-toggle" data-on={priv ? '1' : '0'} onClick={() => setPriv(p => !p)}><i /></button>
@@ -494,7 +496,7 @@ export function ChannelAccessModal({ channel, onClose }) {
         </header>
         <div className="modal-body">
           <div className="modal-row">
-            <label>Roles that can access this channel</label>
+            <div style={{ fontWeight: 600 }}>Roles that can access this channel</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
               {ordered.map((r: any) => (
                 <label key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', cursor: 'pointer' }}>
@@ -689,13 +691,14 @@ export function GroupSettingsModal({ group, onClose }: Readonly<{ group: { id: s
         </header>
         <div className="modal-body">
           <div className="modal-row">
-            <label>Group name</label>
-            <input value={name} autoFocus onChange={(e) => setName(e.target.value)} />
+            <label>Group name
+              <input value={name} autoFocus onChange={(e) => setName(e.target.value)} />
+            </label>
             <div className="modal-hint">Channels stay in the group — only the header label changes.</div>
           </div>
           {confirmDelete ? (
             <div className="modal-row" style={{ border: '1px solid var(--danger)', padding: '0.75rem', borderRadius: 'var(--r-sm)' }}>
-              <label style={{ color: 'var(--danger)' }}>Delete group</label>
+              <div style={{ color: 'var(--danger)', fontWeight: 600 }}>Delete group</div>
               <div className="modal-hint">Channels in <strong>{group.name}</strong> won't be deleted — they'll just lose the group. Restricted-by-group channels will become open.</div>
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                 <button className="btn" onClick={() => setConfirmDelete(false)}>Cancel</button>
@@ -791,23 +794,26 @@ export function ChannelSettingsModal({ channel, onClose }) {
         </header>
         <div className="modal-body">
           <div className="modal-row">
-            <label>Topic</label>
-            <input value={topic} autoFocus onChange={e => setTopic(e.target.value)} placeholder="what's this kanal for?" />
+            <label>Topic
+              <input value={topic} autoFocus onChange={e => setTopic(e.target.value)} placeholder="what's this kanal for?" />
+            </label>
             <div className="modal-hint">Shown at the top of the channel. Anyone with permission to send can see this.</div>
           </div>
           <div className="modal-row">
-            <label>Group <span className="modal-opt">optional</span></label>
-            <GroupCombobox value={group} onChange={setGroup} existing={existingGroups} />
+            <label>Group <span className="modal-opt">optional</span>
+              <GroupCombobox value={group} onChange={setGroup} existing={existingGroups} />
+            </label>
             <div className="modal-hint">Channels in the same group collapse together in the sidebar. Leave blank for the default list.</div>
           </div>
           <div className="modal-row">
-            <label>Slow mode (seconds)</label>
-            <input value={slow} onChange={e => setSlow(e.target.value.replace(/[^0-9]/g, ''))} placeholder="0" />
+            <label>Slow mode (seconds)
+              <input value={slow} onChange={e => setSlow(e.target.value.replace(/[^0-9]/g, ''))} placeholder="0" />
+            </label>
             <div className="modal-hint">Minimum interval between messages per member. 0 disables.</div>
           </div>
           {confirmDelete ? (
             <div className="modal-row" style={{ border: '1px solid var(--danger)', padding: '0.75rem', borderRadius: 'var(--r-sm)' }}>
-              <label style={{ color: 'var(--danger)' }}>Delete kanal</label>
+              <div style={{ color: 'var(--danger)', fontWeight: 600 }}>Delete kanal</div>
               <div className="modal-hint">Permanently removes <strong>#{channel?.name}</strong> and every message in it. This can't be undone.</div>
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                 <button className="btn" onClick={() => setConfirmDelete(false)}>Cancel</button>
@@ -2996,12 +3002,12 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                   onClick={onToggleMembers}>
             <Icon.People size={14} />
           </button>}
-          <div className="search-box" role="button" tabIndex={0}
+          <button type="button" className="search-box"
                onClick={() => globalThis.dispatchEvent(new CustomEvent('dilla:open-search', { detail: { scopeChannel: channel.id, scopeName: channel.name } }))}>
             <Icon.Search size={13} />
             <span>{channel.type === 'dm' ? 'Search this DM…' : 'Search in #' + channel.name + '…'}</span>
             <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)', fontSize: 10, opacity: 0.7 }}>/</span>
-          </div>
+          </button>
         </div>
       </div>
 
@@ -3800,7 +3806,6 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
         } as const;
         return (
           <div
-            onClick={() => setLightbox(null)}
             style={{
               position: 'fixed', inset: 0, zIndex: 500,
               background: 'rgba(0,0,0,0.85)',
@@ -3809,11 +3814,16 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
               backdropFilter: 'blur(2px)',
             }}
           >
+            <button
+              type="button"
+              aria-label="Close lightbox"
+              onClick={() => setLightbox(null)}
+              style={{ position: 'absolute', inset: 0, background: 'transparent', border: 'none', cursor: 'zoom-out', padding: 0 }}
+            />
             <img
               src={current}
               alt=""
-              onClick={(e) => e.stopPropagation()}
-              style={{ maxWidth: '95vw', maxHeight: '95vh', objectFit: 'contain', borderRadius: 4 }}
+              style={{ maxWidth: '95vw', maxHeight: '95vh', objectFit: 'contain', borderRadius: 4, position: 'relative' }}
             />
             {total > 1 && (
               <>
@@ -3838,7 +3848,6 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                   </svg>
                 </button>
                 <div
-                  onClick={(e) => e.stopPropagation()}
                   style={{
                     position: 'absolute', bottom: '1rem', left: '50%',
                     transform: 'translateX(-50%)',
