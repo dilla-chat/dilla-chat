@@ -1366,4 +1366,140 @@ mod axum_tests {
             .unwrap();
         assert_eq!(resp.status(), 200);
     }
+
+    // Seed a second team t2 owned by alice with a channel ch2.
+    fn seed_alice_second_team(state: &AppState) {
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_team(conn, &db::Team {
+                id: "t2".into(),
+                name: "T2".into(),
+                created_by: "alice".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_member(conn, &db::Member {
+                id: "m2".into(),
+                team_id: "t2".into(),
+                user_id: "alice".into(),
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now.clone(),
+            })?;
+            db::create_channel(conn, &db::Channel {
+                id: "ch2".into(),
+                team_id: "t2".into(),
+                name: "off-topic".into(),
+                channel_type: "text".into(),
+                topic: String::new(),
+                created_by: "alice".into(),
+                position: 0,
+                locked: false,
+                created_at: now.clone(),
+                updated_at: now,
+                ..Default::default()
+            })
+        }).unwrap();
+    }
+
+    #[tokio::test]
+    async fn delete_channel_rejects_cross_team_request() {
+        // ch2 belongs to t2 but the request targets t1; the handler
+        // should surface a 4xx via the `channel does not belong to
+        // this team` rusqlite error wrap (L842-845).
+        let (state, _tmp) = make_state();
+        seed_alice_team_and_channel(&state);
+        seed_alice_second_team(&state);
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/channels/ch2")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn mark_read_rejects_cross_team_channel() {
+        // mark_read on ch2 via t1 path must reject (L780-781).
+        let (state, _tmp) = make_state();
+        seed_alice_team_and_channel(&state);
+        seed_alice_second_team(&state);
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/teams/t1/channels/ch2/read")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn update_channel_rejects_blank_name() {
+        // PATCH with name="   " (only whitespace) trims to empty and
+        // hits L200 BadRequest("name cannot be empty").
+        let (state, _tmp) = make_state();
+        seed_alice_team_and_channel(&state);
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/teams/t1/channels/ch1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"name":"   "}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
+
+    #[tokio::test]
+    async fn update_channel_category_reuses_existing_group() {
+        // First create a group named "Engineering", then PATCH the
+        // channel with category="Engineering" → resolves to the
+        // existing group's id (L231-232) instead of creating one.
+        let (state, _tmp) = make_state();
+        seed_alice_team_and_channel(&state);
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_group(conn, &db::ChannelGroup {
+                id: "g-eng".into(),
+                team_id: "t1".into(),
+                name: "Engineering".into(),
+                position: 0,
+                created_at: now.clone(),
+                updated_at: now,
+                hidden_if_restricted: false,
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/teams/t1/channels/ch1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"category":"Engineering"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
 }
