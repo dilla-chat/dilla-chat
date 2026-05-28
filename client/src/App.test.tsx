@@ -144,6 +144,21 @@ describe('App router', () => {
       (b) => /restart/i.test(b.textContent ?? ''),
     ) as HTMLButtonElement | undefined;
     expect(btn).toBeTruthy();
+    // Stub globalThis.location to a writable object so the click
+    // handler's `globalThis.location.href = '/'` doesn't crash jsdom.
+    const realLoc = globalThis.location;
+    Object.defineProperty(globalThis, 'location', {
+      configurable: true,
+      value: { href: 'http://test/' },
+    });
+    try {
+      btn!.click();
+    } finally {
+      Object.defineProperty(globalThis, 'location', {
+        configurable: true,
+        value: realLoc,
+      });
+    }
     errSpy.mockRestore();
   });
 });
