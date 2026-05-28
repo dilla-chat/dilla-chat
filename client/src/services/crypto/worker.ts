@@ -233,7 +233,7 @@ async function dispatch(op: string, payload: unknown): Promise<unknown> {
         // base64 → Uint8Array. Worker-local, doesn't need to round-trip.
         const bin = atob(identityDhPublicKeyB64);
         const out = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+        for (let i = 0; i < bin.length; i++) out[i] = bin.codePointAt(i) ?? 0;
         setIdentityDhPublicKeyBytes(out);
       } else {
         setIdentityDhPublicKeyBytes(null);

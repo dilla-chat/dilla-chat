@@ -1198,7 +1198,7 @@ export function SafetyNumberQR({
         function toHex(cssColor: string, fallback: string): string {
           const m = cssColor.match(/rgba?\(([^)]+)\)/i);
           if (!m) return fallback;
-          const parts = m[1].split(',').map((s) => parseFloat(s.trim()));
+          const parts = m[1].split(',').map((s) => Number.parseFloat(s.trim()));
           const [r, g, b] = parts;
           if ([r, g, b].some((n) => Number.isNaN(n))) return fallback;
           const h = (n: number) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0');
@@ -1851,20 +1851,20 @@ export function TeamInvites() {
   );
 }
 export const PERM_FLAGS = [
-  { bit: 1 << 0, key: 'admin',            label: 'Admin (all permissions)' },
-  { bit: 1 << 1, key: 'manage_channels',  label: 'Manage channels' },
-  { bit: 1 << 2, key: 'manage_members',   label: 'Manage members (kick / ban)' },
-  { bit: 1 << 3, key: 'manage_roles',     label: 'Manage roles' },
-  { bit: 1 << 4, key: 'send_messages',    label: 'Send messages' },
-  { bit: 1 << 5, key: 'manage_messages',  label: 'Manage messages (delete / pin)' },
-  { bit: 1 << 6, key: 'create_invites',   label: 'Create invites' },
-  { bit: 1 << 7, key: 'manage_team',      label: 'Manage team settings' },
-  { bit: 1 << 8, key: 'bypass_slow_mode', label: 'Bypass slow mode' },
+  { bit: 1,        key: 'admin',            label: 'Admin (all permissions)' },
+  { bit: 1 << 1,   key: 'manage_channels',  label: 'Manage channels' },
+  { bit: 1 << 2,   key: 'manage_members',   label: 'Manage members (kick / ban)' },
+  { bit: 1 << 3,   key: 'manage_roles',     label: 'Manage roles' },
+  { bit: 1 << 4,   key: 'send_messages',    label: 'Send messages' },
+  { bit: 1 << 5,   key: 'manage_messages',  label: 'Manage messages (delete / pin)' },
+  { bit: 1 << 6,   key: 'create_invites',   label: 'Create invites' },
+  { bit: 1 << 7,   key: 'manage_team',      label: 'Manage team settings' },
+  { bit: 1 << 8,   key: 'bypass_slow_mode', label: 'Bypass slow mode' },
 ] as const;
 
 export function permsSummary(permissions: number): string {
-  if ((permissions & (1 << 0)) !== 0) return 'all permissions';
-  const labels = PERM_FLAGS.filter((f) => f.bit !== (1 << 0) && (permissions & f.bit) !== 0)
+  if ((permissions & 1) !== 0) return 'all permissions';
+  const labels = PERM_FLAGS.filter((f) => f.bit !== 1 && (permissions & f.bit) !== 0)
     .map((f) => f.label.toLowerCase().split(' (')[0]);
   return labels.length ? labels.join(' · ') : 'no permissions';
 }
@@ -2235,7 +2235,7 @@ export function TeamMembers() {
     setSaving(true);
     try {
       const rolesById = new Map(roles.map((r) => [r.id, r]));
-      const PERM_ADMIN = 1 << 0;
+      const PERM_ADMIN = 1;
       const updates: Array<{ memberId: string; roleIds: string[] }> = [];
       for (const m of members) {
         const cur = (m.roleIds ?? []).slice().sort((a, b) => a.localeCompare(b)).join('|');

@@ -31,7 +31,7 @@ interface CachedMessage {
 async function hashSource(source: string): Promise<string> {
   const buf = new TextEncoder().encode(source);
   const digest = await crypto.subtle.digest('SHA-256', buf);
-  return btoa(String.fromCharCode(...new Uint8Array(digest)));
+  return btoa(String.fromCodePoint(...new Uint8Array(digest)));
 }
 
 // ── Cache encryption helpers ────────────────────────────────────────────────
@@ -67,13 +67,13 @@ async function encryptForCache(plaintext: string, cacheKey: CryptoKey): Promise<
   const combined = new Uint8Array(12 + encrypted.byteLength);
   combined.set(iv, 0);
   combined.set(new Uint8Array(encrypted), 12);
-  return btoa(String.fromCharCode(...combined));
+  return btoa(String.fromCodePoint(...combined));
 }
 
 /** Decrypt cache ciphertext. Returns plaintext string. */
 async function decryptFromCache(ciphertext: string, cacheKey: CryptoKey): Promise<string> {
   const decoder = new TextDecoder();
-  const data = Uint8Array.from(atob(ciphertext), (c) => c.charCodeAt(0));
+  const data = Uint8Array.from(atob(ciphertext), (c) => c.codePointAt(0) ?? 0);
   if (data.length < 12) throw new Error('Cache ciphertext too short');
   const iv = data.slice(0, 12);
   const encrypted = data.slice(12);

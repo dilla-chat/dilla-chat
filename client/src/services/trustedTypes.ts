@@ -153,7 +153,7 @@ function stripScriptTagsLinear(input: string): string {
       out += input.slice(i);
       break;
     }
-    const after = lower.charCodeAt(openIdx + 7);
+    const after = lower.codePointAt(openIdx + 7) ?? Number.NaN;
     // Tag boundary: `>` (0x3e), `/` (0x2f), space (0x20), tab (0x09),
     // newline (0x0a), CR (0x0d). NaN (end-of-string) also counts —
     // truncated `<script` is malformed; treat it as a tag start so we

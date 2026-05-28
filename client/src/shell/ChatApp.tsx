@@ -1411,10 +1411,10 @@ export function FloatingPip({
       // Only rescale when WE have set inline values (otherwise the
       // CSS-default bottom/right anchor handles things just fine).
       if (el.style.left) {
-        const l = parseFloat(el.style.left) * rW;
-        const t = parseFloat(el.style.top) * rH;
-        const w = (parseFloat(el.style.width) || el.offsetWidth) * scale;
-        const h = (parseFloat(el.style.height) || el.offsetHeight) * scale;
+        const l = Number.parseFloat(el.style.left) * rW;
+        const t = Number.parseFloat(el.style.top) * rH;
+        const w = (Number.parseFloat(el.style.width) || el.offsetWidth) * scale;
+        const h = (Number.parseFloat(el.style.height) || el.offsetHeight) * scale;
         const clampedL = Math.max(0, Math.min(l, next.width - w));
         const clampedT = Math.max(0, Math.min(t, next.height - h));
         el.style.left = `${clampedL}px`;

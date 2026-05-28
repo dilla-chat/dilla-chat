@@ -90,12 +90,12 @@ async function encryptSession(json: string, key: CryptoKey): Promise<string> {
   const combined = new Uint8Array(12 + encrypted.byteLength);
   combined.set(iv, 0);
   combined.set(new Uint8Array(encrypted), 12);
-  return btoa(String.fromCharCode(...combined));
+  return btoa(String.fromCodePoint(...combined));
 }
 
 async function decryptSession(ciphertext: string, key: CryptoKey): Promise<string> {
   const decoder = new TextDecoder();
-  const data = Uint8Array.from(atob(ciphertext), (c) => c.charCodeAt(0));
+  const data = Uint8Array.from(atob(ciphertext), (c) => c.codePointAt(0) ?? 0);
   if (data.length < 12) throw new Error('Session ciphertext too short');
   const iv = data.slice(0, 12);
   const encrypted = data.slice(12);

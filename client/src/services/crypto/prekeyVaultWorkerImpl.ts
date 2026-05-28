@@ -46,12 +46,12 @@ async function encrypt(json: string, key: CryptoKey): Promise<string> {
   const combined = new Uint8Array(12 + ct.byteLength);
   combined.set(iv, 0);
   combined.set(new Uint8Array(ct), 12);
-  return btoa(String.fromCharCode(...combined));
+  return btoa(String.fromCodePoint(...combined));
 }
 
 async function decrypt(ciphertext: string, key: CryptoKey): Promise<string> {
   const dec = new TextDecoder();
-  const data = Uint8Array.from(atob(ciphertext), (c) => c.charCodeAt(0));
+  const data = Uint8Array.from(atob(ciphertext), (c) => c.codePointAt(0) ?? 0);
   if (data.length < 12) throw new Error('Prekey vault ciphertext too short');
   const iv = data.slice(0, 12);
   const enc = data.slice(12);
@@ -178,6 +178,6 @@ export async function clearPrekeyVault(): Promise<void> {
 function b64ToBytes(s: string): Uint8Array {
   const bin = atob(s);
   const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.codePointAt(i) ?? 0;
   return out;
 }

@@ -50,7 +50,7 @@ function normalizeMembers(data: Record<string, unknown>[]) {
         try {
           const bin = atob(b64);
           let hex = '';
-          for (let i = 0; i < bin.length; i++) hex += bin.charCodeAt(i).toString(16).padStart(2, '0');
+          for (let i = 0; i < bin.length; i++) hex += (bin.codePointAt(i) ?? 0).toString(16).padStart(2, '0');
           return hex;
         } catch {
           return '';
@@ -445,7 +445,7 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
         const teamStore = useTeamStore.getState();
         const list = teamStore.members.get(payload.team_id) ?? [];
         const rolesById = new Map((teamStore.roles.get(payload.team_id) ?? []).map((r) => [r.id, r]));
-        const PERM_ADMIN = 1 << 0;
+        const PERM_ADMIN = 1;
         const nextRoles = payload.role_ids
           .map((id) => rolesById.get(id))
           .filter((r): r is NonNullable<typeof r> => !!r);

@@ -118,7 +118,7 @@ export async function safetyNumberInWorker(
   }
   const toB64 = (b: Uint8Array) => {
     let s = '';
-    for (const byte of b) s += String.fromCharCode(byte);
+    for (const byte of b) s += String.fromCodePoint(byte);
     return btoa(s);
   };
   return call<string>('safetyNumber.compute', {
@@ -373,7 +373,7 @@ function bytesToB64(b: Uint8Array): string {
 function b64ToBytes(s: string): Uint8Array {
   const bin = atob(s);
   const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.codePointAt(i) ?? 0;
   return out;
 }
 
