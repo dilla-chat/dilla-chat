@@ -28,6 +28,26 @@ const MAX_TAG_LEN: usize = 64;
 /// hostile browser could inject color codes / cursor-moves that confuse
 /// log viewers or hide payload content. Operates on the char iterator
 /// so multi-byte UTF-8 survives intact.
+/// Advance past a CSI sequence body once the leading `ESC [` has been
+/// consumed: skip parameter/intermediate bytes up to and including the
+/// final byte (0x40..=0x7e). Extracted from `strip_ansi` to keep that
+/// function's cognitive complexity below the rule threshold.
+fn skip_csi_body(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) {
+    for ch in chars.by_ref() {
+        let v = ch as u32;
+        if (0x40..=0x7e).contains(&v) {
+            return;
+        }
+    }
+}
+
+/// Predicate for `strip_ansi`: keep printable chars + common whitespace,
+/// drop other C0 controls.
+fn is_keepable_char(c: char) -> bool {
+    let v = c as u32;
+    v >= 0x20 || c == '\n' || c == '\r' || c == '\t'
+}
+
 fn strip_ansi(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();
@@ -36,20 +56,12 @@ fn strip_ansi(s: &str) -> String {
             // CSI sequence: ESC [ … <final byte in 0x40..=0x7e>.
             if chars.peek() == Some(&'[') {
                 chars.next();
-                for ch in chars.by_ref() {
-                    let v = ch as u32;
-                    if (0x40..=0x7e).contains(&v) {
-                        break;
-                    }
-                }
-                continue;
+                skip_csi_body(&mut chars);
             }
-            // Bare ESC — drop.
+            // Either way, drop the ESC and any swallowed sequence.
             continue;
         }
-        let v = c as u32;
-        // Drop other C0 control chars except common whitespace.
-        if v < 0x20 && c != '\n' && c != '\r' && c != '\t' {
+        if !is_keepable_char(c) {
             continue;
         }
         out.push(c);
