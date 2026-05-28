@@ -24,17 +24,7 @@ use tokio::signal;
 
 #[tokio::main]
 async fn main() {
-    // Install the rustls CryptoProvider at process startup. webrtc-rs
-    // and any other rustls-using crate panics with "Could not
-    // automatically determine the process-level CryptoProvider" the
-    // first time it tries to do TLS otherwise. Idempotent if a
-    // provider is already installed.
-    let _ = rustls::crypto::ring::default_provider().install_default();
-
-    // Set version.
-    api::VERSION
-        .set(env!("CARGO_PKG_VERSION").to_string())
-        .ok();
+    process_startup_init();
 
     // Load configuration.
     let cfg = Config::load();
@@ -117,6 +107,24 @@ async fn main() {
     let app = with_http_observability_middleware(app);
 
     start_server(&cfg, app).await;
+}
+
+/// Process-wide one-shot init: install the rustls CryptoProvider and
+/// stash the binary's version string into the API module. Idempotent —
+/// safe to call multiple times in tests as well as at process start.
+pub(crate) fn process_startup_init() {
+    // Install the rustls CryptoProvider at process startup. webrtc-rs
+    // and any other rustls-using crate panics with "Could not
+    // automatically determine the process-level CryptoProvider" the
+    // first time it tries to do TLS otherwise. Idempotent if a provider
+    // is already installed.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
+    // Stash the version (best-effort — OnceCell::set rejects on second
+    // call, which we ignore).
+    api::VERSION
+        .set(env!("CARGO_PKG_VERSION").to_string())
+        .ok();
 }
 
 /// Thin wrapper around `load_secrets_from_files` that converts Err into
@@ -1227,6 +1235,20 @@ mod tests {
     // Drive each SFUEvent variant through the extracted helper. Hub is
     // real but with no connected clients — broadcast/send are no-ops
     // but the match arms + payload construction run.
+
+    // ── process_startup_init ─────────────────────────────────────────
+
+    #[test]
+    fn process_startup_init_is_idempotent() {
+        // Safe to call twice — install_default returns Err the second
+        // time but we ignore that. Also installs the API VERSION.
+        process_startup_init();
+        process_startup_init();
+        // VERSION should be set to the crate version (or whatever a
+        // prior test set first; assert that it's non-empty).
+        let v = api::VERSION.get().map(|s| s.as_str()).unwrap_or("");
+        assert!(!v.is_empty());
+    }
 
     // ── apply_secret_file_overrides_or_exit ──────────────────────────
 
