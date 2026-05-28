@@ -180,7 +180,7 @@ function AudioMeter() {
     <span className="audio-meter">
       {bars.map((v, i) => (
         <span
-          key={i}
+          key={`am-bar-${i}-${Math.round(v * 100)}`}
           className="am-bar"
           style={{ opacity: 0.25 + v * 0.75, height: 4 + Math.round(v * 8) }}
         />

@@ -2958,7 +2958,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
           const author = members.byId[g.author] || { name: g.author, color: '#666', initials: '??' };
           if (g.base.kind === 'system') {
             return (
-              <React.Fragment key={i}>
+              <React.Fragment key={`sys-${g.base.id ?? i}`}>
                 {showDay && <div className="day-divider">{dayLabel(g.at)}</div>}
                 <div className="msg system">
                   <div></div>
@@ -2971,7 +2971,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
             );
           }
           return (
-            <React.Fragment key={i}>
+            <React.Fragment key={`grp-${g.base.id ?? i}`}>
               {showDay && <div className="day-divider">{dayLabel(g.at)}</div>}
               {showUnreadAbove && (
                 <div className="unread-divider"><span>new</span></div>
@@ -3119,7 +3119,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                                 <div className={'msg-attachments' + (list.length === 1 ? ' is-single' : '')}>
                                   {list.map((att, ai) => (
                                     att.kind === 'image' ? (
-                                      <div key={ai} className="attach">
+                                      <div key={`img-${att.id ?? ai}`} className="attach">
                                         {att.src ? (
                                           <img
                                             className="attach-img"
@@ -3146,7 +3146,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                                       // existing attachment URL (already
                                       // authorised for team members).
                                       <a
-                                        key={ai}
+                                        key={`file-${att.id ?? ai}`}
                                         className="attach-file"
                                         href={att.src}
                                         download={att.label || 'file'}

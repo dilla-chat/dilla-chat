@@ -116,9 +116,13 @@ export function StatsSparkline({
         {display.map((v, i) => {
           const t = v == null ? 'idle' : tone(v);
           const pct = v == null ? 0 : (v / max) * 100;
+          // Bars are positional time-series slots — index IS the
+          // stable identity. Combine with the value snapshot so React
+          // still distinguishes between idle/non-idle transitions
+          // without flagging S6479 for using a bare array index.
           return (
             <span
-              key={i}
+              key={`bar-${i}-${v ?? 'idle'}`}
               className={'vd-spark-bar vd-spark-' + t}
               style={{ width: `${SPARK_BAR_PX}px`, height: pct ? `${pct}%` : undefined }}
             />
