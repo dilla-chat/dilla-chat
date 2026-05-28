@@ -3928,6 +3928,70 @@ function buildVoiceChannelMenu(
   return items;
 }
 
+function buildVoiceCardMenu(args: {
+  p: { id: string; name: string };
+  showScreen: boolean;
+  showCam: boolean;
+  focused: { id: string; kind: 'cam' | 'screen' } | null;
+  setFocused: (next: { id: string; kind: 'cam' | 'screen' } | null) => void;
+  canMuteVoice: boolean;
+  mineMuted: boolean;
+  vcTeamId: string | null;
+  channelId: string;
+  x: number;
+  y: number;
+}): any[] {
+  const { p, showScreen, showCam, focused, setFocused, canMuteVoice, mineMuted, vcTeamId, channelId, x, y } = args;
+  const items: any[] = [
+    { label: 'View profile', icon: <Icon.People size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-profile', { detail: { memberId: p.id, x, y } })) },
+  ];
+  if (showScreen) {
+    const focusedScreen = focused?.id === p.id && focused.kind === 'screen';
+    items.push({
+      label: focusedScreen ? 'Exit screen focus' : 'Focus screen share',
+      icon: <Icon.Screen size={13} />,
+      onClick: () => setFocused(focusedScreen ? null : { id: p.id, kind: 'screen' }),
+    });
+  }
+  if (showCam) {
+    const focusedCam = focused?.id === p.id && focused.kind === 'cam';
+    items.push({
+      label: focusedCam ? 'Exit webcam focus' : 'Focus webcam',
+      icon: <Icon.Video size={13} />,
+      onClick: () => setFocused(focusedCam ? null : { id: p.id, kind: 'cam' }),
+    });
+  }
+  items.push(
+    { sep: true },
+    { label: 'Mute for me only', icon: <Icon.Mic size={13} off />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'mixer', text: 'Muted ' + p.name + ' for this session only.', duration: 2500 } })) },
+  );
+  if (canMuteVoice && p.id !== currentUserId() && !mineMuted) {
+    items.push({
+      label: 'Server-mute',
+      danger: true,
+      icon: <Icon.Mic size={13} off />,
+      onClick: () => {
+        if (!vcTeamId) return;
+        ws.voiceForceMute(vcTeamId, channelId, p.id);
+        globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'admin', text: 'Server-muted ' + p.name + '.', duration: 2500 } }));
+      },
+    });
+  }
+  if (canMuteVoice && p.id !== currentUserId()) {
+    items.push({
+      label: 'Disconnect from voice',
+      danger: true,
+      icon: null,
+      onClick: () => {
+        if (!vcTeamId) return;
+        ws.voiceForceDisconnect(vcTeamId, channelId, p.id);
+        globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'admin', text: 'Disconnected ' + p.name + ' from voice.', duration: 2500 } }));
+      },
+    });
+  }
+  return items;
+}
+
 function buildVoiceParticipantMenu(
   m: { name: string },
   pid: string,
@@ -4440,33 +4504,13 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
                    data-latency={peerLatencies[p.id] ?? '--'}
                    onContextMenu={(e) => {
                      e.preventDefault();
-                     globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
-                       { label: 'View profile', icon: <Icon.People size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-profile', { detail: { memberId: p.id, x: e.clientX, y: e.clientY } })) },
-                       ...(showScreen ? [{ label: focused?.id === p.id && focused.kind === 'screen' ? 'Exit screen focus' : 'Focus screen share', icon: <Icon.Screen size={13} />, onClick: () => setFocused(focused?.id === p.id && focused.kind === 'screen' ? null : { id: p.id, kind: 'screen' as const }) }] : []),
-                       ...(showCam ? [{ label: focused?.id === p.id && focused.kind === 'cam' ? 'Exit webcam focus' : 'Focus webcam', icon: <Icon.Video size={13} />, onClick: () => setFocused(focused?.id === p.id && focused.kind === 'cam' ? null : { id: p.id, kind: 'cam' as const }) }] : []),
-                       { sep: true },
-                       { label: 'Mute for me only', icon: <Icon.Mic size={13} off />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'mixer', text: 'Muted ' + p.name + ' for this session only.', duration: 2500 } })) },
-                       ...(vcPerms.has(PERM_MUTE_VOICE) && p.id !== currentUserId() && !mineMuted ? [{
-                         label: 'Server-mute',
-                         danger: true,
-                         icon: <Icon.Mic size={13} off />,
-                         onClick: () => {
-                           if (!vcTeamId) return;
-                           ws.voiceForceMute(vcTeamId, channel.id, p.id);
-                           globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'admin', text: 'Server-muted ' + p.name + '.', duration: 2500 } }));
-                         },
-                       }] : []),
-                       ...(vcPerms.has(PERM_MUTE_VOICE) && p.id !== currentUserId() ? [{
-                         label: 'Disconnect from voice',
-                         danger: true,
-                         icon: null,
-                         onClick: () => {
-                           if (!vcTeamId) return;
-                           ws.voiceForceDisconnect(vcTeamId, channel.id, p.id);
-                           globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'admin', text: 'Disconnected ' + p.name + ' from voice.', duration: 2500 } }));
-                         },
-                       }] : []),
-                     ] } }));
+                     const items = buildVoiceCardMenu({
+                       p, showScreen, showCam, focused, setFocused,
+                       canMuteVoice: vcPerms.has(PERM_MUTE_VOICE),
+                       mineMuted, vcTeamId, channelId: channel.id,
+                       x: e.clientX, y: e.clientY,
+                     });
+                     globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items } }));
                    }}
                    onClick={() => {
                      // Click an already-focused tile → exit focus, unless
