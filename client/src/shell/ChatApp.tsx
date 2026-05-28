@@ -2871,13 +2871,18 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                         if (!msg) return null;
                         const a = data.byId[msg.author] || { name: msg.author, color: '#666', initials: '??' };
                         return (
-                          <div key={sid} className="pin-row" onClick={() => { setSavedOpen(false); setActiveChannel(chanName); setActiveView({ kind: 'channel', id: chanName }); }}>
+                          <button
+                            key={sid}
+                            type="button"
+                            className="pin-row"
+                            onClick={() => { setSavedOpen(false); setActiveChannel(chanName); setActiveView({ kind: 'channel', id: chanName }); }}
+                          >
                             <div className="pin-av" style={{ background: a.color }}>{a.initials}</div>
                             <div>
                               <div className="pin-meta"><span className="pin-author">{a.name}</span> <span className="pin-time">· #{chanName} · {timeShort(msg.at)}</span></div>
                               <div className="pin-text">{msg.text}</div>
                             </div>
-                          </div>
+                          </button>
                         );
                       })}
                     </div>
@@ -3694,8 +3699,14 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
         </div>
       )}
       {deleteTarget && (
-        <div className="modal-overlay modal-overlay--soft" onClick={() => setDeleteConfirm(null)}>
-          <div className="confirm-dialog" onClick={e => e.stopPropagation()}>
+        <div className="modal-overlay modal-overlay--soft">
+          <button
+            type="button"
+            className="modal-overlay-dismiss"
+            aria-label="Cancel"
+            onClick={() => setDeleteConfirm(null)}
+          />
+          <div className="confirm-dialog">
             <div className="cd-head">
               <div className="cd-icon">
                 <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
@@ -5954,7 +5965,12 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
             }
           }} />
       )}
-      <div className="chat-backdrop" onClick={() => setDrawerOpen(false)} />
+      <button
+        type="button"
+        className="chat-backdrop"
+        aria-label="Close drawer"
+        onClick={() => setDrawerOpen(false)}
+      />
     </div>
   );
 }
