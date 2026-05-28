@@ -22,7 +22,7 @@ pub(in crate::ws) fn channel_belongs_to_team(conn: &rusqlite::Connection, channe
     db::get_channel_by_id(conn, channel_id)
         .ok()
         .flatten()
-        .map_or(false, |ch| ch.team_id == team_id)
+        .is_some_and(|ch| ch.team_id == team_id)
 }
 
 /// Verify that a channel belongs to the given team.
@@ -36,7 +36,7 @@ pub(in crate::ws) async fn verify_channel_team(database: &db::Database, channel_
     tokio::task::spawn_blocking(move || {
         db.with_conn(|conn| {
             let channel = db::get_channel_by_id(conn, &cid)?;
-            Ok(channel.map_or(false, |ch| ch.team_id == tid))
+            Ok(channel.is_some_and(|ch| ch.team_id == tid))
         })
     })
     .await
@@ -59,7 +59,7 @@ pub(in crate::ws) async fn verify_thread_channel_team(database: &db::Database, t
             match thread {
                 Some(t) => {
                     let channel = db::get_channel_by_id(conn, &t.channel_id)?;
-                    Ok(channel.map_or(false, |ch| ch.team_id == tid))
+                    Ok(channel.is_some_and(|ch| ch.team_id == tid))
                 }
                 None => Ok(false),
             }

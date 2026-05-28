@@ -226,7 +226,7 @@ pub async fn list_pinned_peers(
     require_manage_federation(&state, &user_id).await?;
     let db = state.db.clone();
     let rows = tokio::task::spawn_blocking(move || {
-        db.with_conn(|conn| crate::federation::peers::list_all(conn))
+        db.with_conn(crate::federation::peers::list_all)
     })
     .await
     .map_err(|e| AppError::Internal(format!("task join: {}", e)))?

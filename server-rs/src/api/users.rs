@@ -174,7 +174,7 @@ pub async fn put_identity_blob(
     // surface a 413 only when the body exceeds the per-route limit
     // layer, but we don't have one configured for this route; 400 is
     // the closest substitute and tells the client this is a hard cap.
-    if body.blob.as_bytes().len() > MAX_IDENTITY_BLOB_BYTES {
+    if body.blob.len() > MAX_IDENTITY_BLOB_BYTES {
         return Err(AppError::PayloadTooLarge(format!(
             "identity_blob too large (max {} bytes)",
             MAX_IDENTITY_BLOB_BYTES

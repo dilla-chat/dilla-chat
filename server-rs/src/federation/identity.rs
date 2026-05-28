@@ -58,7 +58,7 @@ impl NodeIdentity {
 /// stored as-is in `node_identity.private_key`; SQLCipher handles
 /// at-rest encryption.
 pub fn ensure(db: &Database) -> Result<NodeIdentity, rusqlite::Error> {
-    db.with_conn(|conn| ensure_with_conn(conn))
+    db.with_conn(ensure_with_conn)
 }
 
 fn ensure_with_conn(conn: &Connection) -> Result<NodeIdentity, rusqlite::Error> {

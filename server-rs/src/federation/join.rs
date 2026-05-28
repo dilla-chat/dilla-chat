@@ -128,13 +128,13 @@ impl JoinManager {
             );
             return;
         }
-        if join_secret.as_bytes().len() < JOIN_SECRET_MIN_BYTES {
+        if join_secret.len() < JOIN_SECRET_MIN_BYTES {
             tracing::warn!(
                 "DILLA_JOIN_SECRET is shorter than {} bytes ({} given) — vulnerable to offline \
                  HMAC brute-force against any captured join JWT (VULN-005). Use at least 32 \
                  random bytes (e.g. `head -c 64 /dev/urandom | base64`).",
                 JOIN_SECRET_MIN_BYTES,
-                join_secret.as_bytes().len(),
+                join_secret.len(),
             );
         }
     }

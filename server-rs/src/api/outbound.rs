@@ -147,7 +147,7 @@ mod url_lite {
     }
     impl Url {
         pub fn port_or_default(&self) -> u16 {
-            self.port.unwrap_or_else(|| match self.scheme.as_str() {
+            self.port.unwrap_or(match self.scheme.as_str() {
                 "https" => 443,
                 "http" => 80,
                 _ => 0,
@@ -160,7 +160,7 @@ mod url_lite {
         let scheme = scheme.to_ascii_lowercase();
         // Authority ends at first '/', '?', '#'.
         let end = rest
-            .find(|c: char| c == '/' || c == '?' || c == '#')
+            .find(['/', '?', '#'])
             .unwrap_or(rest.len());
         let authority = &rest[..end];
         // Drop optional userinfo `user:pass@`.

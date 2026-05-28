@@ -121,7 +121,7 @@ pub async fn vote(
     })?;
 
     let payload = poll_with_votes(poll, votes);
-    broadcast_to_channel(&state, &payload["channel_id"].as_str().unwrap_or(""), "poll:update", payload.clone()).await;
+    broadcast_to_channel(&state, payload["channel_id"].as_str().unwrap_or(""), "poll:update", payload.clone()).await;
     json_ok(payload)
 }
 
@@ -153,7 +153,7 @@ pub async fn unvote(
     })?;
 
     let payload = poll_with_votes(poll, votes);
-    broadcast_to_channel(&state, &payload["channel_id"].as_str().unwrap_or(""), "poll:update", payload.clone()).await;
+    broadcast_to_channel(&state, payload["channel_id"].as_str().unwrap_or(""), "poll:update", payload.clone()).await;
     json_ok(payload)
 }
 

@@ -12,7 +12,6 @@
 
 use axum::extract::{Path, State};
 use axum::{Extension, Json};
-use rusqlite::OptionalExtension;
 use serde::Deserialize;
 use serde_json::Value;
 

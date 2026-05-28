@@ -76,7 +76,7 @@ pub(in crate::ws) async fn handle_request(hub: &Hub, user_id: &str, team_id: &st
                                 return None;
                             }
                         }
-                        let mut v = serde_json::to_value(ch).unwrap_or_else(|_| serde_json::Value::Null);
+                        let mut v = serde_json::to_value(ch).unwrap_or(serde_json::Value::Null);
                         if let serde_json::Value::Object(ref mut m) = v {
                             m.insert("access_role_ids".to_string(), serde_json::json!(access));
                         }

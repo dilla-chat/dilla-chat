@@ -71,7 +71,7 @@ pub fn check(
         if team_id.is_empty() {
             return Ok(Decision::Denied("missing_team_id"));
         }
-        return Ok(check_team_authority(conn, origin, team_id)?);
+        return check_team_authority(conn, origin, team_id);
     }
 
     // Message events: author's home peer.
@@ -105,7 +105,7 @@ pub fn check(
         if team_id.is_empty() {
             return Ok(Decision::Denied("missing_team_id"));
         }
-        return Ok(check_team_authority(conn, origin, team_id)?);
+        return check_team_authority(conn, origin, team_id);
     }
 
     // Unknown variants: deny by default. Conservative — a future

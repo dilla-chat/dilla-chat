@@ -328,7 +328,7 @@ pub(crate) fn check_jwt_secret_strength(cfg: &Config) -> JwtStrengthOutcome {
     if has_jwt_secret {
         return JwtStrengthOutcome::OkExplicit;
     }
-    let pass_len = cfg.db_passphrase.as_bytes().len();
+    let pass_len = cfg.db_passphrase.len();
     if cfg.db_passphrase.is_empty() {
         return if cfg.insecure {
             JwtStrengthOutcome::InsecureEmptyPass
@@ -426,7 +426,7 @@ pub(crate) fn spawn_jwt_revocation_gc(db: Database) {
             let _ = tokio::task::spawn_blocking({
                 let db = db.clone();
                 move || {
-                    let _ = db.with_conn(|c| db::gc_revoked_jtis(c));
+                    let _ = db.with_conn(db::gc_revoked_jtis);
                 }
             })
             .await;

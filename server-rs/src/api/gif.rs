@@ -68,7 +68,7 @@ pub async fn search(
     let key_opt = spawn_db(state.db.clone(), move |conn| {
         require_team_member(conn, &user_id_clone, &team_id_clone)?;
         let key = format!("team:{}:giphy_api_key", team_id_clone);
-        Ok::<_, rusqlite::Error>(db::get_setting(conn, &key)?)
+        db::get_setting(conn, &key)
     })
     .await?;
     let key = key_opt.unwrap_or_default();
@@ -234,7 +234,7 @@ pub async fn embed(
         let db = state.db.clone();
         let tid_check = team_id.clone();
         let used: i64 = spawn_db(db, move |conn| {
-            Ok::<_, rusqlite::Error>(db::get_team_upload_bytes_used(conn, &tid_check)?)
+            db::get_team_upload_bytes_used(conn, &tid_check)
         })
         .await?;
         if used >= quota_bytes {
@@ -292,7 +292,7 @@ pub async fn embed(
         let db = state.db.clone();
         let tid_check = team_id.clone();
         let used: i64 = spawn_db(db, move |conn| {
-            Ok::<_, rusqlite::Error>(db::get_team_upload_bytes_used(conn, &tid_check)?)
+            db::get_team_upload_bytes_used(conn, &tid_check)
         })
         .await?;
         if used + (bytes.len() as i64) > quota_bytes {

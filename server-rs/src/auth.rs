@@ -571,7 +571,7 @@ impl AuthService {
             .read()
             .unwrap()
             .get(ticket)
-            .map_or(false, |t| t.created_at.elapsed() < Duration::from_secs(30))
+            .is_some_and(|t| t.created_at.elapsed() < Duration::from_secs(30))
     }
 
     /// Generate a WS ticket and return it along with metadata for logging.
@@ -588,7 +588,7 @@ impl AuthService {
             .get(ticket)
             .map(|t| {
                 let elapsed = t.created_at.elapsed().as_secs();
-                if elapsed >= 30 { 0 } else { 30 - elapsed }
+                30_u64.saturating_sub(elapsed)
             })
             .unwrap_or(0)
     }
