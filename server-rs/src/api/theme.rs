@@ -225,6 +225,29 @@ mod tests {
         assert_eq!(result, Some(":root { --x: 1; }".to_string()));
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn load_theme_file_returns_none_when_read_unauthorized() {
+        // canonicalize() + metadata() succeed (the file exists +
+        // the parent dir is traversable), but std::fs::read_to_string
+        // fails because the file is mode 0o000. This drives the
+        // Err arm of the final read_to_string match (L46-48).
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("locked.css");
+        std::fs::write(&path, ":root { --x: 1; }").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+        // Cross-check: if the current process can still read the
+        // file (e.g. running as root), skip the assertion — the test
+        // is a no-op rather than a false negative.
+        let can_still_read = std::fs::read_to_string(&path).is_ok();
+        let out = load_theme_file(path.to_str().unwrap());
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).ok();
+        if !can_still_read {
+            assert!(out.is_none());
+        }
+    }
+
     #[test]
     fn load_theme_file_returns_none_for_oversized_file() {
         let tmp = tempfile::tempdir().unwrap();
