@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import MeshTopBar from './MeshTopBar';
 import { useMeshStore } from '../../stores/meshStore';
 
@@ -52,5 +52,44 @@ describe('MeshTopBar', () => {
     useMeshStore.setState({ nodeName: 'gbg-1.dilla.local' });
     render(<MeshTopBar />);
     expect(screen.getByText('gbg-1')).toBeInTheDocument();
+  });
+
+  it('CMD button dispatches mesh:open-command-palette (L55)', () => {
+    const captured: CustomEvent[] = [];
+    const cb = (e: Event) => captured.push(e as CustomEvent);
+    window.addEventListener('mesh:open-command-palette', cb);
+    const { container } = render(<MeshTopBar />);
+    const cmd = Array.from(container.querySelectorAll('.mt-key')).find(
+      (b) => /CMD/.test(b.textContent ?? ''),
+    ) as HTMLButtonElement;
+    fireEvent.click(cmd);
+    window.removeEventListener('mesh:open-command-palette', cb);
+    expect(captured.length).toBe(1);
+  });
+
+  it('SEARCH button dispatches mesh:open-search (L64)', () => {
+    const captured: CustomEvent[] = [];
+    const cb = (e: Event) => captured.push(e as CustomEvent);
+    window.addEventListener('mesh:open-search', cb);
+    const { container } = render(<MeshTopBar />);
+    const search = Array.from(container.querySelectorAll('.mt-key')).find(
+      (b) => /SEARCH/.test(b.textContent ?? ''),
+    ) as HTMLButtonElement;
+    fireEvent.click(search);
+    window.removeEventListener('mesh:open-search', cb);
+    expect(captured.length).toBe(1);
+  });
+
+  it('HELP button dispatches mesh:open-shortcuts (L73)', () => {
+    const captured: CustomEvent[] = [];
+    const cb = (e: Event) => captured.push(e as CustomEvent);
+    window.addEventListener('mesh:open-shortcuts', cb);
+    const { container } = render(<MeshTopBar />);
+    const help = Array.from(container.querySelectorAll('.mt-key')).find(
+      (b) => /HELP/.test(b.textContent ?? ''),
+    ) as HTMLButtonElement;
+    fireEvent.click(help);
+    window.removeEventListener('mesh:open-shortcuts', cb);
+    expect(captured.length).toBe(1);
   });
 });
