@@ -179,6 +179,7 @@ function serverIdFromUrl(baseUrl: string): string {
 // wrapping key. The wrapping key lives in a non-extractable CryptoKey
 // stored in IndexedDB and is ephemeral per browser session. This prevents
 // the derivedKey from being stored as cleartext in sessionStorage.
+// NOSONAR(typescript:S2068) — storage key namespace, not a credential
 const DERIVED_KEY_STORAGE = 'dilla:derivedKey:enc';
 const WRAP_KEY_DB = 'dilla-wrap';
 const WRAP_KEY_STORE = 'keys';
