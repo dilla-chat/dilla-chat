@@ -1721,59 +1721,9 @@ export function ServerRail({ servers, activeServer, onPick }) {
              onClick={() => onPick(s.id)}
              onContextMenu={(e) => {
                e.preventDefault();
-               globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
-                 { label: s.name, icon: null, onClick: () => {} },
-                 { sep: true },
-                 { label: 'Team settings', icon: <Icon.Cog size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'team', tab: 'team' } })) },
-                 { label: 'Invites', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 4l6 5 6-5M2 4v8h12V4" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/></svg>, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'team', tab: 'invites' } })) },
-                 { label: 'Federation', icon: <Icon.Lightning size={12} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'team', tab: 'federation' } })) },
-                 { label: 'Mark all read', icon: null, onClick: () => {
-                   // Local clear via useUnreadStore, then ws.markChannelRead for
-                   // every channel in this team so other devices reconcile via
-                   // the channel:read echo. On /mesh the ws call is a no-op.
-                   const teamId = useTeamStore.getState().activeTeamId;
-                   const unread = useUnreadStore.getState();
-                   const list = data?.CHANNELS ?? [];
-                   for (const ch of list) {
-                     unread.markRead(ch.id);
-                     if (teamId && !isMockSession()) {
-                       try {
-                         const msgs = data?.MESSAGES?.[ch.id] ?? [];
-                         const lastId = msgs.length > 0 ? msgs[msgs.length - 1].id : '';
-                         if (lastId) ws.markChannelRead(teamId, ch.id, lastId);
-                       } catch { /* ignore per-channel failures */ }
-                     }
-                   }
-                   globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: s.name, author: 'system', text: 'All kanals in ' + s.name + ' marked as read.', duration: 2500 } }));
-                 } },
-                 { sep: true },
-                 { label: 'Leave team', danger: true, icon: null, onClick: async () => {
-                   if (!(await dillaConfirm({
-                     title: 'Leave ' + s.name + '?',
-                     body: 'You\'ll lose access to channels and DMs in this team until you re-join with an invite.',
-                     confirmLabel: 'Leave team',
-                     danger: true,
-                   }))) return;
-                   const teamId = useTeamStore.getState().activeTeamId;
-                   const myId = useAuthStore.getState().teams.get(teamId || '')?.user?.id;
-                   if (teamId && myId && !isMockSession()) {
-                     // Real self-leave via the dedicated endpoint (server
-                     // enforces the sole-admin guard and audit-logs
-                     // member.leave). member:left is broadcast so other
-                     // clients drop us + rotate channel keys.
-                     api.leaveTeam(teamId).then(() => {
-                       useAuthStore.getState().removeTeam?.(teamId);
-                       globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: s.name, author: 'system', text: 'Left ' + s.name + '.', duration: 3000 } }));
-                       globalThis.location.assign('/');
-                     }).catch((err: unknown) => {
-                       console.warn('[ChatApp] leave team failed', err);
-                       globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: s.name, author: 'system', text: 'Leave failed: ' + (err as Error).message, duration: 4000 } }));
-                     });
-                   } else {
-                     globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: s.name, author: 'system', text: 'Demo only — leave would propagate across the mesh on a live server.', duration: 3000 } }));
-                   }
-                 } },
-               ] } }));
+               globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', {
+                 detail: { x: e.clientX, y: e.clientY, items: buildRailContextMenu(s, data) },
+               }));
              }}
              title={s.name}>
           {s.short}
@@ -3872,6 +3822,61 @@ function resolveVoiceCardState(args: {
     ? cam && !!args.localWebcamStream
     : !!peerVoice?.webcam_sharing && !!args.remoteWebcamStreams?.[p.id];
   return { isSelf, mineMuted, mineDeaf, showScreen, showCam };
+}
+
+function markAllTeamChannelsRead(data: any, teamName: string): void {
+  const teamId = useTeamStore.getState().activeTeamId;
+  const unread = useUnreadStore.getState();
+  const list = data?.CHANNELS ?? [];
+  for (const ch of list) {
+    unread.markRead(ch.id);
+    if (teamId && !isMockSession()) {
+      try {
+        const msgs = data?.MESSAGES?.[ch.id] ?? [];
+        const lastId = msgs.length > 0 ? msgs[msgs.length - 1].id : '';
+        if (lastId) ws.markChannelRead(teamId, ch.id, lastId);
+      } catch { /* ignore per-channel failures */ }
+    }
+  }
+  globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'system', text: 'All kanals in ' + teamName + ' marked as read.', duration: 2500 } }));
+}
+
+async function leaveTeamFromRail(s: { name: string }): Promise<void> {
+  const confirmed = await dillaConfirm({
+    title: 'Leave ' + s.name + '?',
+    body: 'You\'ll lose access to channels and DMs in this team until you re-join with an invite.',
+    confirmLabel: 'Leave team',
+    danger: true,
+  });
+  if (!confirmed) return;
+  const teamId = useTeamStore.getState().activeTeamId;
+  const myId = useAuthStore.getState().teams.get(teamId || '')?.user?.id;
+  if (!teamId || !myId || isMockSession()) {
+    globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: s.name, author: 'system', text: 'Demo only — leave would propagate across the mesh on a live server.', duration: 3000 } }));
+    return;
+  }
+  try {
+    await api.leaveTeam(teamId);
+    useAuthStore.getState().removeTeam?.(teamId);
+    globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: s.name, author: 'system', text: 'Left ' + s.name + '.', duration: 3000 } }));
+    globalThis.location.assign('/');
+  } catch (err) {
+    console.warn('[ChatApp] leave team failed', err);
+    globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: s.name, author: 'system', text: 'Leave failed: ' + (err as Error).message, duration: 4000 } }));
+  }
+}
+
+function buildRailContextMenu(s: { name: string }, data: any): any[] {
+  return [
+    { label: s.name, icon: null, onClick: () => {} },
+    { sep: true },
+    { label: 'Team settings', icon: <Icon.Cog size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'team', tab: 'team' } })) },
+    { label: 'Invites', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 4l6 5 6-5M2 4v8h12V4" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/></svg>, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'team', tab: 'invites' } })) },
+    { label: 'Federation', icon: <Icon.Lightning size={12} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'team', tab: 'federation' } })) },
+    { label: 'Mark all read', icon: null, onClick: () => markAllTeamChannelsRead(data, s.name) },
+    { sep: true },
+    { label: 'Leave team', danger: true, icon: null, onClick: () => leaveTeamFromRail(s) },
+  ];
 }
 
 function flashMessage(container: HTMLElement | null, id: string): void {
