@@ -1202,23 +1202,7 @@ export function ThreadPanel({ channelId, messageId, members, onClose, onReact })
                     {r.reactions.map((rx, i) => (
                       <button type="button" key={`${rx.e}-${i}`}
                             className={'rxn' + (rx.mine ? ' mine' : '')}
-                            onClick={() => {
-                              setReplies(prev => prev.map(rr => {
-                                if (rr.id !== r.id) return rr;
-                                const list = [...(rr.reactions || [])];
-                                const idx = list.findIndex(x => x.e === rx.e);
-                                if (idx >= 0) {
-                                  const cur = list[idx];
-                                  if (cur.mine) {
-                                    if (cur.n <= 1) list.splice(idx, 1);
-                                    else list[idx] = { ...cur, n: cur.n - 1, mine: false };
-                                  } else {
-                                    list[idx] = { ...cur, n: cur.n + 1, mine: true };
-                                  }
-                                }
-                                return { ...rr, reactions: list };
-                              }));
-                            }}>
+                            onClick={() => setReplies(prev => toggleThreadReaction(prev, r.id, rx.e))}>
                         <span>{rx.e}</span><span>{rx.n}</span>
                       </button>
                     ))}
@@ -3863,6 +3847,24 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
       })()}
     </div>
   );
+}
+
+function toggleThreadReaction(prev: any[], replyId: string, emoji: string): any[] {
+  return prev.map((rr) => {
+    if (rr.id !== replyId) return rr;
+    const list = [...(rr.reactions || [])];
+    const idx = list.findIndex((x: { e: string }) => x.e === emoji);
+    if (idx >= 0) {
+      const cur = list[idx];
+      if (cur.mine) {
+        if (cur.n <= 1) list.splice(idx, 1);
+        else list[idx] = { ...cur, n: cur.n - 1, mine: false };
+      } else {
+        list[idx] = { ...cur, n: cur.n + 1, mine: true };
+      }
+    }
+    return { ...rr, reactions: list };
+  });
 }
 
 function resolveAttachmentList(m: { attachments?: any[]; attachment?: any }): any[] {
