@@ -3139,16 +3139,22 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                                     att.kind === 'image' ? (
                                       <div key={`img-${att.id ?? ai}`} className="attach">
                                         {att.src ? (
-                                          <img
-                                            className="attach-img"
-                                            src={att.src}
-                                            alt={att.label || ''}
+                                          <button
+                                            type="button"
+                                            className="attach-img-btn"
                                             onClick={() => {
                                               const idx = galleryImgs.indexOf(att.src as string);
                                               openLightbox(galleryImgs, Math.max(0, idx));
                                             }}
-                                            style={{ display: 'block', objectFit: 'cover', borderRadius: 4, cursor: 'zoom-in' }}
-                                          />
+                                            style={{ padding: 0, border: 'none', background: 'transparent', cursor: 'zoom-in' }}
+                                          >
+                                            <img
+                                              className="attach-img"
+                                              src={att.src}
+                                              alt={att.label || ''}
+                                              style={{ display: 'block', objectFit: 'cover', borderRadius: 4 }}
+                                            />
+                                          </button>
                                         ) : (
                                           <div className="attach-img" style={{ background: att.tint }}></div>
                                         )}
