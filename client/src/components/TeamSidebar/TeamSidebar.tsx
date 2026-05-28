@@ -109,7 +109,7 @@ export default function TeamSidebar() {
     );
 
     return (
-      <div
+      <article
         key={teamId}
         className={`team-icon-wrapper ${isActive ? 'active' : ''}`}
         data-tooltip={name}
@@ -136,7 +136,7 @@ export default function TeamSidebar() {
         {teamUnreadCount > 0 && (
           <span className="team-badge">{teamUnreadCount > 99 ? '99+' : teamUnreadCount}</span>
         )}
-      </div>
+      </article>
     );
   };
 
