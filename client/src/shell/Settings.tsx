@@ -377,7 +377,7 @@ export function CropModal({
     if (!d || !crop || !imgSize) return;
     const dx = e.clientX - d.startX;
     const dy = e.clientY - d.startY;
-    let next = { ...d.orig };
+    let next: typeof d.orig;
     if (d.mode === 'move') {
       next = { ...d.orig, x: d.orig.x + dx, y: d.orig.y + dy };
     } else {
