@@ -42,6 +42,44 @@ export default function UserProfile({ member, presence, x, y, onSendMessage, onC
   const status = presence?.status ?? 'offline';
   const statusLabel = t(`presence.${status === 'offline' ? 'offline' : status}`);
 
+  let verifyTitle: string;
+  if (verified) {
+    verifyTitle = t('profile.verifiedIdentity', 'Identity verified — click to re-check');
+  } else if (keyChanged) {
+    verifyTitle = t('profile.identityChanged', 'Identity key changed — verify again');
+  } else {
+    verifyTitle = t('profile.verifyIdentityTitle', 'Compare safety numbers out-of-band');
+  }
+
+  let verifyBody: React.ReactNode;
+  if (verified) {
+    verifyBody = (
+      <>
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M5 8l2 2 4-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        <span>{t('profile.verifiedBadge', 'Verified')}</span>
+      </>
+    );
+  } else if (keyChanged) {
+    verifyBody = (
+      <>
+        <span aria-hidden="true">⚠</span>
+        <span>{t('profile.verifyAgain', 'Re-verify identity')}</span>
+      </>
+    );
+  } else {
+    verifyBody = (
+      <>
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M8 1l6 3v4c0 4-3 6-6 7-3-1-6-3-6-7V4l6-3z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+        </svg>
+        <span>{t('profile.verifyIdentity', 'Verify identity')}</span>
+      </>
+    );
+  }
+
   return (
     <dialog
       className="user-profile-popover"
@@ -73,35 +111,9 @@ export default function UserProfile({ member, presence, x, y, onSendMessage, onC
               (keyChanged ? ' user-profile-verify--changed' : '')
             }
             onClick={openSafetyCompare}
-            title={
-              verified
-                ? t('profile.verifiedIdentity', 'Identity verified — click to re-check')
-                : keyChanged
-                  ? t('profile.identityChanged', 'Identity key changed — verify again')
-                  : t('profile.verifyIdentityTitle', 'Compare safety numbers out-of-band')
-            }
+            title={verifyTitle}
           >
-            {verified ? (
-              <>
-                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5" />
-                  <path d="M5 8l2 2 4-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                <span>{t('profile.verifiedBadge', 'Verified')}</span>
-              </>
-            ) : keyChanged ? (
-              <>
-                <span aria-hidden="true">⚠</span>
-                <span>{t('profile.verifyAgain', 'Re-verify identity')}</span>
-              </>
-            ) : (
-              <>
-                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <path d="M8 1l6 3v4c0 4-3 6-6 7-3-1-6-3-6-7V4l6-3z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
-                </svg>
-                <span>{t('profile.verifyIdentity', 'Verify identity')}</span>
-              </>
-            )}
+            {verifyBody}
           </button>
         )}
 

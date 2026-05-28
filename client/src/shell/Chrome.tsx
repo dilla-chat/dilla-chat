@@ -63,14 +63,39 @@ function BottomBar({ voiceConnection, peerStatus, federated = true, degraded = f
   const [latency, setLatency] = useStateMC(14);
   const serverConfig = useServerConfig();
   const dbEncrypted = serverConfig?.db_encrypted ?? null;
-  const dbLabel =
-    dbEncrypted === null ? 'CHECKING…' :
-    dbEncrypted ? 'SQLCIPHER · AES-256' : 'PLAIN SQLITE · UNENCRYPTED';
+  let dbLabel: string;
+  let dbTitle: string;
+  if (dbEncrypted === null) {
+    dbLabel = 'CHECKING…';
+    dbTitle = 'Waiting for server config…';
+  } else if (dbEncrypted) {
+    dbLabel = 'SQLCIPHER · AES-256';
+    dbTitle = 'SQLCipher at-rest encryption is active on the server.';
+  } else {
+    dbLabel = 'PLAIN SQLITE · UNENCRYPTED';
+    dbTitle = 'Server is running without DILLA_DB_PASSPHRASE (--insecure). The DB file on disk is plain SQLite.';
+  }
   const derivedKey = useAuthStore((s) => s.derivedKey);
-  const e2eState = derivedKey ? (isCryptoInitialized() ? 'active' : 'initializing') : 'locked';
-  const e2eLabel = e2eState === 'active'
-    ? 'SIGNAL · X3DH · AES-256-GCM'
-    : e2eState === 'initializing' ? 'INITIALIZING…' : 'LOCKED';
+  let e2eState: 'active' | 'initializing' | 'locked';
+  if (!derivedKey) {
+    e2eState = 'locked';
+  } else if (isCryptoInitialized()) {
+    e2eState = 'active';
+  } else {
+    e2eState = 'initializing';
+  }
+  let e2eLabel: string;
+  let e2eTitle: string;
+  if (e2eState === 'active') {
+    e2eLabel = 'SIGNAL · X3DH · AES-256-GCM';
+    e2eTitle = 'X3DH key agreement + Double Ratchet, AES-256-GCM AEAD. Click for encryption details.';
+  } else if (e2eState === 'initializing') {
+    e2eLabel = 'INITIALIZING…';
+    e2eTitle = 'Identity unlocked; crypto manager booting…';
+  } else {
+    e2eLabel = 'LOCKED';
+    e2eTitle = 'No derived key in this session — messages cannot be decrypted until you unlock.';
+  }
   useEffectMC(() => {
     const id = setInterval(() => {
       setLamport((l) => l + randomInt(4));
@@ -100,18 +125,12 @@ function BottomBar({ voiceConnection, peerStatus, federated = true, degraded = f
         </> :
       null}
       <div className={'mb-chunk mb-clickable' + (e2eState === 'locked' ? ' mb-warn' : '')}
-           title={e2eState === 'active'
-             ? 'X3DH key agreement + Double Ratchet, AES-256-GCM AEAD. Click for encryption details.'
-             : e2eState === 'initializing' ? 'Identity unlocked; crypto manager booting…'
-             : 'No derived key in this session — messages cannot be decrypted until you unlock.'}
+           title={e2eTitle}
            onClick={() => globalThis.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'user', tab: 'privacy' } }))}>
         <span className="mb-k">e2e</span> {e2eLabel}
       </div>
       <div className={'mb-chunk' + (dbEncrypted === false ? ' mb-warn' : '')}
-           title={dbEncrypted === false
-             ? 'Server is running without DILLA_DB_PASSPHRASE (--insecure). The DB file on disk is plain SQLite.'
-             : dbEncrypted ? 'SQLCipher at-rest encryption is active on the server.'
-             : 'Waiting for server config…'}>
+           title={dbTitle}>
         <span className="mb-k">db</span> {dbLabel}
       </div>
       {voiceConnection && (
