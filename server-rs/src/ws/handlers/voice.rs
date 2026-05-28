@@ -2,31 +2,9 @@ use crate::ws::events::*;
 use crate::ws::hub::Hub;
 use super::verify_channel_team;
 
-pub(in crate::ws) async fn handle_voice_join(
-    hub: &Hub,
-    client_id: &str,
-    user_id: &str,
-    username: &str,
-    team_id: &str,
-    p: VoiceJoinPayload,
-) {
-    tracing::info!(
-        "voice: handle_voice_join entered user={} channel={} team={}",
-        user_id,
-        p.channel_id,
-        team_id
-    );
-    // Verify the channel belongs to the user's team before joining voice.
-    if !verify_channel_team(&hub.db, &p.channel_id, team_id).await {
-        tracing::warn!(user_id = user_id, channel_id = %p.channel_id, "voice:join denied — channel does not belong to user's team");
-        return;
-    }
-
-    // Reject joins when the channel's role-access list excludes the user.
-    // Default channels include the everyone role so every team member
-    // passes; locked-down channels list specific roles only.
+async fn check_voice_join_access(hub: &Hub, user_id: &str, team_id: &str, channel_id: &str) -> bool {
     let db_clone = hub.db.clone();
-    let cid = p.channel_id.clone();
+    let cid = channel_id.to_string();
     let uid = user_id.to_string();
     let tid = team_id.to_string();
     let uid_log = uid.clone();
@@ -38,52 +16,23 @@ pub(in crate::ws) async fn handle_voice_join(
     .unwrap_or(Ok(false))
     .unwrap_or(false);
     tracing::info!(user_id = %uid_log, channel_id = %cid_log, allowed, "voice:join access-check result");
-    if !allowed {
-        tracing::info!(
-            user_id = user_id,
-            channel_id = %p.channel_id,
-            "voice:join denied — channel access denied"
-        );
-        if let Ok(evt) = Event::new(
-            EVENT_VOICE_JOIN_DENIED,
-            serde_json::json!({
-                "channel_id": p.channel_id,
-                "reason": "no_access",
-            }),
-        ) {
-            if let Ok(bytes) = evt.to_bytes() {
-                hub.send_to_user(user_id, bytes).await;
-            }
-        }
-        return;
-    }
+    allowed
+}
 
-    let room_mgr = match &hub.voice_room_manager {
-        Some(rm) => rm,
-        None => {
-            tracing::warn!("voice:join: no voice_room_manager wired; bailing");
-            return;
+async fn deny_voice_join(hub: &Hub, user_id: &str, channel_id: &str) {
+    tracing::info!(user_id, channel_id, "voice:join denied — channel access denied");
+    if let Ok(evt) = Event::new(
+        EVENT_VOICE_JOIN_DENIED,
+        serde_json::json!({ "channel_id": channel_id, "reason": "no_access" }),
+    ) {
+        if let Ok(bytes) = evt.to_bytes() {
+            hub.send_to_user(user_id, bytes).await;
         }
-    };
-
-    // Server-enforced single-channel invariant: add_peer evicts the
-    // user from any other voice channel they were in. Broadcast
-    // voice:user-left + tear down the SFU peer for each evicted
-    // channel so other clients update their sidebars and stale RTP
-    // stops flowing.
-    let evicted = room_mgr
-        .add_peer(&p.channel_id, user_id, username, team_id)
-        .await;
-    if !evicted.is_empty() {
-        tracing::info!(
-            "voice: evicting user={} from {} old channel(s) on join to {}: {:?}",
-            user_id,
-            evicted.len(),
-            p.channel_id,
-            evicted
-        );
     }
-    for old_channel in &evicted {
+}
+
+async fn process_eviction(hub: &Hub, client_id: &str, user_id: &str, evicted: &[String]) {
+    for old_channel in evicted {
         if let Ok(evt) = Event::new(
             EVENT_VOICE_USER_LEFT,
             VoiceUserLeftPayload {
@@ -100,6 +49,50 @@ pub(in crate::ws) async fn handle_voice_join(
         }
         hub.unsubscribe(client_id, old_channel).await;
     }
+}
+
+pub(in crate::ws) async fn handle_voice_join(
+    hub: &Hub,
+    client_id: &str,
+    user_id: &str,
+    username: &str,
+    team_id: &str,
+    p: VoiceJoinPayload,
+) {
+    tracing::info!(
+        "voice: handle_voice_join entered user={} channel={} team={}",
+        user_id,
+        p.channel_id,
+        team_id
+    );
+    if !verify_channel_team(&hub.db, &p.channel_id, team_id).await {
+        tracing::warn!(user_id = user_id, channel_id = %p.channel_id, "voice:join denied — channel does not belong to user's team");
+        return;
+    }
+
+    if !check_voice_join_access(hub, user_id, team_id, &p.channel_id).await {
+        deny_voice_join(hub, user_id, &p.channel_id).await;
+        return;
+    }
+
+    let Some(room_mgr) = &hub.voice_room_manager else {
+        tracing::warn!("voice:join: no voice_room_manager wired; bailing");
+        return;
+    };
+
+    let evicted = room_mgr
+        .add_peer(&p.channel_id, user_id, username, team_id)
+        .await;
+    if !evicted.is_empty() {
+        tracing::info!(
+            "voice: evicting user={} from {} old channel(s) on join to {}: {:?}",
+            user_id,
+            evicted.len(),
+            p.channel_id,
+            evicted
+        );
+    }
+    process_eviction(hub, client_id, user_id, &evicted).await;
 
     hub.subscribe(client_id, &p.channel_id).await;
     // Tag this WS as the voice-session holder so its eventual close
