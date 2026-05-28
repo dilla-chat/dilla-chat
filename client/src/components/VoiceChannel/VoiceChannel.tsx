@@ -9,6 +9,17 @@ interface Props {
   channel: Channel;
 }
 
+function resolveActiveScreenStream(args: {
+  screenSharing: boolean;
+  localScreenStream: MediaStream | null;
+  remoteScreenStreams: Record<string, MediaStream>;
+  sharerUserId: string | null;
+}): MediaStream | null {
+  if (args.screenSharing) return args.localScreenStream;
+  if (args.sharerUserId) return args.remoteScreenStreams[args.sharerUserId] ?? null;
+  return null;
+}
+
 function VideoPreview({ stream, onClick, className }: Readonly<{ stream: MediaStream; onClick?: () => void; className?: string }>) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [stats, setStats] = useState<{ w: number; h: number; fps: number } | null>(null);
@@ -89,14 +100,12 @@ export default function VoiceChannel({ channel }: Readonly<Props>) {
   const teamId = channel.teamId || (channel as unknown as Record<string, unknown>).team_id as string || activeTeamId;
 
   const sharerUserId = screenSharingUserId;
-  let activeScreenStream: MediaStream | null;
-  if (screenSharing) {
-    activeScreenStream = localScreenStream;
-  } else if (sharerUserId) {
-    activeScreenStream = remoteScreenStreams[sharerUserId] ?? null;
-  } else {
-    activeScreenStream = null;
-  }
+  const activeScreenStream = resolveActiveScreenStream({
+    screenSharing,
+    localScreenStream,
+    remoteScreenStreams,
+    sharerUserId,
+  });
   const sharerName = sharerUserId ? (peers[sharerUserId]?.username ?? 'Someone') : 'You';
   const hasScreenShare = !!(activeScreenStream && (screenSharing || sharerUserId));
 
