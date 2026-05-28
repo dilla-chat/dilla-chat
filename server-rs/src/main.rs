@@ -130,19 +130,7 @@ async fn main() {
     // derive_country_from_ip falls back to "unknown".
     geoip::init(&cfg.geoip_db_path);
 
-    // VULN-002 Phase 3 foundation: every install gets a stable
-    // Ed25519 node identity, even when federation isn't configured
-    // yet. Once the wire format moves to signed FederationEvents
-    // (see .security-hardening/14-federation-phase3-design.md) the
-    // keypair persisted here is what signs outbound events. Today
-    // it's a no-op for non-federated nodes.
-    match federation::identity::ensure(&database) {
-        Ok(id) => tracing::info!(
-            node_id = %id.node_id,
-            "FEDERATION: node identity ready"
-        ),
-        Err(e) => tracing::error!("FEDERATION: failed to ensure node identity: {}", e),
-    }
+    log_federation_identity_status(&database);
 
     let mesh = init_federation_mesh(&cfg, &database, &hub).await;
 
@@ -353,6 +341,21 @@ fn enforce_jwt_secret_strength(cfg: &Config) {
             eprintln!();
             std::process::exit(1);
         }
+    }
+}
+
+/// VULN-002 Phase 3 foundation: every install gets a stable Ed25519
+/// node identity, even when federation isn't configured yet. Logs the
+/// outcome (info on success, error on failure) so operators see the
+/// status in startup logs. Extracted from main() so the Ok/Err
+/// branches are independently testable.
+pub(crate) fn log_federation_identity_status(database: &Database) {
+    match federation::identity::ensure(database) {
+        Ok(id) => tracing::info!(
+            node_id = %id.node_id,
+            "FEDERATION: node identity ready"
+        ),
+        Err(e) => tracing::error!("FEDERATION: failed to ensure node identity: {}", e),
     }
 }
 
@@ -1188,6 +1191,18 @@ mod tests {
     // Drive each SFUEvent variant through the extracted helper. Hub is
     // real but with no connected clients — broadcast/send are no-ops
     // but the match arms + payload construction run.
+
+    // ── log_federation_identity_status ───────────────────────────────
+
+    #[test]
+    fn log_federation_identity_status_success_on_fresh_db() {
+        let (db, _tmp) = test_db();
+        // First call generates + persists the identity → tracing::info path.
+        log_federation_identity_status(&db);
+        // Second call hits the "already present" path inside ensure() →
+        // still Ok → still hits the info branch.
+        log_federation_identity_status(&db);
+    }
 
     // ── derive_node_name_for_auth ────────────────────────────────────
 
