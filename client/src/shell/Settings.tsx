@@ -549,10 +549,10 @@ export function CropModal({
                   onMouseDown={(e) => startDrag(e, 'move')}
                   style={{ left: crop.x, top: crop.y, width: crop.size, height: crop.size }}
                 >
-                  <span className="crop-handle nw" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'nw'); }} />
-                  <span className="crop-handle ne" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'ne'); }} />
-                  <span className="crop-handle sw" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'sw'); }} />
-                  <span className="crop-handle se" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'se'); }} />
+                  <button type="button" aria-label="Resize from top-left" className="crop-handle nw" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'nw'); }} />
+                  <button type="button" aria-label="Resize from top-right" className="crop-handle ne" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'ne'); }} />
+                  <button type="button" aria-label="Resize from bottom-left" className="crop-handle sw" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'sw'); }} />
+                  <button type="button" aria-label="Resize from bottom-right" className="crop-handle se" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'se'); }} />
                 </button>
               )}
             </div>

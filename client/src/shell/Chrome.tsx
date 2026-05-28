@@ -283,13 +283,13 @@ function CommandPalette({ open, onClose, onPickChannel, commands }) {
               {filtered.filter((c) => c.sec === sec).map((c) => {
               const i = filtered.indexOf(c);
               return (
-                <div key={c.cmd}
+                <button type="button" key={c.cmd}
                 className={'cmdk-row' + (i === idx ? ' selected' : '')}
                 onMouseEnter={() => setIdx(i)}
                 onClick={() => pick(c)}>
                     <span className="cmdk-cmd">{c.cmd}</span>
                     <span className="cmdk-kbd">{c.hint}</span>
-                  </div>);
+                  </button>);
 
             })}
             </div>
@@ -441,7 +441,7 @@ function SearchPalette({ open, onClose, onPickChannel }) {
             const author = data.byId[r.msg.author] || { name: r.msg.author, color: '#666', initials: '??' };
             const ch = data.CHANNELS.find((c) => c.id === r.chId);
             return (
-              <div key={r.msg.id}
+              <button type="button" key={r.msg.id}
               className={'srch-row' + (i === idx ? ' selected' : '')}
               onMouseEnter={() => setIdx(i)}
               onClick={() => pick(r)}>
@@ -453,7 +453,7 @@ function SearchPalette({ open, onClose, onPickChannel }) {
                   <span className="srch-time">{r.msg.at.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
                 <div className="srch-snippet">{highlight(r.msg.text || '', parsed.text || q)}</div>
-              </div>);
+              </button>);
 
           })}
         </div>
