@@ -2183,34 +2183,9 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
                    onClick={() => onPickDM(d.id)}
                    onContextMenu={(e) => {
                      e.preventDefault();
-                     globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
-                       { label: 'Mark as read', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M3 4h10M3 12h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>, onClick: () => {
-                         // DMs share the unread store with channels; the dm.id is
-                         // the same key the store uses. Server-side mark-read is
-                         // ws.markChannelRead too (server treats both the same).
-                         useUnreadStore.getState().markRead(d.id);
-                         const teamId = useTeamStore.getState().activeTeamId;
-                         if (teamId && !isMockSession()) {
-                           const msgs = data?.DM_MESSAGES?.[d.id] ?? [];
-                           const lastId = msgs.length > 0 ? msgs[msgs.length - 1].id : '';
-                           if (lastId) {
-                             try { ws.markChannelRead(teamId, d.id, lastId); } catch { /* ignore */ }
-                           }
-                         }
-                         globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'system', text: 'Marked DM as read.', duration: 2000 } }));
-                       } },
-                       { label: 'Mute notifications', icon: <Icon.Mic size={13} off />, onClick: () => {
-                         // Mute uses the same per-channel mute set as channels —
-                         // DM ids are stored alongside channel ids.
-                         toggleMuteChannel(d.id);
-                         globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'system', text: mutedChannels.has(d.id) ? 'Unmuted DM.' : 'DM muted.', duration: 2000 } }));
-                       } },
-                       { sep: true },
-                       { label: 'Close DM', danger: true, icon: null, onClick: () => {
-                         globalThis.dispatchEvent(new CustomEvent('dilla:close-dm', { detail: d.id }));
-                         globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'system', text: 'Closed DM. Re-open it from a member profile.', duration: 2500 } }));
-                       } },
-                     ] } }));
+                     globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', {
+                       detail: { x: e.clientX, y: e.clientY, items: buildDmContextMenu(d, data, mutedChannels, toggleMuteChannel) },
+                     }));
                    }}>
                 {isGroup ? (
                   <span className="ch-glyph"><Icon.People size={14} /></span>
@@ -3864,6 +3839,37 @@ async function leaveTeamFromRail(s: { name: string }): Promise<void> {
     console.warn('[ChatApp] leave team failed', err);
     globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: s.name, author: 'system', text: 'Leave failed: ' + (err as Error).message, duration: 4000 } }));
   }
+}
+
+function buildDmContextMenu(
+  d: { id: string },
+  data: any,
+  mutedChannels: Set<string>,
+  toggleMuteChannel: (id: string) => void,
+): any[] {
+  return [
+    { label: 'Mark as read', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M3 4h10M3 12h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>, onClick: () => {
+      useUnreadStore.getState().markRead(d.id);
+      const teamId = useTeamStore.getState().activeTeamId;
+      if (teamId && !isMockSession()) {
+        const msgs = data?.DM_MESSAGES?.[d.id] ?? [];
+        const lastId = msgs.length > 0 ? msgs[msgs.length - 1].id : '';
+        if (lastId) {
+          try { ws.markChannelRead(teamId, d.id, lastId); } catch { /* ignore */ }
+        }
+      }
+      globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'system', text: 'Marked DM as read.', duration: 2000 } }));
+    } },
+    { label: 'Mute notifications', icon: <Icon.Mic size={13} off />, onClick: () => {
+      toggleMuteChannel(d.id);
+      globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'system', text: mutedChannels.has(d.id) ? 'Unmuted DM.' : 'DM muted.', duration: 2000 } }));
+    } },
+    { sep: true },
+    { label: 'Close DM', danger: true, icon: null, onClick: () => {
+      globalThis.dispatchEvent(new CustomEvent('dilla:close-dm', { detail: d.id }));
+      globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'system', text: 'Closed DM. Re-open it from a member profile.', duration: 2500 } }));
+    } },
+  ];
 }
 
 function buildRailContextMenu(s: { name: string }, data: any): any[] {
