@@ -78,6 +78,52 @@ async fn compute_slow_mode_block(
     .unwrap_or(None)
 }
 
+async fn send_slow_mode_rejection(hub: &Hub, user_id: &str, channel_id: &str, remaining: i64) {
+    if let Ok(evt) = Event::new(
+        "message:rejected",
+        serde_json::json!({
+            "channel_id": channel_id,
+            "reason": "slow_mode",
+            "retry_in": remaining,
+        }),
+    ) {
+        if let Ok(bytes) = evt.to_bytes() {
+            hub.send_to_user(user_id, bytes).await;
+        }
+    }
+}
+
+/// Insert the message row and link its uploaded attachments. Returns
+/// false on a DB failure so the caller can bail without continuing the
+/// broadcast pipeline.
+async fn persist_message_and_attachments(
+    hub: &Hub,
+    msg: db::Message,
+    attachment_ids: Vec<String>,
+) -> bool {
+    let db = hub.db.clone();
+    let mid_for_attach = msg.id.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        db.with_conn(|conn| {
+            db::create_message(conn, &msg)?;
+            for att_id in &attachment_ids {
+                conn.execute(
+                    "UPDATE attachments SET message_id = ?1 WHERE id = ?2",
+                    rusqlite::params![mid_for_attach, att_id],
+                )?;
+            }
+            Ok::<(), rusqlite::Error>(())
+        })
+    })
+    .await
+    .unwrap();
+    if let Err(e) = result {
+        tracing::error!("failed to create message: {}", e);
+        return false;
+    }
+    true
+}
+
 pub(in crate::ws) async fn handle_message_send(
     hub: &Hub,
     _client_id: &str,
@@ -108,28 +154,13 @@ pub(in crate::ws) async fn handle_message_send(
 
     if let Some(remaining) = slow_mode_block {
         tracing::info!(user_id, channel_id = %p.channel_id, "message:send denied — slow mode active");
-        if let Ok(evt) = Event::new(
-            "message:rejected",
-            serde_json::json!({
-                "channel_id": p.channel_id,
-                "reason": "slow_mode",
-                "retry_in": remaining,
-            }),
-        ) {
-            if let Ok(bytes) = evt.to_bytes() {
-                hub.send_to_user(user_id, bytes).await;
-            }
-        }
+        send_slow_mode_rejection(hub, user_id, &p.channel_id, remaining).await;
         return;
     }
 
     let msg_id = db::new_id();
     let now = db::now_str();
-    let msg_type = if p.msg_type.is_empty() {
-        "text".to_string()
-    } else {
-        p.msg_type
-    };
+    let msg_type = if p.msg_type.is_empty() { "text".to_string() } else { p.msg_type };
 
     let msg = db::Message {
         id: msg_id.clone(),
@@ -146,28 +177,7 @@ pub(in crate::ws) async fn handle_message_send(
         created_at: now.clone(),
     };
 
-    let db = hub.db.clone();
-    let msg_clone = msg.clone();
-    let attachment_ids = p.attachment_ids.clone();
-    let mid_for_attach = msg_id.clone();
-    if let Err(e) =
-        tokio::task::spawn_blocking(move || {
-            db.with_conn(|conn| {
-                db::create_message(conn, &msg_clone)?;
-                // Link uploaded attachments to this message
-                for att_id in &attachment_ids {
-                    conn.execute(
-                        "UPDATE attachments SET message_id = ?1 WHERE id = ?2",
-                        rusqlite::params![mid_for_attach, att_id],
-                    )?;
-                }
-                Ok::<(), rusqlite::Error>(())
-            })
-        })
-            .await
-            .unwrap()
-    {
-        tracing::error!("failed to create message: {}", e);
+    if !persist_message_and_attachments(hub, msg.clone(), p.attachment_ids.clone()).await {
         return;
     }
 
