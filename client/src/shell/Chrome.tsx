@@ -239,8 +239,9 @@ function CommandPalette({ open, onClose, onPickChannel, commands }) {
   }
 
   return (
-    <div className="modal-overlay modal-overlay--top" onClick={onClose}>
-      <div className="cmdk" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay modal-overlay--top">
+      <button type="button" className="modal-overlay-dismiss" aria-label="Close" onClick={onClose} />
+      <div className="cmdk">
         <div className="cmdk-head">
           <span className="cmdk-prompt">{'>'}</span>
           <input ref={inputRef}
@@ -385,8 +386,9 @@ function SearchPalette({ open, onClose, onPickChannel }) {
 
   if (!open) return null;
   return (
-    <div className="modal-overlay modal-overlay--top" onClick={onClose}>
-      <div className="cmdk srch" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay modal-overlay--top">
+      <button type="button" className="modal-overlay-dismiss" aria-label="Close" onClick={onClose} />
+      <div className="cmdk srch">
         <div className="cmdk-head">
           <span className="cmdk-prompt">/</span>
           <input ref={inputRef}

@@ -261,8 +261,9 @@ function SafetyCompare({ contactId, onClose }) {
   const yp = tokensFor(ownHex);
   const tp = tokensFor(peerHex);
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="sc-dialog" onClick={e => e.stopPropagation()}>
+    <div className="modal-overlay">
+      <button type="button" className="modal-overlay-dismiss" aria-label="Close" onClick={onClose} />
+      <div className="sc-dialog">
         <header className="sc-head">
           <h2>Verify safety number</h2>
           <button className="sc-x" onClick={onClose}>×</button>
@@ -394,8 +395,9 @@ function AddPeerWizard({ open, onClose }) {
   }, [step]);
   if (!open) return null;
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="apw" onClick={e => e.stopPropagation()}>
+    <div className="modal-overlay">
+      <button type="button" className="modal-overlay-dismiss" aria-label="Close" onClick={onClose} />
+      <div className="apw">
         <header className="apw-head">
           <h2>Add a peer node</h2>
           <button className="sc-x" onClick={onClose}>×</button>

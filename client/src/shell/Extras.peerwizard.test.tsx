@@ -93,7 +93,7 @@ describe('AddPeerWizard', () => {
     const { container } = render(wrap(<AddPeerWizard open onClose={onClose} />));
     fireEvent.click(container.querySelector('.apw') as HTMLElement);
     expect(onClose).not.toHaveBeenCalled();
-    fireEvent.click(container.querySelector('.modal-overlay') as HTMLElement);
+    fireEvent.click(container.querySelector('.modal-overlay-dismiss') as HTMLElement);
     expect(onClose).toHaveBeenCalled();
   });
 

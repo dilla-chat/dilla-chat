@@ -214,7 +214,7 @@ describe('Chrome / CommandPalette', () => {
     );
     fireEvent.click(container.querySelector('.cmdk')!); // inside
     expect(onClose).not.toHaveBeenCalled();
-    fireEvent.click(container.querySelector('.modal-overlay')!); // backdrop
+    fireEvent.click(container.querySelector('.modal-overlay-dismiss')!); // backdrop
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

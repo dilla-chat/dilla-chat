@@ -273,7 +273,7 @@ describe('Extras / SafetyCompare', () => {
     ));
     fireEvent.click(container.querySelector('.sc-dialog')!);
     expect(onClose).not.toHaveBeenCalled();
-    fireEvent.click(container.querySelector('.modal-overlay')!);
+    fireEvent.click(container.querySelector('.modal-overlay-dismiss')!);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
