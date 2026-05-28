@@ -798,13 +798,15 @@ export function ConnectStep({
 
       {mode !== 'existing' && (
         <div className="onb-field">
-          <label>Server URL</label>
-          <input
-            type="text"
-            value={server}
-            onChange={(e) => setServer(e.target.value)}
-            placeholder="http://localhost:8080"
-          />
+          <label>
+            <span>Server URL</span>
+            <input
+              type="text"
+              value={server}
+              onChange={(e) => setServer(e.target.value)}
+              placeholder="http://localhost:8080"
+            />
+          </label>
         </div>
       )}
 
@@ -829,15 +831,15 @@ export function ConnectStep({
         <>
           <div className="onb-field">
             <label>
-              Passphrase <span style={{ opacity: 0.6, fontWeight: 400 }}>(optional)</span>
+              <span>Passphrase <span style={{ opacity: 0.6, fontWeight: 400 }}>(optional)</span></span>
+              <input
+                type="password"
+                value={passphrase}
+                onChange={(e) => setPassphrase(e.target.value)}
+                placeholder="leave blank to use passkey"
+                autoFocus
+              />
             </label>
-            <input
-              type="password"
-              value={passphrase}
-              onChange={(e) => setPassphrase(e.target.value)}
-              placeholder="leave blank to use passkey"
-              autoFocus
-            />
             <div className="onb-hint">
               If a passkey is registered on this device, we'll prompt the authenticator
               first. Passphrase is used as a fallback (or for accounts enrolled with
@@ -855,26 +857,30 @@ export function ConnectStep({
       {mode === 'existing' && useRecovery && (
         <>
           <div className="onb-field">
-            <label>Server URL</label>
-            <input
-              type="text"
-              value={recoveryServer}
-              onChange={(e) => setRecoveryServer(e.target.value)}
-              placeholder="http://localhost:8080"
-              autoFocus
-            />
+            <label>
+              <span>Server URL</span>
+              <input
+                type="text"
+                value={recoveryServer}
+                onChange={(e) => setRecoveryServer(e.target.value)}
+                placeholder="http://localhost:8080"
+                autoFocus
+              />
+            </label>
             <div className="onb-hint">
               The server that holds your encrypted identity blob.
             </div>
           </div>
           <div className="onb-field">
-            <label>Username</label>
-            <input
-              type="text"
-              value={recoveryUsername}
-              onChange={(e) => setRecoveryUsername(e.target.value)}
-              placeholder="username"
-            />
+            <label>
+              <span>Username</span>
+              <input
+                type="text"
+                value={recoveryUsername}
+                onChange={(e) => setRecoveryUsername(e.target.value)}
+                placeholder="username"
+              />
+            </label>
           </div>
           <div className="onb-field">
             <label>
