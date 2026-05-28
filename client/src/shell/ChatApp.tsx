@@ -1292,20 +1292,7 @@ export function VideoTile({ stream, fit = 'cover', mirror, showStats = true }: R
     const id = globalThis.setInterval(() => {
       pc.getStats(track)
         .then((report) => {
-          let bytes = 0;
-          let ts = 0;
-          report.forEach((stat) => {
-            if (stat.type === 'outbound-rtp' || stat.type === 'inbound-rtp') {
-              const s = stat as RTCRtpStreamStats & {
-                kind?: string;
-                bytesSent?: number;
-                bytesReceived?: number;
-              };
-              if (s.kind !== 'video') return;
-              bytes += s.bytesSent ?? s.bytesReceived ?? 0;
-              ts = Math.max(ts, s.timestamp ?? 0);
-            }
-          });
+          const { bytes, ts } = sumVideoRtpStats(report);
           if (lastTs > 0 && ts > lastTs && bytes >= lastBytes) {
             const dtSec = (ts - lastTs) / 1000;
             const dBytes = bytes - lastBytes;
@@ -3947,6 +3934,19 @@ function buildRailContextMenu(s: { name: string }, data: any): any[] {
     { sep: true },
     { label: 'Leave team', danger: true, icon: null, onClick: () => leaveTeamFromRail(s) },
   ];
+}
+
+function sumVideoRtpStats(report: RTCStatsReport): { bytes: number; ts: number } {
+  let bytes = 0;
+  let ts = 0;
+  report.forEach((stat) => {
+    if (stat.type !== 'outbound-rtp' && stat.type !== 'inbound-rtp') return;
+    const s = stat as RTCRtpStreamStats & { kind?: string; bytesSent?: number; bytesReceived?: number };
+    if (s.kind !== 'video') return;
+    bytes += s.bytesSent ?? s.bytesReceived ?? 0;
+    ts = Math.max(ts, s.timestamp ?? 0);
+  });
+  return { bytes, ts };
 }
 
 function flashMessage(container: HTMLElement | null, id: string): void {
