@@ -106,40 +106,40 @@ function BottomBar({ voiceConnection, peerStatus, federated = true, degraded = f
 
   return (
     <div className="mesh-bottom">
-      <div className="mb-chunk mb-clickable"
+      <button type="button" className="mb-chunk mb-clickable"
            title="Click for federation settings"
            onClick={() => globalThis.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'team', tab: 'federation' } }))}>
         <span className="mb-k">node</span> {nodeHost}
-      </div>
+      </button>
       {federated ?
       <>
-          <div className="mb-chunk mb-clickable"
+          <button type="button" className="mb-chunk mb-clickable"
                title="Click for peer status"
                onClick={() => globalThis.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'team', tab: 'federation' } }))}>
             <span className="mb-k">peers</span> {degraded
               ? <span style={{ color: 'var(--warn)', fontWeight: 600 }}>1/2 ⚠</span>
               : <span className="mb-ok">2/2 ▲</span>}
-          </div>
+          </button>
           <div className="mb-chunk"><span className="mb-k">lamport</span> {lamport.toLocaleString()}↑</div>
           <div className="mb-chunk"><span className="mb-k">latency</span> {degraded ? '—' : latency + 'ms p50'}</div>
         </> :
       null}
-      <div className={'mb-chunk mb-clickable' + (e2eState === 'locked' ? ' mb-warn' : '')}
+      <button type="button" className={'mb-chunk mb-clickable' + (e2eState === 'locked' ? ' mb-warn' : '')}
            title={e2eTitle}
            onClick={() => globalThis.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'user', tab: 'privacy' } }))}>
         <span className="mb-k">e2e</span> {e2eLabel}
-      </div>
+      </button>
       <div className={'mb-chunk' + (dbEncrypted === false ? ' mb-warn' : '')}
            title={dbTitle}>
         <span className="mb-k">db</span> {dbLabel}
       </div>
       {voiceConnection && (
-        <div className="mb-chunk mb-voice mb-clickable"
+        <button type="button" className="mb-chunk mb-voice mb-clickable"
              title="Click for voice settings"
              onClick={() => globalThis.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'user', tab: 'voice' } }))}>
           <span className="mb-k">voice</span> SFRAME · SRTP · OPUS 48kHz
           <AudioMeter />
-        </div>
+        </button>
       )}
       <div className="mb-chunk mb-grow"></div>
       <div className="mb-chunk"><span className="mb-k">v</span> {__APP_VERSION__} · build {__GIT_SHA__}</div>
