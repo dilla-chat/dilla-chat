@@ -192,6 +192,63 @@ pub async fn upload(
     Ok(Json(json!(attachment)))
 }
 
+/// Parse an attachment's `created_at` timestamp (best-effort: accepts
+/// the SQLite "%Y-%m-%d %H:%M:%S" UTC format the server writes today
+/// and RFC-3339 for the legacy rows). Returns None on unparseable
+/// input so the caller treats it as out-of-grace.
+fn attachment_created_at(att: &db::Attachment) -> Option<chrono::DateTime<chrono::Utc>> {
+    chrono::NaiveDateTime::parse_from_str(&att.created_at, "%Y-%m-%d %H:%M:%S")
+        .ok()
+        .map(|naive| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(naive, chrono::Utc))
+        .or_else(|| {
+            chrono::DateTime::parse_from_rfc3339(&att.created_at)
+                .ok()
+                .map(|t| t.with_timezone(&chrono::Utc))
+        })
+}
+
+/// Authorize an in-flight download against an unlinked attachment:
+/// 1. The row must still be inside the upload-to-link grace window.
+/// 2. The caller must be the original uploader (or, for pre-H-7
+///    legacy rows without an uploader_id, the storage path must live
+///    under this team's upload directory).
+fn authorize_unlinked_attachment_fetch(
+    att: &db::Attachment,
+    uid: &str,
+    tid: &str,
+    grace_secs: i64,
+) -> Result<(), rusqlite::Error> {
+    let still_in_grace = attachment_created_at(att)
+        .map(|c| (chrono::Utc::now() - c).num_seconds() < grace_secs)
+        .unwrap_or(false);
+    if !still_in_grace {
+        return Err(rusqlite::Error::InvalidParameterName(
+            "attachment is not linked to a message".into(),
+        ));
+    }
+    if let Some(ref upid) = att.uploader_id {
+        if upid != uid {
+            return Err(rusqlite::Error::InvalidParameterName(
+                "attachment does not belong to caller".into(),
+            ));
+        }
+        return Ok(());
+    }
+    // Legacy row without uploader_id — fall back to the per-team
+    // upload-directory match against storage_path.
+    let parent_dir = std::path::Path::new(&att.storage_path)
+        .parent()
+        .and_then(|p| p.file_name())
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+    if parent_dir != tid {
+        return Err(rusqlite::Error::InvalidParameterName(
+            "attachment does not belong to this team".into(),
+        ));
+    }
+    Ok(())
+}
+
 pub async fn download(
     Extension(UserId(user_id)): Extension<UserId>,
     State(state): State<AppState>,
@@ -220,65 +277,7 @@ pub async fn download(
                 .ok_or(rusqlite::Error::QueryReturnedNoRows)?;
 
             if att.message_id.is_empty() {
-                // Unlinked window: only the uploader (or a caller who
-                // can prove uploader-ness) can fetch, and only for a
-                // limited time. H-7 added attachments.uploader_id so
-                // new uploads pin to the caller; pre-migration rows
-                // (uploader_id IS NULL) fall back to a per-team
-                // upload-directory match against storage_path. Both
-                // paths kill the anonymous-bulk-download exposure of
-                // VULN-003 because the caller must already be a team
-                // member.
-                // db::now_str() format is "%Y-%m-%d %H:%M:%S" UTC.
-                // Treat unparseable timestamps as out-of-grace.
-                let still_in_grace = chrono::NaiveDateTime::parse_from_str(
-                    &att.created_at,
-                    "%Y-%m-%d %H:%M:%S",
-                )
-                .ok()
-                .map(|naive| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(naive, chrono::Utc))
-                .or_else(|| {
-                    chrono::DateTime::parse_from_rfc3339(&att.created_at)
-                        .ok()
-                        .map(|t| t.with_timezone(&chrono::Utc))
-                })
-                .map(|c| (chrono::Utc::now() - c).num_seconds() < UNLINKED_GRACE_SECS)
-                .unwrap_or(false);
-                if !still_in_grace {
-                    // Past grace window without a message link → treat
-                    // as orphaned and refuse to serve. The uploader's
-                    // client should have linked by now.
-                    return Err(rusqlite::Error::InvalidParameterName(
-                        "attachment is not linked to a message".into(),
-                    ));
-                }
-                // H-7: when the attachment carries an uploader_id
-                // (set on every new upload after migration 032), scope
-                // the in-grace fetch to that uploader. Falls back to
-                // the storage_path team-segment check from net-new #2
-                // for pre-migration rows that don't have uploader_id.
-                if let Some(ref upid) = att.uploader_id {
-                    if upid != &uid {
-                        return Err(rusqlite::Error::InvalidParameterName(
-                            "attachment does not belong to caller".into(),
-                        ));
-                    }
-                } else {
-                    // Legacy row — fall through to the
-                    // storage_path = '{upload_dir}/{team_id}/{aid}'
-                    // team-segment match. Same semantics as before
-                    // H-7 landed.
-                    let parent_dir = std::path::Path::new(&att.storage_path)
-                        .parent()
-                        .and_then(|p| p.file_name())
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("");
-                    if parent_dir != tid {
-                        return Err(rusqlite::Error::InvalidParameterName(
-                            "attachment does not belong to this team".into(),
-                        ));
-                    }
-                }
+                authorize_unlinked_attachment_fetch(&att, &uid, &tid, UNLINKED_GRACE_SECS)?;
                 return Ok(att);
             }
 
