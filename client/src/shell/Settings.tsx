@@ -423,7 +423,13 @@ export function CropModal({
   }
 
   return (
-    <div className="modal-overlay" onClick={onCancel}>
+    <div className="modal-overlay">
+      <button
+        type="button"
+        className="modal-overlay-dismiss"
+        aria-label="Cancel"
+        onClick={onCancel}
+      />
       <div className="modal-card crop-card" onClick={(e) => e.stopPropagation()}>
         <header className="modal-head">
           <h2>Crop avatar</h2>
@@ -1236,7 +1242,13 @@ export function SafetyNumberQR({
     };
   }, [payload]);
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
+      <button
+        type="button"
+        className="modal-overlay-dismiss"
+        aria-label="Close"
+        onClick={onClose}
+      />
       <div className="modal-card" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <header className="modal-head">
           <h3>{label} — safety number</h3>
@@ -2106,7 +2118,13 @@ export function RoleEditor({ teamId, role, onClose, onSaved }: Readonly<{ teamId
   }
 
   return (
-    <div className="set-modal-overlay" onClick={onClose}>
+    <div className="set-modal-overlay">
+      <button
+        type="button"
+        className="modal-overlay-dismiss"
+        aria-label="Close"
+        onClick={onClose}
+      />
       <div className="set-modal" onClick={(e) => e.stopPropagation()}>
         <header className="set-modal-head">
           <h3>Edit role</h3>

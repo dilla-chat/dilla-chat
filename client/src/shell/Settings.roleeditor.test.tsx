@@ -111,7 +111,7 @@ describe('RoleEditor', () => {
     const { container } = render(wrap(<RoleEditor teamId="t1" role={ROLE} onClose={onClose} onSaved={vi.fn()} />));
     fireEvent.click(container.querySelector('.set-modal') as HTMLElement);
     expect(onClose).not.toHaveBeenCalled();
-    fireEvent.click(container.querySelector('.set-modal-overlay') as HTMLElement);
+    fireEvent.click(container.querySelector('.modal-overlay-dismiss') as HTMLElement);
     expect(onClose).toHaveBeenCalled();
   });
 
