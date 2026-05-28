@@ -2742,7 +2742,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                 <Icon.Pin />
               </button>
               {pinnedOpen && (
-                <div className="pin-pop" onMouseLeave={() => {}}>
+                <div className="pin-pop">
                   <div className="pin-head">
                     <span>Pinned in #{channel.name}</span>
                     <button className="pin-x" onClick={() => setPinnedOpen(false)}>×</button>
@@ -2870,12 +2870,12 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                       );
                     })()}
                     {isFirst ? (
-                      <span style={{ cursor: 'pointer' }} onClick={(e) => {
+                      <button type="button" style={{ cursor: 'pointer', background: 'transparent', border: 'none', padding: 0 }} onClick={(e) => {
                         const r = e.currentTarget.getBoundingClientRect();
                         globalThis.dispatchEvent(new CustomEvent('dilla:open-profile', {
                           detail: { memberId: author.id || g.author, x: r.right + 8, y: r.top }
                         }));
-                      }}><Avatar member={author} /></span>
+                      }}><Avatar member={author} /></button>
                     ) : (
                       <div style={{ position: 'relative' }}>
                         <span style={{ position: 'absolute', right: 6, top: 4, fontFamily: 'var(--font-mono)', fontSize: 9.5, color: 'var(--fg-3)', opacity: 0 }}
@@ -2885,13 +2885,14 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                     <div>
                       {isFirst && (
                         <div className="head">
-                          <span className="author"
+                          <button type="button" className="author"
+                                style={{ background: 'transparent', border: 'none', padding: 0, font: 'inherit', color: 'inherit', cursor: 'pointer' }}
                                 onClick={(e) => {
                                   const r = e.currentTarget.getBoundingClientRect();
                                   globalThis.dispatchEvent(new CustomEvent('dilla:open-profile', {
                                     detail: { memberId: author.id || g.author, x: r.left, y: r.bottom + 4 }
                                   }));
-                                }}>{author.name}</span>
+                                }}>{author.name}</button>
                           <span className="at">{timeShort(m.at)}</span>
                           {m.author === currentUserId() && (() => {
                             // Render a real tooltip on the ack glyph. We
