@@ -174,6 +174,13 @@ function describeRotationResult(rotated: number): string {
   return `Rotated sender keys for ${rotated} ${noun}.`;
 }
 
+function clampCrop(next: { x: number; y: number; size: number }, w: number, h: number) {
+  const size = Math.max(40, Math.min(next.size, w, h));
+  const x = Math.max(0, Math.min(next.x, w - size));
+  const y = Math.max(0, Math.min(next.y, h - size));
+  return { x, y, size };
+}
+
 function cssColorToHex(cssColor: string, fallback: string): string {
   const m = /rgba?\(([^)]+)\)/i.exec(cssColor);
   if (!m) return fallback;
@@ -466,13 +473,6 @@ export function CropModal({
     setCrop({ x: (w - size) / 2, y: (h - size) / 2, size });
   }
 
-  function clamp(next: { x: number; y: number; size: number }, w: number, h: number) {
-    const size = Math.max(40, Math.min(next.size, w, h));
-    const x = Math.max(0, Math.min(next.x, w - size));
-    const y = Math.max(0, Math.min(next.y, h - size));
-    return { x, y, size };
-  }
-
   function startDrag(e: React.MouseEvent, mode: 'move' | 'nw' | 'ne' | 'sw' | 'se') {
     e.preventDefault();
     if (!crop) return;
@@ -501,7 +501,7 @@ export function CropModal({
       const y = bottom ? d.orig.y : d.orig.y + (d.orig.size - size);
       next = { x, y, size };
     }
-    setCrop(clamp(next, imgSize.w, imgSize.h));
+    setCrop(clampCrop(next, imgSize.w, imgSize.h));
   }
   function stopDrag() {
     dragRef.current = null;
