@@ -32,6 +32,8 @@ vi.mock('../services/websocket', () => ({
     joinChannel: vi.fn(),
     leaveChannel: vi.fn(),
     distributeChannelKey: vi.fn(),
+    sendMessage: vi.fn(),
+    sendDMMessage: vi.fn(),
   },
 }));
 
@@ -175,6 +177,62 @@ vi.mock('../components/ShortcutsModal/ShortcutsModal', () => ({
       <button data-testid="close-shortcuts" onClick={onClose}>Close Shortcuts</button>
     </div>
   ),
+}));
+vi.mock('../components/IncomingCall/IncomingCall', () => ({
+  default: ({ open, onAccept, onDecline }: {
+    open: boolean; onAccept: () => void; onDecline: () => void;
+  }) =>
+    open ? (
+      <div data-testid="incoming-call">
+        <button data-testid="ic-accept" onClick={onAccept}>accept</button>
+        <button data-testid="ic-decline" onClick={onDecline}>decline</button>
+      </div>
+    ) : null,
+}));
+vi.mock('../components/AddPeerWizard/AddPeerWizard', () => ({
+  default: ({ open, onClose, onComplete }: {
+    open: boolean; onClose: () => void; onComplete: (peer: { label: string }) => void;
+  }) =>
+    open ? (
+      <div data-testid="add-peer-wizard">
+        <button data-testid="apw-close" onClick={onClose}>close</button>
+        <button data-testid="apw-complete" onClick={() => onComplete({ label: 'newpeer' })}>complete</button>
+      </div>
+    ) : null,
+}));
+vi.mock('../components/SafetyCompare/SafetyCompare', () => ({
+  default: ({ open, onClose, onMarkVerified, onMarkMismatch }: {
+    open: boolean; onClose: () => void; onMarkVerified: () => void; onMarkMismatch: () => void;
+  }) =>
+    open ? (
+      <div data-testid="safety-compare">
+        <button data-testid="sc-close" onClick={onClose}>close</button>
+        <button data-testid="sc-verified" onClick={onMarkVerified}>verified</button>
+        <button data-testid="sc-mismatch" onClick={onMarkMismatch}>mismatch</button>
+      </div>
+    ) : null,
+}));
+vi.mock('../components/ForwardModal/ForwardModal', () => ({
+  default: ({ open, onClose, onForward }: {
+    open: boolean; onClose: () => void; onForward: (t: { id: string; label: string; kind: string }) => void;
+  }) =>
+    open ? (
+      <div data-testid="forward-modal">
+        <button data-testid="fm-close" onClick={onClose}>close</button>
+        <button
+          data-testid="fm-forward-channel"
+          onClick={() => onForward({ id: 'ch2', label: 'general', kind: 'channel' })}
+        >
+          fwd-chan
+        </button>
+        <button
+          data-testid="fm-forward-dm"
+          onClick={() => onForward({ id: 'dm1', label: 'bob', kind: 'dm' })}
+        >
+          fwd-dm
+        </button>
+      </div>
+    ) : null,
 }));
 vi.mock('../components/ResizeHandle/ResizeHandle', () => ({ default: () => <div data-testid="resize-handle">ResizeHandle</div> }));
 vi.mock('../components/TitleBar/TitleBar', () => ({ default: () => <div data-testid="title-bar">TitleBar</div> }));
@@ -1418,6 +1476,120 @@ describe('AppLayout behavioral', () => {
     render(<AppLayout />);
     act(() => window.dispatchEvent(new CustomEvent('mesh:open-safety-compare')));
     expect(true).toBe(true);
+  });
+
+  it('IncomingCall onAccept dispatches dilla:pickchannel and closes modal', async () => {
+    render(<AppLayout />);
+    await waitFor(() => expect(screen.getByText('general')).toBeInTheDocument());
+    act(() => {
+      window.dispatchEvent(new CustomEvent('mesh:incoming-call', {
+        detail: { callerName: 'alice', channelName: 'general', channelId: 'ch1' },
+      }));
+    });
+    await waitFor(() => expect(screen.getByTestId('incoming-call')).toBeInTheDocument());
+    const seen: string[] = [];
+    const cb = (e: Event) => seen.push((e as CustomEvent).detail as string);
+    window.addEventListener('dilla:pickchannel', cb);
+    act(() => fireEvent.click(screen.getByTestId('ic-accept')));
+    window.removeEventListener('dilla:pickchannel', cb);
+    expect(seen).toContain('ch1');
+    expect(screen.queryByTestId('incoming-call')).toBeNull();
+  });
+
+  it('IncomingCall onDecline just closes the modal (no dispatch)', async () => {
+    render(<AppLayout />);
+    await waitFor(() => expect(screen.getByText('general')).toBeInTheDocument());
+    act(() => {
+      window.dispatchEvent(new CustomEvent('mesh:incoming-call', {
+        detail: { callerName: 'alice', channelName: 'general', channelId: 'ch1' },
+      }));
+    });
+    await waitFor(() => expect(screen.getByTestId('incoming-call')).toBeInTheDocument());
+    act(() => fireEvent.click(screen.getByTestId('ic-decline')));
+    expect(screen.queryByTestId('incoming-call')).toBeNull();
+  });
+
+  it('AddPeerWizard onComplete bumps peer counts and shows the restored banner', async () => {
+    render(<AppLayout />);
+    await waitFor(() => expect(screen.getByText('general')).toBeInTheDocument());
+    act(() => window.dispatchEvent(new CustomEvent('mesh:open-add-peer')));
+    await waitFor(() => expect(screen.getByTestId('add-peer-wizard')).toBeInTheDocument());
+    act(() => fireEvent.click(screen.getByTestId('apw-complete')));
+  });
+
+  it('AddPeerWizard onClose closes the wizard', async () => {
+    render(<AppLayout />);
+    await waitFor(() => expect(screen.getByText('general')).toBeInTheDocument());
+    act(() => window.dispatchEvent(new CustomEvent('mesh:open-add-peer')));
+    await waitFor(() => expect(screen.getByTestId('add-peer-wizard')).toBeInTheDocument());
+    act(() => fireEvent.click(screen.getByTestId('apw-close')));
+    expect(screen.queryByTestId('add-peer-wizard')).toBeNull();
+  });
+
+  it('SafetyCompare onMarkVerified closes the modal + shows restored banner', async () => {
+    render(<AppLayout />);
+    await waitFor(() => expect(screen.getByText('general')).toBeInTheDocument());
+    act(() => window.dispatchEvent(new CustomEvent('mesh:open-safety-compare')));
+    await waitFor(() => expect(screen.getByTestId('safety-compare')).toBeInTheDocument());
+    act(() => fireEvent.click(screen.getByTestId('sc-verified')));
+    expect(screen.queryByTestId('safety-compare')).toBeNull();
+  });
+
+  it('SafetyCompare onMarkMismatch closes the modal + shows error banner', async () => {
+    render(<AppLayout />);
+    await waitFor(() => expect(screen.getByText('general')).toBeInTheDocument());
+    act(() => window.dispatchEvent(new CustomEvent('mesh:open-safety-compare')));
+    await waitFor(() => expect(screen.getByTestId('safety-compare')).toBeInTheDocument());
+    act(() => fireEvent.click(screen.getByTestId('sc-mismatch')));
+    expect(screen.queryByTestId('safety-compare')).toBeNull();
+  });
+
+  it('SafetyCompare onClose closes the modal', async () => {
+    render(<AppLayout />);
+    await waitFor(() => expect(screen.getByText('general')).toBeInTheDocument());
+    act(() => window.dispatchEvent(new CustomEvent('mesh:open-safety-compare')));
+    await waitFor(() => expect(screen.getByTestId('safety-compare')).toBeInTheDocument());
+    act(() => fireEvent.click(screen.getByTestId('sc-close')));
+    expect(screen.queryByTestId('safety-compare')).toBeNull();
+  });
+
+  it('ForwardModal onForward (channel kind) routes through ws.sendMessage path', async () => {
+    render(<AppLayout />);
+    await waitFor(() => expect(screen.getByText('general')).toBeInTheDocument());
+    act(() => {
+      window.dispatchEvent(new CustomEvent('mesh:open-forward', {
+        detail: { id: 'm-x', author: 'alice', timestamp: '12:00', body: 'forward me' },
+      }));
+    });
+    await waitFor(() => expect(screen.getByTestId('forward-modal')).toBeInTheDocument());
+    act(() => fireEvent.click(screen.getByTestId('fm-forward-channel')));
+    expect(screen.queryByTestId('forward-modal')).toBeNull();
+  });
+
+  it('ForwardModal onForward (dm kind) routes through ws.sendDMMessage path', async () => {
+    render(<AppLayout />);
+    await waitFor(() => expect(screen.getByText('general')).toBeInTheDocument());
+    act(() => {
+      window.dispatchEvent(new CustomEvent('mesh:open-forward', {
+        detail: { id: 'm-x', author: 'alice', timestamp: '12:00', body: 'forward me' },
+      }));
+    });
+    await waitFor(() => expect(screen.getByTestId('forward-modal')).toBeInTheDocument());
+    act(() => fireEvent.click(screen.getByTestId('fm-forward-dm')));
+    expect(screen.queryByTestId('forward-modal')).toBeNull();
+  });
+
+  it('ForwardModal onClose closes the modal', async () => {
+    render(<AppLayout />);
+    await waitFor(() => expect(screen.getByText('general')).toBeInTheDocument());
+    act(() => {
+      window.dispatchEvent(new CustomEvent('mesh:open-forward', {
+        detail: { id: 'm-x', author: 'alice', timestamp: '12:00', body: 'forward me' },
+      }));
+    });
+    await waitFor(() => expect(screen.getByTestId('forward-modal')).toBeInTheDocument());
+    act(() => fireEvent.click(screen.getByTestId('fm-close')));
+    expect(screen.queryByTestId('forward-modal')).toBeNull();
   });
 
   // ── content-header action buttons (L421/429/437/453) ──────────────
