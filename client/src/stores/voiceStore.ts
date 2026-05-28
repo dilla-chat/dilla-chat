@@ -85,6 +85,56 @@ interface VoiceStore {
 
 const LATENCY_WINDOW_SIZE = 28;
 
+type VoiceSet = (
+  partial: VoiceStore | Partial<VoiceStore> | ((state: VoiceStore) => VoiceStore | Partial<VoiceStore>),
+  replace?: false,
+) => void;
+
+/** Tear down the channel the caller is currently in (or trying to join)
+ *  so joinChannel can switch cleanly. Pulls self out of the prev
+ *  channel's voiceOccupants and resets all per-session voice state. */
+async function tearDownCurrentVoiceChannel(state: VoiceStore, set: VoiceSet): Promise<void> {
+  set({ connecting: true });
+  try {
+    const { webrtcService } = await import('../services/webrtc');
+    await webrtcService.disconnect();
+  } catch {
+    // ignore disconnect errors
+  }
+  // Pull self out of voiceOccupants[oldChannel] locally — mirrors what
+  // leaveChannel does for the explicit leave path.
+  const prevChannelId = state.currentChannelId;
+  const myId = state.currentTeamId
+    ? useAuthStore.getState().teams.get(state.currentTeamId)?.user?.id
+    : null;
+  let cleanedOccupants = state.voiceOccupants;
+  if (prevChannelId && myId) {
+    cleanedOccupants = { ...state.voiceOccupants };
+    const filtered = (cleanedOccupants[prevChannelId] ?? []).filter((p) => p.user_id !== myId);
+    if (filtered.length === 0) delete cleanedOccupants[prevChannelId];
+    else cleanedOccupants[prevChannelId] = filtered;
+  }
+  set({
+    currentChannelId: null,
+    currentTeamId: null,
+    connected: false,
+    muted: false,
+    deafened: false,
+    speaking: false,
+    screenSharing: false,
+    screenSharingUserId: null,
+    remoteScreenStreams: {},
+    localScreenStream: null,
+    voiceOccupants: cleanedOccupants,
+    webcamSharing: false,
+    localWebcamStream: null,
+    remoteWebcamStreams: {},
+    peers: {},
+    peerConnection: null,
+    localStream: null,
+  });
+}
+
 export const useVoiceStore = create<VoiceStore>((set, get) => ({
   currentChannelId: null,
   currentTeamId: null,
@@ -114,53 +164,10 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
   joinChannel: async (teamId: string, channelId: string) => {
     const state = get();
     if (state.connecting) return;
-    // Already connected to this channel
     if (state.connected && state.currentChannelId === channelId) return;
 
-    // Leave current channel first if connected elsewhere — AWAIT to avoid race
     if (state.connected || state.currentChannelId) {
-      set({ connecting: true });
-      try {
-        const { webrtcService } = await import('../services/webrtc');
-        await webrtcService.disconnect();
-      } catch {
-        // ignore disconnect errors
-      }
-      // Pull self out of voiceOccupants[oldChannel] locally so the
-      // sidebar's 'Active voice' group hides immediately on switch.
-      // The server's voice:user-left broadcast may or may not echo
-      // back to the sender depending on hub.broadcast_to_all — this
-      // mirrors what leaveChannel does for the explicit leave path.
-      const prevChannelId = state.currentChannelId;
-      const myId = state.currentTeamId
-        ? useAuthStore.getState().teams.get(state.currentTeamId)?.user?.id
-        : null;
-      let cleanedOccupants = state.voiceOccupants;
-      if (prevChannelId && myId) {
-        cleanedOccupants = { ...state.voiceOccupants };
-        const filtered = (cleanedOccupants[prevChannelId] ?? []).filter((p) => p.user_id !== myId);
-        if (filtered.length === 0) delete cleanedOccupants[prevChannelId];
-        else cleanedOccupants[prevChannelId] = filtered;
-      }
-      set({
-        currentChannelId: null,
-        currentTeamId: null,
-        connected: false,
-        muted: false,
-        deafened: false,
-        speaking: false,
-        screenSharing: false,
-        screenSharingUserId: null,
-        remoteScreenStreams: {},
-        localScreenStream: null,
-        voiceOccupants: cleanedOccupants,
-        webcamSharing: false,
-        localWebcamStream: null,
-        remoteWebcamStreams: {},
-        peers: {},
-        peerConnection: null,
-        localStream: null,
-      });
+      await tearDownCurrentVoiceChannel(state, set);
     }
 
     set({ connecting: true, currentTeamId: teamId, currentChannelId: channelId });
