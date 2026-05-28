@@ -26,6 +26,22 @@ type InboundStreamStat = { kind?: string; mid?: string; bytesReceived?: number; 
  *  - rttMs from the nominated, succeeded candidate-pair (when present)
  *  - bytesSent summed across every outbound-rtp stream (audio + video)
  *  - per-stream outbound + inbound rows for diag logging */
+function repinOneTransceiver(tx: RTCRtpTransceiver): void {
+  if (tx.sender.track && tx.direction !== 'sendonly') {
+    try {
+      tx.direction = 'sendonly';
+      console.log('[Voice/diag] re-pin sendonly:', { mid: tx.mid, kind: tx.sender.track.kind });
+    } catch { /* read-only in some states */ }
+    return;
+  }
+  if (!tx.sender.track && tx.receiver.track && tx.direction !== 'recvonly') {
+    try {
+      tx.direction = 'recvonly';
+      console.log('[Voice/diag] re-pin recvonly:', { mid: tx.mid, kind: tx.receiver.track.kind });
+    } catch { /* read-only in some states */ }
+  }
+}
+
 function summarizeRtcStats(report: RTCStatsReport): {
   rttMs: number | null;
   bytesSent: number | null;
@@ -534,19 +550,7 @@ class WebRTCService {
     if (!this.pc) return;
     for (const tx of this.pc.getTransceivers()) {
       if (tx.currentDirection === 'stopped') continue;
-      if (tx.sender.track && tx.direction !== 'sendonly') {
-        try {
-          tx.direction = 'sendonly';
-          console.log('[Voice/diag] re-pin sendonly:', { mid: tx.mid, kind: tx.sender.track.kind });
-        } catch { /* read-only in some states */ }
-        continue;
-      }
-      if (!tx.sender.track && tx.receiver.track && tx.direction !== 'recvonly') {
-        try {
-          tx.direction = 'recvonly';
-          console.log('[Voice/diag] re-pin recvonly:', { mid: tx.mid, kind: tx.receiver.track.kind });
-        } catch { /* read-only in some states */ }
-      }
+      repinOneTransceiver(tx);
     }
   }
 
