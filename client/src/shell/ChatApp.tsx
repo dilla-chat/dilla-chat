@@ -4123,6 +4123,23 @@ function toggleRoleInSet(prev: Set<string>, roleId: string): Set<string> {
   return next;
 }
 
+function applyToggleReaction(m: any, emoji: string): any {
+  const rxns = m.reactions ? [...m.reactions] : [];
+  const idx = rxns.findIndex((r: { e: string }) => r.e === emoji);
+  if (idx >= 0) {
+    const r = rxns[idx];
+    if (r.mine) {
+      if (r.n <= 1) rxns.splice(idx, 1);
+      else rxns[idx] = { ...r, n: r.n - 1, mine: false };
+    } else {
+      rxns[idx] = { ...r, n: r.n + 1, mine: true };
+    }
+  } else {
+    rxns.push({ e: emoji, n: 1, mine: true });
+  }
+  return { ...m, reactions: rxns };
+}
+
 function toggleThreadReaction(prev: any[], replyId: string, emoji: string): any[] {
   return prev.map((rr) => {
     if (rr.id !== replyId) return rr;
@@ -4616,12 +4633,13 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
                   </div>
                 )}
                 {!isMini && p.id !== currentUserId() && (
-                  <div className="v-volume" onClick={(e) => e.stopPropagation()}>
+                  <span className="v-volume">
                     <Icon.Headphones size={10} />
                     <input type="range" min={0} max={100} value={vol(p.id)}
+                           onClick={(e) => e.stopPropagation()}
                            onChange={(e) => setVolumes(v => ({ ...v, [p.id]: Number.parseInt(e.target.value, 10) }))} />
                     <span className="v-volume-val">{vol(p.id)}</span>
-                  </div>
+                  </span>
                 )}
               </div>
             );
@@ -5400,23 +5418,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
       const arr = prev[channelId] || [];
       return {
         ...prev,
-        [channelId]: arr.map(m => {
-          if (m.id !== msgId) return m;
-          const rxns = m.reactions ? [...m.reactions] : [];
-          const idx = rxns.findIndex(r => r.e === emoji);
-          if (idx >= 0) {
-            const r = rxns[idx];
-            if (r.mine) {
-              if (r.n <= 1) rxns.splice(idx, 1);
-              else rxns[idx] = { ...r, n: r.n - 1, mine: false };
-            } else {
-              rxns[idx] = { ...r, n: r.n + 1, mine: true };
-            }
-          } else {
-            rxns.push({ e: emoji, n: 1, mine: true });
-          }
-          return { ...m, reactions: rxns };
-        })
+        [channelId]: arr.map(m => m.id === msgId ? applyToggleReaction(m, emoji) : m),
       };
     });
     // Real reaction toggle (channel only — DM reactions API not exposed yet).
