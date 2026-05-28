@@ -2013,10 +2013,9 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
                   if (!perms.has(PERM_MANAGE_CHANNELS)) return;
                   e.preventDefault();
                   const groupId = grp.key.slice(2);
-                  globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
-                    { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-group-access', { detail: groupId })) },
-                    { label: 'Group settings', icon: <Icon.Cog size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-group-settings', { detail: groupId })) },
-                  ] } }));
+                  globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', {
+                    detail: { x: e.clientX, y: e.clientY, items: buildGroupContextMenu(groupId) },
+                  }));
                 }}
               >
                 <span className="cat-chev" style={{ transform: collapsedGroups.has(grp.key) ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▾</span>
@@ -2084,10 +2083,9 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
                   if (!perms.has(PERM_MANAGE_CHANNELS)) return;
                   e.preventDefault();
                   const groupId = grp.key.slice(2);
-                  globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
-                    { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-group-access', { detail: groupId })) },
-                    { label: 'Group settings', icon: <Icon.Cog size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-group-settings', { detail: groupId })) },
-                  ] } }));
+                  globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', {
+                    detail: { x: e.clientX, y: e.clientY, items: buildGroupContextMenu(groupId) },
+                  }));
                 }}
               >
                 <span className="cat-chev" style={{ transform: collapsedGroups.has('voice:' + grp.key) ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▾</span>
@@ -3788,6 +3786,13 @@ async function leaveTeamFromRail(s: { name: string }): Promise<void> {
     console.warn('[ChatApp] leave team failed', err);
     globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: s.name, author: 'system', text: 'Leave failed: ' + (err as Error).message, duration: 4000 } }));
   }
+}
+
+function buildGroupContextMenu(groupId: string): any[] {
+  return [
+    { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-group-access', { detail: groupId })) },
+    { label: 'Group settings', icon: <Icon.Cog size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-group-settings', { detail: groupId })) },
+  ];
 }
 
 function buildActiveVoiceChannelMenu(
