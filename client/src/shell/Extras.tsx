@@ -26,15 +26,16 @@ function NotificationStack({ teaserOnly = false }) {
   // object ref so changes don't trigger renders.
   const timers = useT2R<Record<string, ReturnType<typeof setTimeout>>>({});
   useT2E(() => {
+    const expireToast = (id) => {
+      setToasts(prev => prev.filter(x => x.id !== id));
+      delete timers.current[id];
+    };
     function add(e) {
       const id = shortId('t');
       const t = { id, ...e.detail };
       setToasts(prev => [...prev.slice(-3), t]);
       const dur = e.detail.duration || 5500;
-      timers.current[id] = setTimeout(() => {
-        setToasts(prev => prev.filter(x => x.id !== id));
-        delete timers.current[id];
-      }, dur);
+      timers.current[id] = setTimeout(() => expireToast(id), dur);
     }
     globalThis.addEventListener('dilla:notify', add);
     return () => globalThis.removeEventListener('dilla:notify', add);
@@ -390,12 +391,13 @@ function AddPeerWizard({ open, onClose }) {
     ];
     let acc = 0;
     const timeouts = [];
+    const queueLogLine = (line, i) => {
+      setLog(prev => [...prev, line]);
+      if (i === seq.length - 1) timeouts.push(setTimeout(() => setStep(3), 600));
+    };
     seq.forEach((line, i) => {
       acc += 320;
-      timeouts.push(setTimeout(() => {
-        setLog(prev => [...prev, line]);
-        if (i === seq.length - 1) timeouts.push(setTimeout(() => setStep(3), 600));
-      }, acc));
+      timeouts.push(setTimeout(() => queueLogLine(line, i), acc));
     });
     return () => timeouts.forEach(clearTimeout);
   }, [step]);
