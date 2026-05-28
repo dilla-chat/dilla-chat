@@ -1992,32 +1992,9 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
                         <div key={pid} className={'voice-participant' + (speaking ? ' speaking' : '') + (muted ? ' muted' : '')}
                              onContextMenu={(e) => {
                                e.preventDefault();
-                               globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
-                                 { label: 'Adjust volume', icon: <Icon.Headphones size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'voice', author: 'mixer', text: 'Per-user volume slider for ' + m.name + ' (drag to set).', duration: 3500 } })) },
-                                 { label: 'View profile', icon: <Icon.People size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-profile', { detail: { memberId: pid, x: 200, y: 200 } })) },
-                                 { sep: true },
-                                 { label: 'Mute for me only', icon: <Icon.Mic size={13} off />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'mixer', text: 'Muted ' + m.name + ' for this session only.', duration: 2500 } })) },
-                                 ...(perms.has(PERM_MUTE_VOICE) && pid !== currentUserId() && !muted ? [{
-                                   label: 'Server-mute',
-                                   danger: true,
-                                   icon: <Icon.Mic size={13} off />,
-                                   onClick: () => {
-                                     if (!sidebarTeamId) return;
-                                     ws.voiceForceMute(sidebarTeamId, c.id, pid);
-                                     globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'admin', text: 'Server-muted ' + m.name + '.', duration: 2500 } }));
-                                   },
-                                 }] : []),
-                                 ...(perms.has(PERM_MUTE_VOICE) && pid !== currentUserId() ? [{
-                                   label: 'Disconnect from voice',
-                                   danger: true,
-                                   icon: null,
-                                   onClick: () => {
-                                     if (!sidebarTeamId) return;
-                                     ws.voiceForceDisconnect(sidebarTeamId, c.id, pid);
-                                     globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'admin', text: 'Disconnected ' + m.name + ' from voice.', duration: 2500 } }));
-                                   },
-                                 }] : []),
-                               ] } }));
+                               globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', {
+                                 detail: { x: e.clientX, y: e.clientY, items: buildVoiceParticipantMenu(m, pid, c.id, muted, perms.has(PERM_MUTE_VOICE), sidebarTeamId) },
+                               }));
                              }}>
                           <div className={memberAvatarClass(m, 'vp-avatar')} style={memberAvatarStyle(m)}>{!m.avatarUrl && m.initials}</div>
                           <span className="vp-name">{m.name}</span>
@@ -3839,6 +3816,47 @@ async function leaveTeamFromRail(s: { name: string }): Promise<void> {
     console.warn('[ChatApp] leave team failed', err);
     globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: s.name, author: 'system', text: 'Leave failed: ' + (err as Error).message, duration: 4000 } }));
   }
+}
+
+function buildVoiceParticipantMenu(
+  m: { name: string },
+  pid: string,
+  channelId: string,
+  muted: boolean,
+  canMuteVoice: boolean,
+  sidebarTeamId: string | null,
+): any[] {
+  const items: any[] = [
+    { label: 'Adjust volume', icon: <Icon.Headphones size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'voice', author: 'mixer', text: 'Per-user volume slider for ' + m.name + ' (drag to set).', duration: 3500 } })) },
+    { label: 'View profile', icon: <Icon.People size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-profile', { detail: { memberId: pid, x: 200, y: 200 } })) },
+    { sep: true },
+    { label: 'Mute for me only', icon: <Icon.Mic size={13} off />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'mixer', text: 'Muted ' + m.name + ' for this session only.', duration: 2500 } })) },
+  ];
+  if (canMuteVoice && pid !== currentUserId() && !muted) {
+    items.push({
+      label: 'Server-mute',
+      danger: true,
+      icon: <Icon.Mic size={13} off />,
+      onClick: () => {
+        if (!sidebarTeamId) return;
+        ws.voiceForceMute(sidebarTeamId, channelId, pid);
+        globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'admin', text: 'Server-muted ' + m.name + '.', duration: 2500 } }));
+      },
+    });
+  }
+  if (canMuteVoice && pid !== currentUserId()) {
+    items.push({
+      label: 'Disconnect from voice',
+      danger: true,
+      icon: null,
+      onClick: () => {
+        if (!sidebarTeamId) return;
+        ws.voiceForceDisconnect(sidebarTeamId, channelId, pid);
+        globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'admin', text: 'Disconnected ' + m.name + ' from voice.', duration: 2500 } }));
+      },
+    });
+  }
+  return items;
 }
 
 function buildDmContextMenu(
