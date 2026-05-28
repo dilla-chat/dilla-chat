@@ -510,7 +510,7 @@ export class CryptoManager {
    *  fields to read identity_dh / ephemeral / opk index from. Group
    *  sessions are sender-side and unaffected. */
   loadSessions(data: Record<string, unknown>): void {
-    const persistedVersion = typeof data.version === 'number' ? (data.version as number) : 1;
+    const persistedVersion = typeof data.version === 'number' ? data.version : 1;
     const stale = persistedVersion < CryptoManager.SESSION_FORMAT_VERSION;
     if (stale) {
       console.warn(

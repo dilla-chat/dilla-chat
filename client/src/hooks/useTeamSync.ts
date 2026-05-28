@@ -417,8 +417,9 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
       const teamStore = useTeamStore.getState();
       const list = teamStore.channels.get(teamIdFromPayload) ?? [];
       const idx = list.findIndex((c) => c.id === payload.id);
+      const baseline = idx >= 0 ? list[idx] : ({} as Partial<Channel> as Channel);
       const updated: Channel = {
-        ...(idx >= 0 ? list[idx] : ({} as Channel)),
+        ...baseline,
         ...payload,
         teamId: teamIdFromPayload,
         accessRoleIds: (payload.access_role_ids ?? payload.accessRoleIds ?? (idx >= 0 ? list[idx].accessRoleIds : [])) as string[],

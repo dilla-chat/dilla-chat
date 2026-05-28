@@ -144,7 +144,7 @@ export function serverToMessage(
     );
     username = resolveDisplayName(member) ?? username;
   }
-  return {
+  const result: Message = {
     id: msg.id,
     channelId: msg.channel_id,
     authorId: msg.author_id,
@@ -160,7 +160,8 @@ export function serverToMessage(
     reactions: msg.reactions ?? [],
     attachments: msg.attachments?.map((a) => ({
       ...a,
-      url: a.url.startsWith('/') ? `${window.location.origin}${a.url}` : a.url,
+      url: a.url.startsWith('/') ? `${globalThis.location.origin}${a.url}` : a.url,
     })),
-  } as Message;
+  };
+  return result;
 }

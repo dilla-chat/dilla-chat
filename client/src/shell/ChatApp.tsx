@@ -4233,8 +4233,8 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
                           tile — the Avatar provides its own dot, so we
                           only add this one when the avatar isn't the
                           rendered content. */}
-                      {renderKind !== 'avatar' && (p as any).status && (
-                        <span className={`voice-media-presence presence ${(p as any).status}`} />
+                      {renderKind !== 'avatar' && p.status && (
+                        <span className={`voice-media-presence presence ${p.status}`} />
                       )}
                     </div>
                   )}
@@ -4710,7 +4710,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
           }
         }
         if (removedText) {
-          setDrafts(d => ({ ...d, [channelId]: removedText! }));
+          setDrafts(d => ({ ...d, [channelId]: removedText }));
         }
         return { ...prev, [channelId]: next };
       });

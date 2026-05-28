@@ -107,7 +107,8 @@ export async function savePrekeySecrets(
   const db = await openDB();
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(VAULT_STORE, 'readwrite');
-    tx.objectStore(VAULT_STORE).put({ id: 1, ciphertext, updatedAt: Date.now() } as StoredVault);
+    const entry: StoredVault = { id: 1, ciphertext, updatedAt: Date.now() };
+    tx.objectStore(VAULT_STORE).put(entry);
     tx.oncomplete = () => {
       db.close();
       resolve();
