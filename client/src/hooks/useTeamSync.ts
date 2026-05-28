@@ -94,61 +94,56 @@ function applyPresences(teamId: string, raw: any, setters: SyncStoreSetters) {
   }
 }
 
-/** Apply sync:init data to stores */
+function normalizeSyncChannels(raw: Record<string, unknown>[], teamId: string): Channel[] {
+  return raw.map((ch) => ({
+    ...ch,
+    teamId: ch.teamId ?? ch.team_id ?? teamId,
+    groupId: (ch.group_id ?? ch.groupId ?? null) as string | null,
+    accessRoleIds: (ch.access_role_ids ?? ch.accessRoleIds ?? []) as string[],
+    slowModeSeconds: (ch.slow_mode_seconds ?? ch.slowModeSeconds ?? 0) as number,
+    hiddenIfRestricted: Boolean(ch.hidden_if_restricted ?? ch.hiddenIfRestricted),
+  })) as Channel[];
+}
+
+function normalizeSyncGroups(raw: Record<string, unknown>[], teamId: string) {
+  return raw.map((g) => ({
+    id: g.id as string,
+    teamId: (g.team_id ?? g.teamId ?? teamId) as string,
+    name: (g.name as string) ?? '',
+    position: (g.position as number) ?? 0,
+    accessRoleIds: (g.access_role_ids ?? g.accessRoleIds ?? []) as string[],
+    hiddenIfRestricted: Boolean(g.hidden_if_restricted ?? g.hiddenIfRestricted),
+  }));
+}
+
+function normalizeSyncRoles(raw: Record<string, unknown>[]): Role[] {
+  return raw.map((r) => ({
+    id: r.id as string,
+    name: r.name as string,
+    color: (r.color as string) ?? '',
+    position: (r.position as number) ?? 0,
+    permissions: (r.permissions as number) ?? 0,
+    isDefault: Boolean(r.isDefault ?? r.is_default),
+  })) as Role[];
+}
+
+function resolveMembersWithRoles(
+  members: ReturnType<typeof normalizeMembers>,
+  roles: Role[],
+) {
+  const rolesById = new Map(roles.map((r) => [r.id, r]));
+  const PERM_ADMIN = 1;
+  return members.map((m) => {
+    const memberRoles = (m.roleIds ?? [])
+      .map((id) => rolesById.get(id))
+      .filter((r): r is Role => !!r);
+    const isAdmin = memberRoles.some((r) => (r.permissions & PERM_ADMIN) !== 0);
+    return { ...m, roles: memberRoles, isAdmin };
+  });
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function applySyncData(teamId: string, data: any, setters: SyncStoreSetters) {
-  if (data.channels) {
-    const channels = (data.channels as Record<string, unknown>[]).map((ch) => ({
-      ...ch,
-      teamId: ch.teamId ?? ch.team_id ?? teamId,
-      groupId: (ch.group_id ?? ch.groupId ?? null) as string | null,
-      accessRoleIds: (ch.access_role_ids ?? ch.accessRoleIds ?? []) as string[],
-      slowModeSeconds: (ch.slow_mode_seconds ?? ch.slowModeSeconds ?? 0) as number,
-      hiddenIfRestricted: Boolean(ch.hidden_if_restricted ?? ch.hiddenIfRestricted),
-    })) as Channel[];
-    setters.setChannels(teamId, channels);
-  }
-  if (Array.isArray(data.groups)) {
-    const groups = (data.groups as Record<string, unknown>[]).map((g) => ({
-      id: g.id as string,
-      teamId: (g.team_id ?? g.teamId ?? teamId) as string,
-      name: (g.name as string) ?? '',
-      position: (g.position as number) ?? 0,
-      accessRoleIds: (g.access_role_ids ?? g.accessRoleIds ?? []) as string[],
-      hiddenIfRestricted: Boolean(g.hidden_if_restricted ?? g.hiddenIfRestricted),
-    }));
-    useTeamStore.getState().setGroups(teamId, groups);
-  }
-  if (data.team) setters.setTeam(data.team as Team);
-  const normalizedMembers = data.members
-    ? normalizeMembers(data.members as Record<string, unknown>[])
-    : null;
-  const normalizedRoles = data.roles
-    ? ((data.roles as Record<string, unknown>[]).map((r) => ({
-        id: r.id as string,
-        name: r.name as string,
-        color: (r.color as string) ?? '',
-        position: (r.position as number) ?? 0,
-        permissions: (r.permissions as number) ?? 0,
-        isDefault: Boolean(r.isDefault ?? r.is_default),
-      })) as Role[])
-    : null;
-  if (normalizedRoles) setters.setRoles(teamId, normalizedRoles);
-  if (normalizedMembers) {
-    const rolesById = new Map((normalizedRoles ?? []).map((r) => [r.id, r]));
-    const PERM_ADMIN = 1 << 0;
-    const resolved = normalizedMembers.map((m) => {
-      const roles = (m.roleIds ?? [])
-        .map((id) => rolesById.get(id))
-        .filter((r): r is Role => !!r);
-      const isAdmin = roles.some((r) => (r.permissions & PERM_ADMIN) !== 0);
-      return { ...m, roles, isAdmin };
-    });
-    setters.setMembers(teamId, resolved);
-  }
-  if (data.presences) {
-    applyPresences(teamId, data.presences, setters);
-  }
+function applySecondaryStores(data: any) {
   if (data.voice_states && typeof data.voice_states === 'object') {
     useVoiceStore.getState().setVoiceOccupants(data.voice_states as Record<string, VoicePeer[]>);
   }
@@ -166,6 +161,32 @@ function applySyncData(teamId: string, data: any, setters: SyncStoreSetters) {
   if (Array.isArray(data.blocked_user_ids)) {
     useBlockStore.getState().setAll(data.blocked_user_ids as string[]);
   }
+}
+
+/** Apply sync:init data to stores */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function applySyncData(teamId: string, data: any, setters: SyncStoreSetters) {
+  if (data.channels) {
+    setters.setChannels(teamId, normalizeSyncChannels(data.channels as Record<string, unknown>[], teamId));
+  }
+  if (Array.isArray(data.groups)) {
+    useTeamStore.getState().setGroups(teamId, normalizeSyncGroups(data.groups as Record<string, unknown>[], teamId));
+  }
+  if (data.team) setters.setTeam(data.team as Team);
+  const normalizedMembers = data.members
+    ? normalizeMembers(data.members as Record<string, unknown>[])
+    : null;
+  const normalizedRoles = data.roles
+    ? normalizeSyncRoles(data.roles as Record<string, unknown>[])
+    : null;
+  if (normalizedRoles) setters.setRoles(teamId, normalizedRoles);
+  if (normalizedMembers) {
+    setters.setMembers(teamId, resolveMembersWithRoles(normalizedMembers, normalizedRoles ?? []));
+  }
+  if (data.presences) {
+    applyPresences(teamId, data.presences, setters);
+  }
+  applySecondaryStores(data);
   console.log(`[AppLayout] sync:init applied for team ${teamId}`);
 
   // sync:init doesn't include the live PresenceManager state; members'
