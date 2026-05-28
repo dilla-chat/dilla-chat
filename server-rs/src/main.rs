@@ -173,15 +173,15 @@ async fn main() {
     let custom_theme_css = api::theme::load_theme_file(&cfg.theme_file);
 
     // Build application state.
-    let state = api::AppState {
-        db: database.clone(),
-        auth: auth_svc.clone(),
-        hub: hub.clone(),
-        presence: presence_mgr.clone(),
-        config: Arc::new(cfg.clone()),
+    let state = build_app_state(
+        database.clone(),
+        auth_svc.clone(),
+        hub.clone(),
+        presence_mgr.clone(),
+        cfg.clone(),
         mesh,
         custom_theme_css,
-    };
+    );
 
     // Create router and start server.
     let app = api::create_router(state);
@@ -376,6 +376,30 @@ fn enforce_jwt_secret_strength(cfg: &Config) {
             eprintln!();
             std::process::exit(1);
         }
+    }
+}
+
+/// Construct the application state passed to every route handler.
+/// Extracted from main() so unit tests can pin the field layout and
+/// catch accidental reordering / dropped fields at compile time.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn build_app_state(
+    db: Database,
+    auth: Arc<AuthService>,
+    hub: Arc<ws::Hub>,
+    presence: Arc<PresenceManager>,
+    cfg: Config,
+    mesh: Option<Arc<federation::MeshNode>>,
+    custom_theme_css: Option<String>,
+) -> api::AppState {
+    api::AppState {
+        db,
+        auth,
+        hub,
+        presence,
+        config: Arc::new(cfg),
+        mesh,
+        custom_theme_css,
     }
 }
 
@@ -1156,6 +1180,53 @@ mod tests {
     // Drive each SFUEvent variant through the extracted helper. Hub is
     // real but with no connected clients — broadcast/send are no-ops
     // but the match arms + payload construction run.
+
+    // ── build_app_state ──────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn build_app_state_populates_all_fields() {
+        let (db, _tmp) = test_db();
+        let auth = Arc::new(AuthService::new(db.clone(), ""));
+        let hub = Arc::new(ws::Hub::new(db.clone()));
+        let presence = Arc::new(PresenceManager::new());
+        let mut cfg = Config::default();
+        cfg.port = 9999;
+        cfg.team_name = "Acme".into();
+        let theme = Some("body { color: red; }".to_string());
+
+        let state = build_app_state(
+            db.clone(),
+            auth.clone(),
+            hub.clone(),
+            presence.clone(),
+            cfg.clone(),
+            None,
+            theme.clone(),
+        );
+
+        assert_eq!(state.config.port, 9999);
+        assert_eq!(state.config.team_name, "Acme");
+        assert!(state.mesh.is_none());
+        assert_eq!(state.custom_theme_css, theme);
+    }
+
+    #[tokio::test]
+    async fn build_app_state_with_no_theme() {
+        let (db, _tmp) = test_db();
+        let auth = Arc::new(AuthService::new(db.clone(), ""));
+        let hub = Arc::new(ws::Hub::new(db.clone()));
+        let presence = Arc::new(PresenceManager::new());
+        let state = build_app_state(
+            db,
+            auth,
+            hub,
+            presence,
+            Config::default(),
+            None,
+            None,
+        );
+        assert!(state.custom_theme_css.is_none());
+    }
 
     #[tokio::test]
     async fn spawn_hub_event_handler_starts_without_panic() {
