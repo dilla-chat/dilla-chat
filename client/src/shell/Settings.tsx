@@ -806,6 +806,12 @@ export function UserDevices() {
   );
 }
 
+function computeNotifMode(desktop: boolean, sound: boolean): string {
+  if (desktop) return 'all';
+  if (sound) return 'mentions';
+  return 'nothing';
+}
+
 export function UserNotif() {
   // Notify mode is derived from desktopNotifications + a per-channel filter
   // we don't track yet. For now: desktop on = all, desktop off + sound on =
@@ -815,7 +821,7 @@ export function UserNotif() {
   const soundNotifications = useUserSettingsStore((s) => s.soundNotifications);
   const setDesktop = useUserSettingsStore((s) => s.setDesktopNotifications);
   const setSound = useUserSettingsStore((s) => s.setSoundNotifications);
-  const mode = desktopNotifications ? 'all' : soundNotifications ? 'mentions' : 'nothing';
+  const mode = computeNotifMode(desktopNotifications, soundNotifications);
   const setMode = (m: string) => {
     if (m === 'all') {
       setDesktop(true);

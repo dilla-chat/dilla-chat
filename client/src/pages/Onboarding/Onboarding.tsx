@@ -82,6 +82,11 @@ export function passphraseStrength(p: string) {
   return { score: s, label: labels[s], color: colors[s] };
 }
 
+function onbLogPrefix(l: { line: string; err?: boolean }): string {
+  if (l.line.startsWith('$')) return '';
+  return l.err ? '✗' : '›';
+}
+
 function CornerMarker({ x, y }: { x: number; y: number }) {
   return (
     <g>
@@ -1097,9 +1102,9 @@ export function KeyGenStep({ lines, error, onBack }) {
 
       <pre className="onb-log onb-log-big">
         {lines.map((l, i) => (
-          <div key={i} className={'onb-log-line' + (l.err ? ' err' : '')}>
+          <div key={`onbig-${i}-${l.line}`} className={'onb-log-line' + (l.err ? ' err' : '')}>
             <span className={'onb-log-prompt' + (l.err ? ' err' : '')}>
-              {l.line.startsWith('$') ? '' : l.err ? '✗' : '›'}
+              {onbLogPrefix(l)}
             </span>{' '}
             {l.line}
           </div>
