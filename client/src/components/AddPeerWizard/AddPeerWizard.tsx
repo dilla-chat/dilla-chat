@@ -132,7 +132,7 @@ export default function AddPeerWizard({ open, onClose, onComplete }: Readonly<Pr
                 Paste the federation token you received from the other node's admin.
               </p>
               <label className="add-peer-label">
-                Token
+                <span>Token</span>
                 <textarea
                   value={tokenInput}
                   onChange={(e) => setTokenInput(e.target.value)}

@@ -105,7 +105,7 @@ export default function NewServerModal({
           {mode === 'create' ? (
             <>
               <label className="new-server-modal-label">
-                Team name
+                <span>Team name</span>
                 <input
                   type="text"
                   value={name}
@@ -116,7 +116,7 @@ export default function NewServerModal({
                 />
               </label>
               <label className="new-server-modal-label">
-                Server URL
+                <span>Server URL</span>
                 <input
                   type="url"
                   value={serverUrl}
@@ -129,7 +129,7 @@ export default function NewServerModal({
           ) : (
             <>
               <label className="new-server-modal-label">
-                Server URL
+                <span>Server URL</span>
                 <input
                   type="url"
                   value={serverUrl}
@@ -140,7 +140,7 @@ export default function NewServerModal({
                 />
               </label>
               <label className="new-server-modal-label">
-                Invite token
+                <span>Invite token</span>
                 <input
                   type="text"
                   value={invite}

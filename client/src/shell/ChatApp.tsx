@@ -402,12 +402,14 @@ export function NewChannelModal({ onClose, onCreate }) {
             {slug && <div className="modal-hint">URL: <code>dilla://{nodeHost}/k/{slug}</code></div>}
           </div>
           <div className="modal-row">
-            <label>Topic <span className="modal-opt">optional</span>
+            <label>
+              <span>Topic <span className="modal-opt">optional</span></span>
               <input value={topic} onChange={e => setTopic(e.target.value)} placeholder="what's this kanal for?" />
             </label>
           </div>
           <div className="modal-row">
-            <label>Group <span className="modal-opt">optional</span>
+            <label>
+              <span>Group <span className="modal-opt">optional</span></span>
               <GroupCombobox value={group} onChange={setGroup} existing={existingGroups} />
             </label>
             <div className="modal-hint">Groups collapse together in the sidebar. Leave blank for the default list.</div>
@@ -691,7 +693,8 @@ export function GroupSettingsModal({ group, onClose }: Readonly<{ group: { id: s
         </header>
         <div className="modal-body">
           <div className="modal-row">
-            <label>Group name
+            <label>
+              <span>Group name</span>
               <input value={name} autoFocus onChange={(e) => setName(e.target.value)} />
             </label>
             <div className="modal-hint">Channels stay in the group — only the header label changes.</div>
@@ -794,19 +797,22 @@ export function ChannelSettingsModal({ channel, onClose }) {
         </header>
         <div className="modal-body">
           <div className="modal-row">
-            <label>Topic
+            <label>
+              <span>Topic</span>
               <input value={topic} autoFocus onChange={e => setTopic(e.target.value)} placeholder="what's this kanal for?" />
             </label>
             <div className="modal-hint">Shown at the top of the channel. Anyone with permission to send can see this.</div>
           </div>
           <div className="modal-row">
-            <label>Group <span className="modal-opt">optional</span>
+            <label>
+              <span>Group <span className="modal-opt">optional</span></span>
               <GroupCombobox value={group} onChange={setGroup} existing={existingGroups} />
             </label>
             <div className="modal-hint">Channels in the same group collapse together in the sidebar. Leave blank for the default list.</div>
           </div>
           <div className="modal-row">
-            <label>Slow mode (seconds)
+            <label>
+              <span>Slow mode (seconds)</span>
               <input value={slow} onChange={e => setSlow(e.target.value.replace(/[^0-9]/g, ''))} placeholder="0" />
             </label>
             <div className="modal-hint">Minimum interval between messages per member. 0 disables.</div>

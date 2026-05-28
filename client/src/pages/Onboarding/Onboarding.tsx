@@ -1249,7 +1249,7 @@ export function SafetyStep({ fingerprint, recoveryKey, onBack, onNext }) {
               checked={recoveryConfirmed}
               onChange={(e) => setRecoveryConfirmed(e.target.checked)}
             />
-            I've saved my recovery key somewhere safe.
+            <span>I've saved my recovery key somewhere safe.</span>
           </label>
         </>
       )}
