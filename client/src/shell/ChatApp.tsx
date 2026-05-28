@@ -3755,6 +3755,31 @@ async function leaveTeamFromRail(s: { name: string }): Promise<void> {
   }
 }
 
+async function unblockMember(memberId: string): Promise<void> {
+  const teamId = useTeamStore.getState().activeTeamId;
+  useBlockStore.getState().unblock(memberId);
+  if (teamId && !isMockSession()) {
+    try { await api.unblockUser(teamId, memberId); }
+    catch { useBlockStore.getState().block(memberId); }
+  }
+}
+
+async function blockMember(memberId: string, memberName: string): Promise<void> {
+  const confirmed = await dillaConfirm({
+    title: 'Block ' + memberName + '?',
+    body: 'You won\'t see their messages or DMs. They aren\'t notified.',
+    confirmLabel: 'Block',
+    danger: true,
+  });
+  if (!confirmed) return;
+  const teamId = useTeamStore.getState().activeTeamId;
+  useBlockStore.getState().block(memberId);
+  if (teamId && !isMockSession()) {
+    try { await api.blockUser(teamId, memberId); }
+    catch { useBlockStore.getState().unblock(memberId); }
+  }
+}
+
 function buildTextChannelMenu(
   c: { id: string; name: string; groupId?: string },
   data: any,
@@ -4688,28 +4713,8 @@ export function MemberList({ members, voiceConnection, rich, federated }) {
                { label: 'Verify safety number', icon: <Icon.Shield size={12} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:verify-safety', { detail: m.id })) },
                { sep: true },
                useBlockStore.getState().isBlocked(m.id)
-                 ? { label: 'Unblock', icon: <Icon.Shield size={12} />, onClick: async () => {
-                     const teamId = useTeamStore.getState().activeTeamId;
-                     useBlockStore.getState().unblock(m.id);
-                     if (teamId && !isMockSession()) {
-                       try { await api.unblockUser(teamId, m.id); }
-                       catch { useBlockStore.getState().block(m.id); }
-                     }
-                   } }
-                 : { label: 'Block', danger: true, icon: <Icon.Shield size={12} />, onClick: async () => {
-                     if (!(await dillaConfirm({
-                       title: 'Block ' + m.name + '?',
-                       body: 'You won\'t see their messages or DMs. They aren\'t notified.',
-                       confirmLabel: 'Block',
-                       danger: true,
-                     }))) return;
-                     const teamId = useTeamStore.getState().activeTeamId;
-                     useBlockStore.getState().block(m.id);
-                     if (teamId && !isMockSession()) {
-                       try { await api.blockUser(teamId, m.id); }
-                       catch { useBlockStore.getState().unblock(m.id); }
-                     }
-                   } },
+                 ? { label: 'Unblock', icon: <Icon.Shield size={12} />, onClick: () => unblockMember(m.id) }
+                 : { label: 'Block', danger: true, icon: <Icon.Shield size={12} />, onClick: () => blockMember(m.id, m.name) },
                { label: 'Mute', icon: <Icon.Mic size={13} off />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'system', text: m.name + ' muted in voice channels.', duration: 2200 } })) },
                ...(memberPerms.has(PERM_MANAGE_MEMBERS) && m.id !== currentUserId() ? [
                { label: 'Kick from team', danger: true, icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M10 4V2H3v12h7v-2M6 8h9M12 5l3 3-3 3M9 3v0" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>, onClick: async () => {
