@@ -223,6 +223,86 @@ describe('ChatApp send() — channel', () => {
     });
     expect(container.firstChild).toBeTruthy();
   });
+
+  // Each slash command requires TWO Enters under the autocomplete UI:
+  // the first applies the autocomplete (fills the draft with the matched
+  // command + space), the second actually sends the message and hits
+  // processSlash.
+
+  // Force the slash autocomplete picker to be closed by appending a
+  // trailing space: the onChange handler only sets `slash` when the
+  // input matches /^\/(\w*)$/, so any space at the end closes the
+  // picker — letting Enter actually fire send().
+  function sendSlashCommand(ta: HTMLTextAreaElement, text: string) {
+    const withSpace = text.endsWith(' ') ? text : text + ' ';
+    fireEvent.change(ta, { target: { value: withSpace } });
+    fireEvent.keyDown(ta, { key: 'Enter' });
+  }
+
+  it('/help opens user settings keys tab', () => {
+    const captured: CustomEvent[] = [];
+    const cb = (e: Event) => captured.push(e as CustomEvent);
+    window.addEventListener('dilla:open-settings', cb);
+    const { container } = renderApp();
+    const ta = getTextarea(container);
+    act(() => sendSlashCommand(ta, '/help'));
+    window.removeEventListener('dilla:open-settings', cb);
+    expect(captured.length).toBe(1);
+    const detail = captured[0].detail as { mode: string; tab: string };
+    expect(detail.tab).toBe('keys');
+  });
+
+  it('/w with no member match is a no-op', () => {
+    const captured: CustomEvent[] = [];
+    const cb = (e: Event) => captured.push(e as CustomEvent);
+    window.addEventListener('dilla:open-dm', cb);
+    const { container } = renderApp();
+    const ta = getTextarea(container);
+    act(() => sendSlashCommand(ta, '/w noone'));
+    window.removeEventListener('dilla:open-dm', cb);
+    expect(captured.length).toBe(0);
+  });
+
+  it('/invite dispatches dilla:open-settings with invites tab', () => {
+    const captured: CustomEvent[] = [];
+    const cb = (e: Event) => captured.push(e as CustomEvent);
+    window.addEventListener('dilla:open-settings', cb);
+    const { container } = renderApp();
+    const ta = getTextarea(container);
+    act(() => sendSlashCommand(ta, '/invite alice'));
+    window.removeEventListener('dilla:open-settings', cb);
+    expect(captured.length).toBe(1);
+    expect((captured[0].detail as { tab: string }).tab).toBe('invites');
+  });
+
+  it('/lock and /unlock toggle the channel lock', () => {
+    const { container } = renderApp();
+    const ta = getTextarea(container);
+    act(() => sendSlashCommand(ta, '/lock'));
+    act(() => sendSlashCommand(ta, '/unlock'));
+    expect(container.firstChild).toBeTruthy();
+  });
+
+  it('/code without language emits code block placeholder', () => {
+    const { container } = renderApp();
+    const ta = getTextarea(container);
+    act(() => sendSlashCommand(ta, '/code'));
+    expect(container.firstChild).toBeTruthy();
+  });
+
+  it('/code <lang> emits language-tagged code block', () => {
+    const { container } = renderApp();
+    const ta = getTextarea(container);
+    act(() => sendSlashCommand(ta, '/code rust'));
+    expect(container.firstChild).toBeTruthy();
+  });
+
+  it('/topic outside a team channel notifies', () => {
+    const { container } = renderApp();
+    const ta = getTextarea(container);
+    act(() => sendSlashCommand(ta, '/topic the new topic'));
+    expect(container.firstChild).toBeTruthy();
+  });
 });
 
 describe('ChatApp editMessage', () => {
