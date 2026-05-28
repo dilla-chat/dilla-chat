@@ -106,7 +106,7 @@ function Settings({ open, mode, defaultTab, onClose }) {
         aria-label="Close settings"
         onClick={onClose}
       />
-      <div className="settings" onClick={e => e.stopPropagation()}>
+      <div className="settings">
         <aside className="set-nav">
           <div className="set-nav-head">
             <div className="set-nav-title">{mode === 'team' ? 'Team' : 'User'}</div>
@@ -436,7 +436,7 @@ export function CropModal({
         aria-label="Cancel"
         onClick={onCancel}
       />
-      <div className="modal-card crop-card" onClick={(e) => e.stopPropagation()}>
+      <div className="modal-card crop-card">
         <header className="modal-head">
           <h2>Crop avatar</h2>
           <button className="modal-x" onClick={onCancel}>×</button>
@@ -1255,7 +1255,7 @@ export function SafetyNumberQR({
         aria-label="Close"
         onClick={onClose}
       />
-      <div className="modal-card" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+      <div className="modal-card" role="dialog" aria-modal="true">
         <header className="modal-head">
           <h3>{label} — safety number</h3>
           <button className="modal-x" onClick={onClose}>×</button>
@@ -2131,7 +2131,7 @@ export function RoleEditor({ teamId, role, onClose, onSaved }: Readonly<{ teamId
         aria-label="Close"
         onClick={onClose}
       />
-      <div className="set-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="set-modal">
         <header className="set-modal-head">
           <h3>Edit role</h3>
           <button className="set-x" onClick={onClose}>×</button>
