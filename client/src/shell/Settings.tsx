@@ -2106,7 +2106,7 @@ export function TeamRoles() {
             const count = countForRole(r.id);
             const isDragging = dragId === r.id;
             return (
-              <div
+              <article
                 key={r.id}
                 className={'set-tr role' + (isDragging ? ' dragging' : '')}
                 draggable
@@ -2124,7 +2124,7 @@ export function TeamRoles() {
                   <Btn onClick={() => setEditing({ id: r.id })}>Edit</Btn>
                   <Btn danger onClick={() => deleteRole(r.id)}>Delete</Btn>
                 </div>
-              </div>
+              </article>
             );
           })}
         </div>

@@ -2608,7 +2608,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
   }
 
   return (
-    <div
+    <main
       className="main"
       onDragEnter={onDragEnter}
       onDragOver={onDragOverEvt}
@@ -3659,7 +3659,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
           </div>
         );
       })()}
-    </div>
+    </main>
   );
 }
 
