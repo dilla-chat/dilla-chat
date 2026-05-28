@@ -19,6 +19,79 @@ import {
   type InitializedContext as VoiceIsolationContext,
 } from '../voiceIsolation/dispatcher';
 
+type OutboundStreamStat = { kind?: string; mid?: string; bytesSent?: number; packetsSent?: number; targetBitrate?: number };
+type InboundStreamStat = { kind?: string; mid?: string; bytesReceived?: number; packetsReceived?: number; framesDecoded?: number; framesDropped?: number; frameWidth?: number; frameHeight?: number };
+
+/** Walk an RTCStatsReport once, pulling out:
+ *  - rttMs from the nominated, succeeded candidate-pair (when present)
+ *  - bytesSent summed across every outbound-rtp stream (audio + video)
+ *  - per-stream outbound + inbound rows for diag logging */
+function summarizeRtcStats(report: RTCStatsReport): {
+  rttMs: number | null;
+  bytesSent: number | null;
+  perStream: OutboundStreamStat[];
+  perInbound: InboundStreamStat[];
+} {
+  let rttMs: number | null = null;
+  let bytesSent: number | null = null;
+  const perStream: OutboundStreamStat[] = [];
+  const perInbound: InboundStreamStat[] = [];
+  report.forEach((stat) => {
+    if (
+      stat.type === 'candidate-pair' &&
+      (stat as { state?: string; nominated?: boolean }).state === 'succeeded' &&
+      (stat as { nominated?: boolean }).nominated &&
+      typeof (stat as { currentRoundTripTime?: number }).currentRoundTripTime === 'number'
+    ) {
+      rttMs = Math.round((stat as { currentRoundTripTime: number }).currentRoundTripTime * 1000);
+    }
+    if (
+      stat.type === 'outbound-rtp' &&
+      typeof (stat as { bytesSent?: number }).bytesSent === 'number'
+    ) {
+      const s = stat as { bytesSent: number; kind?: string; mid?: string; packetsSent?: number; targetBitrate?: number };
+      bytesSent = (bytesSent ?? 0) + s.bytesSent;
+      perStream.push({ kind: s.kind, mid: s.mid, bytesSent: s.bytesSent, packetsSent: s.packetsSent, targetBitrate: s.targetBitrate });
+    }
+    if (
+      stat.type === 'inbound-rtp' &&
+      typeof (stat as { bytesReceived?: number }).bytesReceived === 'number'
+    ) {
+      const s = stat as { bytesReceived: number; kind?: string; mid?: string; packetsReceived?: number; framesDecoded?: number; framesDropped?: number; frameWidth?: number; frameHeight?: number };
+      perInbound.push({
+        kind: s.kind, mid: s.mid,
+        bytesReceived: s.bytesReceived,
+        packetsReceived: s.packetsReceived,
+        framesDecoded: s.framesDecoded,
+        framesDropped: s.framesDropped,
+        frameWidth: s.frameWidth,
+        frameHeight: s.frameHeight,
+      });
+    }
+  });
+  return { rttMs, bytesSent, perStream, perInbound };
+}
+
+/** Every ~5 polling ticks (~3s), log the outbound + inbound stream
+ *  breakdown so a 'sending but not receiving' or 'receiving but not
+ *  rendering' situation shows up in the console. */
+function logRtcStreamBreakdown(
+  tickCount: number,
+  perStream: OutboundStreamStat[],
+  perInbound: InboundStreamStat[],
+): number {
+  const next = tickCount + 1;
+  if (next % 5 === 0) {
+    if (perStream.length > 0) {
+      console.log('[Voice/diag] outbound-rtp stream breakdown:', perStream);
+    }
+    if (perInbound.length > 0) {
+      console.log('[Voice/diag] inbound-rtp stream breakdown:', perInbound);
+    }
+  }
+  return next;
+}
+
 class WebRTCService {
   private pc: RTCPeerConnection | null = null;
   private localStream: MediaStream | null = null;
@@ -401,113 +474,47 @@ class WebRTCService {
     let diagTickCount = 0;
     this.statsPollerId = setInterval(async () => {
       if (!this.pc) return;
-      // Hard gate: don't run the poller (or any WS-broadcasting
-      // side-effect inside it) when the store says we're not in a
-      // voice channel. Without this the poller can survive a logout
-      // / nav-to-onboarding and keep spamming voice:latency through
-      // a closed WS, filling the console with 'WebSocket not
-      // connected ... queued event' lines. Belt-and-suspenders for
-      // the broader "stop everything when connected is false"
-      // invariant.
+      // Hard gate: don't run the poller when not in a voice channel.
       const vs = useVoiceStore.getState();
       if (!vs.connected) return;
       try {
         const report = await this.pc.getStats();
-        let rttMs: number | null = null;
-        let bytesSent: number | null = null;
-        // Per-stream breakdown for diag logging — see which kind/mid
-        // is actually producing bytes vs. silently sitting on zero.
-        const perStream: Array<{ kind?: string; mid?: string; bytesSent?: number; packetsSent?: number; targetBitrate?: number }> = [];
-        const perInbound: Array<{ kind?: string; mid?: string; bytesReceived?: number; packetsReceived?: number; framesDecoded?: number; framesDropped?: number; frameWidth?: number; frameHeight?: number }> = [];
-        report.forEach((stat) => {
-          // currentRoundTripTime lives on the *succeeded* candidate
-          // pair. nominated is the one actively in use.
-          if (
-            stat.type === 'candidate-pair' &&
-            (stat as { state?: string; nominated?: boolean }).state === 'succeeded' &&
-            (stat as { nominated?: boolean }).nominated &&
-            typeof (stat as { currentRoundTripTime?: number }).currentRoundTripTime === 'number'
-          ) {
-            rttMs = Math.round((stat as { currentRoundTripTime: number }).currentRoundTripTime * 1000);
-          }
-          // Sum bytes across ALL outbound RTP streams (audio + video
-          // when webcam/screen share are active) so the bitrate card
-          // reflects total upstream media bandwidth, not just the mic.
-          if (
-            stat.type === 'outbound-rtp' &&
-            typeof (stat as { bytesSent?: number }).bytesSent === 'number'
-          ) {
-            const s = stat as { bytesSent: number; kind?: string; mid?: string; packetsSent?: number; targetBitrate?: number };
-            bytesSent = (bytesSent ?? 0) + s.bytesSent;
-            perStream.push({ kind: s.kind, mid: s.mid, bytesSent: s.bytesSent, packetsSent: s.packetsSent, targetBitrate: s.targetBitrate });
-          }
-          if (
-            stat.type === 'inbound-rtp' &&
-            typeof (stat as { bytesReceived?: number }).bytesReceived === 'number'
-          ) {
-            const s = stat as { bytesReceived: number; kind?: string; mid?: string; packetsReceived?: number; framesDecoded?: number; framesDropped?: number; frameWidth?: number; frameHeight?: number };
-            perInbound.push({
-              kind: s.kind, mid: s.mid,
-              bytesReceived: s.bytesReceived,
-              packetsReceived: s.packetsReceived,
-              framesDecoded: s.framesDecoded,
-              framesDropped: s.framesDropped,
-              frameWidth: s.frameWidth,
-              frameHeight: s.frameHeight,
-            });
-          }
-        });
-        // Log per-sender + per-receiver breakdown every ~5 ticks
-        // (~3s). Outbound shows what WE are sending; inbound shows
-        // what we're receiving from the SFU (the other side's
-        // tracks). Together they reveal: 'I'm sending but they're
-        // not receiving' (server forwarding bug) vs. 'they're
-        // sending but I'm not receiving' (decode failure / NACK
-        // storm / network).
-        if (++diagTickCount % 5 === 0) {
-          if (perStream.length > 0) {
-            console.log('[Voice/diag] outbound-rtp stream breakdown:', perStream);
-          }
-          if (perInbound.length > 0) {
-            console.log('[Voice/diag] inbound-rtp stream breakdown:', perInbound);
-          }
-        }
-
-        if (rttMs !== null) {
-          const s = useVoiceStore.getState();
-          s.pushLatencySample(rttMs);
-          // Mirror into peerLatencies under our own user id so the
-          // self card reads the same map as the remote cards do —
-          // single source of truth for per-user RTT.
-          if (this.localUserId) s.setPeerLatency(this.localUserId, rttMs);
-          // Tell other clients about our latency so their cards can
-          // render real per-user RTT (not just their own). The
-          // server rebroadcasts with our user_id stamped in. Gated
-          // on `vs.connected` (checked above) so we don't broadcast
-          // while logged out.
-          if (this.teamId && this.channelId) {
-            ws.voiceLatency(this.teamId, this.channelId, rttMs);
-          }
-        }
-
-        // Bitrate from outbound-rtp byte delta over the poll interval.
-        if (bytesSent !== null) {
-          const now = performance.now();
-          if (this.lastBytesSentAt && bytesSent >= this.lastBytesSent) {
-            const dt = (now - this.lastBytesSentAt) / 1000; // seconds
-            const dBytes = bytesSent - this.lastBytesSent;
-            if (dt > 0) {
-              const kbps = Math.round((dBytes * 8) / 1000 / dt);
-              useVoiceStore.getState().pushBitrateSample(kbps);
-            }
-          }
-          this.lastBytesSent = bytesSent;
-          this.lastBytesSentAt = now;
-        }
+        const { rttMs, bytesSent, perStream, perInbound } = summarizeRtcStats(report);
+        diagTickCount = logRtcStreamBreakdown(diagTickCount, perStream, perInbound);
+        if (rttMs !== null) this.recordLatency(rttMs);
+        if (bytesSent !== null) this.recordBitrateSample(bytesSent);
       } catch {
         /* ignore stats errors; will retry next tick */
       }
     }, 250);
+  }
+
+  /** Push a new RTT sample into the voice store + mirror to peerLatencies
+   *  and broadcast via WS so other clients see our per-user latency. */
+  private recordLatency(rttMs: number): void {
+    const s = useVoiceStore.getState();
+    s.pushLatencySample(rttMs);
+    if (this.localUserId) s.setPeerLatency(this.localUserId, rttMs);
+    if (this.teamId && this.channelId) {
+      ws.voiceLatency(this.teamId, this.channelId, rttMs);
+    }
+  }
+
+  /** Compute outgoing-bitrate (kbps) from a fresh bytesSent reading +
+   *  the previous bytesSent watermark, push the sample, advance the
+   *  watermark. */
+  private recordBitrateSample(bytesSent: number): void {
+    const now = performance.now();
+    if (this.lastBytesSentAt && bytesSent >= this.lastBytesSent) {
+      const dt = (now - this.lastBytesSentAt) / 1000; // seconds
+      const dBytes = bytesSent - this.lastBytesSent;
+      if (dt > 0) {
+        const kbps = Math.round((dBytes * 8) / 1000 / dt);
+        useVoiceStore.getState().pushBitrateSample(kbps);
+      }
+    }
+    this.lastBytesSent = bytesSent;
+    this.lastBytesSentAt = now;
   }
 
   private stopStatsPoller(): void {
