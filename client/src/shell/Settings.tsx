@@ -99,7 +99,13 @@ function Settings({ open, mode, defaultTab, onClose }) {
     : (me?.name || '');
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
+      <button
+        type="button"
+        className="modal-overlay-dismiss"
+        aria-label="Close settings"
+        onClick={onClose}
+      />
       <div className="settings" onClick={e => e.stopPropagation()}>
         <aside className="set-nav">
           <div className="set-nav-head">

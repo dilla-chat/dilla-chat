@@ -147,7 +147,7 @@ describe('Settings actions (jsdom)', () => {
     const inside = container.querySelector('.settings') as HTMLElement;
     fireEvent.click(inside);
     expect(onClose).not.toHaveBeenCalled();
-    fireEvent.click(container.querySelector('.modal-overlay')!);
+    fireEvent.click(container.querySelector('.modal-overlay-dismiss')!);
     expect(onClose).toHaveBeenCalled();
   });
 
