@@ -2528,13 +2528,13 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
     return () => globalThis.removeEventListener('keydown', onKey);
   }, [lightbox]);
   const [unreadAt, setUnreadAt] = useState(null);
-  const [mention, setMention] = useState(null); // { query }
+  const [mention, setMention] = useState(null);
   const [mentionIdx, setMentionIdx] = useState(0);
-  const [slash, setSlash] = useState(null); // { query }
+  const [slash, setSlash] = useState(null);
   const [slashIdx, setSlashIdx] = useState(0);
   const [pinnedOpen, setPinnedOpen] = useState(false);
   const [threadsOpen, setThreadsOpen] = useState(false);
-  const [contextMenu, setContextMenu] = useState(null); // { x, y, msgId }
+  const [contextMenu, setContextMenu] = useState(null);
   const [savedMsgs, setSavedMsgs] = useState(new Set());
   const [savedOpen, setSavedOpen] = useState(false);
   const [showJump, setShowJump] = useState(false);
@@ -2817,26 +2817,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
       )}
       <div className="main-head">
         <div className="ch-title">
-          {channel.type === 'dm' ? (
-            channel.group ? (
-              <><Icon.People size={15} /><span>{channel.name}</span></>
-            ) : dmPartner ? (
-              <>
-                <span className="dm-avatar" style={{ background: dmPartner.color }}>
-                  {dmPartner.initials}
-                  <span className={'presence ' + dmPartner.status}></span>
-                </span>
-                <span>{dmPartner.name}</span>
-              </>
-            ) : (
-              <><Icon.Chat size={15} /><span>{channel.name}</span></>
-            )
-          ) : (
-            <>
-              <Icon.Hash size={15} />
-              <span>{channel.name}</span>
-            </>
-          )}
+          {renderChannelTitle(channel, dmPartner)}
           {channel.encrypted && <span className="enc-badge"><Icon.Shield size={10} /> E2E</span>}
         </div>
         <div className="ch-topic">{channel.topic}</div>
@@ -3883,6 +3864,42 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
   );
 }
 
+function renderChannelTitle(channel: any, dmPartner: any) {
+  if (channel.type !== 'dm') {
+    return (
+      <>
+        <Icon.Hash size={15} />
+        <span>{channel.name}</span>
+      </>
+    );
+  }
+  if (channel.group) {
+    return (
+      <>
+        <Icon.People size={15} />
+        <span>{channel.name}</span>
+      </>
+    );
+  }
+  if (dmPartner) {
+    return (
+      <>
+        <span className="dm-avatar" style={{ background: dmPartner.color }}>
+          {dmPartner.initials}
+          <span className={'presence ' + dmPartner.status}></span>
+        </span>
+        <span>{dmPartner.name}</span>
+      </>
+    );
+  }
+  return (
+    <>
+      <Icon.Chat size={15} />
+      <span>{channel.name}</span>
+    </>
+  );
+}
+
 function renderText(text, _members) {
   if (!text) return null;
   // Delegate to react-markdown via MessageMarkdown — gives us bold,
@@ -4359,7 +4376,7 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
                   <div className="v-volume" onClick={(e) => e.stopPropagation()}>
                     <Icon.Headphones size={10} />
                     <input type="range" min={0} max={100} value={vol(p.id)}
-                           onChange={(e) => setVolumes(v => ({ ...v, [p.id]: parseInt(e.target.value, 10) }))} />
+                           onChange={(e) => setVolumes(v => ({ ...v, [p.id]: Number.parseInt(e.target.value, 10) }))} />
                     <span className="v-volume-val">{vol(p.id)}</span>
                   </div>
                 )}
@@ -5134,7 +5151,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
       if (inField) return;
       const order = ['general','design','dev','mesh','random'];
       if ((e.metaKey || e.ctrlKey) && /^[1-5]$/.test(e.key)) {
-        const id = order[parseInt(e.key, 10) - 1];
+        const id = order[Number.parseInt(e.key, 10) - 1];
         if (id) { e.preventDefault(); setActiveChannel(id); setActiveView({ kind: 'channel', id }); setTab('kanals'); }
       } else if (e.key.toLowerCase() === 'm' && voiceConnection) {
         e.preventDefault(); setMute(v => !v);
