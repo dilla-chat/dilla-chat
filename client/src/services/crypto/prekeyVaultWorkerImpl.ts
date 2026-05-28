@@ -13,10 +13,9 @@
 // Re-uses the H-12a KEK seeded via sessionStoreWorkerImpl::initSessionKey.
 // Caller is responsible for fixing up DB_VERSION upgrade ordering.
 
-import { savePairwiseSession as _ensurePairwiseModuleLoaded } from './pairwiseSessionStoreWorkerImpl';
-// Keep the cross-module import live so DB upgrade ordering covers
-// both stores when init runs. The reference is otherwise unused.
-void _ensurePairwiseModuleLoaded;
+// Side-effect import: keep the cross-module module live so the IDB
+// upgrade ordering covers both stores when init runs.
+import './pairwiseSessionStoreWorkerImpl';
 
 const DB_NAME = 'dilla-sessions';
 const DB_VERSION = 3;

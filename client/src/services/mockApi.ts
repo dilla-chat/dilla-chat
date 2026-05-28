@@ -316,7 +316,7 @@ export class MockApiService {
   // Polls — keyed by channel_id so the mock matches the server's
   // list-by-channel endpoint. Each entry holds tallies and voter ids per
   // option so vote/unvote round-trips behave like the real server.
-  private polls: Map<string, Array<{
+  private readonly polls: Map<string, Array<{
     id: string; team_id: string; channel_id: string; question: string;
     options: string[]; voters: string[][]; created_by: string; created_at: string;
   }>> = new Map();
@@ -372,7 +372,7 @@ export class MockApiService {
 
   // Channel mutes — keyed by channel_id, value is mutedUntil ISO (or null
   // for indefinite). Mirrors the real /me/muted-channels endpoint.
-  private muted: Map<string, string | null> = new Map();
+  private readonly muted: Map<string, string | null> = new Map();
   async muteChannel(_teamId: string, channelId: string, mutedUntil?: string | null): Promise<unknown> {
     this.muted.set(channelId, mutedUntil ?? null);
     return { channel_id: channelId, muted_until: mutedUntil ?? null };
@@ -423,7 +423,7 @@ export class MockApiService {
   async leaveTeam(_teamId: string): Promise<void> { /* noop */ }
 
   // Block list — in-memory Set so /mesh can demo the unblock flow.
-  private blocks: Set<string> = new Set();
+  private readonly blocks: Set<string> = new Set();
   async listBlocks(_teamId: string): Promise<string[]> {
     return [...this.blocks];
   }
@@ -436,7 +436,7 @@ export class MockApiService {
 
   // Pinned messages — { [channelId]: messageId[] } so /mesh can demo
   // the pin/unpin flow against the same store the real api hits.
-  private pins: Map<string, string[]> = new Map();
+  private readonly pins: Map<string, string[]> = new Map();
   async pinMessage(_teamId: string, channelId: string, messageId: string): Promise<void> {
     const list = this.pins.get(channelId) ?? [];
     if (!list.includes(messageId)) {

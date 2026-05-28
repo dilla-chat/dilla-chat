@@ -50,6 +50,8 @@ import {
 import {
   opPairwiseEncrypt as psEncrypt,
   opPairwiseDecrypt as psDecrypt,
+  opPairwiseBootstrapAlice as psBootstrapAlice,
+  opPairwiseBootstrapBob as psBootstrapBob,
 } from './pairwiseSessionWorkerImpl';
 import {
   setIdentityDhPrivateKey,
@@ -62,10 +64,6 @@ import {
   savePrekeySecrets,
   clearPrekeyVault,
 } from './prekeyVaultWorkerImpl';
-import {
-  opPairwiseBootstrapAlice as psBootstrapAlice,
-  opPairwiseBootstrapBob as psBootstrapBob,
-} from './pairwiseSessionWorkerImpl';
 
 interface RpcRequest {
   id: number;

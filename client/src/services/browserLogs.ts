@@ -39,7 +39,7 @@ const LONG_TOKEN_RE = /[A-Za-z0-9_+/=-]{40,}/g;
 // common case even when the segments themselves are < 40 chars.
 const JWT_SHAPE_RE = /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g;
 // F6 — Authorization-style header blobs that leak the bearer token.
-const BEARER_RE = /(\bBearer\s+)([A-Za-z0-9._\-+/=]+)/gi;
+const BEARER_RE = /(\bBearer\s+)([\w.\-+/=]+)/gi;
 
 let installed = false;
 let queue: QueuedEntry[] = [];

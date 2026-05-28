@@ -25,7 +25,7 @@ import { useChannelMuteStore } from '../stores/channelMuteStore';
 import { usePinStore } from '../stores/pinStore';
 import { useBlockStore } from '../stores/blockStore';
 import { dillaConfirm } from '../stores/confirmStore';
-import { resolvePermissions, PERM_MANAGE_CHANNELS, PERM_MANAGE_MEMBERS, PERM_MANAGE_MESSAGES, PERM_CREATE_INVITES, PERM_MANAGE_TEAM, PERM_MUTE_VOICE } from '../hooks/usePermissions';
+import { resolvePermissions, PERM_MANAGE_CHANNELS, PERM_MANAGE_MEMBERS, PERM_MANAGE_MESSAGES, PERM_MUTE_VOICE } from '../hooks/usePermissions';
 import { api } from '../services/api';
 import { tryEncrypt } from '../hooks/useMessageDecryption';
 import { useChannelLazyLoad } from '../hooks/useChannelLazyLoad';
@@ -3986,8 +3986,6 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
       ? { id: peer.user_id, name: peer.username, initials: peer.username.slice(0, 2).toUpperCase() }
       : null;
   })();
-  // Strip shows all participants (including the focused one) for context.
-  const others = focused ? participants : [];
   const canExitFocus = !channelSharerId;
 
   useEffect(() => {

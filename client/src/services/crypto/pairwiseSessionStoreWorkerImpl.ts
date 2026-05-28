@@ -13,11 +13,10 @@
 // The KEK lives in `sessionStoreWorkerImpl::initSessionKey` — we
 // reuse it here so the worker only needs one init handshake.
 
-import { initSessionKey as _markInitForCompat } from './sessionStoreWorkerImpl';
-// The marker import keeps `initSessionKey` reachable through this
-// module's import graph for circular-dep safety; the actual init
-// runs in sessionStoreWorkerImpl.
-void _markInitForCompat;
+// Side-effect import: keeps `initSessionKey` reachable through this
+// module's import graph for circular-dep safety; the actual init runs
+// in sessionStoreWorkerImpl.
+import './sessionStoreWorkerImpl';
 
 const DB_NAME = 'dilla-sessions';
 const DB_VERSION = 3;

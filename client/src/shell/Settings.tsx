@@ -1606,7 +1606,7 @@ export function TeamInfo() {
           <TextField
             mono
             value={slowMode}
-            onChange={(v) => setSlowMode(v.replace(/[^0-9]/g, ''))}
+            onChange={(v) => setSlowMode(v.replace(/\D/g, ''))}
           />
         </Row>
       </Group>
