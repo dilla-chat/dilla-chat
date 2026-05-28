@@ -59,7 +59,7 @@ export default function MeshBottomBar() {
   }
 
   return (
-    <div className="mesh-bottom" role="contentinfo" aria-label="Mesh bottom bar">
+    <footer className="mesh-bottom" aria-label="Mesh bottom bar">
       <button
         type="button"
         className="mb-chunk mb-clickable"
@@ -139,6 +139,6 @@ export default function MeshBottomBar() {
       <div className="mb-chunk">
         <span className="mb-k">v</span> {APP_VERSION} · build {BUILD_HASH}
       </div>
-    </div>
+    </footer>
   );
 }

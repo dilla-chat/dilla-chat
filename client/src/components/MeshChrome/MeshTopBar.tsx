@@ -33,7 +33,7 @@ export default function MeshTopBar() {
   }
 
   return (
-    <div className="mesh-top" role="banner" aria-label="Mesh top bar">
+    <header className="mesh-top" aria-label="Mesh top bar">
       <div className="mt-left">
         <span className="mt-brand">DILLA</span>
         <span className="mt-sep">─</span>
@@ -76,6 +76,6 @@ export default function MeshTopBar() {
           <span className="mt-kbd">?</span> HELP
         </button>
       </div>
-    </div>
+    </header>
   );
 }
