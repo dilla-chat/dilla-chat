@@ -167,6 +167,12 @@ function describeAuditEventInline(
   );
 }
 
+function describeRotationResult(rotated: number): string {
+  if (!rotated) return 'No active sender keys to rotate yet.';
+  const noun = rotated === 1 ? 'channel' : 'channels';
+  return `Rotated sender keys for ${rotated} ${noun}.`;
+}
+
 function toStr(v: unknown): string {
   if (v == null) return '';
   if (typeof v === 'string') return v;
@@ -1435,9 +1441,7 @@ export function UserPrivacy() {
               }
               globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: {
                 author: 'crypto',
-                text: rotated
-                  ? `Rotated sender keys for ${rotated} ${rotated === 1 ? 'channel' : 'channels'}.`
-                  : 'No active sender keys to rotate yet.',
+                text: describeRotationResult(rotated),
                 duration: 3500,
               } }));
             } catch (err) {

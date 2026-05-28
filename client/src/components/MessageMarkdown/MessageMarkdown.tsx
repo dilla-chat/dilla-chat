@@ -35,6 +35,46 @@ const IMG_EXT = /\.(gif|png|jpe?g|webp|avif)(\?|$)/i;
 // is treated as a per-user mention regardless of whether the handle
 // actually resolves — the user typing @nobody still gets the same chip
 // (so we don't have to plumb the full member list into every call).
+type AnchorProps = { href?: string; children?: React.ReactNode } & React.AnchorHTMLAttributes<HTMLAnchorElement>;
+
+function makeAnchorRenderer(currentUserId: string | null | undefined, currentUserHandle: string | null | undefined) {
+  return function MarkdownAnchor({ href, children, ...rest }: AnchorProps) {
+    if (typeof href === 'string' && href.startsWith('dilla:mention/')) {
+      const handle = decodeURIComponent(href.slice('dilla:mention/'.length));
+      const broad = isBroadcastHandle(handle);
+      const mine = !broad && !!currentUserHandle && handle === currentUserHandle;
+      return (
+        <span
+          className={
+            'ic ic-mention' +
+            (mine ? ' ic-mention-mine' : '') +
+            (broad ? ' ic-mention-broad' : '')
+          }
+          data-user-id={currentUserId && mine ? currentUserId : undefined}
+        >
+          {children}
+        </span>
+      );
+    }
+    if (typeof href === 'string' && /^https?:\/\//i.test(href) && IMG_EXT.test(href.split('?')[0])) {
+      return (
+        <a href={href} target="_blank" rel="noopener noreferrer" {...rest}>
+          <img
+            src={href}
+            alt={altTextOf(children, href)}
+            className="mm-inline-image"
+          />
+        </a>
+      );
+    }
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer" className="ic-link" {...rest}>
+        {children}
+      </a>
+    );
+  };
+}
+
 function altTextOf(children: unknown, href: string): string {
   if (Array.isArray(children)) return children.filter((c) => typeof c === 'string').join('');
   if (typeof children === 'string') return children;
@@ -109,44 +149,7 @@ export default function MessageMarkdown({
   const prepared = React.useMemo(() => injectMentionLinks(text ?? ''), [text]);
 
   const components: Components = React.useMemo(() => ({
-    a({ href, children, ...rest }) {
-      if (typeof href === 'string' && href.startsWith('dilla:mention/')) {
-        const handle = decodeURIComponent(href.slice('dilla:mention/'.length));
-        const broad = isBroadcastHandle(handle);
-        const mine = !broad && !!currentUserHandle && handle === currentUserHandle;
-        return (
-          <span
-            className={
-              'ic ic-mention' +
-              (mine ? ' ic-mention-mine' : '') +
-              (broad ? ' ic-mention-broad' : '')
-            }
-            data-user-id={currentUserId && mine ? currentUserId : undefined}
-          >
-            {children}
-          </span>
-        );
-      }
-      // External link — open in a new tab. Image URLs render inline as an
-      // <img>, matching the previous renderText behaviour so giphy /
-      // direct-image links still embed.
-      if (typeof href === 'string' && /^https?:\/\//i.test(href) && IMG_EXT.test(href.split('?')[0])) {
-        return (
-          <a href={href} target="_blank" rel="noopener noreferrer" {...rest}>
-            <img
-              src={href}
-              alt={altTextOf(children, href)}
-              className="mm-inline-image"
-            />
-          </a>
-        );
-      }
-      return (
-        <a href={href} target="_blank" rel="noopener noreferrer" className="ic-link" {...rest}>
-          {children}
-        </a>
-      );
-    },
+    a: makeAnchorRenderer(currentUserId, currentUserHandle),
     pre: MarkdownPre,
     code: MarkdownCode,
     table: MarkdownTable,
