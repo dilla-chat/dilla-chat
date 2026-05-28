@@ -3030,20 +3030,13 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                       }
                       const oa = members.byId[orig.author] || { name: orig.author, color: '#666', initials: '??' };
                       return (
-                        <div className="reply-ref"
-                             onClick={() => {
-                               const el = feedRef.current?.querySelector('[data-msg-id="' + orig.id + '"]');
-                               if (el) {
-                                 el.classList.add('msg-flash');
-                                 el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                 setTimeout(() => el.classList.remove('msg-flash'), 1400);
-                               }
-                             }}>
+                        <button type="button" className="reply-ref"
+                             onClick={() => flashMessage(feedRef.current, orig.id)}>
                           <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M5 9L1 5l4-4M1 5h8a4 4 0 014 4v2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
                           <span className="rr-av" style={{ background: oa.color }}>{oa.initials}</span>
                           <span className="rr-author">{oa.name}</span>
                           <span className="rr-text">{(orig.text || '').slice(0, 80)}{(orig.text||'').length > 80 ? '…' : ''}</span>
-                        </div>
+                        </button>
                       );
                     })()}
                     {isFirst ? (
@@ -3214,7 +3207,9 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                                     const dot = `hsl(${hue} 65% 55%)`;
                                     const bar = `hsl(${hue} 60% 50% / 0.5)`;
                                     return (
-                                      <div key={`poll-${m.id}-${oi}-${o.label}`}
+                                      <button
+                                           type="button"
+                                           key={`poll-${m.id}-${oi}-${o.label}`}
                                            className={'poll-opt' + (o.mine ? ' mine' : '')}
                                            onClick={() => onVote?.(m.id, oi)}>
                                         <div className="poll-bar" style={{ width: ((o.votes || 0) / total * 100) + '%', background: bar }} />
@@ -3223,7 +3218,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                                           {o.label}
                                         </span>
                                         <span className="poll-count">{o.votes || 0}</span>
-                                      </div>
+                                      </button>
                                     );
                                   });
                                 })()}
@@ -3258,7 +3253,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                         </div>
                       )}
                       {m.thread && (
-                        <div className="thread-preview"
+                        <button type="button" className="thread-preview"
                              onClick={() => globalThis.dispatchEvent(new CustomEvent('dilla:open-thread', {
                                detail: { channelId: channel.id, messageId: m.id }
                              }))}>
@@ -3270,7 +3265,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                           </div>
                           <span style={{ fontWeight: 600 }}>{m.thread.count} replies</span>
                           <span style={{ color: 'var(--fg-3)' }}>· last {timeShort(m.thread.lastReplyAt)}</span>
-                        </div>
+                        </button>
                       )}
                     </div>
                     <div className="msg-tools">
@@ -3840,6 +3835,14 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
       })()}
     </div>
   );
+}
+
+function flashMessage(container: HTMLElement | null, id: string): void {
+  const el = container?.querySelector('[data-msg-id="' + id + '"]');
+  if (!el) return;
+  el.classList.add('msg-flash');
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  setTimeout(() => el.classList.remove('msg-flash'), 1400);
 }
 
 function toggleRoleInSet(prev: Set<string>, roleId: string): Set<string> {

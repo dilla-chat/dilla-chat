@@ -16,11 +16,12 @@ export default function MeshTopBar() {
   const federated = status !== 'ready';
   const degraded = status === 'degraded';
 
-  const [, setTick] = useState(0);
+  const [tick, setTick] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(id);
   }, []);
+  void tick;
   const time = formatClock(new Date());
 
   let statusEl;
