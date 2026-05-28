@@ -143,6 +143,44 @@ export class CryptoManager {
     return toBase64(encoder.encode(JSON.stringify(msg)));
   }
 
+  /** Try to decrypt a DM via the worker — including a worker-side Bob
+   *  bootstrap retry when the first decrypt reports needsBootstrap.
+   *  Returns the plaintext on success or `null` when the caller should
+   *  fall back to the main-thread path. */
+  private async tryDecryptDMInWorker(
+    senderId: string,
+    ciphertext: string,
+  ): Promise<string | null> {
+    try {
+      const result = await pairwiseSessionDecryptInWorker(senderId, ciphertext);
+      if (result.ok) {
+        return decoder.decode(fromBase64(result.plaintextB64));
+      }
+      // result.ok === false → needsBootstrap. Try the worker-side Bob
+      // bootstrap, then retry decrypt.
+      const haveWorkerKeys =
+        (await this.ensureIdentityInWorker()) &&
+        (await this.ensurePrekeyVaultInWorker());
+      if (!haveWorkerKeys) return null;
+      const msg = JSON.parse(decoder.decode(fromBase64(ciphertext))) as RatchetMessage;
+      if (!msg.header.x3dh) return null;
+      try {
+        await pairwiseSessionBootstrapBobInWorker(senderId, msg.header.x3dh);
+        const retry = await pairwiseSessionDecryptInWorker(senderId, ciphertext);
+        if (retry.ok) {
+          return decoder.decode(fromBase64(retry.plaintextB64));
+        }
+      } catch (err) {
+        console.warn('[crypto] worker Bob bootstrap failed; falling back', err);
+      }
+      return null;
+    } catch (err) {
+      const msg = JSON.parse(decoder.decode(fromBase64(ciphertext))) as RatchetMessage;
+      if (!msg.header.x3dh) throw err;
+      return null;
+    }
+  }
+
   async decryptDM(senderId: string, ciphertext: string): Promise<string> {
     // H-12c: try the worker first. If it reports the message needs
     // an X3DH bootstrap (no session yet, or stale Alice-session),
@@ -151,36 +189,8 @@ export class CryptoManager {
     // Falls back to the main-thread bootstrap path on any worker
     // failure.
     if (this.useWorkerGroupSession()) {
-      try {
-        const result = await pairwiseSessionDecryptInWorker(senderId, ciphertext);
-        if (result.ok) {
-          return decoder.decode(fromBase64(result.plaintextB64));
-        }
-        // result.ok === false → needsBootstrap. Try the worker-side
-        // Bob bootstrap, then retry decrypt.
-        if (
-          (await this.ensureIdentityInWorker()) &&
-          (await this.ensurePrekeyVaultInWorker())
-        ) {
-          const msg = JSON.parse(decoder.decode(fromBase64(ciphertext))) as RatchetMessage;
-          if (msg.header.x3dh) {
-            try {
-              await pairwiseSessionBootstrapBobInWorker(senderId, msg.header.x3dh);
-              const retry = await pairwiseSessionDecryptInWorker(senderId, ciphertext);
-              if (retry.ok) {
-                return decoder.decode(fromBase64(retry.plaintextB64));
-              }
-            } catch (err) {
-              console.warn('[crypto] worker Bob bootstrap failed; falling back', err);
-            }
-          }
-        }
-        // Worker-side bootstrap unavailable or failed — fall through
-        // to the main-thread path below.
-      } catch (err) {
-        const msg = JSON.parse(decoder.decode(fromBase64(ciphertext))) as RatchetMessage;
-        if (!msg.header.x3dh) throw err;
-      }
+      const workerResult = await this.tryDecryptDMInWorker(senderId, ciphertext);
+      if (workerResult !== null) return workerResult;
     }
 
     const msg: RatchetMessage = JSON.parse(decoder.decode(fromBase64(ciphertext)));
