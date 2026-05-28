@@ -2860,12 +2860,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                       );
                     })()}
                     {isFirst ? (
-                      <button type="button" style={{ cursor: 'pointer', background: 'transparent', border: 'none', padding: 0 }} onClick={(e) => {
-                        const r = e.currentTarget.getBoundingClientRect();
-                        globalThis.dispatchEvent(new CustomEvent('dilla:open-profile', {
-                          detail: { memberId: author.id || g.author, x: r.right + 8, y: r.top }
-                        }));
-                      }}><Avatar member={author} /></button>
+                      <button type="button" style={{ cursor: 'pointer', background: 'transparent', border: 'none', padding: 0 }} onClick={(e) => openProfileFromTarget(e.currentTarget, author.id || g.author, 'right')}><Avatar member={author} /></button>
                     ) : (
                       <div style={{ position: 'relative' }}>
                         <span style={{ position: 'absolute', right: 6, top: 4, fontFamily: 'var(--font-mono)', fontSize: 9.5, color: 'var(--fg-3)', opacity: 0 }}
@@ -2877,12 +2872,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                         <div className="head">
                           <button type="button" className="author"
                                 style={{ background: 'transparent', border: 'none', padding: 0, font: 'inherit', color: 'inherit', cursor: 'pointer' }}
-                                onClick={(e) => {
-                                  const r = e.currentTarget.getBoundingClientRect();
-                                  globalThis.dispatchEvent(new CustomEvent('dilla:open-profile', {
-                                    detail: { memberId: author.id || g.author, x: r.left, y: r.bottom + 4 }
-                                  }));
-                                }}>{author.name}</button>
+                                onClick={(e) => openProfileFromTarget(e.currentTarget, author.id || g.author, 'below')}>{author.name}</button>
                           <span className="at">{timeShort(m.at)}</span>
                           {m.author === currentUserId() && (() => {
                             // Render a real tooltip on the ack glyph. We
@@ -4111,6 +4101,14 @@ function toggleRoleInSet(prev: Set<string>, roleId: string): Set<string> {
   const next = new Set(prev);
   if (next.has(roleId)) next.delete(roleId); else next.add(roleId);
   return next;
+}
+
+function openProfileFromTarget(target: HTMLElement, memberId: string, placement: 'right' | 'below'): void {
+  const r = target.getBoundingClientRect();
+  const detail = placement === 'right'
+    ? { memberId, x: r.right + 8, y: r.top }
+    : { memberId, x: r.left, y: r.bottom + 4 };
+  globalThis.dispatchEvent(new CustomEvent('dilla:open-profile', { detail }));
 }
 
 function persistPresence(nextStatus: string, nextCustom: string): void {
