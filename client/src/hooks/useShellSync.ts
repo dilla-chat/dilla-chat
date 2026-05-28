@@ -56,7 +56,7 @@ export function useShellSync() {
       }
       // Restored banner only fires if we previously had a banner of another kind.
       const prev = s.connectionBanner;
-      if (prev && prev.kind !== 'restored') {
+      if (prev?.kind && prev.kind !== 'restored') {
         s.showConnectionBanner({
           kind: 'restored',
           message: 'Connection restored',

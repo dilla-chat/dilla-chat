@@ -114,7 +114,7 @@ export function groupMessages(msgs) {
   const out = [];
   let last = null;
   msgs.forEach(m => {
-    if (last && last.author === m.author && m.kind === 'text' && last.kind === 'text'
+    if (last?.author === m.author && m.kind === 'text' && last.kind === 'text'
         && (m.at - last.at) < 5 * 60e3) {
       last.children.push(m);
     } else {
@@ -3961,7 +3961,7 @@ export function detectUnfurls(text) {
 export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute, setMute, deaf, setDeaf, cam, setCam, screen, setScreen, rich, membersOpen, onToggleMembers }) {
   const nodes = (globalThis.MeshChrome && globalThis.MeshChrome.MEMBER_NODES) || {};
   const participants = (channel.participants || []).map(id => members.byId[id]);
-  const isConnected = voiceConnection && voiceConnection.channelId === channel.id;
+  const isConnected = voiceConnection?.channelId === channel.id;
   const meIsAdmin = !!members?.byId?.[currentUserId()]?.isAdmin;
   const lockedForMe = !!channel.locked && !meIsAdmin;
   // Resolve viewer perms so the right-click context menu can include

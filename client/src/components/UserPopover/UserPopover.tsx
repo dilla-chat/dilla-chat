@@ -49,7 +49,7 @@ export default function UserPopover({
         </div>
         <div className="user-popover-name">{username}</div>
         <div className="user-popover-fingerprint">{fingerprint}</div>
-        {roles && roles.length > 0 && (
+        {roles?.length ? (
           <div className="user-popover-roles">
             {roles.map(role => (
               <span key={role} className="user-popover-role">
@@ -57,7 +57,7 @@ export default function UserPopover({
               </span>
             ))}
           </div>
-        )}
+        ) : null}
         <div className="user-popover-actions">
           {onMessage && (
             <button className="user-popover-action" onClick={onMessage} type="button">
