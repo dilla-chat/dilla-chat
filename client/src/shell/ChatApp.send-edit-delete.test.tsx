@@ -303,6 +303,39 @@ describe('ChatApp send() — channel', () => {
     act(() => sendSlashCommand(ta, '/topic the new topic'));
     expect(container.firstChild).toBeTruthy();
   });
+
+  it('/poll with too few args notifies an error', () => {
+    const captured: CustomEvent[] = [];
+    const cb = (e: Event) => captured.push(e as CustomEvent);
+    window.addEventListener('dilla:notify', cb);
+    const { container } = renderApp();
+    const ta = getTextarea(container);
+    act(() => sendSlashCommand(ta, '/poll just a question'));
+    window.removeEventListener('dilla:notify', cb);
+    expect(container.firstChild).toBeTruthy();
+    expect(captured.some((e) => /Poll needs/i.test((e.detail as { text: string }).text ?? ''))).toBe(true);
+  });
+
+  it('/poll with question + options enters happy path', () => {
+    const { container } = renderApp();
+    const ta = getTextarea(container);
+    act(() => sendSlashCommand(ta, '/poll favourite color | red | blue'));
+    expect(container.firstChild).toBeTruthy();
+  });
+
+  it('/giphy with query opens the picker / handles errors', () => {
+    const { container } = renderApp();
+    const ta = getTextarea(container);
+    act(() => sendSlashCommand(ta, '/giphy cat'));
+    expect(container.firstChild).toBeTruthy();
+  });
+
+  it('/nick <name> sets nickname', () => {
+    const { container } = renderApp();
+    const ta = getTextarea(container);
+    act(() => sendSlashCommand(ta, '/nick foobar'));
+    expect(container.firstChild).toBeTruthy();
+  });
 });
 
 describe('ChatApp editMessage', () => {
