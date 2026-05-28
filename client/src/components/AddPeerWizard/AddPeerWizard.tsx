@@ -12,6 +12,12 @@ const STEP_LABEL: Record<WizardStep, string> = {
   done: 'DONE',
 };
 
+function wizardStepStatus(idx: number, currentIdx: number): string {
+  if (idx < currentIdx) return 'done';
+  if (idx === currentIdx) return 'active';
+  return 'pending';
+}
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -114,7 +120,7 @@ export default function AddPeerWizard({ open, onClose, onComplete }: Readonly<Pr
           <nav className="add-peer-steps" aria-label="Wizard progress">
             {STEP_ORDER.map((s, i) => {
               const currentIdx = STEP_ORDER.indexOf(step);
-              const status = i < currentIdx ? 'done' : i === currentIdx ? 'active' : 'pending';
+              const status = wizardStepStatus(i, currentIdx);
               return (
                 <span key={s} className={`add-peer-step ${status}`}>
                   <span className="add-peer-step-num">{i + 1}</span>

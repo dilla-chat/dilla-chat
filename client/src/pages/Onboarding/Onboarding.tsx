@@ -87,6 +87,29 @@ function onbLogPrefix(l: { line: string; err?: boolean }): string {
   return l.err ? '✗' : '›';
 }
 
+function connectBtnDisabled(args: {
+  mode: string;
+  useRecovery: boolean;
+  recoveryServer: string;
+  recoveryUsername: string;
+  recoveryKeyInput: string;
+  server: string;
+  token: string;
+}): boolean {
+  if (args.mode === 'existing') {
+    if (!args.useRecovery) return false;
+    return !args.recoveryServer || !args.recoveryUsername || !args.recoveryKeyInput.trim();
+  }
+  if (!args.server) return true;
+  return (args.mode === 'bootstrap' || args.mode === 'invite') && !args.token;
+}
+
+function connectBtnLabel(connecting: boolean, mode: string, useRecovery: boolean): string {
+  if (connecting) return 'Connecting…';
+  if (mode !== 'existing') return 'Connect';
+  return useRecovery ? 'Recover identity' : 'Unlock';
+}
+
 function CornerMarker({ x, y }: { x: number; y: number }) {
   return (
     <g>
@@ -575,8 +598,7 @@ export default function Onboarding() {
   // Hardware: passkey is prompted at the keygen step, nothing required up
   // front. Passphrase / Both: need a sufficiently strong passphrase here so
   // we can wrap the MEK (or its recovery slot in 'both').
-  const protectionOk =
-    keyProtect === 'passphrase' ? passOk : keyProtect === 'hardware' ? true : passOk;
+  const protectionOk = keyProtect === 'hardware' ? true : passOk;
   const identityOk = username.length >= 2 && protectionOk;
 
   function onIdentityNext() {
@@ -922,22 +944,11 @@ export function ConnectStep({
         <button
           className="btn btn--primary"
           disabled={
-            connecting ||
-            (mode === 'existing'
-              ? useRecovery
-                ? !recoveryServer || !recoveryUsername || !recoveryKeyInput.trim()
-                : false /* passphrase optional — passkey unlock is attempted first */
-              : !server || ((mode === 'bootstrap' || mode === 'invite') && !token))
+            connecting || connectBtnDisabled({ mode, useRecovery, recoveryServer, recoveryUsername, recoveryKeyInput, server, token })
           }
           onClick={onConnect}
         >
-          {connecting
-            ? 'Connecting…'
-            : mode === 'existing'
-              ? useRecovery
-                ? 'Recover identity'
-                : 'Unlock'
-              : 'Connect'}
+          {connectBtnLabel(connecting, mode, useRecovery)}
         </button>
       </div>
     </>
