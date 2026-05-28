@@ -345,6 +345,48 @@ impl Transport {
         Ok(())
     }
 
+    /// Run the H-9 handshake dispatch on the first text frame: v3 →
+    /// Ed25519 verifier; legacy v1 → shared-secret check unless
+    /// require_v3=true. Anything else → reject.
+    fn evaluate_handshake_message(&self, peer_addr: &str, text: &str) -> bool {
+        if looks_like_v3(text) {
+            return match self.validate_v3_handshake(text) {
+                Ok(node_id) => {
+                    tracing::info!(peer = %peer_addr, node_id = %node_id, "federation peer authenticated (v3)");
+                    true
+                }
+                Err(reason) => {
+                    tracing::warn!(peer = %peer_addr, %reason, "federation v3 handshake rejected");
+                    false
+                }
+            };
+        }
+        if self.require_v3 {
+            tracing::warn!(peer = %peer_addr, "federation peer sent v1 handshake but require_v3=true — refusing");
+            return false;
+        }
+        validate_auth_message_with_insecure(text, &self.join_secret, self.insecure)
+    }
+
+    /// Authenticate the inbound peer with a non-empty join_secret. Reads
+    /// the first text frame within AUTH_TIMEOUT_SECS and dispatches to
+    /// the v3 or v1 verifier.
+    async fn authenticate_inbound_peer(
+        &self,
+        peer_addr: &str,
+        stream: &mut SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
+    ) -> bool {
+        let auth_result = tokio::time::timeout(
+            tokio::time::Duration::from_secs(AUTH_TIMEOUT_SECS),
+            stream.next(),
+        )
+        .await;
+        match auth_result {
+            Ok(Some(Ok(Message::Text(text)))) => self.evaluate_handshake_message(peer_addr, &text),
+            _ => false,
+        }
+    }
+
     /// Handle an incoming WebSocket connection from a remote peer.
     ///
     /// Accepts the connection, authenticates the peer by expecting a join token
@@ -360,62 +402,17 @@ impl Transport {
 
         // Authenticate. With a non-empty secret we wait for a join_token
         // within AUTH_TIMEOUT_SECS. With an empty secret we either refuse
-        // outright (default — closes the edge case where a node with no
-        // outbound peers but federation listener up would silently accept
-        // anonymous inbound) OR allow when explicitly `insecure=true`
-        // (dev pattern). The old code short-circuited on
-        // `requires_auth(empty) == false` and never consulted the
-        // insecure flag.
-        if self.join_secret.is_empty() {
-            if !self.insecure {
-                tracing::warn!(peer = %peer_addr, "federation peer refused: empty join_secret and insecure=false");
-                let mut s = sink.lock().await;
-                let _ = s.send(Message::Close(None)).await;
-                return;
-            }
-            // insecure=true → fall through, accept anonymously (dev only)
+        // outright (default) or accept anonymously when insecure=true.
+        let authenticated = if self.join_secret.is_empty() {
+            self.insecure
         } else {
-            let auth_result = tokio::time::timeout(
-                tokio::time::Duration::from_secs(AUTH_TIMEOUT_SECS),
-                stream.next(),
-            )
-            .await;
-
-            // H-9: dispatch on the wire shape. If the first text frame
-            // parses as a v3 handshake ({"v": 3, "node_id": ..., ...})
-            // run the Ed25519 verifier against the pinned-peers
-            // registry. Otherwise fall back to the legacy v1
-            // shared-secret check, unless require_v3=true in which
-            // case we refuse outright.
-            let authenticated = match auth_result {
-                Ok(Some(Ok(Message::Text(text)))) => {
-                    if looks_like_v3(&text) {
-                        match self.validate_v3_handshake(&text) {
-                            Ok(node_id) => {
-                                tracing::info!(peer = %peer_addr, node_id = %node_id, "federation peer authenticated (v3)");
-                                true
-                            }
-                            Err(reason) => {
-                                tracing::warn!(peer = %peer_addr, %reason, "federation v3 handshake rejected");
-                                false
-                            }
-                        }
-                    } else if self.require_v3 {
-                        tracing::warn!(peer = %peer_addr, "federation peer sent v1 handshake but require_v3=true — refusing");
-                        false
-                    } else {
-                        validate_auth_message_with_insecure(&text, &self.join_secret, self.insecure)
-                    }
-                }
-                _ => false,
-            };
-
-            if !authenticated {
-                tracing::warn!(peer = %peer_addr, "federation peer failed authentication — disconnecting");
-                let mut s = sink.lock().await;
-                let _ = s.send(Message::Close(None)).await;
-                return;
-            }
+            self.authenticate_inbound_peer(peer_addr, &mut stream).await
+        };
+        if !authenticated {
+            tracing::warn!(peer = %peer_addr, "federation peer refused/failed authentication — disconnecting");
+            let mut s = sink.lock().await;
+            let _ = s.send(Message::Close(None)).await;
+            return;
         }
 
         {
