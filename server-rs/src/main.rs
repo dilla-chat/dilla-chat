@@ -901,6 +901,49 @@ async fn init_federation_mesh(
 /// so the Mesh top/bottom bars stay in sync. The cadence is intentionally
 /// generous (30s) — clients also tick lamport per message and react to
 /// connection events, so this is a backstop, not the hot path.
+/// Build the peer-status + lamport payload pair that the periodic
+/// broadcaster ships to every connected client each tick. Extracted
+/// from the spawn_federation_status_broadcaster loop body so the JSON
+/// shape can be unit-tested without driving a 30-second interval.
+pub(crate) fn federation_status_payloads(
+    snap: &FederationStatusSnapshot,
+    lamport: u64,
+) -> (serde_json::Value, serde_json::Value) {
+    let peer_payload = serde_json::json!({
+        "type": ws::events::EVENT_FEDERATION_PEER_STATUS,
+        "payload": {
+            "connected": snap.connected,
+            "total": snap.total,
+            "degraded": snap.degraded,
+        },
+    });
+    let lamport_payload = serde_json::json!({
+        "type": ws::events::EVENT_FEDERATION_LAMPORT,
+        "payload": { "value": lamport },
+    });
+    (peer_payload, lamport_payload)
+}
+
+/// One tick of the federation status broadcaster: snapshot peers,
+/// build the two payloads, broadcast them to every connected client.
+/// Driving this directly in a test is far cheaper than waiting for
+/// the 30-second interval.
+pub(crate) async fn broadcast_federation_status(
+    mesh_node: &Arc<federation::MeshNode>,
+    hub: &Arc<ws::Hub>,
+) {
+    let peers = mesh_node.get_peers().await;
+    let snap = federation_status_snapshot(&peers);
+    let lamport = mesh_node.sync_manager().current();
+    let (peer_payload, lamport_payload) = federation_status_payloads(&snap, lamport);
+    if let Ok(bytes) = serde_json::to_vec(&peer_payload) {
+        hub.broadcast_to_all(bytes).await;
+    }
+    if let Ok(bytes) = serde_json::to_vec(&lamport_payload) {
+        hub.broadcast_to_all(bytes).await;
+    }
+}
+
 /// Snapshot of the federation peer status used in the periodic broadcast.
 /// Extracted from `spawn_federation_status_broadcaster` so the
 /// pure-data computation (count peers, derive degraded) can be tested
@@ -936,31 +979,7 @@ fn spawn_federation_status_broadcaster(
         interval.tick().await;
         loop {
             interval.tick().await;
-            let peers = mesh_node.get_peers().await;
-            let snap = federation_status_snapshot(&peers);
-
-            let peer_payload = serde_json::json!({
-                "type": ws::events::EVENT_FEDERATION_PEER_STATUS,
-                "payload": {
-                    "connected": snap.connected,
-                    "total": snap.total,
-                    "degraded": snap.degraded,
-                },
-            });
-            if let Ok(bytes) = serde_json::to_vec(&peer_payload) {
-                hub.broadcast_to_all(bytes).await;
-            }
-
-            // Broadcast current Lamport clock value so clients can render it
-            // without needing to track every incoming message.
-            let lamport = mesh_node.sync_manager().current();
-            let lamport_payload = serde_json::json!({
-                "type": ws::events::EVENT_FEDERATION_LAMPORT,
-                "payload": { "value": lamport },
-            });
-            if let Ok(bytes) = serde_json::to_vec(&lamport_payload) {
-                hub.broadcast_to_all(bytes).await;
-            }
+            broadcast_federation_status(&mesh_node, &hub).await;
         }
     });
 }
@@ -2267,6 +2286,34 @@ mod tests {
             }
             other => panic!("expected TokenWrittenToFile, got {:?}", other),
         }
+    }
+
+    // ── federation_status_payloads (pure JSON builder) ───────────────
+
+    #[test]
+    fn federation_status_payloads_shape() {
+        let snap = FederationStatusSnapshot { connected: 2, total: 3, degraded: true };
+        let (peer, lamport) = federation_status_payloads(&snap, 42);
+        assert_eq!(peer["type"], ws::events::EVENT_FEDERATION_PEER_STATUS);
+        assert_eq!(peer["payload"]["connected"], 2);
+        assert_eq!(peer["payload"]["total"], 3);
+        assert_eq!(peer["payload"]["degraded"], true);
+        assert_eq!(lamport["type"], ws::events::EVENT_FEDERATION_LAMPORT);
+        assert_eq!(lamport["payload"]["value"], 42);
+    }
+
+    #[tokio::test]
+    async fn broadcast_federation_status_does_not_panic() {
+        let (db, _tmp) = test_db();
+        let hub = Arc::new(ws::Hub::new(db.clone()));
+        let mesh_cfg = federation::MeshConfig {
+            node_name: "test".into(),
+            ..Default::default()
+        };
+        let mesh = Arc::new(federation::MeshNode::new(mesh_cfg, db, hub.clone()));
+        broadcast_federation_status(&mesh, &hub).await;
+        // No connected peers; the broadcast iterates 0 peers + serializes
+        // empty payloads. Survival is the assertion.
     }
 
     // ── federation_status_snapshot (pure peer-list reducer) ──────────
