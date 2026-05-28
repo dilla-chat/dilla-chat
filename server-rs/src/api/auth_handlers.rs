@@ -98,6 +98,65 @@ pub async fn challenge(
     })))
 }
 
+/// A5: audit-log a verify-time signature/user-lookup failure under the
+/// synthetic "_global" team_id. Extracted from `verify` so the parent
+/// function's cognitive complexity stays below threshold.
+async fn log_login_failure_global(
+    state: &AppState,
+    reason: &str,
+    ip: Option<String>,
+    ua: Option<String>,
+) {
+    let reason = reason.to_string();
+    let _ = spawn_db(state.db.clone(), move |conn| {
+        db::insert_audit_event(
+            conn,
+            "_global",
+            None,
+            "auth.login_failed",
+            Some("auth"),
+            None,
+            Some(&json!({
+                "reason": reason,
+                "ip": ip,
+                "user_agent": ua,
+            })),
+        )
+    })
+    .await;
+}
+
+/// Fan an `auth.login_failed` audit event with reason=device_revoked
+/// out to every team the affected user belongs to.
+async fn log_revoked_device_login(
+    state: &AppState,
+    user_id: &str,
+    device_id: &str,
+    ip: Option<String>,
+) {
+    let user_id = user_id.to_string();
+    let device_id = device_id.to_string();
+    let _ = spawn_db(state.db.clone(), move |conn| {
+        let teams = db::list_user_teams(conn, &user_id).unwrap_or_default();
+        for team_id in teams {
+            let _ = db::insert_audit_event(
+                conn,
+                &team_id,
+                Some(&user_id),
+                "auth.login_failed",
+                Some("device"),
+                Some(&device_id),
+                Some(&json!({
+                    "reason": "device_revoked",
+                    "ip": ip,
+                })),
+            );
+        }
+        Ok(())
+    })
+    .await;
+}
+
 pub async fn verify(
     State(state): State<AppState>,
     req: Request,
@@ -137,30 +196,8 @@ pub async fn verify(
     .await?;
 
     if !valid || user.is_none() {
-        // A5: audit-log the failed verify. We can't tie it to a team
-        // (the public key may not match any user), so we log a global
-        // record under a synthetic team_id "_global" — the audit
-        // emitter MUST tolerate a non-existent team_id (it does:
-        // `audit_events` has no FK on team_id).
-        let ua_log = ua.clone();
-        let ip_log = ip.clone();
         let reason = if !valid { "bad_signature" } else { "unknown_user" };
-        let _ = spawn_db(state.db.clone(), move |conn| {
-            db::insert_audit_event(
-                conn,
-                "_global",
-                None,
-                "auth.login_failed",
-                Some("auth"),
-                None,
-                Some(&json!({
-                    "reason": reason,
-                    "ip": ip_log,
-                    "user_agent": ua_log,
-                })),
-            )
-        })
-        .await;
+        log_login_failure_global(&state, reason, ip.clone(), ua.clone()).await;
         return Err(AppError::Unauthorized("invalid signature".into()));
     }
     let user = user.unwrap();
@@ -184,28 +221,7 @@ pub async fn verify(
     // the user (or another trusted device) marked this one untrusted.
     if let Some(ref d) = device {
         if !d.is_active() {
-            let user_id_log = user.id.clone();
-            let device_id_log = d.id.clone();
-            let ip_log = ip.clone();
-            let _ = spawn_db(state.db.clone(), move |conn| {
-                let teams = db::list_user_teams(conn, &user_id_log).unwrap_or_default();
-                for team_id in teams {
-                    let _ = db::insert_audit_event(
-                        conn,
-                        &team_id,
-                        Some(&user_id_log),
-                        "auth.login_failed",
-                        Some("device"),
-                        Some(&device_id_log),
-                        Some(&json!({
-                            "reason": "device_revoked",
-                            "ip": ip_log,
-                        })),
-                    );
-                }
-                Ok(())
-            })
-            .await;
+            log_revoked_device_login(&state, &user.id, &d.id, ip.clone()).await;
             return Err(AppError::Unauthorized("invalid signature".into()));
         }
     }
