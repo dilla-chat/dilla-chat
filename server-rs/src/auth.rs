@@ -241,35 +241,23 @@ impl AuthService {
         Ok((sub, did))
     }
 
-    /// Validate a JWT and return (sub, jti, exp, device_id). Used by
-    /// the logout handler so it can revoke the *exact* token presented
-    /// and by handlers that need device context.
-    pub fn validate_jwt_full(&self, token: &str) -> Result<(String, String, i64, String), AppError> {
+    /// Build the JWT validation config used by validate_jwt_full,
+    /// honoring the per-node aud/iss pinning when node_name is set.
+    fn access_token_validation(&self) -> Validation {
         let mut validation = Validation::default();
         validation.algorithms = vec![jsonwebtoken::Algorithm::HS256];
-        // H2 / VULN-012: require aud + iss to match this node's name
-        // when one is configured. When node_name is empty (single-node
-        // dev) we skip the check so the existing dev pattern keeps
-        // working.
         if !self.node_name.is_empty() {
             validation.set_audience(&[&self.node_name]);
             validation.set_issuer(&[&self.node_name]);
         } else {
-            // Tokens without aud/iss claims (e.g. minted before this
-            // change rolls out) must still validate.
             validation.validate_aud = false;
         }
+        validation
+    }
 
-        // First try to decode and check it's not a refresh token.
-        // We decode without requiring specific fields first to peek at token_type.
-        let data = decode::<Claims>(
-            token,
-            &DecodingKey::from_secret(&self.jwt_secret),
-            &validation,
-        )
-        .map_err(|e| AppError::Unauthorized(format!("invalid token: {}", e)))?;
-
-        // Reject refresh tokens used as access tokens by trying to decode as RefreshClaims.
+    /// Reject the token if it's actually a refresh token presented as an
+    /// access token (peek at `token_type` via the RefreshClaims shape).
+    fn reject_if_refresh_token(&self, token: &str) -> Result<(), AppError> {
         let mut no_exp_validation = Validation::default();
         no_exp_validation.algorithms = vec![jsonwebtoken::Algorithm::HS256];
         no_exp_validation.validate_exp = false;
@@ -285,49 +273,71 @@ impl AuthService {
                 ));
             }
         }
+        Ok(())
+    }
 
-        // H2 / VULN-012: revocation check. Empty jti (legacy token)
-        // passes — we just don't have a way to revoke it. Newly minted
-        // tokens always have a jti.
+    /// Check the revocation list for the given jti. Empty jti (legacy
+    /// pre-H2 tokens without a jti claim) passes; newly minted tokens
+    /// always carry one.
+    fn assert_jti_not_revoked(&self, jti: &str) -> Result<(), AppError> {
+        if jti.is_empty() {
+            return Ok(());
+        }
+        let jti_q = jti.to_string();
+        let revoked = self
+            .db
+            .with_read(|conn| db::is_revoked(conn, &jti_q))
+            .map_err(|e| AppError::Internal(format!("revocation lookup: {}", e)))?;
+        if revoked {
+            return Err(AppError::Unauthorized("token revoked".into()));
+        }
+        Ok(())
+    }
+
+    /// A4: per-device force-logout — reject the token when the device
+    /// row says it's inactive or was invalidated after the token was
+    /// issued. Empty `did` (legacy) skips the check.
+    fn assert_device_not_invalidated(&self, did: &str, iat: i64) -> Result<(), AppError> {
+        if did.is_empty() {
+            return Ok(());
+        }
+        let did_q = did.to_string();
+        let device = self
+            .db
+            .with_read(|conn| db::get_device_by_id(conn, &did_q))
+            .map_err(|e| AppError::Internal(format!("device lookup: {}", e)))?;
+        if let Some(d) = device {
+            if !d.is_active() {
+                return Err(AppError::Unauthorized("device revoked".into()));
+            }
+            if iat < d.tokens_invalidated_after {
+                return Err(AppError::Unauthorized(
+                    "token superseded — re-authenticate".into(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Validate a JWT and return (sub, jti, exp, device_id). Used by
+    /// the logout handler so it can revoke the *exact* token presented
+    /// and by handlers that need device context.
+    pub fn validate_jwt_full(&self, token: &str) -> Result<(String, String, i64, String), AppError> {
+        let validation = self.access_token_validation();
+        let data = decode::<Claims>(
+            token,
+            &DecodingKey::from_secret(&self.jwt_secret),
+            &validation,
+        )
+        .map_err(|e| AppError::Unauthorized(format!("invalid token: {}", e)))?;
+
+        self.reject_if_refresh_token(token)?;
+
         let jti = data.claims.jti.clone();
-        let exp = data.claims.exp;
-        let iat = data.claims.iat;
-        let did = data.claims.did.clone();
-        if !jti.is_empty() {
-            let jti_q = jti.clone();
-            let revoked = self
-                .db
-                .with_read(|conn| db::is_revoked(conn, &jti_q))
-                .map_err(|e| AppError::Internal(format!("revocation lookup: {}", e)))?;
-            if revoked {
-                return Err(AppError::Unauthorized("token revoked".into()));
-            }
-        }
+        self.assert_jti_not_revoked(&jti)?;
+        self.assert_device_not_invalidated(&data.claims.did, data.claims.iat)?;
 
-        // A4: per-device force-logout. If the user's role changed
-        // server-side, every JWT issued *before* the change must be
-        // rejected so the in-flight token can't keep operating with
-        // stale permissions. We compare the token's `iat` to the
-        // device row's `tokens_invalidated_after` (unix seconds).
-        if !did.is_empty() {
-            let did_q = did.clone();
-            let device = self
-                .db
-                .with_read(|conn| db::get_device_by_id(conn, &did_q))
-                .map_err(|e| AppError::Internal(format!("device lookup: {}", e)))?;
-            if let Some(d) = device {
-                if !d.is_active() {
-                    return Err(AppError::Unauthorized("device revoked".into()));
-                }
-                if iat < d.tokens_invalidated_after {
-                    return Err(AppError::Unauthorized(
-                        "token superseded — re-authenticate".into(),
-                    ));
-                }
-            }
-        }
-
-        Ok((data.claims.sub, jti, exp, did))
+        Ok((data.claims.sub, jti, data.claims.exp, data.claims.did))
     }
 
     /// Revoke the supplied JWT by inserting its `jti` into the
