@@ -3566,10 +3566,16 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
         );
       })()}
       {contextMenu && (
-        <div className="ctx-overlay" onClick={() => setContextMenu(null)} onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }}>
+        <div className="ctx-overlay">
+          <button
+            type="button"
+            className="ctx-overlay-dismiss"
+            aria-label="Close context menu"
+            onClick={() => setContextMenu(null)}
+            onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }}
+          />
           <div className="ctx-menu"
-               style={{ left: Math.min(contextMenu.x, globalThis.innerWidth - 220), top: Math.min(contextMenu.y, globalThis.innerHeight - 320) }}
-               onClick={e => e.stopPropagation()}>
+               style={{ left: Math.min(contextMenu.x, globalThis.innerWidth - 220), top: Math.min(contextMenu.y, globalThis.innerHeight - 320) }}>
             <button onClick={(e) => {
               const anchor = e.currentTarget.getBoundingClientRect();
               setPicker({ open: true, anchor, target: 'react:' + contextMenu.msgId });
@@ -5820,10 +5826,16 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
         federated={opts.federated !== false}
       />
       {menuPop && (
-        <div className="ctx-overlay" onClick={() => setMenuPop(null)} onContextMenu={(e) => { e.preventDefault(); setMenuPop(null); }}>
+        <div className="ctx-overlay">
+          <button
+            type="button"
+            className="ctx-overlay-dismiss"
+            aria-label="Close menu"
+            onClick={() => setMenuPop(null)}
+            onContextMenu={(e) => { e.preventDefault(); setMenuPop(null); }}
+          />
           <div className="ctx-menu"
-               style={{ left: Math.min(menuPop.x, globalThis.innerWidth - 220), top: Math.min(menuPop.y, globalThis.innerHeight - (menuPop.items.length * 36 + 16)) }}
-               onClick={e => e.stopPropagation()}>
+               style={{ left: Math.min(menuPop.x, globalThis.innerWidth - 220), top: Math.min(menuPop.y, globalThis.innerHeight - (menuPop.items.length * 36 + 16)) }}>
             {menuPop.items.map((it, i) => it.sep ? (
               <div key={i} className="ctx-sep" />
             ) : (

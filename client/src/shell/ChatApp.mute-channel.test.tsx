@@ -209,7 +209,7 @@ describe('ChatApp toggleMuteChannel (mock session)', () => {
       fireEvent.contextMenu(channelRow, { clientX: 50, clientY: 50 });
     });
     expect(container.querySelector('.ctx-menu')).toBeTruthy();
-    const overlay = container.querySelector('.ctx-overlay') as HTMLElement;
+    const overlay = container.querySelector('.ctx-overlay-dismiss') as HTMLElement;
     act(() => {
       fireEvent.click(overlay);
     });

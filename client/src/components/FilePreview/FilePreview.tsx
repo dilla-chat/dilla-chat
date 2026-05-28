@@ -42,13 +42,18 @@ function ImagePreview({ attachment }: Readonly<{ attachment: Attachment }>) {
         </button>
       </div>
       {expanded && (
-        <div className="file-preview-lightbox" aria-hidden="true" onClick={() => setExpanded(false)}>
+        <button
+          type="button"
+          className="file-preview-lightbox"
+          aria-label="Close preview"
+          onClick={() => setExpanded(false)}
+        >
           <img
             src={attachment.url}
             alt=""
             className="file-preview-lightbox-image"
           />
-        </div>
+        </button>
       )}
     </>
   );
