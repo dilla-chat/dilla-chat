@@ -2255,7 +2255,10 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
               <button
                 className={'vctrl' + (cam ? ' on' : '') + (inVoice ? '' : ' is-disabled')}
                 disabled={!inVoice}
-                title={inVoice ? (cam ? 'Stop camera' : 'Start camera') : 'Join voice to use the camera'}
+                title={(() => {
+                  if (!inVoice) return 'Join voice to use the camera';
+                  return cam ? 'Stop camera' : 'Start camera';
+                })()}
                 onClick={() => { console.log('[Voice/diag] UI click: cam', { wasOn: cam, willStart: !cam, inVoice }); if (inVoice) setCam(!cam); }}
               >
                 <Icon.Video size={14} off={!cam} />
@@ -2263,7 +2266,10 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
               <button
                 className={'vctrl' + (screen ? ' on' : '') + (inVoice ? '' : ' is-disabled')}
                 disabled={!inVoice}
-                title={inVoice ? (screen ? 'Stop sharing' : 'Share screen') : 'Join voice to share your screen'}
+                title={(() => {
+                  if (!inVoice) return 'Join voice to share your screen';
+                  return screen ? 'Stop sharing' : 'Share screen';
+                })()}
                 onClick={() => { console.log('[Voice/diag] UI click: screen', { wasOn: screen, willStart: !screen, inVoice }); if (inVoice) setScreen(!screen); }}
               >
                 <Icon.Screen size={14} off={!screen} />
@@ -3415,9 +3421,10 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
               )}
               <textarea
                 ref={textareaRef}
-                placeholder={slowModeLock
-                  ? `Slow mode — wait ${slowModeLock.secondsLeft}s before posting again`
-                  : (channel.type === 'dm' ? `Message ${channel.name}` : `Message #${channel.name}`)}
+                placeholder={(() => {
+                  if (slowModeLock) return `Slow mode — wait ${slowModeLock.secondsLeft}s before posting again`;
+                  return channel.type === 'dm' ? `Message ${channel.name}` : `Message #${channel.name}`;
+                })()}
                 disabled={!!slowModeLock}
                 value={draft}
                 onChange={e => {
@@ -4217,13 +4224,11 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
                     // dimensions and same dot position — the only
                     // thing that changes is the inner content.
                     <div className="avatar-tile">
-                      {renderKind === 'screen' ? (
-                        <ScreenTile member={p} pip={showCam ? p : null} />
-                      ) : renderKind === 'cam' ? (
-                        <CamTile member={p} />
-                      ) : (
-                        <Avatar member={p} size={isMini ? 32 : 96} />
-                      )}
+                      {(() => {
+                        if (renderKind === 'screen') return <ScreenTile member={p} pip={showCam ? p : null} />;
+                        if (renderKind === 'cam') return <CamTile member={p} />;
+                        return <Avatar member={p} size={isMini ? 32 : 96} />;
+                      })()}
                       {/* Dot overlay for when the content is a cam / screen
                           tile — the Avatar provides its own dot, so we
                           only add this one when the avatar isn't the
@@ -5456,7 +5461,10 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
       // into an attachment ref; multi-attachment rendering for DMs
       // still needs broader work — single-token works today.
       const tokens = staged.map((a) => `[file:${a.id}] ${a.name}`).join(' ');
-      const wireText = tokens ? (userText ? `${tokens} ${userText}` : tokens) : userText;
+      let wireText: string;
+      if (!tokens) wireText = userText;
+      else if (userText) wireText = `${tokens} ${userText}`;
+      else wireText = tokens;
       const m = { id: 'new-' + Date.now(), author: currentUserId(), at: new Date(), ...processed, replyTo: replyTo[channel.id] || null };
       setDmMessages(prev => ({ ...prev, [channel.id]: [...(prev[channel.id] || []), m] }));
       setDrafts(prev => ({ ...prev, [channel.id]: '' }));
