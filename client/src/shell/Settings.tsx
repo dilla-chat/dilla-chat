@@ -1075,18 +1075,28 @@ export function UserVoice() {
             options={outputDevs.map((d) => d.label)}
           />
         </Row>
-        <Row label="Input level" hint={testError ? `Mic error: ${testError}` : permError ? `Permission: ${permError}` : 'Speak normally to verify levels.'}>
+        <Row label="Input level" hint={(() => {
+          if (testError) return `Mic error: ${testError}`;
+          if (permError) return `Permission: ${permError}`;
+          return 'Speak normally to verify levels.';
+        })()}>
           <div className="set-meter-row">
             <div className="set-meter">
-              {Array.from({ length: 22 }).map((_, i) => (
-                <span
-                  key={i}
-                  style={{
-                    background: i < 11 ? 'var(--accent)' : i < 17 ? 'var(--warn)' : 'var(--danger)',
-                    opacity: i < litCells ? 1 : 0.18,
-                  }}
-                />
-              ))}
+              {Array.from({ length: 22 }).map((_, i) => {
+                let bg: string;
+                if (i < 11) bg = 'var(--accent)';
+                else if (i < 17) bg = 'var(--warn)';
+                else bg = 'var(--danger)';
+                return (
+                  <span
+                    key={i}
+                    style={{
+                      background: bg,
+                      opacity: i < litCells ? 1 : 0.18,
+                    }}
+                  />
+                );
+              })}
             </div>
             <Btn onClick={testing ? stopTest : startTest}>
               {testing ? 'Stop test' : 'Test mic'}
@@ -1330,7 +1340,7 @@ export function UserPrivacy() {
               globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: {
                 author: 'crypto',
                 text: rotated
-                  ? `Rotated sender keys for ${rotated} channel${rotated === 1 ? '' : 's'}.`
+                  ? `Rotated sender keys for ${rotated} ${rotated === 1 ? 'channel' : 'channels'}.`
                   : 'No active sender keys to rotate yet.',
                 duration: 3500,
               } }));
@@ -1795,7 +1805,10 @@ export function TeamInvites() {
           const expired = r.expiresAt instanceof Date && r.expiresAt.getTime() <= Date.now();
           const used = r.usesMax != null && r.usesUsed >= r.usesMax;
           const dead = expired || used;
-          const deadReason = expired ? 'expired' : used ? 'all uses spent' : '';
+          let deadReason: string;
+          if (expired) deadReason = 'expired';
+          else if (used) deadReason = 'all uses spent';
+          else deadReason = '';
           return (
             <div key={r.code} className={'set-tr' + (r.stale ? ' stale' : '') + (dead ? ' set-tr-dead' : '')}>
               <span className="set-link-cell" title={r.code}>
@@ -2130,11 +2143,10 @@ export function RoleEditor({ teamId, role, onClose, onSaved }: Readonly<{ teamId
               if (!iHoldIt && !onTheRole) return []; // hide entirely
               const escalation = !iHoldIt && onTheRole;
               const disabled = covered || escalation;
-              const tip = covered
-                ? 'Covered by Admin (all permissions)'
-                : escalation
-                ? "You don't hold this permission yourself — it's read-only to you"
-                : undefined;
+              let tip: string | undefined;
+              if (covered) tip = 'Covered by Admin (all permissions)';
+              else if (escalation) tip = "You don't hold this permission yourself — it's read-only to you";
+              else tip = undefined;
               return [
                 <label
                   key={f.key}
