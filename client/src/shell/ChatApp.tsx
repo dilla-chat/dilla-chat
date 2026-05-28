@@ -3413,7 +3413,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                 <div className="mention-pop">
                   <div className="mention-head">members in this kanal · ↑↓ navigate · ⇥/↵ pick · esc cancel</div>
                   {mentionMatches.map((m, i) => (
-                    <div key={m.id}
+                    <button type="button" key={m.id}
                          className={'mention-row' + (i === mentionIdx ? ' selected' : '')}
                          onMouseEnter={() => setMentionIdx(i)}
                          onMouseDown={(e) => { e.preventDefault(); applyMention(m.name); }}>
@@ -3421,7 +3421,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                       <div className="mention-name">{m.name}</div>
                       {m.custom && <div className="mention-status">{m.custom}</div>}
                       <div className="mention-presence"><span className={'presence ' + m.status}></span></div>
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
@@ -3429,7 +3429,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                 <div className="mention-pop slash-pop" style={{ maxHeight: 320, overflowY: 'auto' }}>
                   <div className="mention-head">slash commands · ↑↓ navigate · ⇥/↵ pick · esc cancel</div>
                   {slashMatches.map((s, i) => (
-                    <div key={s.cmd}
+                    <button type="button" key={s.cmd}
                          ref={(el) => { if (el && i === slashIdx) el.scrollIntoView({ block: 'nearest' }); }}
                          className={'slash-row' + (i === slashIdx ? ' selected' : '')}
                          onMouseEnter={() => setSlashIdx(i)}
@@ -3437,7 +3437,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                       <div className="slash-cmd">{s.cmd}</div>
                       {s.args && <div className="slash-args">{s.args}</div>}
                       <div className="slash-desc">{s.desc}</div>
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
