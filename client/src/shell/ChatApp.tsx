@@ -4142,9 +4142,8 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
             // never render a screen share as a thumbnail because the
             // auto-focus effect promotes it to the main stage for
             // every viewer the moment someone starts sharing.
-            const renderKind: 'screen' | 'cam' | 'avatar' = focusKind
-              ? focusKind
-              : (showCam ? 'cam' : 'avatar');
+            const renderKind: 'screen' | 'cam' | 'avatar' =
+              focusKind ?? (showCam ? 'cam' : 'avatar');
             return (
               <div key={p.id}
                    className={'voice-card'
