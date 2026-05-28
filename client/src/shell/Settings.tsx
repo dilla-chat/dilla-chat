@@ -174,6 +174,31 @@ function describeRotationResult(rotated: number): string {
   return `Rotated sender keys for ${rotated} ${noun}.`;
 }
 
+function cssColorToHex(cssColor: string, fallback: string): string {
+  const m = /rgba?\(([^)]+)\)/i.exec(cssColor);
+  if (!m) return fallback;
+  const parts = m[1].split(',').map((s) => Number.parseFloat(s.trim()));
+  const [r, g, b] = parts;
+  if ([r, g, b].some((n) => Number.isNaN(n))) return fallback;
+  const h = (n: number) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0');
+  return '#' + h(r) + h(g) + h(b);
+}
+
+function formatExpiry(expiresAt: Date | null): string {
+  if (!expiresAt) return '—';
+  const ms = expiresAt.getTime() - Date.now();
+  if (ms <= 0) return 'expired';
+  const totalSecs = Math.floor(ms / 1000);
+  const days = Math.floor(totalSecs / 86400);
+  const hours = Math.floor((totalSecs % 86400) / 3600);
+  const mins = Math.floor((totalSecs % 3600) / 60);
+  const secs = totalSecs % 60;
+  if (days >= 1) return expiresAt.toLocaleDateString();
+  if (hours >= 1) return `in ${hours}h ${mins}m`;
+  if (mins >= 1) return `in ${mins}m ${secs}s`;
+  return `in ${secs}s`;
+}
+
 function toStr(v: unknown): string {
   if (v == null) return '';
   if (typeof v === 'string') return v;
@@ -1302,21 +1327,12 @@ export function SafetyNumberQR({
         if (cancelled || !ref.current) return;
         // qrcode wants #rrggbb(aa). getComputedStyle().color returns
         // "rgb(r, g, b)" or "rgba(r, g, b, a)", so parse and rebuild.
-        function toHex(cssColor: string, fallback: string): string {
-          const m = /rgba?\(([^)]+)\)/i.exec(cssColor);
-          if (!m) return fallback;
-          const parts = m[1].split(',').map((s) => Number.parseFloat(s.trim()));
-          const [r, g, b] = parts;
-          if ([r, g, b].some((n) => Number.isNaN(n))) return fallback;
-          const h = (n: number) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0');
-          return '#' + h(r) + h(g) + h(b);
-        }
         const probe = document.createElement('div');
         document.body.appendChild(probe);
         probe.style.color = 'var(--fg)';
-        const fg = toHex(getComputedStyle(probe).color, '#e8ece8');
+        const fg = cssColorToHex(getComputedStyle(probe).color, '#e8ece8');
         probe.style.color = 'var(--surface-1)';
-        const bg = toHex(getComputedStyle(probe).color, '#0d100e');
+        const bg = cssColorToHex(getComputedStyle(probe).color, '#0d100e');
         probe.remove();
         mod.default.toCanvas(ref.current, payload, {
           width: 256,
@@ -1742,22 +1758,6 @@ export function TeamInvites() {
     return () => globalThis.clearInterval(id);
   }, []);
 
-  function formatExpiry(expiresAt: Date | null): string {
-    if (!expiresAt) return '—';
-    const ms = expiresAt.getTime() - Date.now();
-    if (ms <= 0) return 'expired';
-    const totalSecs = Math.floor(ms / 1000);
-    const days = Math.floor(totalSecs / 86400);
-    const hours = Math.floor((totalSecs % 86400) / 3600);
-    const mins = Math.floor((totalSecs % 3600) / 60);
-    const secs = totalSecs % 60;
-    // > 24 h: show the absolute date so admins can plan; under 24 h:
-    // start ticking with progressively finer granularity.
-    if (days >= 1) return expiresAt.toLocaleDateString();
-    if (hours >= 1) return `in ${hours}h ${mins}m`;
-    if (mins >= 1) return `in ${mins}m ${secs}s`;
-    return `in ${secs}s`;
-  }
 
   // Resolve a user_id to a human-friendly label using whatever the shell
   // bridge already loaded — falls back to a short id when the lookup
