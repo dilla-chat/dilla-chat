@@ -580,31 +580,41 @@ class WebRTCService {
     if (this.pendingCamTrack) pendingPairs.push({ kind: 'cam', track: this.pendingCamTrack });
     if (this.pendingScreenTrack) pendingPairs.push({ kind: 'screen', track: this.pendingScreenTrack });
     for (const pending of pendingPairs) {
-      if (pending.track.readyState !== 'live') {
-        if (pending.kind === 'cam') this.pendingCamTrack = null;
-        else this.pendingScreenTrack = null;
-        continue;
-      }
-      const target = this.pc.getTransceivers().find((tx) => {
-        if (tx.currentDirection === 'stopped') return false;
-        if (tx.sender.track) return false;
-        if (tx.receiver.track?.kind !== 'video') return false;
-        if (!tx.mid || knownMidsBefore.has(tx.mid)) return false;
-        return true;
-      });
-      if (target) {
-        try { target.direction = 'sendonly'; } catch { /* read-only */ }
-        await target.sender.replaceTrack(pending.track);
-        if (pending.kind === 'screen') {
-          this.screenSender = target.sender;
-          this.pendingScreenTrack = null;
-        } else {
-          this.webcamSender = target.sender;
-          this.pendingCamTrack = null;
-        }
-        console.log('[Voice/diag] pre-bind:', pending.kind, '→ transceiver', { mid: target.mid, dir: target.direction });
-      }
+      await this.bindOnePendingTrack(pending, knownMidsBefore);
     }
+  }
+
+  private async bindOnePendingTrack(
+    pending: { kind: 'cam' | 'screen'; track: MediaStreamTrack },
+    knownMidsBefore: Set<string>,
+  ): Promise<void> {
+    if (pending.track.readyState !== 'live') {
+      this.clearPendingTrackRef(pending.kind);
+      return;
+    }
+    const target = this.pc?.getTransceivers().find((tx) =>
+      tx.currentDirection !== 'stopped'
+      && !tx.sender.track
+      && tx.receiver.track?.kind === 'video'
+      && !!tx.mid
+      && !knownMidsBefore.has(tx.mid),
+    );
+    if (!target) return;
+    try { target.direction = 'sendonly'; } catch { /* read-only */ }
+    await target.sender.replaceTrack(pending.track);
+    if (pending.kind === 'screen') {
+      this.screenSender = target.sender;
+      this.pendingScreenTrack = null;
+    } else {
+      this.webcamSender = target.sender;
+      this.pendingCamTrack = null;
+    }
+    console.log('[Voice/diag] pre-bind:', pending.kind, '→ transceiver', { mid: target.mid, dir: target.direction });
+  }
+
+  private clearPendingTrackRef(kind: 'cam' | 'screen'): void {
+    if (kind === 'cam') this.pendingCamTrack = null;
+    else this.pendingScreenTrack = null;
   }
 
   /** Flush any ICE candidates that arrived before setRemoteDescription. */

@@ -63,45 +63,54 @@ function TopBar({ onCmdK, onSearch, onHelp, federated = true, degraded = false, 
 
 }
 
+function dbStatusInfo(dbEncrypted: boolean | null): { label: string; title: string } {
+  if (dbEncrypted === null) {
+    return { label: 'CHECKING…', title: 'Waiting for server config…' };
+  }
+  if (dbEncrypted) {
+    return {
+      label: 'SQLCIPHER · AES-256',
+      title: 'SQLCipher at-rest encryption is active on the server.',
+    };
+  }
+  return {
+    label: 'PLAIN SQLITE · UNENCRYPTED',
+    title: 'Server is running without DILLA_DB_PASSPHRASE (--insecure). The DB file on disk is plain SQLite.',
+  };
+}
+
+function resolveE2eState(derivedKey: unknown): 'active' | 'initializing' | 'locked' {
+  if (!derivedKey) return 'locked';
+  if (isCryptoInitialized()) return 'active';
+  return 'initializing';
+}
+
+function e2eStatusInfo(state: 'active' | 'initializing' | 'locked'): { label: string; title: string } {
+  if (state === 'active') {
+    return {
+      label: 'SIGNAL · X3DH · AES-256-GCM',
+      title: 'X3DH key agreement + Double Ratchet, AES-256-GCM AEAD. Click for encryption details.',
+    };
+  }
+  if (state === 'initializing') {
+    return { label: 'INITIALIZING…', title: 'Identity unlocked; crypto manager booting…' };
+  }
+  return {
+    label: 'LOCKED',
+    title: 'No derived key in this session — messages cannot be decrypted until you unlock.',
+  };
+}
+
 // ───────── bottom status bar ─────────
 function BottomBar({ voiceConnection, peerStatus, federated = true, degraded = false, nodeHost = 'local' }) {
   const [lamport, setLamport] = useStateMC(12944);
   const [latency, setLatency] = useStateMC(14);
   const serverConfig = useServerConfig();
   const dbEncrypted = serverConfig?.db_encrypted ?? null;
-  let dbLabel: string;
-  let dbTitle: string;
-  if (dbEncrypted === null) {
-    dbLabel = 'CHECKING…';
-    dbTitle = 'Waiting for server config…';
-  } else if (dbEncrypted) {
-    dbLabel = 'SQLCIPHER · AES-256';
-    dbTitle = 'SQLCipher at-rest encryption is active on the server.';
-  } else {
-    dbLabel = 'PLAIN SQLITE · UNENCRYPTED';
-    dbTitle = 'Server is running without DILLA_DB_PASSPHRASE (--insecure). The DB file on disk is plain SQLite.';
-  }
+  const { label: dbLabel, title: dbTitle } = dbStatusInfo(dbEncrypted);
   const derivedKey = useAuthStore((s) => s.derivedKey);
-  let e2eState: 'active' | 'initializing' | 'locked';
-  if (!derivedKey) {
-    e2eState = 'locked';
-  } else if (isCryptoInitialized()) {
-    e2eState = 'active';
-  } else {
-    e2eState = 'initializing';
-  }
-  let e2eLabel: string;
-  let e2eTitle: string;
-  if (e2eState === 'active') {
-    e2eLabel = 'SIGNAL · X3DH · AES-256-GCM';
-    e2eTitle = 'X3DH key agreement + Double Ratchet, AES-256-GCM AEAD. Click for encryption details.';
-  } else if (e2eState === 'initializing') {
-    e2eLabel = 'INITIALIZING…';
-    e2eTitle = 'Identity unlocked; crypto manager booting…';
-  } else {
-    e2eLabel = 'LOCKED';
-    e2eTitle = 'No derived key in this session — messages cannot be decrypted until you unlock.';
-  }
+  const e2eState = resolveE2eState(derivedKey);
+  const { label: e2eLabel, title: e2eTitle } = e2eStatusInfo(e2eState);
   useEffectMC(() => {
     const id = setInterval(() => {
       setLamport((l) => l + randomInt(4));
