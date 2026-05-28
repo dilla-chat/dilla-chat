@@ -160,15 +160,15 @@ export default function AppLayout() {
     globalThis.addEventListener('mesh:open-search', openSearch);
     globalThis.addEventListener('mesh:open-add-peer', openAddPeer);
     globalThis.addEventListener('mesh:open-safety-compare', openSafety);
-    globalThis.addEventListener('mesh:open-forward', openForward as EventListener);
-    globalThis.addEventListener('mesh:incoming-call', openIncoming as EventListener);
+    globalThis.addEventListener('mesh:open-forward', openForward);
+    globalThis.addEventListener('mesh:incoming-call', openIncoming);
     return () => {
       globalThis.removeEventListener('mesh:open-command-palette', openCmd);
       globalThis.removeEventListener('mesh:open-search', openSearch);
       globalThis.removeEventListener('mesh:open-add-peer', openAddPeer);
       globalThis.removeEventListener('mesh:open-safety-compare', openSafety);
-      globalThis.removeEventListener('mesh:open-forward', openForward as EventListener);
-      globalThis.removeEventListener('mesh:incoming-call', openIncoming as EventListener);
+      globalThis.removeEventListener('mesh:open-forward', openForward);
+      globalThis.removeEventListener('mesh:incoming-call', openIncoming);
     };
   }, []);
 

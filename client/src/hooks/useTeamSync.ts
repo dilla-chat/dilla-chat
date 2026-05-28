@@ -443,7 +443,7 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
         ...baseline,
         ...payload,
         teamId: teamIdFromPayload,
-        accessRoleIds: (payload.access_role_ids ?? payload.accessRoleIds ?? (idx >= 0 ? list[idx].accessRoleIds : [])) as string[],
+        accessRoleIds: (payload.access_role_ids ?? payload.accessRoleIds ?? (idx >= 0 ? list[idx].accessRoleIds : [])),
         // Server emits snake_case fields; normalize to the camelCase
         // names the rest of the client uses so live edits to slow mode,
         // the hidden flag, or the channel's group membership actually
@@ -642,7 +642,7 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
       async (payload: { team_id?: string; user?: Record<string, unknown>; member?: Record<string, unknown> }) => {
         if (!payload?.team_id || payload.team_id !== teamId) return;
         const [normalized] = normalizeMembers([
-          { member: payload.member ?? {}, user: payload.user ?? {} } as Record<string, unknown>,
+          { member: payload.member ?? {}, user: payload.user ?? {} },
         ]);
         if (normalized?.userId) {
           useTeamStore.getState().addMember(teamId, normalized);

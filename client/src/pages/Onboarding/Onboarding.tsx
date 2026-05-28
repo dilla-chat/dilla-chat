@@ -256,12 +256,12 @@ export default function Onboarding() {
         // leave credentials empty so the picker doesn't pop up either).
         const hasPasskey = !passphrase && info && info.credentials.length > 0;
 
-        if (hasPasskey) {
+        if (hasPasskey && info) {
           try {
             setConnectLog((p) => [...p, { line: 'trying passkey · prompting authenticator' }]);
-            const credentialIds = info!.credentials.map((c) => c.id);
-            const storedServer = info!.keySlots[0]?.server_url || normalizeServerUrl(server);
-            const auth = await authenticatePasskey(credentialIds, info!.prfSalt, storedServer);
+            const credentialIds = info.credentials.map((c) => c.id);
+            const storedServer = info.keySlots[0]?.server_url || normalizeServerUrl(server);
+            const auth = await authenticatePasskey(credentialIds, info.prfSalt, storedServer);
             if (auth.prfOutput) {
               derivedKeyB64 = prfOutputToBase64(auth.prfOutput);
               const prfKeyBytes = fromBase64(derivedKeyB64);
@@ -523,7 +523,7 @@ export default function Onboarding() {
           realTeamId,
           result.token,
           result.user,
-          (result.team ?? { id: realTeamId, name: team }) as Record<string, unknown>,
+          result.team ?? { id: realTeamId, name: team },
           url,
         );
         enrolledTeamIdRef.current = realTeamId;

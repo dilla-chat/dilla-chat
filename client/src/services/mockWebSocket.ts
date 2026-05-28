@@ -72,17 +72,22 @@ export class MockWebSocketService {
     }
     const api = this.peerApi;
     if (!api) return {} as T;
+    const channelId = payload.channel_id as string;
+    const threadId = payload.thread_id as string;
+    const dmId = payload.dm_id as string;
+    const limit = payload.limit as number | undefined;
+    const before = payload.before as string | undefined;
     switch (action) {
       case 'messages:list':
-        return api.getMessages(teamId, payload.channel_id as string, payload.limit as number | undefined, payload.before as string | undefined) as T;
+        return api.getMessages(teamId, channelId, limit, before) as T;
       case 'threads:list':
-        return api.getChannelThreads(teamId, payload.channel_id as string) as T;
+        return api.getChannelThreads(teamId, channelId) as T;
       case 'threads:messages':
-        return api.getThreadMessages(teamId, payload.thread_id as string) as T;
+        return api.getThreadMessages(teamId, threadId) as T;
       case 'dms:list':
         return { dm_channels: await api.getDMChannels() } as T;
       case 'dms:messages':
-        return api.getDMMessages(teamId, payload.dm_id as string) as T;
+        return api.getDMMessages(teamId, dmId) as T;
       default:
         return {} as T;
     }
