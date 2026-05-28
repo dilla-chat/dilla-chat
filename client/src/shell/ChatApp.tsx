@@ -1570,7 +1570,6 @@ export function FloatingPip({
       ref={ref}
       className={className}
       title={title}
-      role="presentation"
       onMouseDown={(e) => start('move', e)}
     >
       {children}
@@ -4528,7 +4527,7 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
   }, [focused, voicePeers, cam, screen]);
 
   return (
-    <div className="main">
+    <main className="main">
       <div className="main-head">
         <button className="btn btn--ghost btn--icon btn--sm" title="Open menu" onClick={() => globalThis.dispatchEvent(new CustomEvent('dilla:toggle-drawer'))}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
@@ -4782,7 +4781,7 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
           )}
         </div>
       </div>
-    </div>
+    </main>
   );
 }
 
