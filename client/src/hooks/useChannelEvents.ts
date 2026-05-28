@@ -110,7 +110,7 @@ export function useChannelEvents(activeTeamId: string | null, cryptoReady: boole
         const channelName = payload.channel_id
           ? (useTeamStore.getState().channels.get(activeTeamId) ?? []).find((c) => c.id === payload.channel_id)?.name
           : '';
-        window.dispatchEvent(new CustomEvent('dilla:notify', {
+        globalThis.dispatchEvent(new CustomEvent('dilla:notify', {
           detail: { channel: channelName || '', channelId: payload.channel_id, author: 'system', text, duration: 4000 },
         }));
       },

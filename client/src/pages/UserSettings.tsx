@@ -13,7 +13,7 @@ export default function UserSettings() {
   const [params] = useSearchParams();
   useEffect(() => {
     const tab = params.get('tab');
-    window.dispatchEvent(
+    globalThis.dispatchEvent(
       new CustomEvent('dilla:open-settings', {
         detail: { mode: 'user', tab: tab || null },
       }),

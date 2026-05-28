@@ -67,7 +67,7 @@ w.Icon = Icon;
 // mine when they aren't" bug on /app. An empty string means "no user
 // known", and downstream code treats that as "no match".
 export function currentUserId(): string {
-  return (window as any).SHELL_DATA?.currentUserId || '';
+  return (globalThis as any).SHELL_DATA?.currentUserId || '';
 }
 
 // Stable empty array reference for zustand selectors that may fall back
@@ -1801,7 +1801,7 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
   // change so switching teams shows that team's collapsed set.
   const collapsedKey = sidebarTeamId ? `dilla:groups:${sidebarTeamId}:collapsed` : '';
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
-    if (typeof window === 'undefined' || !collapsedKey) return new Set();
+    if (typeof globalThis === 'undefined' || !collapsedKey) return new Set();
     try {
       const raw = globalThis.localStorage.getItem(collapsedKey);
       return new Set(raw ? (JSON.parse(raw) as string[]) : []);
@@ -3807,7 +3807,7 @@ function renderText(text, _members) {
   // italic, strikethrough, lists, blockquotes, code fences, tables,
   // links and inline images, plus the @mention chip that renderText
   // used to hand-roll. Headings are disallowed (chat-bubble context).
-  const me = (window as { SHELL_DATA?: { byId?: Record<string, { name?: string; username?: string }>; currentUserId?: string } }).SHELL_DATA;
+  const me = (globalThis as { SHELL_DATA?: { byId?: Record<string, { name?: string; username?: string }>; currentUserId?: string } }).SHELL_DATA;
   const myId = me?.currentUserId ?? null;
   const myRec = myId ? me?.byId?.[myId] : null;
   const myHandle = myRec?.username || myRec?.name || null;

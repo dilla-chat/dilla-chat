@@ -460,7 +460,7 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
         // Toast the affected user. Skip when they're the actor (they
         // triggered the change themselves) or when the event isn't about
         // the current user at all.
-        const myUserId = (window as { SHELL_DATA?: { currentUserId?: string } }).SHELL_DATA?.currentUserId;
+        const myUserId = (globalThis as { SHELL_DATA?: { currentUserId?: string } }).SHELL_DATA?.currentUserId;
         if (myUserId && myUserId === payload.user_id && payload.actor_user_id !== myUserId) {
           const roleNames = nextRoles.map((r) => r.name).join(', ');
           const actor = list.find((m) => m.userId === payload.actor_user_id);

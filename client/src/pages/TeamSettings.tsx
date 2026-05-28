@@ -18,7 +18,7 @@ export default function TeamSettings() {
   const [params] = useSearchParams();
   useEffect(() => {
     const tab = params.get('tab');
-    window.dispatchEvent(
+    globalThis.dispatchEvent(
       new CustomEvent('dilla:open-settings', {
         detail: { mode: 'team', tab: tab || null },
       }),

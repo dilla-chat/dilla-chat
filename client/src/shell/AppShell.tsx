@@ -126,7 +126,7 @@ export default function AppShell({ ready }: AppShellProps) {
   //    Each reader is being ported to the context one at a time; the
   //    window write can drop once the last reader is migrated.
   const shellData = useShellData();
-  (window as unknown as { SHELL_DATA: typeof shellData }).SHELL_DATA = shellData;
+  (globalThis as unknown as { SHELL_DATA: typeof shellData }).SHELL_DATA = shellData;
 
   const activeTeamId = useTeamStore((s) => s.activeTeamId);
   const activeTeam = useTeamStore((s) => (s.activeTeamId ? s.teams.get(s.activeTeamId) : undefined));

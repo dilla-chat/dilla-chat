@@ -90,14 +90,14 @@ self.addEventListener('message', async (ev: MessageEvent<RpcRequest>) => { // NO
   try {
     const result = await dispatch(op, payload);
     const response: RpcResponse = { id, ok: true, result };
-    (self as unknown as Worker).postMessage(response);
+    (globalThis as unknown as Worker).postMessage(response);
   } catch (err) {
     const response: RpcResponse = {
       id,
       ok: false,
       error: err instanceof Error ? err.message : String(err),
     };
-    (self as unknown as Worker).postMessage(response);
+    (globalThis as unknown as Worker).postMessage(response);
   }
 });
 
