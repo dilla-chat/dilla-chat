@@ -15,7 +15,7 @@ export class MockWebSocketService {
   private timers: ReturnType<typeof setTimeout>[] = [];
   private running = false;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private peerApi: any | null = null;
+  private peerApi: any = null;
 
   /** Link to the mockApi so request() can delegate per-action loads
    *  (messages:list, dms:list, threads:list, etc.) to the same fixture

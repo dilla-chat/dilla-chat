@@ -132,7 +132,8 @@ function describeMemberAudit(action: string, targetUser: string | null, e: { tar
     case 'member.kick':         return `kicked @${who}`;
     case 'member.ban': {
       const reason = detail?.reason as string | undefined;
-      return `banned @${who}${reason ? ` — ${reason}` : ''}`;
+      const reasonText = reason ? ` — ${reason}` : '';
+      return `banned @${who}${reasonText}`;
     }
     default: return null;
   }

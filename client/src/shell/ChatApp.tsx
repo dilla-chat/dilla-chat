@@ -879,7 +879,6 @@ export function NewServerModal({ onClose, onCreate }) {
               </div>
             </>
           ) : (
-            <>
               <div className="modal-row">
                 <label>
                   <span>Invite link or token</span>
@@ -888,7 +887,6 @@ export function NewServerModal({ onClose, onCreate }) {
                 </label>
                 <div className="modal-hint">Single-use or capped invites. The server validates this before binding your identity.</div>
               </div>
-            </>
           )}
         </div>
         <footer className="modal-foot">
@@ -1668,8 +1666,8 @@ export function ScreenTile({ member, pip, showStats = false }: Readonly<{ member
       </div>
       <div className="screen-body">
         <div className="screen-sidebar">
-          {Array.from({ length: 7 }).map((_, i) => (
-            <span key={`side-${i}`} className="screen-side-line" style={{ width: (50 + ((i * 17) % 40)) + '%' }} />
+          {[0, 1, 2, 3, 4, 5, 6].map((i) => (
+            <span key={`side-line-${50 + ((i * 17) % 40)}-${i}`} className="screen-side-line" style={{ width: (50 + ((i * 17) % 40)) + '%' }} />
           ))}
         </div>
         <div className="screen-editor">
@@ -4401,7 +4399,7 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
           // .voice-focus on top of it as an overlay — so the cards
           // never disappear when the focused stream appears or goes
           // away, they're just covered by the focus stage.
-          const fm = focusedMember as any;
+          const fm = focusedMember;
           const isSelf = effectiveFocused && fm?.id === currentUserId();
           const hasCam = isSelf ? cam : false;
           const hasScreen = isSelf ? screen : false;
@@ -5728,7 +5726,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
           // to the first item in the target list if nothing was last
           // active.
           if (next === 'pms') {
-            const target = activeDM || (data.DMS[0]?.id ?? null);
+            const target = activeDM ?? data.DMS[0]?.id ?? null;
             if (target) {
               setActiveDM(target);
               setActiveView({ kind: 'dm', id: target });

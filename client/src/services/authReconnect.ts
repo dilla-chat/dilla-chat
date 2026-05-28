@@ -33,7 +33,7 @@ async function reAuthenticateOneTeam(
 }
 
 async function uploadIdentityBlobToTeam(
-  teamId: string,
+  _teamId: string,
   baseUrl: string,
   token: string,
   blob: string,
@@ -56,8 +56,6 @@ async function uploadIdentityBlobToTeam(
   } catch {
     // Blob upload failure is non-fatal
   }
-  // Touch teamId so the formatter can keep the param named without unused warnings.
-  void teamId;
 }
 
 /**
