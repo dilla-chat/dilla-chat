@@ -157,7 +157,8 @@ export function ForwardModal({ sourceMsg, members, onClose, onForward }) {
   ].filter(t => !q || (t.label || '').toLowerCase().includes(q.toLowerCase()));
   const author = data.byId[sourceMsg.author] || { name: sourceMsg.author };
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
+      <button type="button" className="modal-overlay-dismiss" aria-label="Close" onClick={onClose} />
       <div className="modal-card" onClick={e => e.stopPropagation()} style={{ width: 'min(540px, 100%)' }}>
         <header className="modal-head">
           <h2>Forward message</h2>
@@ -201,7 +202,8 @@ export function NewDmModal({ members, onClose, onPick }) {
   }, [onClose]);
   const list = (members.MEMBERS || []).filter(m => m.id !== currentUserId() && (!q || m.name.toLowerCase().includes(q.toLowerCase())));
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
+      <button type="button" className="modal-overlay-dismiss" aria-label="Close" onClick={onClose} />
       <div className="modal-card" onClick={e => e.stopPropagation()} style={{ width: 'min(480px, 100%)' }}>
         <header className="modal-head">
           <h2>New direct message</h2>
@@ -320,7 +322,8 @@ export function GiphyPicker({
     return () => globalThis.removeEventListener('keydown', onKey);
   }, [onClose]);
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
+      <button type="button" className="modal-overlay-dismiss" aria-label="Close" onClick={onClose} />
       <div className="modal-card giphy-picker" onClick={(e) => e.stopPropagation()}>
         <header className="modal-head">
           <h2>/giphy · {query}</h2>
@@ -373,7 +376,8 @@ export function NewChannelModal({ onClose, onCreate }) {
     return () => globalThis.removeEventListener('keydown', onKey);
   }, [onClose]);
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
+      <button type="button" className="modal-overlay-dismiss" aria-label="Close" onClick={onClose} />
       <div className="modal-card" onClick={e => e.stopPropagation()}>
         <header className="modal-head">
           <h2>New kanal</h2>
@@ -481,7 +485,8 @@ export function ChannelAccessModal({ channel, onClose }) {
   });
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
+      <button type="button" className="modal-overlay-dismiss" aria-label="Close" onClick={onClose} />
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
         <header className="modal-head">
           <h2>#{channel?.name} access</h2>
@@ -579,7 +584,8 @@ export function GroupAccessModal({ group, onClose }: Readonly<{ group: { id: str
   });
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
+      <button type="button" className="modal-overlay-dismiss" aria-label="Close" onClick={onClose} />
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
         <header className="modal-head">
           <h2>{group.name} · access</h2>
@@ -674,7 +680,8 @@ export function GroupSettingsModal({ group, onClose }: Readonly<{ group: { id: s
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
+      <button type="button" className="modal-overlay-dismiss" aria-label="Close" onClick={onClose} />
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
         <header className="modal-head">
           <h2>{group.name} · settings</h2>
@@ -775,7 +782,8 @@ export function ChannelSettingsModal({ channel, onClose }) {
     }
   }
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
+      <button type="button" className="modal-overlay-dismiss" aria-label="Close" onClick={onClose} />
       <div className="modal-card" onClick={e => e.stopPropagation()}>
         <header className="modal-head">
           <h2>#{channel?.name} settings</h2>
@@ -835,7 +843,8 @@ export function NewServerModal({ onClose, onCreate }) {
     return () => globalThis.removeEventListener('keydown', onKey);
   }, [onClose]);
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
+      <button type="button" className="modal-overlay-dismiss" aria-label="Close" onClick={onClose} />
       <div className="modal-card" onClick={e => e.stopPropagation()}>
         <header className="modal-head">
           <h2>Add a team</h2>

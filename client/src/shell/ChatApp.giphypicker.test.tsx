@@ -58,7 +58,7 @@ describe('GiphyPicker', () => {
     const { container } = render(
       <GiphyPicker query="cat" results={results} onPick={vi.fn()} onClose={onClose} />,
     );
-    fireEvent.click(container.querySelector('.modal-overlay') as HTMLElement);
+    fireEvent.click(container.querySelector('.modal-overlay-dismiss') as HTMLElement);
     expect(onClose).toHaveBeenCalled();
   });
 
