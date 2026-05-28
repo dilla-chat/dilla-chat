@@ -55,12 +55,11 @@ export default function ConfirmDialog() {
         aria-label={cancelLabel}
         onClick={() => answer(false)}
       />
-      <div
+      <dialog
+        open
         className="modal-card confirm-card"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => { if (e.key === 'Escape') answer(false); else e.stopPropagation(); }}
-        role="dialog"
-        aria-modal="true"
       >
         <header className="modal-head">
           <h2>{title}</h2>
@@ -85,7 +84,7 @@ export default function ConfirmDialog() {
             {confirmLabel}
           </button>
         </footer>
-      </div>
+      </dialog>
     </div>
   );
 }

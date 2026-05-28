@@ -735,6 +735,8 @@
   overflow-y: auto;
   animation: dilla-settings-in 0.18s ease-out both;
   color: var(--fg);
+  padding: 0;
+  margin: 0;
 }
 /* Confirm dialog — narrower than the default modal-card so the prompt
    doesn't read as a full settings panel. */

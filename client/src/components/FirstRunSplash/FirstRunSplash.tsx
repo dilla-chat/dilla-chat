@@ -41,9 +41,8 @@ export default function FirstRunSplash({ durationMs = 1200, onDone }: Readonly<P
   if (phase === 'done') return null;
 
   const body = (
-    <div
+    <output
       className={`first-run-splash ${phase === 'fading' ? 'fading' : ''}`}
-      role="status"
       aria-label="Dilla starting"
     >
       <div className="first-run-splash-brand">
@@ -58,7 +57,7 @@ export default function FirstRunSplash({ durationMs = 1200, onDone }: Readonly<P
           </div>
         ))}
       </div>
-    </div>
+    </output>
   );
 
   return createPortal(body, document.body);
