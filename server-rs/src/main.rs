@@ -1682,6 +1682,18 @@ mod tests {
         assert!(init_telemetry_relay(&cfg).is_none());
     }
 
+    #[test]
+    fn init_telemetry_relay_returns_some_for_valid_sentry_dsn() {
+        let mut cfg = Config::default();
+        cfg.telemetry_adapter = "sentry".into();
+        // Standard Sentry DSN format that parse_dsn_standard exercises.
+        cfg.sentry_dsn = "https://abc123@o123456.ingest.sentry.io/456789".into();
+        cfg.node_name = "test-node".into();
+        cfg.environment = "test".into();
+        let relay = init_telemetry_relay(&cfg);
+        assert!(relay.is_some(), "valid Sentry DSN should produce a relay");
+    }
+
     // ── init_database happy path ─────────────────────────────────────
 
     // ── check_first_start when users already exist (skip path) ────────
