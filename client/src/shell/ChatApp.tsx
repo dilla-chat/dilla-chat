@@ -3743,6 +3743,50 @@ async function unblockMember(memberId: string): Promise<void> {
   }
 }
 
+async function kickMember(memberId: string, memberName: string, teamName: string): Promise<void> {
+  const confirmed = await dillaConfirm({
+    title: 'Kick ' + memberName + '?',
+    body: 'They\'ll lose access to this team. They can be re-invited. Requires admin role.',
+    confirmLabel: 'Kick',
+    danger: true,
+  });
+  if (!confirmed) return;
+  const teamId = useTeamStore.getState().activeTeamId;
+  if (!teamId || isMockSession()) {
+    globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'admin', text: 'Demo only — kick would propagate across the mesh on a live server.', duration: 3000 } }));
+    return;
+  }
+  try {
+    await api.kickMember(teamId, memberId);
+    globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'admin', text: 'Kicked ' + memberName + ' from the team.', duration: 3000 } }));
+  } catch (err) {
+    console.warn('[ChatApp] kickMember failed', err);
+    globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'admin', text: 'Kick failed — admin role required.', duration: 3500 } }));
+  }
+}
+
+async function banMember(memberId: string, memberName: string, teamName: string): Promise<void> {
+  const confirmed = await dillaConfirm({
+    title: 'Ban ' + memberName + '?',
+    body: 'Bans prevent re-join via invite — irreversible without admin action.',
+    confirmLabel: 'Ban',
+    danger: true,
+  });
+  if (!confirmed) return;
+  const teamId = useTeamStore.getState().activeTeamId;
+  if (!teamId || isMockSession()) {
+    globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'admin', text: 'Demo only — ban would propagate across the mesh on a live server.', duration: 3000 } }));
+    return;
+  }
+  try {
+    await api.banMember(teamId, memberId);
+    globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'admin', text: 'Banned ' + memberName + ' from the team.', duration: 3500 } }));
+  } catch (err) {
+    console.warn('[ChatApp] banMember failed', err);
+    globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'admin', text: 'Ban failed — admin role required.', duration: 3500 } }));
+  }
+}
+
 async function blockMember(memberId: string, memberName: string): Promise<void> {
   const confirmed = await dillaConfirm({
     title: 'Block ' + memberName + '?',
@@ -4810,44 +4854,8 @@ export function MemberList({ members, voiceConnection, rich, federated }) {
                  : { label: 'Block', danger: true, icon: <Icon.Shield size={12} />, onClick: () => blockMember(m.id, m.name) },
                { label: 'Mute', icon: <Icon.Mic size={13} off />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'system', text: m.name + ' muted in voice channels.', duration: 2200 } })) },
                ...(memberPerms.has(PERM_MANAGE_MEMBERS) && m.id !== currentUserId() ? [
-               { label: 'Kick from team', danger: true, icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M10 4V2H3v12h7v-2M6 8h9M12 5l3 3-3 3M9 3v0" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>, onClick: async () => {
-                 if (!(await dillaConfirm({
-                   title: 'Kick ' + m.name + '?',
-                   body: 'They\'ll lose access to this team. They can be re-invited. Requires admin role.',
-                   confirmLabel: 'Kick',
-                   danger: true,
-                 }))) return;
-                 const teamId = useTeamStore.getState().activeTeamId;
-                 if (teamId && !isMockSession()) {
-                   api.kickMember(teamId, m.id).then(() => {
-                     globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'admin', text: 'Kicked ' + m.name + ' from the team.', duration: 3000 } }));
-                   }).catch((err: unknown) => {
-                     console.warn('[ChatApp] kickMember failed', err);
-                     globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'admin', text: 'Kick failed — admin role required.', duration: 3500 } }));
-                   });
-                 } else {
-                   globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'admin', text: 'Demo only — kick would propagate across the mesh on a live server.', duration: 3000 } }));
-                 }
-               } },
-               { label: 'Ban from team', danger: true, icon: <Icon.Lock size={12} />, onClick: async () => {
-                 if (!(await dillaConfirm({
-                   title: 'Ban ' + m.name + '?',
-                   body: 'Bans prevent re-join via invite — irreversible without admin action.',
-                   confirmLabel: 'Ban',
-                   danger: true,
-                 }))) return;
-                 const teamId = useTeamStore.getState().activeTeamId;
-                 if (teamId && !isMockSession()) {
-                   api.banMember(teamId, m.id).then(() => {
-                     globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'admin', text: 'Banned ' + m.name + ' from the team.', duration: 3500 } }));
-                   }).catch((err: unknown) => {
-                     console.warn('[ChatApp] banMember failed', err);
-                     globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'admin', text: 'Ban failed — admin role required.', duration: 3500 } }));
-                   });
-                 } else {
-                   globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'admin', text: 'Demo only — ban would propagate across the mesh on a live server.', duration: 3000 } }));
-                 }
-               } },
+                 { label: 'Kick from team', danger: true, icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M10 4V2H3v12h7v-2M6 8h9M12 5l3 3-3 3M9 3v0" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>, onClick: () => kickMember(m.id, m.name, teamName) },
+                 { label: 'Ban from team', danger: true, icon: <Icon.Lock size={12} />, onClick: () => banMember(m.id, m.name, teamName) },
                ] : []),
              ] } }));
            }}>
