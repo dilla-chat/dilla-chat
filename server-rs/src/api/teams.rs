@@ -348,6 +348,46 @@ fn check_role_escalation(
     Ok(())
 }
 
+/// Apply a member-role reassignment + the associated audit log + token
+/// invalidation. Extracted from update_member so the spawn_db closure's
+/// cognitive complexity stays below threshold.
+fn apply_member_role_reassignment(
+    conn: &rusqlite::Connection,
+    member: &db::Member,
+    role_ids: &[String],
+    actor_user_id: &str,
+    team_id: &str,
+    target_user_id: &str,
+) -> Result<(), rusqlite::Error> {
+    let assigned_bits = collect_team_role_bits(conn, role_ids, team_id)?;
+    check_role_escalation(conn, &member.id, actor_user_id, team_id, assigned_bits)?;
+
+    // Replace the full assignment set: drop existing, then re-add.
+    let existing = db::get_member_roles(conn, &member.id)?;
+    for r in existing {
+        db::remove_role_from_member(conn, &member.id, &r.id)?;
+    }
+    for rid in role_ids {
+        db::assign_role_to_member(conn, &member.id, rid)?;
+    }
+
+    let _ = db::insert_audit_event(
+        conn,
+        team_id,
+        Some(actor_user_id),
+        "member.roles.update",
+        Some("user"),
+        Some(target_user_id),
+        Some(&serde_json::json!({ "role_ids": role_ids })),
+    );
+
+    // A4 / AUTH-FORCE-LOGOUT-1: invalidate every existing JWT for the
+    // target user so in-flight access tokens can't keep operating with
+    // stale permission bits.
+    let _ = db::invalidate_user_tokens_now(conn, target_user_id);
+    Ok(())
+}
+
 pub async fn update_member(
     Extension(UserId(user_id)): Extension<UserId>,
     State(state): State<AppState>,
@@ -361,13 +401,10 @@ pub async fn update_member(
     let role_ids_for_broadcast = body.role_ids.clone();
     let member = spawn_db(state.db.clone(), move |conn| {
         // Users can update their own nickname; admins can update anyone's.
-        if user_id != target_user_id {
-            require_permission(conn, &user_id, &team_id, db::PERM_MANAGE_MEMBERS)?;
-        }
-
         // Role assignment always needs manage-members regardless of self vs
         // other — otherwise any member could self-promote.
-        if body.role_ids.is_some() {
+        let needs_manage_members = user_id != target_user_id || body.role_ids.is_some();
+        if needs_manage_members {
             require_permission(conn, &user_id, &team_id, db::PERM_MANAGE_MEMBERS)?;
         }
 
@@ -381,34 +418,7 @@ pub async fn update_member(
         db::update_member(conn, &member)?;
 
         if let Some(ref role_ids) = body.role_ids {
-            let assigned_bits = collect_team_role_bits(conn, role_ids, &team_id)?;
-            check_role_escalation(conn, &member.id, &user_id, &team_id, assigned_bits)?;
-
-            // Replace the full assignment set: drop existing, then re-add.
-            let existing = db::get_member_roles(conn, &member.id)?;
-            for r in existing {
-                db::remove_role_from_member(conn, &member.id, &r.id)?;
-            }
-            for rid in role_ids {
-                db::assign_role_to_member(conn, &member.id, rid)?;
-            }
-
-            let _ = db::insert_audit_event(
-                conn,
-                &team_id,
-                Some(&user_id),
-                "member.roles.update",
-                Some("user"),
-                Some(&target_user_id),
-                Some(&serde_json::json!({ "role_ids": role_ids })),
-            );
-
-            // A4 / AUTH-FORCE-LOGOUT-1: invalidate every existing JWT
-            // for the target user so their in-flight access tokens
-            // can't keep operating with stale permission bits. The
-            // client's refresh path will mint a new token with the
-            // updated claims on the next call.
-            let _ = db::invalidate_user_tokens_now(conn, &target_user_id);
+            apply_member_role_reassignment(conn, &member, role_ids, &user_id, &team_id, &target_user_id)?;
         }
 
         Ok(member)
