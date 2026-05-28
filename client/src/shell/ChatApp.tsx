@@ -1958,7 +1958,7 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
                       // peers don't get the indicator.
                       const speaking = !muted && (isSelf ? selfSpeaking : !!peer?.speaking);
                       return (
-                        <div key={pid} className={'voice-participant' + (speaking ? ' speaking' : '') + (muted ? ' muted' : '')}
+                        <article key={pid} className={'voice-participant' + (speaking ? ' speaking' : '') + (muted ? ' muted' : '')}
                              onContextMenu={(e) => {
                                e.preventDefault();
                                globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', {
@@ -1974,7 +1974,7 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
                             {deafened && <span className="vp-icon mute" title="deafened"><Icon.Headphones size={11} off /></span>}
                             {muted && <span className="vp-icon mute" title="muted"><Icon.Mic size={11} off /></span>}
                           </div>
-                        </div>
+                        </article>
                       );
                     })}
                   </div>
