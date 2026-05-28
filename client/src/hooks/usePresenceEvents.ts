@@ -64,11 +64,14 @@ export function usePresenceEvents(activeTeamId: string | null): void {
       if (vs.currentChannelId && (!payload.channel_id || vs.currentChannelId === payload.channel_id)) {
         vs.leaveChannel();
       }
-      const text = payload.reason === 'access_revoked'
-        ? 'You were removed from voice — channel access changed.'
-        : payload.reason === 'moderator_action'
-          ? 'You were disconnected from voice by a moderator.'
-          : 'You were disconnected from voice.';
+      let text: string;
+      if (payload.reason === 'access_revoked') {
+        text = 'You were removed from voice — channel access changed.';
+      } else if (payload.reason === 'moderator_action') {
+        text = 'You were disconnected from voice by a moderator.';
+      } else {
+        text = 'You were disconnected from voice.';
+      }
       globalThis.dispatchEvent(new CustomEvent('dilla:notify', {
         detail: { channel: '', author: 'system', text, duration: 4500 },
       }));

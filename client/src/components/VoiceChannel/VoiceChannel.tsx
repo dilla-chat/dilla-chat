@@ -89,9 +89,14 @@ export default function VoiceChannel({ channel }: Readonly<Props>) {
   const teamId = channel.teamId || (channel as unknown as Record<string, unknown>).team_id as string || activeTeamId;
 
   const sharerUserId = screenSharingUserId;
-  const activeScreenStream = screenSharing
-    ? localScreenStream
-    : (sharerUserId ? remoteScreenStreams[sharerUserId] ?? null : null);
+  let activeScreenStream: MediaStream | null;
+  if (screenSharing) {
+    activeScreenStream = localScreenStream;
+  } else if (sharerUserId) {
+    activeScreenStream = remoteScreenStreams[sharerUserId] ?? null;
+  } else {
+    activeScreenStream = null;
+  }
   const sharerName = sharerUserId ? (peers[sharerUserId]?.username ?? 'Someone') : 'You';
   const hasScreenShare = !!(activeScreenStream && (screenSharing || sharerUserId));
 

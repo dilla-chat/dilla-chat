@@ -300,11 +300,14 @@ class WebRTCService {
           // global slot.
           console.log('[WebRTC] Screen share track received:', streamId);
           this.remoteVideoStreams.set(streamId, stream);
-          const userId = streamId.startsWith('screen-stream-')
-            ? streamId.replace('screen-stream-', '')
-            : track.id.startsWith('screen-')
-              ? track.id.replace('screen-', '').replace(/-[a-f0-9-]+$/, '') // NOSONAR(typescript:S5852) — bounded over a track.id we generate ourselves
-              : streamId;
+          let userId: string;
+          if (streamId.startsWith('screen-stream-')) {
+            userId = streamId.replace('screen-stream-', '');
+          } else if (track.id.startsWith('screen-')) {
+            userId = track.id.replace('screen-', '').replace(/-[a-f0-9-]+$/, ''); // NOSONAR(typescript:S5852) — bounded over a track.id we generate ourselves
+          } else {
+            userId = streamId;
+          }
           console.log('[Voice/diag] ontrack → screen for', userId);
           track.addEventListener('ended', () => {
             console.warn('[Voice/diag] screen track ended for', userId, 'streamId=', streamId, 'trackId=', track.id);

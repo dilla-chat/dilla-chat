@@ -277,11 +277,22 @@ function SafetyCompare({ contactId, onClose }) {
             </div>
           </div>
         </div>
-        {incomplete && (
-          <div className="sc-warn">
-            ⚠ Identity key not fully loaded ({ownIncomplete && peerIncomplete ? 'both sides' : ownIncomplete ? 'you' : m.name}: {ownIncomplete ? `${ownHex.length / 2 || 0}` : `${peerHex.length / 2}`}/32 bytes). Reload the team — comparing now would be meaningless.
-          </div>
-        )}
+        {incomplete && (() => {
+          let who: string;
+          if (ownIncomplete && peerIncomplete) {
+            who = 'both sides';
+          } else if (ownIncomplete) {
+            who = 'you';
+          } else {
+            who = m.name;
+          }
+          const bytes = ownIncomplete ? `${ownHex.length / 2 || 0}` : `${peerHex.length / 2}`;
+          return (
+            <div className="sc-warn">
+              ⚠ Identity key not fully loaded ({who}: {bytes}/32 bytes). Reload the team — comparing now would be meaningless.
+            </div>
+          );
+        })()}
         {keyChanged && !incomplete && (
           <div className="sc-warn">
             ⚠ Their identity key has changed since you last verified — compare again before trusting messages.

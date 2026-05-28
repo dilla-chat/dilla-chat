@@ -139,7 +139,11 @@ export function VoiceDockLatency() {
       unit="ms"
       samples={samples}
       floor={30}
-      tone={(v) => (v < 20 ? 'ok' : v < 35 ? 'warn' : 'bad')}
+      tone={(v) => {
+        if (v < 20) return 'ok';
+        if (v < 35) return 'warn';
+        return 'bad';
+      }}
       title={(c) => (c == null ? 'measuring latency…' : `live latency · current ${c}ms`)}
     />
   );
@@ -156,7 +160,11 @@ export function VoiceDockBitrate() {
       unit="kbps"
       samples={samples}
       floor={32}
-      tone={(v) => (v >= 16 ? 'ok' : v >= 8 ? 'warn' : 'bad')}
+      tone={(v) => {
+        if (v >= 16) return 'ok';
+        if (v >= 8) return 'warn';
+        return 'bad';
+      }}
       title={(c) => (c == null ? 'measuring bitrate…' : `outbound audio · current ${c}kbps`)}
     />
   );
