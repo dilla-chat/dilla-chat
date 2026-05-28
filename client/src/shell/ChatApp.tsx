@@ -2007,7 +2007,8 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
               </div>
               {voiceChs.map(c => (
                 <div key={c.id}>
-                  <div
+                  <button
+                    type="button"
                     className={'channel-row' + (c.id === activeChannel ? ' active' : '') + (c.locked && !canJoinChannel(c) ? ' locked' : '')}
                     onClick={() => onPickChannel(c.id)}
                     onDoubleClick={() => { if (canJoinChannel(c)) onJoinVoice?.(c.id); }}
@@ -2040,7 +2041,7 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--fg-3)' }}>
                       {(c.participants||[]).length}
                     </span>
-                  </div>
+                  </button>
                   <div className="voice-participants">
                     {(c.participants || []).map(pid => {
                       const m = members.byId[pid];
@@ -2209,7 +2210,9 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
                 <span>{grp.label}</span>
               </div>
               {!collapsedGroups.has('voice:' + grp.key) && grp.channels.map(c => (
-                <div key={c.id}
+                <button
+                     type="button"
+                     key={c.id}
                      className={'channel-row' + (c.id === activeChannel ? ' active' : '') + (c.locked && !canJoinChannel(c) ? ' locked' : '')}
                      onClick={() => onPickChannel(c.id)}
                      onDoubleClick={() => { if (canJoinChannel(c)) onJoinVoice?.(c.id); }}
@@ -2231,7 +2234,7 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
                   <span className="ch-glyph"><Icon.Speaker size={14} /></span>
                   <span className="ch-name">{c.name}</span>
                   {isRestricted(c) && <span style={{ color: 'var(--fg-3)' }} title="restricted access"><Icon.Lock size={11} /></span>}
-                </div>
+                </button>
               ))}
             </React.Fragment>
           ))}
@@ -2250,7 +2253,7 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
             const other = isGroup ? null : (members.byId[d.with] || { name: 'Unknown', color: 'var(--muted)', initials: '?' });
             const name = isGroup ? d.name : other.name;
             return (
-              <div key={d.id}
+              <button type="button" key={d.id}
                    className={'channel-row' + (d.id === activeDM ? ' active' : '') + (d.unread > 0 ? ' unread' : '')}
                    onClick={() => onPickDM(d.id)}
                    onContextMenu={(e) => {
@@ -2291,7 +2294,7 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
                 )}
                 <span className="ch-name">{name}</span>
                 {d.unread > 0 && <span className="unread-pill mention">{d.unread}</span>}
-              </div>
+              </button>
             );
           })}
         </div>
