@@ -80,4 +80,47 @@ describe('IncomingCall', () => {
     );
     expect(screen.getByText(/voice-lounge/i)).toBeInTheDocument();
   });
+
+  it('uses callerInitial prop when provided (overrides callerName first char)', () => {
+    render(
+      <IncomingCall
+        open
+        callerName="Ada"
+        callerInitial="X"
+        onAccept={() => {}}
+        onDecline={() => {}}
+      />,
+    );
+    expect(screen.getByText('X')).toBeInTheDocument();
+    // The default 'A' (from callerName) should NOT appear as a tile.
+  });
+
+  it('renders avatar with callerColor background when provided', () => {
+    // The component renders via createPortal into document.body, so the
+    // RTL container is empty — query the document instead.
+    render(
+      <IncomingCall
+        open
+        callerName="Ada"
+        callerColor="#ff0099"
+        onAccept={() => {}}
+        onDecline={() => {}}
+      />,
+    );
+    const avatar = document.querySelector('.incoming-call-avatar') as HTMLElement;
+    expect(avatar).toBeTruthy();
+    expect(avatar.style.background).toMatch(/#ff0099|rgb\(255, ?0, ?153\)/);
+  });
+
+  it('falls back to "?" when callerName is empty and callerInitial is missing', () => {
+    render(
+      <IncomingCall
+        open
+        callerName=""
+        onAccept={() => {}}
+        onDecline={() => {}}
+      />,
+    );
+    expect(screen.getByText('?')).toBeInTheDocument();
+  });
 });
