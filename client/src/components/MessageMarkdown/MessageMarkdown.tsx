@@ -51,6 +51,40 @@ function isBroadcastHandle(handle: string) {
  * `]` in the link text since markdown's link parser would otherwise
  * choke on `[@odd]name]`.
  */
+// Pre-existing chat code-block styles use `.code-block` + `.cb-lang`.
+// These three renderers don't depend on per-instance props, so they live
+// at the module scope to satisfy S6478 ("Move this component definition
+// out of the parent component").
+const MarkdownPre: Components['pre'] = ({ children, ...rest }) => (
+  <pre className="code-block" {...rest}>
+    {children}
+  </pre>
+);
+
+const MarkdownCode: Components['code'] = ({ className, children, ...rest }) => {
+  // rehype-highlight adds 'hljs' + 'language-X' (and sometimes detected
+  // variants) to fenced code blocks; inline code stays class-less.
+  const classes = (className || '').split(/\s+/);
+  const langClass = classes.find((c) => c.startsWith('language-'));
+  const inline = !langClass && !classes.includes('hljs');
+  if (inline) return <code {...rest}>{children}</code>;
+  const lang = langClass ? langClass.slice('language-'.length) : '';
+  return (
+    <>
+      {lang && <span className="cb-lang">{lang}</span>}
+      <code className={className} {...rest}>
+        {children}
+      </code>
+    </>
+  );
+};
+
+const MarkdownTable: Components['table'] = ({ children, ...rest }) => (
+  <div className="mm-table-wrap">
+    <table {...rest}>{children}</table>
+  </div>
+);
+
 function injectMentionLinks(body: string): string {
   return body.replace(/(^|[\s(,.;:!?])@([A-Za-z0-9_.-]+)/g, (_match, lead, handle) => {
     const escapedHandle = handle.replaceAll('\\', String.raw`\\`).replaceAll(']', String.raw`\]`);
@@ -107,42 +141,9 @@ export default function MessageMarkdown({
         </a>
       );
     },
-    // Pre-existing chat code-block styles use `.code-block` + `.cb-lang`.
-    // Keep that visual contract so the existing CSS still applies.
-    pre({ children, ...rest }) {
-      return (
-        <pre className="code-block" {...rest}>
-          {children}
-        </pre>
-      );
-    },
-    code({ className, children, ...rest }) {
-      // rehype-highlight adds 'hljs' + 'language-X' (and sometimes
-      // detected variants) to fenced code blocks; inline code stays
-      // class-less. Treat any `language-` class as the language label.
-      const classes = (className || '').split(/\s+/);
-      const langClass = classes.find((c) => c.startsWith('language-'));
-      const inline = !langClass && !classes.includes('hljs');
-      if (inline) return <code {...rest}>{children}</code>;
-      const lang = langClass ? langClass.slice('language-'.length) : '';
-      return (
-        <>
-          {lang && <span className="cb-lang">{lang}</span>}
-          <code className={className} {...rest}>
-            {children}
-          </code>
-        </>
-      );
-    },
-    // Soft-block whatever HTML survived (skipHtml below also strips raw
-    // HTML); paragraphs render unchanged so existing line-height kicks in.
-    table({ children, ...rest }) {
-      return (
-        <div className="mm-table-wrap">
-          <table {...rest}>{children}</table>
-        </div>
-      );
-    },
+    pre: MarkdownPre,
+    code: MarkdownCode,
+    table: MarkdownTable,
   }), [currentUserId, currentUserHandle]);
 
   if (!text) return null;
