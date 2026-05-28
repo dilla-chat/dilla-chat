@@ -4,6 +4,62 @@ import { getIdentityKeys } from './crypto';
 import { exportIdentityBlob, signChallenge } from './keyStore';
 import { fromBase64, toBase64 } from './cryptoCore';
 
+async function reAuthenticateOneTeam(
+  teamId: string,
+  entry: TeamEntry,
+  pubKey: string,
+  signingKey: CryptoKey,
+): Promise<boolean> {
+  const baseUrl = entry.baseUrl;
+  if (!baseUrl) return false;
+  try {
+    api.addTeam(teamId, baseUrl);
+    const { challenge_id, nonce } = await api.requestChallenge(teamId, pubKey);
+    const nonceBytes = fromBase64(nonce);
+    const sigBytes = await signChallenge(signingKey, nonceBytes);
+    const signature = toBase64(sigBytes);
+    const result = await api.verifyChallenge(teamId, challenge_id, pubKey, signature);
+    api.setToken(teamId, result.token);
+    const { addTeam: updateTeam } = useAuthStore.getState();
+    updateTeam(teamId, result.token, entry.user, entry.teamInfo, baseUrl);
+    return true;
+  } catch (err) {
+    console.error(`[authReconnect] refresh failed for team ${teamId}:`, err);
+    const { removeTeam } = useAuthStore.getState();
+    removeTeam(teamId);
+    api.removeTeam(teamId);
+    return false;
+  }
+}
+
+async function uploadIdentityBlobToTeam(
+  teamId: string,
+  baseUrl: string,
+  token: string,
+  blob: string,
+  allServers: string[],
+): Promise<void> {
+  try {
+    // H-13d: bearer header only when not same-origin (Tauri /
+    // cross-origin still needs it; same-origin SPA rides the
+    // cookie alone).
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (!isSameOriginAsApi(baseUrl)) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+    await fetch(`${baseUrl}/api/v1/identity/blob`, {
+      method: 'PUT',
+      headers,
+      credentials: 'include',
+      body: JSON.stringify({ blob, servers: allServers }),
+    });
+  } catch {
+    // Blob upload failure is non-fatal
+  }
+  // Touch teamId so the formatter can keep the param named without unused warnings.
+  void teamId;
+}
+
 /**
  * Re-authenticate with all persisted servers to get fresh JWT tokens.
  * Returns the number of teams successfully re-authenticated.
@@ -17,59 +73,23 @@ export async function refreshServerTokens(
 
   console.log(`[authReconnect] refreshing tokens for ${teams.size} teams`);
   for (const [teamId, entry] of teams) {
-    const baseUrl = entry.baseUrl;
-    if (!baseUrl) continue;
-
-    try {
-      api.addTeam(teamId, baseUrl);
-      const { challenge_id, nonce } = await api.requestChallenge(teamId, pubKey);
-      const nonceBytes = fromBase64(nonce);
-      const sigBytes = await signChallenge(keys.signingKey, nonceBytes);
-      const signature = toBase64(sigBytes);
-      const result = await api.verifyChallenge(teamId, challenge_id, pubKey, signature);
-      api.setToken(teamId, result.token);
-
-      const { addTeam: updateTeam } = useAuthStore.getState();
-      updateTeam(teamId, result.token, entry.user, entry.teamInfo, baseUrl);
+    if (await reAuthenticateOneTeam(teamId, entry, pubKey, keys.signingKey)) {
       successCount++;
-    } catch (err) {
-      console.error(`[authReconnect] refresh failed for team ${teamId}:`, err);
-      const { removeTeam } = useAuthStore.getState();
-      removeTeam(teamId);
-      api.removeTeam(teamId);
     }
   }
 
-  // Upload identity blob to all servers for cross-device recovery
+  // Upload identity blob to all servers for cross-device recovery.
   const blob = await exportIdentityBlob();
   if (blob) {
-    for (const [teamId, entry] of useAuthStore.getState().teams) {
-      const baseUrl = entry.baseUrl;
+    const allServers: string[] = [...useAuthStore.getState().teams.values()]
+      .map(e => e.baseUrl)
+      .filter((url): url is string => Boolean(url));
+    for (const [teamId] of useAuthStore.getState().teams) {
       const freshEntry = useAuthStore.getState().teams.get(teamId);
+      const baseUrl = freshEntry?.baseUrl;
       const token = freshEntry?.token;
       if (!baseUrl || !token) continue;
-
-      const allServers: string[] = [...useAuthStore.getState().teams.values()]
-        .map(e => e.baseUrl)
-        .filter((url): url is string => Boolean(url));
-
-      try {
-        // H-13d: bearer header only when not same-origin (Tauri /
-        // cross-origin still needs it; same-origin SPA rides the
-        // cookie alone).
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-        if (!isSameOriginAsApi(baseUrl)) {
-          headers.Authorization = `Bearer ${token}`;
-        }
-        await fetch(`${baseUrl}/api/v1/identity/blob`, {
-          method: 'PUT',
-          headers,
-          credentials: 'include',
-          body: JSON.stringify({ blob, servers: allServers }),
-        });
-      } catch {
-        // Blob upload failure is non-fatal
-      }
+      await uploadIdentityBlobToTeam(teamId, baseUrl, token, blob, allServers);
     }
   }
 
