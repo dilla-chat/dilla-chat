@@ -526,6 +526,132 @@ class WebRTCService {
     this.lastBytesSentAt = 0;
   }
 
+  /** Re-pin every transceiver to its intended direction after a remote
+   *  offer landed (Chrome mirrors the offer's literal direction onto
+   *  matched transceivers, clobbering bound sendonly slots → senders
+   *  end up a=inactive in our answer otherwise). */
+  private repinTransceiverDirections(): void {
+    if (!this.pc) return;
+    for (const tx of this.pc.getTransceivers()) {
+      if (tx.currentDirection === 'stopped') continue;
+      if (tx.sender.track && tx.direction !== 'sendonly') {
+        try {
+          tx.direction = 'sendonly';
+          console.log('[Voice/diag] re-pin sendonly:', { mid: tx.mid, kind: tx.sender.track.kind });
+        } catch { /* read-only in some states */ }
+        continue;
+      }
+      if (!tx.sender.track && tx.receiver.track && tx.direction !== 'recvonly') {
+        try {
+          tx.direction = 'recvonly';
+          console.log('[Voice/diag] re-pin recvonly:', { mid: tx.mid, kind: tx.receiver.track.kind });
+        } catch { /* read-only in some states */ }
+      }
+    }
+  }
+
+  /** Re-attach cam/screen tracks to senders whose `.track` Chrome cleared
+   *  on the new offer's transceiver re-mirror. */
+  private async reattachOwnedTracks(): Promise<void> {
+    const reattach = async (sender: RTCRtpSender | null, track: MediaStreamTrack | null | undefined, label: string) => {
+      if (!sender || !track || sender.track === track) return;
+      try {
+        await sender.replaceTrack(track);
+        const tx = this.pc?.getTransceivers().find((t) => t.sender === sender);
+        if (tx) {
+          try { tx.direction = 'sendonly'; } catch { /* read-only */ }
+        }
+        console.log('[Voice/diag] re-attach', label, '→ sender (track was cleared by Chrome on remote offer)');
+      } catch (err) {
+        console.warn('[Voice/diag] re-attach', label, 'failed:', err);
+      }
+    };
+    await reattach(this.webcamSender, this.webcamStream?.getVideoTracks()[0], 'cam');
+    await reattach(this.screenSender, this.screenStream?.getVideoTracks()[0], 'screen');
+  }
+
+  /** Bind pending cam/screen tracks to whichever fresh transceiver the
+   *  server's offer just added. Required because Chrome mirrors the
+   *  offer direction literally — the new slot starts recvonly so we
+   *  must flip + attach BEFORE createAnswer. */
+  private async preBindPendingVideoTracks(knownMidsBefore: Set<string>): Promise<void> {
+    if (!this.pc) return;
+    const pendingPairs: Array<{ kind: 'cam' | 'screen'; track: MediaStreamTrack }> = [];
+    if (this.pendingCamTrack) pendingPairs.push({ kind: 'cam', track: this.pendingCamTrack });
+    if (this.pendingScreenTrack) pendingPairs.push({ kind: 'screen', track: this.pendingScreenTrack });
+    for (const pending of pendingPairs) {
+      if (pending.track.readyState !== 'live') {
+        if (pending.kind === 'cam') this.pendingCamTrack = null;
+        else this.pendingScreenTrack = null;
+        continue;
+      }
+      const target = this.pc.getTransceivers().find((tx) => {
+        if (tx.currentDirection === 'stopped') return false;
+        if (tx.sender.track) return false;
+        if (tx.receiver.track?.kind !== 'video') return false;
+        if (!tx.mid || knownMidsBefore.has(tx.mid)) return false;
+        return true;
+      });
+      if (target) {
+        try { target.direction = 'sendonly'; } catch { /* read-only */ }
+        await target.sender.replaceTrack(pending.track);
+        if (pending.kind === 'screen') {
+          this.screenSender = target.sender;
+          this.pendingScreenTrack = null;
+        } else {
+          this.webcamSender = target.sender;
+          this.pendingCamTrack = null;
+        }
+        console.log('[Voice/diag] pre-bind:', pending.kind, '→ transceiver', { mid: target.mid, dir: target.direction });
+      }
+    }
+  }
+
+  /** Flush any ICE candidates that arrived before setRemoteDescription. */
+  private async flushPendingIceCandidates(): Promise<void> {
+    if (!this.pc) return;
+    for (const c of this.pendingCandidates) {
+      try {
+        await this.pc.addIceCandidate(new RTCIceCandidate(c));
+      } catch (e) {
+        console.warn('[WebRTC] pending ICE flush failed:', e);
+      }
+    }
+    this.pendingCandidates = [];
+  }
+
+  /** Handle a single voice:offer payload through the offer queue. */
+  private async handleVoiceOffer(payload: { sdp: string }): Promise<void> {
+    if (!this.pc) return;
+    if (this.pc.signalingState === 'closed') return;
+    try {
+      console.log('[Voice/diag] offer SDP m-lines:', this.summariseSdp(payload.sdp));
+      const knownMidsBefore = new Set(
+        this.pc.getTransceivers().map((t) => t.mid).filter((m): m is string => !!m),
+      );
+      const desc: RTCSessionDescriptionInit = { type: 'offer', sdp: payload.sdp };
+      await this.pc.setRemoteDescription(new RTCSessionDescription(desc));
+      this.diagSnapshot('after setRemoteDescription(offer)');
+      if (this.pc.signalingState !== 'have-remote-offer') return;
+      this.remoteDescSet = true;
+      await this.flushPendingIceCandidates();
+      this.repinTransceiverDirections();
+      await this.reattachOwnedTracks();
+      await this.preBindPendingVideoTracks(knownMidsBefore);
+
+      const answer = await this.pc.createAnswer();
+      if (this.pc.signalingState !== 'have-remote-offer') return;
+      await this.pc.setLocalDescription(answer);
+      this.diagSnapshot('after setLocalDescription(answer)');
+      console.log('[Voice/diag] answer SDP m-lines:', this.summariseSdp(answer.sdp ?? ''));
+      if (this.teamId && this.channelId && answer) {
+        ws.voiceAnswer(this.teamId, this.channelId, answer);
+      }
+    } catch (err) {
+      console.error('[WebRTC] Failed to handle offer:', err);
+    }
+  }
+
   private setupStoreSubscriptions(): void {
     // Subscribe to inputVolume changes
     const unsubInput = useUserSettingsStore.subscribe((state) => {
@@ -642,164 +768,12 @@ class WebRTCService {
       }),
       ws.on('voice:offer', (payload: { sdp: string; channel_id?: string }) => {
         this.diagSnapshot('voice:offer received');
-        // Chain onto the offer queue so two close-together offers
-        // can't interleave their await points. Each offer waits for
-        // the previous one's setLocalDescription to land before its
-        // own setRemoteDescription runs.
-        this.offerQueue = this.offerQueue.then(async () => {
-          if (!this.pc) return;
-          // signalingState !== 'stable' means we're already mid-
-          // negotiation — abandon the older offer and let this one
-          // run. Anything else (closed, etc.) bails out cleanly.
-          if (this.pc.signalingState === 'closed') return;
-          try {
-            console.log('[Voice/diag] offer SDP m-lines:', this.summariseSdp(payload.sdp));
-            // Snapshot existing transceiver mids BEFORE applying the
-            // remote offer so pre-bind below can identify which
-            // transceivers the server JUST added vs. the pile of
-            // pre-existing recvonly slots from previous peers /
-            // renegotiations.
-            const knownMidsBefore = new Set(
-              this.pc.getTransceivers().map((t) => t.mid).filter((m): m is string => !!m),
-            );
-            const desc: RTCSessionDescriptionInit = { type: 'offer', sdp: payload.sdp };
-            await this.pc.setRemoteDescription(new RTCSessionDescription(desc));
-            this.diagSnapshot('after setRemoteDescription(offer)');
-            // If a second offer arrived during the await above, the
-            // pc state may have moved on. Skip the rest so we don't
-            // build an answer for a description that's no longer
-            // current — the next queue tick will handle the newer
-            // offer.
-            if (this.pc.signalingState !== 'have-remote-offer') return;
-            this.remoteDescSet = true;
-            for (const c of this.pendingCandidates) {
-              try {
-                await this.pc.addIceCandidate(new RTCIceCandidate(c));
-              } catch (e) {
-                console.warn('[WebRTC] pending ICE flush failed:', e);
-              }
-            }
-            this.pendingCandidates = [];
-
-            // Persist 'sendonly' on every transceiver that already
-            // has a sender track. Per JSEP, setRemoteDescription
-            // re-mirrors the offer's literal direction onto each
-            // matched transceiver — previously bound sendonly slots
-            // get clobbered back to recvonly any time a NEW offer
-            // arrives. Without this re-write, active senders end
-            // up with a=inactive in the answer and remote viewers
-            // stop receiving frames mid-call.
-            for (const tx of this.pc.getTransceivers()) {
-              if (tx.currentDirection === 'stopped') continue;
-              // Active sender: keep us sending.
-              if (tx.sender.track && tx.direction !== 'sendonly') {
-                try {
-                  tx.direction = 'sendonly';
-                  console.log('[Voice/diag] re-pin sendonly:', { mid: tx.mid, kind: tx.sender.track.kind });
-                } catch { /* read-only in some states */ }
-                continue;
-              }
-              // Active receiver: keep us receiving. Chrome's literal
-              // mirror also clobbers recvonly slots to inactive on
-              // subsequent offers, which stalls inbound video — the
-              // receiver gets bytes for a while then the SFU stops
-              // forwarding and the decoder just sits.
-              if (!tx.sender.track && tx.receiver.track && tx.direction !== 'recvonly') {
-                try {
-                  tx.direction = 'recvonly';
-                  console.log('[Voice/diag] re-pin recvonly:', { mid: tx.mid, kind: tx.receiver.track.kind });
-                } catch { /* read-only in some states */ }
-              }
-            }
-
-            // Chrome also clears sender.track on some renegotiations
-            // (transceiver dump showed mid:3 with sendKind/sendTrack
-            // missing after a 2nd offer arrived for the same m-line).
-            // Re-attach our cam/screen track to its sender if the
-            // sender we own has lost it, so the answer m-line stays
-            // a=sendonly with a real msid instead of a=inactive.
-            const reattach = async (sender: RTCRtpSender | null, track: MediaStreamTrack | null | undefined, label: string) => {
-              if (!sender || !track || sender.track === track) return;
-              try {
-                await sender.replaceTrack(track);
-                const tx = this.pc?.getTransceivers().find((t) => t.sender === sender);
-                if (tx) {
-                  try { tx.direction = 'sendonly'; } catch { /* read-only */ }
-                }
-                console.log('[Voice/diag] re-attach', label, '→ sender (track was cleared by Chrome on remote offer)');
-              } catch (err) {
-                console.warn('[Voice/diag] re-attach', label, 'failed:', err);
-              }
-            };
-            await reattach(this.webcamSender, this.webcamStream?.getVideoTracks()[0], 'cam');
-            await reattach(this.screenSender, this.screenStream?.getVideoTracks()[0], 'screen');
-
-            // Pre-bind the pending cam/screen track to the new
-            // transceiver Chrome created from the server's recvonly
-            // m-line. Per JSEP, Chrome mirrors the offer direction
-            // literally → new transceiver's local direction starts as
-            // 'recvonly' even though the server wants us to send.
-            // Without flipping it to 'sendonly' AND attaching the
-            // track BEFORE createAnswer, the answer m-line becomes
-            // a=inactive (recvonly ∩ recvonly = inactive) and the
-            // encoder produces nothing.
-            // Pre-bind any pending video tracks. Separate slots per
-            // kind so a rapid cam-then-screen sequence can't have
-            // the second start overwrite the first — both can be
-            // queued simultaneously and bind to their own new
-            // transceiver as the offers land.
-            const pendingPairs: Array<{ kind: 'cam' | 'screen'; track: MediaStreamTrack }> = [];
-            if (this.pendingCamTrack) pendingPairs.push({ kind: 'cam', track: this.pendingCamTrack });
-            if (this.pendingScreenTrack) pendingPairs.push({ kind: 'screen', track: this.pendingScreenTrack });
-            for (const pending of pendingPairs) {
-              if (pending.track.readyState !== 'live') {
-                // Caller's stop happened during the await window
-                // (rapid toggle). Drop the stale entry; user will
-                // re-toggle if they actually want it.
-                if (pending.kind === 'cam') this.pendingCamTrack = null;
-                else this.pendingScreenTrack = null;
-                continue;
-              }
-              const target = this.pc.getTransceivers().find((tx) => {
-                if (tx.currentDirection === 'stopped') return false;
-                if (tx.sender.track) return false;
-                if (tx.receiver.track?.kind !== 'video') return false;
-                if (!tx.mid || knownMidsBefore.has(tx.mid)) return false;
-                return true;
-              });
-              if (target) {
-                try { target.direction = 'sendonly'; } catch { /* read-only */ }
-                await target.sender.replaceTrack(pending.track);
-                if (pending.kind === 'screen') {
-                  this.screenSender = target.sender;
-                  this.pendingScreenTrack = null;
-                } else {
-                  this.webcamSender = target.sender;
-                  this.pendingCamTrack = null;
-                }
-                console.log('[Voice/diag] pre-bind:', pending.kind, '→ transceiver', { mid: target.mid, dir: target.direction });
-              }
-              // No warn here for the per-kind miss — the caller
-              // (startWebcam/startScreenShare) emits a clearer
-              // 'pre-bind never landed' after its wait times out.
-            }
-
-            const answer = await this.pc.createAnswer();
-            // Same check again — state can advance during createAnswer.
-            if (this.pc.signalingState !== 'have-remote-offer') return;
-            await this.pc.setLocalDescription(answer);
-            this.diagSnapshot('after setLocalDescription(answer)');
-            console.log('[Voice/diag] answer SDP m-lines:', this.summariseSdp(answer.sdp ?? ''));
-            if (this.teamId && this.channelId && answer) {
-              ws.voiceAnswer(this.teamId, this.channelId, answer);
-            }
-          } catch (err) {
-            console.error('[WebRTC] Failed to handle offer:', err);
-          }
-        }).catch((err) => {
-          // Defensive: don't let one failure poison the chain.
-          console.error('[WebRTC] offer queue error:', err);
-        });
+        this.offerQueue = this.offerQueue
+          .then(() => this.handleVoiceOffer(payload))
+          .catch((err) => {
+            // Defensive: don't let one failure poison the chain.
+            console.error('[WebRTC] offer queue error:', err);
+          });
       }),
       ws.on(
         'voice:ice-candidate',
