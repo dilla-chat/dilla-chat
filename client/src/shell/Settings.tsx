@@ -617,7 +617,7 @@ export function UserAccount() {
     // Pull-in from server-side changes only when the field isn't dirty.
     setName((v) => (v === origName ? me?.name || '' : v));
     setStatus((v) => (v === origStatus ? me?.custom || '' : v));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [me?.name, me?.custom]);
   const publicKey =
     useAuthStore((s) => s.publicKey) ||
@@ -836,7 +836,7 @@ export function UserNotif() {
     setQuiet((v) => (v === storedQuiet ? storedQuiet : v));
     setQuietFrom((v) => (v === storedFrom ? storedFrom : v));
     setQuietTo((v) => (v === storedTo ? storedTo : v));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [storedQuiet, storedFrom, storedTo]);
 
   const dirty = quiet !== storedQuiet || quietFrom !== storedFrom || quietTo !== storedTo;
@@ -1689,7 +1689,7 @@ export function TeamInvites() {
       .catch((err) => console.warn('[Settings] listInvites failed', err));
     // userLabel depends on data.byId; rebuilding the table when membership
     // loads matters for resolving newly-mapped creators on first paint.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [auth?.teamId, data?.byId]);
 
   async function revoke(row: any) {

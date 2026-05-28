@@ -133,7 +133,7 @@ export default function MessageList({
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: reset scroll pill state when switching channels
     setNewMessageCount(0);
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: reset scroll pill state when switching channels
+     
     setAtBottom(true);
   }, [channelId]);
 
@@ -142,7 +142,7 @@ export default function MessageList({
     if (virtuosoRef.current) {
       virtuosoRef.current.scrollToIndex({ index: START_INDEX - 1, align: 'end', behavior: 'auto' });
     }
-  }, [channelId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [channelId]);  
 
   // Track new messages when scrolled up; scroll to bottom automatically when at bottom
   const prevMsgCount = useRef(channelMessages.length);
