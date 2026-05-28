@@ -2233,7 +2233,7 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
       ) : (
         <div className="side-scroll">
           <div className="cat"><span>Direct Messages</span>
-            <div className="cat-actions"><button className="icon-btn" title="New DM" onClick={() => onNewDm && onNewDm()}><Icon.Plus size={12} /></button></div>
+            <div className="cat-actions"><button className="icon-btn" title="New DM" onClick={() => onNewDm?.()}><Icon.Plus size={12} /></button></div>
           </div>
           {dms.map(d => {
             const isGroup = d.group;
@@ -3260,7 +3260,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                                     return (
                                       <div key={`poll-${m.id}-${oi}-${o.label}`}
                                            className={'poll-opt' + (o.mine ? ' mine' : '')}
-                                           onClick={() => onVote && onVote(m.id, oi)}>
+                                           onClick={() => onVote?.(m.id, oi)}>
                                         <div className="poll-bar" style={{ width: ((o.votes || 0) / total * 100) + '%', background: bar }} />
                                         <span className="poll-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                                           <span style={{ width: 8, height: 8, borderRadius: '50%', background: dot, flex: '0 0 auto' }} />
@@ -3287,7 +3287,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                             <span key={ri}
                                   className={'rxn' + (r.mine ? ' mine' : '')}
                                   title={r.mine ? 'click to remove' : 'click to add yours'}
-                                  onClick={() => onReact && onReact(m.id, r.e)}>
+                                  onClick={() => onReact?.(m.id, r.e)}>
                               <span>{r.e}</span><span>{r.n}</span>
                             </span>
                           ))}
@@ -3390,7 +3390,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
               <span className="rc-av" style={{ background: oa.color }}>{oa.initials}</span>
               <span className="rc-author">{oa.name}</span>
               <span className="rc-text">{(orig.text || '').slice(0, 90)}{(orig.text||'').length > 90 ? '…' : ''}</span>
-              <button className="rc-x" onClick={() => onSetReply && onSetReply(null)} title="Cancel reply (esc)">×</button>
+              <button className="rc-x" onClick={() => onSetReply?.(null)} title="Cancel reply (esc)">×</button>
             </div>
           );
         })()}
@@ -5898,7 +5898,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
             {menuPop.items.map((it, i) => it.sep ? (
               <div key={`sep-${i}`} className="ctx-sep" />
             ) : (
-              <button key={`item-${i}-${it.label}`} className={it.danger ? 'danger' : ''} disabled={!!it.disabled} onClick={() => { if (it.disabled) return; it.onClick && it.onClick(); setMenuPop(null); }}>
+              <button key={`item-${i}-${it.label}`} className={it.danger ? 'danger' : ''} disabled={!!it.disabled} onClick={() => { if (it.disabled) return; it.onClick?.(); setMenuPop(null); }}>
                 {it.icon}
                 {it.label}
               </button>
