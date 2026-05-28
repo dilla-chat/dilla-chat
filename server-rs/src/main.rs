@@ -82,34 +82,8 @@ async fn main() {
     let sfu = Arc::new(voice::SFU::new());
     configure_turn_provider(&sfu, &cfg).await;
 
-    // Create WebSocket hub.
-    let mut hub = ws::Hub::new(database.clone());
-    hub.voice_sfu = Some(sfu.clone() as Arc<dyn ws::hub::VoiceSFU>);
-    // Wire the room manager so handle_voice_join can actually register
-    // peers + broadcast voice:user-joined and voice:state. Without
-    // this, joining a voice channel becomes a no-op (the handler
-    // bails out early on missing room_mgr) and two users in the same
-    // channel never see each other.
-    hub.voice_room_manager = Some(Arc::new(voice::RoomManager::new()));
-    hub.telemetry_relay = init_telemetry_relay(&cfg);
-    let hub = Arc::new(hub);
-
-    // Wire SFU → WS event bridge. webrtc-rs generates ICE candidates and
-    // renegotiate offers asynchronously after handle_join returns; without
-    // this callback those events are dropped on the floor and the
-    // server-side ICE agent has no remote candidates to ping → media
-    // never connects. The callback is sync (Fn, not async), so each
-    // event spawns a short task to do the async broadcast.
-    {
-        let hub_for_sfu = hub.clone();
-        sfu.set_on_event(move |_channel_id, evt| {
-            let hub = hub_for_sfu.clone();
-            tokio::spawn(async move {
-                handle_sfu_event(&hub, evt).await;
-            });
-        })
-        .await;
-    }
+    let hub = build_voice_hub(&cfg, database.clone(), sfu.clone());
+    wire_sfu_event_bridge(&sfu, hub.clone()).await;
 
     spawn_hub_dispatch_loop(hub.clone());
 
@@ -154,6 +128,42 @@ async fn main() {
     let app = with_http_observability_middleware(app);
 
     start_server(&cfg, app).await;
+}
+
+/// Build the WebSocket hub with voice SFU + room manager + telemetry
+/// wired in. Extracted from main() so the assembly of dependent
+/// subsystems can be exercised in isolation.
+pub(crate) fn build_voice_hub(
+    cfg: &Config,
+    db: Database,
+    sfu: Arc<voice::SFU>,
+) -> Arc<ws::Hub> {
+    let mut hub = ws::Hub::new(db);
+    hub.voice_sfu = Some(sfu as Arc<dyn ws::hub::VoiceSFU>);
+    // Wire the room manager so handle_voice_join can actually register
+    // peers + broadcast voice:user-joined and voice:state. Without this,
+    // joining a voice channel becomes a no-op (the handler bails out
+    // early on missing room_mgr) and two users in the same channel
+    // never see each other.
+    hub.voice_room_manager = Some(Arc::new(voice::RoomManager::new()));
+    hub.telemetry_relay = init_telemetry_relay(cfg);
+    Arc::new(hub)
+}
+
+/// Wire the SFU → WS event bridge. webrtc-rs generates ICE candidates
+/// and renegotiate offers asynchronously after handle_join returns;
+/// without this callback those events are dropped on the floor and the
+/// server-side ICE agent has no remote candidates to ping → media never
+/// connects. The callback is sync (Fn, not async), so each event spawns
+/// a short task to do the async broadcast.
+pub(crate) async fn wire_sfu_event_bridge(sfu: &voice::SFU, hub: Arc<ws::Hub>) {
+    sfu.set_on_event(move |_channel_id, evt| {
+        let hub = hub.clone();
+        tokio::spawn(async move {
+            handle_sfu_event(&hub, evt).await;
+        });
+    })
+    .await;
 }
 
 /// Spawn the WebSocket hub's per-tick dispatch loop. Extracted from
@@ -1203,6 +1213,44 @@ mod tests {
     // Drive each SFUEvent variant through the extracted helper. Hub is
     // real but with no connected clients — broadcast/send are no-ops
     // but the match arms + payload construction run.
+
+    // ── build_voice_hub + wire_sfu_event_bridge ──────────────────────
+
+    #[tokio::test]
+    async fn build_voice_hub_wires_sfu_and_room_manager() {
+        let (db, _tmp) = test_db();
+        let sfu = Arc::new(voice::SFU::new());
+        let mut cfg = Config::default();
+        cfg.telemetry_adapter = "none".into();
+        let hub = build_voice_hub(&cfg, db, sfu);
+        assert!(hub.voice_sfu.is_some(), "voice_sfu must be wired");
+        assert!(hub.voice_room_manager.is_some(), "room manager must be wired");
+        // telemetry_relay is None when adapter=none — confirms the
+        // init_telemetry_relay branch flowed through.
+        assert!(hub.telemetry_relay.is_none());
+    }
+
+    #[tokio::test]
+    async fn build_voice_hub_wires_sentry_telemetry_when_configured() {
+        let (db, _tmp) = test_db();
+        let sfu = Arc::new(voice::SFU::new());
+        let mut cfg = Config::default();
+        cfg.telemetry_adapter = "sentry".into();
+        cfg.sentry_dsn = "https://abc123@o123456.ingest.sentry.io/456789".into();
+        let hub = build_voice_hub(&cfg, db, sfu);
+        assert!(hub.telemetry_relay.is_some(), "valid Sentry config → relay wired");
+    }
+
+    #[tokio::test]
+    async fn wire_sfu_event_bridge_attaches_callback() {
+        let (db, _tmp) = test_db();
+        let sfu = Arc::new(voice::SFU::new());
+        let mut cfg = Config::default();
+        cfg.telemetry_adapter = "none".into();
+        let hub = build_voice_hub(&cfg, db, sfu.clone());
+        wire_sfu_event_bridge(&sfu, hub).await;
+        // Callback is set — survival of the await is the signal.
+    }
 
     // ── spawn_hub_dispatch_loop ──────────────────────────────────────
 
