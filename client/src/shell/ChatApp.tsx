@@ -3175,7 +3175,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                               <div style={{ marginBottom: 4 }}>{renderText(m.text, members)}</div>
                             )}
                             {(() => {
-                              const list = m.attachments && m.attachments.length > 0
+                              const list = m.attachments?.length > 0
                                 ? m.attachments
                                 : (m.attachment ? [m.attachment] : []);
                               if (list.length === 0) return null;
@@ -3281,10 +3281,10 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                           </>
                         )}
                       </div>
-                      {m.reactions && m.reactions.length > 0 && (
+                      {m.reactions?.length > 0 && (
                         <div className="rxns">
                           {m.reactions.map((r, ri) => (
-                            <span key={ri}
+                            <span key={`rxn-${m.id}-${ri}-${r.e}`}
                                   className={'rxn' + (r.mine ? ' mine' : '')}
                                   title={r.mine ? 'click to remove' : 'click to add yours'}
                                   onClick={() => onReact?.(m.id, r.e)}>
@@ -5134,7 +5134,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     globalThis.addEventListener('dilla:open-group-access', onGroupAccess);
     globalThis.addEventListener('dilla:open-group-settings', onGroupSettings);
     function onKey(e) {
-      const inField = e.target.matches && e.target.matches('input, textarea, [contenteditable="true"]');
+      const inField = e.target.matches?.('input, textarea, [contenteditable="true"]');
       if (inField) return;
       const order = ['general','design','dev','mesh','random'];
       if ((e.metaKey || e.ctrlKey) && /^[1-5]$/.test(e.key)) {
@@ -5437,7 +5437,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
       (async () => {
         try {
           const res = await api.searchGif(activeTeamId, q, 3);
-          const results = res.results && res.results.length > 0
+          const results = res.results?.length > 0
             ? res.results
             : [{ url: res.url, preview: res.url }];
           setGiphyPicker({ query: q, results });
@@ -5896,9 +5896,9 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
           <div className="ctx-menu"
                style={{ left: Math.min(menuPop.x, globalThis.innerWidth - 220), top: Math.min(menuPop.y, globalThis.innerHeight - (menuPop.items.length * 36 + 16)) }}>
             {menuPop.items.map((it, i) => it.sep ? (
-              <div key={`sep-${i}`} className="ctx-sep" />
+              <div key={`sep-${i}-${menuPop.items[i + 1]?.label ?? 'end'}`} className="ctx-sep" />
             ) : (
-              <button key={`item-${i}-${it.label}`} className={it.danger ? 'danger' : ''} disabled={!!it.disabled} onClick={() => { if (it.disabled) return; it.onClick?.(); setMenuPop(null); }}>
+              <button key={`item-${it.label}-${i}`} className={it.danger ? 'danger' : ''} disabled={!!it.disabled} onClick={() => { if (it.disabled) return; it.onClick?.(); setMenuPop(null); }}>
                 {it.icon}
                 {it.label}
               </button>
