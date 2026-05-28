@@ -817,6 +817,29 @@ async fn init_federation_mesh(
 /// so the Mesh top/bottom bars stay in sync. The cadence is intentionally
 /// generous (30s) — clients also tick lamport per message and react to
 /// connection events, so this is a backstop, not the hot path.
+/// Snapshot of the federation peer status used in the periodic broadcast.
+/// Extracted from `spawn_federation_status_broadcaster` so the
+/// pure-data computation (count peers, derive degraded) can be tested
+/// in isolation from the tokio interval driver.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct FederationStatusSnapshot {
+    pub connected: usize,
+    pub total: usize,
+    pub degraded: bool,
+}
+
+pub(crate) fn federation_status_snapshot(
+    peers: &[federation::PeerInfo],
+) -> FederationStatusSnapshot {
+    let total = peers.len();
+    let connected = peers.iter().filter(|p| p.status == "connected").count();
+    FederationStatusSnapshot {
+        connected,
+        total,
+        degraded: connected < total,
+    }
+}
+
 fn spawn_federation_status_broadcaster(
     mesh_node: &Arc<federation::MeshNode>,
     hub: &Arc<ws::Hub>,
@@ -830,16 +853,14 @@ fn spawn_federation_status_broadcaster(
         loop {
             interval.tick().await;
             let peers = mesh_node.get_peers().await;
-            let total = peers.len();
-            let connected = peers.iter().filter(|p| p.status == "connected").count();
-            let degraded = connected < total;
+            let snap = federation_status_snapshot(&peers);
 
             let peer_payload = serde_json::json!({
                 "type": ws::events::EVENT_FEDERATION_PEER_STATUS,
                 "payload": {
-                    "connected": connected,
-                    "total": total,
-                    "degraded": degraded,
+                    "connected": snap.connected,
+                    "total": snap.total,
+                    "degraded": snap.degraded,
                 },
             });
             if let Ok(bytes) = serde_json::to_vec(&peer_payload) {
@@ -1787,6 +1808,56 @@ mod tests {
             }
             other => panic!("expected TokenWrittenToFile, got {:?}", other),
         }
+    }
+
+    // ── federation_status_snapshot (pure peer-list reducer) ──────────
+
+    fn peer(addr: &str, status: &str) -> federation::PeerInfo {
+        federation::PeerInfo {
+            address: addr.into(),
+            status: status.into(),
+            node_name: addr.into(),
+            last_seen: String::new(),
+        }
+    }
+
+    #[test]
+    fn federation_status_snapshot_all_connected_not_degraded() {
+        let peers = vec![peer("a", "connected"), peer("b", "connected")];
+        let snap = federation_status_snapshot(&peers);
+        assert_eq!(snap.total, 2);
+        assert_eq!(snap.connected, 2);
+        assert!(!snap.degraded);
+    }
+
+    #[test]
+    fn federation_status_snapshot_some_disconnected_is_degraded() {
+        let peers = vec![
+            peer("a", "connected"),
+            peer("b", "disconnected"),
+            peer("c", "syncing"),
+        ];
+        let snap = federation_status_snapshot(&peers);
+        assert_eq!(snap.total, 3);
+        assert_eq!(snap.connected, 1);
+        assert!(snap.degraded);
+    }
+
+    #[test]
+    fn federation_status_snapshot_empty_list() {
+        let snap = federation_status_snapshot(&[]);
+        assert_eq!(snap.total, 0);
+        assert_eq!(snap.connected, 0);
+        // connected < total only when total>0, so empty is NOT degraded.
+        assert!(!snap.degraded);
+    }
+
+    #[test]
+    fn federation_status_snapshot_all_disconnected() {
+        let peers = vec![peer("a", "disconnected"), peer("b", "syncing")];
+        let snap = federation_status_snapshot(&peers);
+        assert_eq!(snap.connected, 0);
+        assert!(snap.degraded);
     }
 
     // ── start_server_mode (pure pre-flight check) ────────────────────
