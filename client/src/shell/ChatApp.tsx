@@ -4152,7 +4152,7 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
   useEffect(() => {
     if (!focused) return;
     const isSelf = focused.id === currentUserId();
-    const peerVoice = !isSelf ? voicePeers?.[focused.id] : null;
+    const peerVoice = isSelf ? null : voicePeers?.[focused.id];
     // Trust the sharing FLAG, not stream presence. The flag flips
     // synchronously when the publisher toggles cam/screen (via voice:*-update
     // broadcast), whereas the remote MediaStream lands later via SFU
@@ -4204,7 +4204,7 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
             // with webrtcService). For peers, look them up in voiceOccupants
             // which is fed by voice:mute-update and voice:rooms-snapshot.
             const isSelf = p.id === currentUserId();
-            const occupant = !isSelf ? channelOccupants?.find((o) => o.user_id === p.id) : null;
+            const occupant = isSelf ? null : channelOccupants?.find((o) => o.user_id === p.id);
             const mineMuted = isSelf ? mute : !!occupant?.muted;
             const mineDeaf = isSelf ? deaf : !!occupant?.deafened;
             const mineCam = isSelf && cam;
@@ -4216,7 +4216,7 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
             // the peer is currently sharing — we keep the stream alive
             // so the existing <video> element resumes when frames
             // come back, without remounting.
-            const peerVoice = !isSelf ? voicePeers?.[p.id] : null;
+            const peerVoice = isSelf ? null : voicePeers?.[p.id];
             const peerSharingScreen = !!peerVoice?.screen_sharing;
             const peerSharingCam = !!peerVoice?.webcam_sharing;
             const showScreen = isSelf

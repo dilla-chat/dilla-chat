@@ -103,13 +103,13 @@ export function useDMEvents(activeTeamId: string | null, cryptoReady: boolean = 
         const myId = useAuthStore.getState().teams.get(activeTeamId)?.user?.id;
         const activeDMId = useDMStore.getState().activeDMId;
         if (payload.author_id !== myId) {
-          if (dmId !== activeDMId) {
-            useUnreadStore.getState().increment(dmId);
-          } else {
+          if (dmId === activeDMId) {
             useUnreadStore.getState().markRead(dmId);
             if (payload.id) {
               try { ws.markChannelRead(activeTeamId, dmId, payload.id); } catch { /* ignore */ }
             }
+          } else {
+            useUnreadStore.getState().increment(dmId);
           }
         }
       },
