@@ -60,7 +60,7 @@ interface AvatarMember {
 }
 
 /** Avatar tile WITH a presence dot when the member carries a `status`. */
-export function Avatar({ member, size }: { member: AvatarMember; size?: number }) {
+export function Avatar({ member, size }: Readonly<{ member: AvatarMember; size?: number }>) {
   return (
     <div className={memberAvatarClass(member, 'avatar')} style={memberAvatarStyle(member, size)}>
       {!member.avatarUrl && member.initials}
@@ -72,7 +72,7 @@ export function Avatar({ member, size }: { member: AvatarMember; size?: number }
 /** Avatar tile WITHOUT the presence dot. Used in headers, mention
  *  pickers, and other places where the dot would be redundant or
  *  visually noisy. */
-export function PlainAvatar({ member, size }: { member: AvatarMember; size?: number }) {
+export function PlainAvatar({ member, size }: Readonly<{ member: AvatarMember; size?: number }>) {
   return (
     <div className={memberAvatarClass(member, 'avatar')} style={memberAvatarStyle(member, size)}>
       {!member.avatarUrl && member.initials}

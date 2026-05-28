@@ -235,11 +235,11 @@ export function NewDmModal({ members, onClose, onPick }) {
 // groups filtered by the typed query. Enter on a unique match commits;
 // Enter on a fresh query creates a new group; backspace on an empty
 // input clears the pill so keyboard-only users don't get stuck.
-export function GroupCombobox({ value, onChange, existing }: {
+export function GroupCombobox({ value, onChange, existing }: Readonly<{
   value: string;
   onChange: (next: string) => void;
   existing: string[];
-}) {
+}>) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -524,7 +524,7 @@ export function ChannelAccessModal({ channel, onClose }) {
 // but persists via api.setGroupAccess and the WS broadcasts a
 // group:access-update event that every channel in the group reads through
 // its inherited resolveAccessRoles — one change ripples to N channels.
-export function GroupAccessModal({ group, onClose }: { group: { id: string; name: string; accessRoleIds: string[]; hiddenIfRestricted: boolean }; onClose: () => void }) {
+export function GroupAccessModal({ group, onClose }: Readonly<{ group: { id: string; name: string; accessRoleIds: string[]; hiddenIfRestricted: boolean }; onClose: () => void }>) {
   const teamId = useTeamStore((s) => s.activeTeamId) as string | null;
   const roles = useTeamStore((s) => (teamId ? s.roles.get(teamId) ?? EMPTY_LIST : EMPTY_LIST));
   const [selected, setSelected] = useState<Set<string>>(new Set(group.accessRoleIds ?? []));
@@ -620,7 +620,7 @@ export function GroupAccessModal({ group, onClose }: { group: { id: string; name
 
 // Rename + delete a group. Lives next to GroupAccessModal so the right-
 // click context menu can hand off cleanly.
-export function GroupSettingsModal({ group, onClose }: { group: { id: string; name: string }; onClose: () => void }) {
+export function GroupSettingsModal({ group, onClose }: Readonly<{ group: { id: string; name: string }; onClose: () => void }>) {
   const teamId = useTeamStore((s) => s.activeTeamId) as string | null;
   const [name, setName] = useState(group.name);
   const [busy, setBusy] = useState(false);
@@ -1229,7 +1229,7 @@ export function ThreadPanel({ channelId, messageId, members, onClose, onReact })
 // remote camera and screen-share tiles. Falls back to null when no stream
 // is available — callers render the CamTile/ScreenTile placeholder in
 // that case.
-export function VideoTile({ stream, fit = 'cover', mirror, showStats = true }: { stream: MediaStream; fit?: 'cover' | 'contain'; mirror?: boolean; showStats?: boolean }) {
+export function VideoTile({ stream, fit = 'cover', mirror, showStats = true }: Readonly<{ stream: MediaStream; fit?: 'cover' | 'contain'; mirror?: boolean; showStats?: boolean }>) {
   const ref = useRef<HTMLVideoElement | null>(null);
   const [stats, setStats] = useState<{ w: number; h: number; fps: number } | null>(null);
   const [bitrate, setBitrate] = useState<number | null>(null);
@@ -1378,14 +1378,14 @@ export function FloatingPip({
   title,
   minW = 80,
   minH = 60,
-}: {
+}: Readonly<{
   className: string;
   children: React.ReactNode;
   onClick?: () => void;
   title?: string;
   minW?: number;
   minH?: number;
-}) {
+}>) {
   const ref = useRef<HTMLDivElement | null>(null);
   // When the stage around the PIP resizes (e.g. switching focus
   // mode normal ↔ tab ↔ screen), rescale our inline left/top/
@@ -1587,7 +1587,7 @@ export function CamTile({ member, mini, showStats = false }) {
 
 // Screen-share tile. Real getDisplayMedia stream when available, otherwise
 // the stylized terminal/editor placeholder (kept for tests + offline UX).
-export function ScreenTile({ member, pip, showStats = false }: { member: any; pip: any; showStats?: boolean }) {
+export function ScreenTile({ member, pip, showStats = false }: Readonly<{ member: any; pip: any; showStats?: boolean }>) {
   const isSelf = member.id === currentUserId();
   const localScreen = useVoiceStore((s) => s.localScreenStream);
   const remoteScreen = useVoiceStore((s) => s.remoteScreenStreams?.[member.id] ?? null);

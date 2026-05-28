@@ -63,14 +63,14 @@ export function StatsSparkline({
   floor,
   tone,
   title,
-}: {
+}: Readonly<{
   label: string;
   unit: string;
   samples: number[];
   floor: number;
   tone: (v: number) => SparkTone;
   title: (current: number | null) => string;
-}) {
+}>) {
   const graphRef = useRef<HTMLDivElement | null>(null);
   const [barCount, setBarCount] = useState(0);
 

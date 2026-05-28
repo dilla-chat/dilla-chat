@@ -1182,11 +1182,11 @@ export function SafetyNumberQR({
   payload,
   label,
   onClose,
-}: {
+}: Readonly<{
   payload: string;
   label: string;
   onClose: () => void;
-}) {
+}>) {
   const ref = React.useRef<HTMLCanvasElement | null>(null);
   React.useEffect(() => {
     let cancelled = false;
@@ -2054,7 +2054,7 @@ export function TeamRoles() {
   );
 }
 
-export function RoleEditor({ teamId, role, onClose, onSaved }: { teamId: string; role: any; onClose: () => void; onSaved: () => void }) {
+export function RoleEditor({ teamId, role, onClose, onSaved }: Readonly<{ teamId: string; role: any; onClose: () => void; onSaved: () => void }>) {
   const [name, setName] = useStateS(role?.name ?? '');
   const [color, setColor] = useStateS(role?.color ?? '#7a9aa7');
   const [perms, setPerms] = useStateS<number>(role?.permissions ?? 0);

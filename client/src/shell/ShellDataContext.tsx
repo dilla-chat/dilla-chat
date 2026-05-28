@@ -24,10 +24,10 @@ const Ctx = createContext<ShellData>(null);
 export function ShellDataProvider({
   value,
   children,
-}: {
+}: Readonly<{
   value: ShellData;
   children: ReactNode;
-}) {
+}>) {
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

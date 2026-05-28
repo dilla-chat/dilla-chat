@@ -62,7 +62,7 @@ export default function MessageMarkdown({
   text,
   currentUserId,
   currentUserHandle,
-}: Props): React.ReactElement | null {
+}: Readonly<Props>): React.ReactElement | null {
   // Hooks must run unconditionally — the `if (!text) return null` early
   // return below has to come AFTER every hook call, not before, or
   // React's rules-of-hooks fires.
