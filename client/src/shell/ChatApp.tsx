@@ -2023,29 +2023,9 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
                  onClick={() => onPickChannel(c.id)}
                  onContextMenu={(e) => {
                    e.preventDefault();
-                   globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
-                   { label: 'Mark as read', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M3 4h10M3 12h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>, onClick: () => {
-                     useUnreadStore.getState().markRead(c.id);
-                     const teamId = useTeamStore.getState().activeTeamId;
-                     if (teamId && !isMockSession()) {
-                       const msgs = data?.MESSAGES?.[c.id] ?? [];
-                       const lastId = msgs.length > 0 ? msgs[msgs.length - 1].id : '';
-                       if (lastId) {
-                         try { ws.markChannelRead(teamId, c.id, lastId); } catch { /* ignore */ }
-                       }
-                     }
-                     globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Marked all messages in #' + c.name + ' as read.', duration: 2500 } }));
-                   } },
-                   { label: (mutedChannels.has(c.id) ? 'Unmute kanal' : 'Mute kanal'), icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 6h2l3-3v10l-3-3H2zM10 5l3 3-3 3M13 5l-3 3 3 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>, onClick: () => { toggleMuteChannel(c.id); globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: (mutedChannels.has(c.id) ? 'Unmuted ' : 'Muted ') + '#' + c.name + '.', duration: 2500 } })); } },
-                   { label: 'Copy link', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6 10l4-4M6 6l4 4" stroke="currentColor" strokeWidth="1.4"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/></svg>, onClick: () => { navigator.clipboard?.writeText(('dilla://' + nodeHost + '/k/') + c.id); globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Link copied.', duration: 2000 } })); } },
-                   ...(perms.has(PERM_MANAGE_CHANNELS) ? [
-                     { sep: true },
-                     c.groupId
-                       ? { label: 'Access is handled by group', icon: <Icon.Lock size={12} />, disabled: true, onClick: () => {} }
-                       : { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-channel-access', { detail: c.id })) },
-                     { label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-channel-settings', { detail: c.id })) },
-                   ] : []),
-                 ] } }));
+                   globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', {
+                     detail: { x: e.clientX, y: e.clientY, items: buildTextChannelMenu(c, data, mutedChannels, toggleMuteChannel, nodeHost, perms.has(PERM_MANAGE_CHANNELS)) },
+                   }));
                  }}>
               <span className="ch-glyph"><Icon.Hash size={14} /></span>
               <span className="ch-name">{c.name}</span>
@@ -3773,6 +3753,60 @@ async function leaveTeamFromRail(s: { name: string }): Promise<void> {
     console.warn('[ChatApp] leave team failed', err);
     globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: s.name, author: 'system', text: 'Leave failed: ' + (err as Error).message, duration: 4000 } }));
   }
+}
+
+function buildTextChannelMenu(
+  c: { id: string; name: string; groupId?: string },
+  data: any,
+  mutedChannels: Set<string>,
+  toggleMuteChannel: (id: string) => void,
+  nodeHost: string,
+  canManageChannels: boolean,
+): any[] {
+  const items: any[] = [
+    {
+      label: 'Mark as read',
+      icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M3 4h10M3 12h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>,
+      onClick: () => {
+        useUnreadStore.getState().markRead(c.id);
+        const teamId = useTeamStore.getState().activeTeamId;
+        if (teamId && !isMockSession()) {
+          const msgs = data?.MESSAGES?.[c.id] ?? [];
+          const lastId = msgs.length > 0 ? msgs[msgs.length - 1].id : '';
+          if (lastId) {
+            try { ws.markChannelRead(teamId, c.id, lastId); } catch { /* ignore */ }
+          }
+        }
+        globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Marked all messages in #' + c.name + ' as read.', duration: 2500 } }));
+      },
+    },
+    {
+      label: mutedChannels.has(c.id) ? 'Unmute kanal' : 'Mute kanal',
+      icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 6h2l3-3v10l-3-3H2zM10 5l3 3-3 3M13 5l-3 3 3 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+      onClick: () => {
+        toggleMuteChannel(c.id);
+        globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: (mutedChannels.has(c.id) ? 'Unmuted ' : 'Muted ') + '#' + c.name + '.', duration: 2500 } }));
+      },
+    },
+    {
+      label: 'Copy link',
+      icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6 10l4-4M6 6l4 4" stroke="currentColor" strokeWidth="1.4"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/></svg>,
+      onClick: () => {
+        navigator.clipboard?.writeText(('dilla://' + nodeHost + '/k/') + c.id);
+        globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Link copied.', duration: 2000 } }));
+      },
+    },
+  ];
+  if (canManageChannels) {
+    items.push(
+      { sep: true },
+      c.groupId
+        ? { label: 'Access is handled by group', icon: <Icon.Lock size={12} />, disabled: true, onClick: () => {} }
+        : { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-channel-access', { detail: c.id })) },
+      { label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-channel-settings', { detail: c.id })) },
+    );
+  }
+  return items;
 }
 
 function buildGroupContextMenu(groupId: string): any[] {
