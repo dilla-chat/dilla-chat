@@ -3085,13 +3085,14 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                           })()}
                           {author.role === 'admin' && <span className="enc-badge" style={{ fontSize: 9, padding: '1px 5px' }}>admin</span>}
                           {isPinned && (
-                            <span
+                            <button
+                              type="button"
                               className="msg-pin-chip"
                               title="Pinned to this channel — open the pin pop to see all pins"
                               onClick={() => setPinnedOpen(true)}
                             >
                               <Icon.Pin size={11} />
-                            </span>
+                            </button>
                           )}
                         </div>
                       )}
@@ -3240,21 +3241,21 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                       {m.reactions?.length > 0 && (
                         <div className="rxns">
                           {m.reactions.map((r, ri) => (
-                            <span key={`rxn-${m.id}-${ri}-${r.e}`}
+                            <button type="button" key={`rxn-${m.id}-${ri}-${r.e}`}
                                   className={'rxn' + (r.mine ? ' mine' : '')}
                                   title={r.mine ? 'click to remove' : 'click to add yours'}
                                   onClick={() => onReact?.(m.id, r.e)}>
                               <span>{r.e}</span><span>{r.n}</span>
-                            </span>
+                            </button>
                           ))}
-                          <span className="rxn rxn-add"
+                          <button type="button" className="rxn rxn-add"
                                 title="Add reaction"
                                 onClick={(e) => {
                                   const anchor = e.currentTarget.getBoundingClientRect();
                                   setPicker({ open: true, anchor, target: 'react:' + m.id });
                                 }}>
                             <Icon.Emoji size={11} />
-                          </span>
+                          </button>
                         </div>
                       )}
                       {m.thread && (
