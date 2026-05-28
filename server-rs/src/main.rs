@@ -896,28 +896,52 @@ fn init_telemetry_relay(cfg: &Config) -> Option<Arc<telemetry::TelemetryRelay>> 
     }
 }
 
+/// Pre-flight check for start_server — parse the bind address and
+/// determine TLS-vs-plaintext mode without touching the network. Pure
+/// logic so unit tests can drive every error/decision branch.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum ServerStartMode {
+    Tls(std::net::SocketAddr),
+    Plaintext(std::net::SocketAddr),
+    RejectPlaintext,
+    BindParseError(String),
+}
+
+pub(crate) fn start_server_mode(cfg: &Config) -> ServerStartMode {
+    let addr_result = format!("0.0.0.0:{}", cfg.port).parse::<std::net::SocketAddr>();
+    let addr = match addr_result {
+        Ok(a) => a,
+        Err(e) => return ServerStartMode::BindParseError(e.to_string()),
+    };
+    let tls_configured = !cfg.tls_cert.is_empty() && !cfg.tls_key.is_empty();
+    if tls_configured {
+        ServerStartMode::Tls(addr)
+    } else if cfg.insecure {
+        ServerStartMode::Plaintext(addr)
+    } else {
+        ServerStartMode::RejectPlaintext
+    }
+}
+
 async fn start_server(cfg: &Config, app: axum::Router) {
-    let addr: std::net::SocketAddr = format!("0.0.0.0:{}", cfg.port)
-        .parse()
-        .unwrap_or_else(|e| {
+    let addr = match start_server_mode(cfg) {
+        ServerStartMode::Tls(a) | ServerStartMode::Plaintext(a) => a,
+        ServerStartMode::BindParseError(e) => {
             tracing::error!("invalid bind address: {}", e);
             std::process::exit(1);
-        });
+        }
+        ServerStartMode::RejectPlaintext => {
+            eprintln!();
+            eprintln!("  ERROR: refusing to start in plaintext.");
+            eprintln!("  Either:");
+            eprintln!("    - set DILLA_TLS_CERT and DILLA_TLS_KEY to a valid certificate pair, or");
+            eprintln!("    - set DILLA_INSECURE=true to explicitly run an unencrypted HTTP server (dev only).");
+            eprintln!();
+            std::process::exit(1);
+        }
+    };
 
     let tls_configured = !cfg.tls_cert.is_empty() && !cfg.tls_key.is_empty();
-
-    // VULN-001: refuse to start in plaintext unless the operator
-    // explicitly opted in via DILLA_INSECURE=true. The dev binary in
-    // CLAUDE.md uses DILLA_INSECURE=true and is unaffected.
-    if !tls_configured && !cfg.insecure {
-        eprintln!();
-        eprintln!("  ERROR: refusing to start in plaintext.");
-        eprintln!("  Either:");
-        eprintln!("    - set DILLA_TLS_CERT and DILLA_TLS_KEY to a valid certificate pair, or");
-        eprintln!("    - set DILLA_INSECURE=true to explicitly run an unencrypted HTTP server (dev only).");
-        eprintln!();
-        std::process::exit(1);
-    }
 
     if tls_configured {
         tracing::info!(addr = %addr, team = %cfg.team_name, "server starting (TLS)");
@@ -1704,6 +1728,72 @@ mod tests {
                 assert!(!contents.is_empty());
             }
             other => panic!("expected TokenWrittenToFile, got {:?}", other),
+        }
+    }
+
+    // ── start_server_mode (pure pre-flight check) ────────────────────
+
+    #[test]
+    fn start_server_mode_tls_when_cert_and_key_set() {
+        let mut cfg = Config::default();
+        cfg.port = 4443;
+        cfg.tls_cert = "/etc/ssl/cert.pem".into();
+        cfg.tls_key = "/etc/ssl/key.pem".into();
+        cfg.insecure = false;
+        match start_server_mode(&cfg) {
+            ServerStartMode::Tls(addr) => assert_eq!(addr.port(), 4443),
+            other => panic!("expected Tls, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn start_server_mode_plaintext_when_insecure_true() {
+        let mut cfg = Config::default();
+        cfg.port = 8080;
+        cfg.tls_cert = String::new();
+        cfg.tls_key = String::new();
+        cfg.insecure = true;
+        match start_server_mode(&cfg) {
+            ServerStartMode::Plaintext(addr) => assert_eq!(addr.port(), 8080),
+            other => panic!("expected Plaintext, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn start_server_mode_rejects_plaintext_without_insecure() {
+        let mut cfg = Config::default();
+        cfg.port = 8080;
+        cfg.tls_cert = String::new();
+        cfg.tls_key = String::new();
+        cfg.insecure = false;
+        assert_eq!(start_server_mode(&cfg), ServerStartMode::RejectPlaintext);
+    }
+
+    #[test]
+    fn start_server_mode_tls_overrides_insecure_flag() {
+        // When both TLS is configured AND insecure=true, TLS wins.
+        let mut cfg = Config::default();
+        cfg.port = 8443;
+        cfg.tls_cert = "/cert".into();
+        cfg.tls_key = "/key".into();
+        cfg.insecure = true;
+        match start_server_mode(&cfg) {
+            ServerStartMode::Tls(_) => {}
+            other => panic!("expected Tls, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn start_server_mode_partial_tls_falls_through() {
+        // Only cert set, no key → tls_configured is false.
+        let mut cfg = Config::default();
+        cfg.port = 8080;
+        cfg.tls_cert = "/cert".into();
+        cfg.tls_key = String::new();
+        cfg.insecure = true;
+        match start_server_mode(&cfg) {
+            ServerStartMode::Plaintext(_) => {}
+            other => panic!("expected Plaintext, got {:?}", other),
         }
     }
 
