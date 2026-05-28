@@ -2867,7 +2867,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                 const hasMention = (m.mentions || []).includes(currentUserId());
                 const isPinned = pinnedSet?.has(m.id) ?? false;
                 return (
-                  <div key={m.id}
+                  <article key={m.id}
                        className={'msg' + (isFirst ? '' : ' compact') + (hasMention ? ' has-mention' : '') + (m.replyTo ? ' has-reply' : '') + (isPinned ? ' is-pinned' : '')}
                        data-msg-id={m.id}
                        onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, msgId: m.id, isMine: m.author === currentUserId() }); }}>
@@ -3170,7 +3170,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                         </button>
                       )}
                     </div>
-                  </div>
+                  </article>
                 );
               })}
             </React.Fragment>
