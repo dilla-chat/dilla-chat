@@ -533,8 +533,8 @@ export function AvatarUploader() {
       const url = api.getAttachmentUrl(auth.teamId, att.id);
       await api.updateMe(auth.baseUrl, auth.token, { avatar_url: url });
       applyAvatarUrl(url, meId);
-    } catch (e2) {
-      setErr((e2 as Error).message || 'Upload failed.');
+    } catch (error_) {
+      setErr((error_ as Error).message || 'Upload failed.');
     } finally {
       setBusy(false);
     }
@@ -548,8 +548,8 @@ export function AvatarUploader() {
         await api.updateMe(auth.baseUrl, auth.token, { avatar_url: '' });
       }
       applyAvatarUrl('', meId);
-    } catch (e2) {
-      setErr((e2 as Error).message || 'Clear failed.');
+    } catch (error_) {
+      setErr((error_ as Error).message || 'Clear failed.');
     } finally {
       setBusy(false);
     }

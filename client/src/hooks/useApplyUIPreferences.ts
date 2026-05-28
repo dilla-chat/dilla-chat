@@ -26,9 +26,9 @@ export function useApplyUIPreferences(): void {
 
   useEffect(() => {
     if (reduceMotion) {
-      document.documentElement.setAttribute('data-reduce-motion', 'true');
+      document.documentElement.dataset.reduceMotion = 'true';
     } else {
-      document.documentElement.removeAttribute('data-reduce-motion');
+      delete document.documentElement.dataset.reduceMotion;
     }
   }, [reduceMotion]);
 }
