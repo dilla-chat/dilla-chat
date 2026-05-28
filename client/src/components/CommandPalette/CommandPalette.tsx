@@ -124,7 +124,7 @@ export default function CommandPalette({ open, onClose, commands }: Readonly<Pro
           </span>
         </div>
 
-        <div className="command-palette-list" role="listbox">
+        <div className="command-palette-list">
           {grouped.length === 0 && (
             <div className="command-palette-empty">No matching commands</div>
           )}

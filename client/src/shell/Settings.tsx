@@ -1263,7 +1263,7 @@ export function SafetyNumberQR({
         aria-label="Close"
         onClick={onClose}
       />
-      <div className="modal-card" role="dialog" aria-modal="true">
+      <dialog open className="modal-card">
         <header className="modal-head">
           <h3>{label} — safety number</h3>
           <button className="modal-x" onClick={onClose}>×</button>
@@ -1275,7 +1275,7 @@ export function SafetyNumberQR({
             trusting messages from this device.
           </p>
         </div>
-      </div>
+      </dialog>
     </div>
   );
 }

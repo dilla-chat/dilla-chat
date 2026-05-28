@@ -124,7 +124,7 @@ export default function ForwardModal({
           autoFocus
         />
 
-        <div className="forward-modal-list" role="listbox">
+        <div className="forward-modal-list">
           {filtered.length === 0 && (
             <div className="forward-modal-empty">No matches</div>
           )}

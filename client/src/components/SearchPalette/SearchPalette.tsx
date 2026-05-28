@@ -131,7 +131,7 @@ export default function SearchPalette({
           )}
         </div>
 
-        <div className="search-palette-results" role="listbox">
+        <div className="search-palette-results">
           {!query.trim() && (
             <div className="search-palette-tips">
               <div className="search-palette-tips-title">FILTERS</div>
