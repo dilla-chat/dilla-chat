@@ -47,9 +47,9 @@ interface StagedAttachment {
    *  server-attachment GET would resolve. */
   previewUrl?: string;
 }
-// chat-app.jsx originally read window.SHELL_DATA / window.THEMES / window.Icon
+// chat-app.jsx originally read globalThis.SHELL_DATA / globalThis.THEMES / globalThis.Icon
 // — keep that contract until the bindings get rewired through Zustand.
-// AppShell overwrites window.SHELL_DATA with the live `useShellData()`
+// AppShell overwrites globalThis.SHELL_DATA with the live `useShellData()`
 // on every render, so this initial write is just the pre-mount
 // placeholder shape (empty arrays/maps; never mock content).
 const w = window as unknown as Record<string, unknown>;
@@ -57,11 +57,11 @@ w.SHELL_DATA = EMPTY_SHELL_DATA;
 w.THEMES = THEMES;
 w.Icon = Icon;
 
-// Helper: current user id. This is the ONE remaining `window.SHELL_DATA`
+// Helper: current user id. This is the ONE remaining `globalThis.SHELL_DATA`
 // reader in the file — it's called from non-React utility helpers (eg.
 // renderText, sharingId calc, mention/peer matching) where threading a
 // React hook through every call site would be invasive. AppShell writes
-// `window.SHELL_DATA = useShellData()` on every render so the value is
+// `globalThis.SHELL_DATA = useShellData()` on every render so the value is
 // always in sync. NO `'thim'` fallback — falling through to a hardcoded
 // mock id was the cause of every "thim is admin" / "messages marked as
 // mine when they aren't" bug on /app. An empty string means "no user
@@ -145,8 +145,8 @@ export function ForwardModal({ sourceMsg, members, onClose, onForward }) {
   const [q, setQ] = useState('');
   useEffect(() => {
     function onKey(e) { if (e.key === 'Escape') onClose(); }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    globalThis.addEventListener('keydown', onKey);
+    return () => globalThis.removeEventListener('keydown', onKey);
   }, [onClose]);
   const targets = [
     ...data.CHANNELS.filter(c => c.type === 'text').map(c => ({ id: c.id, label: '#' + c.name, sub: c.topic || '', kind: 'channel' })),
@@ -196,8 +196,8 @@ export function NewDmModal({ members, onClose, onPick }) {
   const [q, setQ] = useState('');
   useEffect(() => {
     function onKey(e) { if (e.key === 'Escape') onClose(); }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    globalThis.addEventListener('keydown', onKey);
+    return () => globalThis.removeEventListener('keydown', onKey);
   }, [onClose]);
   const list = (members.MEMBERS || []).filter(m => m.id !== currentUserId() && (!q || m.name.toLowerCase().includes(q.toLowerCase())));
   return (
@@ -316,8 +316,8 @@ export function GiphyPicker({
 }: Readonly<{ query: string; results: Array<{ url: string; preview: string }>; onPick: (url: string) => void; onClose: () => void }>) {
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    globalThis.addEventListener('keydown', onKey);
+    return () => globalThis.removeEventListener('keydown', onKey);
   }, [onClose]);
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -369,8 +369,8 @@ export function NewChannelModal({ onClose, onCreate }) {
   const ok = slug.length >= 2;
   useEffect(() => {
     function onKey(e) { if (e.key === 'Escape') onClose(); }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    globalThis.addEventListener('keydown', onKey);
+    return () => globalThis.removeEventListener('keydown', onKey);
   }, [onClose]);
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -435,8 +435,8 @@ export function ChannelAccessModal({ channel, onClose }) {
   const [err, setErr] = useState('');
   useEffect(() => {
     function onKey(e) { if (e.key === 'Escape') onClose(); }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    globalThis.addEventListener('keydown', onKey);
+    return () => globalThis.removeEventListener('keydown', onKey);
   }, [onClose]);
 
   function toggle(roleId: string) {
@@ -533,8 +533,8 @@ export function GroupAccessModal({ group, onClose }: Readonly<{ group: { id: str
   const [err, setErr] = useState('');
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    globalThis.addEventListener('keydown', onKey);
+    return () => globalThis.removeEventListener('keydown', onKey);
   }, [onClose]);
 
   function toggle(roleId: string) {
@@ -628,8 +628,8 @@ export function GroupSettingsModal({ group, onClose }: Readonly<{ group: { id: s
   const [confirmDelete, setConfirmDelete] = useState(false);
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    globalThis.addEventListener('keydown', onKey);
+    return () => globalThis.removeEventListener('keydown', onKey);
   }, [onClose]);
 
   async function save() {
@@ -729,8 +729,8 @@ export function ChannelSettingsModal({ channel, onClose }) {
   }, [data]);
   useEffect(() => {
     function onKey(e) { if (e.key === 'Escape') onClose(); }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    globalThis.addEventListener('keydown', onKey);
+    return () => globalThis.removeEventListener('keydown', onKey);
   }, [onClose]);
   async function save() {
     setErr('');
@@ -831,8 +831,8 @@ export function NewServerModal({ onClose, onCreate }) {
   const ok = mode === 'create' ? slug.length >= 2 : token.length >= 12;
   useEffect(() => {
     function onKey(e) { if (e.key === 'Escape') onClose(); }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    globalThis.addEventListener('keydown', onKey);
+    return () => globalThis.removeEventListener('keydown', onKey);
   }, [onClose]);
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -951,14 +951,14 @@ export function ProfilePopover({ pop, onClose, onDM, federated }) {
   if (!pop) return null;
   const m = data?.byId?.[pop.memberId];
   if (!m) return null;
-  const nodes = (window.MeshChrome && window.MeshChrome.MEMBER_NODES) || {};
-  const fps = (window.MeshChrome && window.MeshChrome.FINGERPRINTS) || {};
+  const nodes = (globalThis.MeshChrome && globalThis.MeshChrome.MEMBER_NODES) || {};
+  const fps = (globalThis.MeshChrome && globalThis.MeshChrome.FINGERPRINTS) || {};
   const node = nodes[m.id] || '';
   const fed = federated && node && !node.includes('gbg-1');
   // Clamp position to viewport
   const W = 260, H = 240;
-  const x = Math.min(window.innerWidth - W - 8, Math.max(8, pop.x));
-  const y = Math.min(window.innerHeight - H - 8, Math.max(8, pop.y));
+  const x = Math.min(globalThis.innerWidth - W - 8, Math.max(8, pop.x));
+  const y = Math.min(globalThis.innerHeight - H - 8, Math.max(8, pop.y));
   return (
     <div className="pop-profile" ref={ref} style={{ position: 'fixed', left: x, top: y, width: W }}>
       <div className="pp-banner" style={{ background: m.color }} />
@@ -1016,7 +1016,7 @@ export function EmojiPicker({ open, onClose, onPick, anchorRect }) {
   const W = 252, H = 200;
   const r = anchorRect || { left: 100, top: 100, bottom: 100 };
   // Position above the button, right-aligned
-  const x = Math.min(window.innerWidth - W - 8, Math.max(8, r.left + r.width - W));
+  const x = Math.min(globalThis.innerWidth - W - 8, Math.max(8, r.left + r.width - W));
   const y = Math.max(8, r.top - H - 6);
   return (
     <div className="emoji-pick" ref={ref} style={{ position: 'fixed', left: x, top: y, width: W }}>
@@ -1054,11 +1054,11 @@ export function ResizeHandle({ kind, value, onResize, min = 180, max = 380 }) {
       draggingRef.current = false;
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
-      window.removeEventListener('mousemove', move);
-      window.removeEventListener('mouseup', up);
+      globalThis.removeEventListener('mousemove', move);
+      globalThis.removeEventListener('mouseup', up);
     }
-    window.addEventListener('mousemove', move);
-    window.addEventListener('mouseup', up);
+    globalThis.addEventListener('mousemove', move);
+    globalThis.addEventListener('mouseup', up);
   }
   return <div className={'resize-handle resize-' + kind} onMouseDown={onDown} title="drag to resize" />;
 }
@@ -1263,7 +1263,7 @@ export function VideoTile({ stream, fit = 'cover', mirror, showStats = true }: R
     };
     rvfc?.call(el, onFrame);
 
-    const id = window.setInterval(() => {
+    const id = globalThis.setInterval(() => {
       const w = el.videoWidth;
       const h = el.videoHeight;
       if (w === 0 || h === 0) return;
@@ -1274,7 +1274,7 @@ export function VideoTile({ stream, fit = 'cover', mirror, showStats = true }: R
 
     return () => {
       cancelled = true;
-      window.clearInterval(id);
+      globalThis.clearInterval(id);
     };
   }, [stream]);
 
@@ -1288,7 +1288,7 @@ export function VideoTile({ stream, fit = 'cover', mirror, showStats = true }: R
     if (!pc) return;
     let lastBytes = 0;
     let lastTs = 0;
-    const id = window.setInterval(() => {
+    const id = globalThis.setInterval(() => {
       pc.getStats(track)
         .then((report) => {
           let bytes = 0;
@@ -1316,7 +1316,7 @@ export function VideoTile({ stream, fit = 'cover', mirror, showStats = true }: R
         })
         .catch(() => { /* track gone, stats throw — fine */ });
     }, 1000);
-    return () => window.clearInterval(id);
+    return () => globalThis.clearInterval(id);
   }, [stream]);
 
   return (
@@ -1677,12 +1677,12 @@ export function ServerRail({ servers, activeServer, onPick }) {
              onClick={() => onPick(s.id)}
              onContextMenu={(e) => {
                e.preventDefault();
-               window.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
+               globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
                  { label: s.name, icon: null, onClick: () => {} },
                  { sep: true },
-                 { label: 'Team settings', icon: <Icon.Cog size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'team', tab: 'team' } })) },
-                 { label: 'Invites', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 4l6 5 6-5M2 4v8h12V4" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/></svg>, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'team', tab: 'invites' } })) },
-                 { label: 'Federation', icon: <Icon.Lightning size={12} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'team', tab: 'federation' } })) },
+                 { label: 'Team settings', icon: <Icon.Cog size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'team', tab: 'team' } })) },
+                 { label: 'Invites', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 4l6 5 6-5M2 4v8h12V4" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/></svg>, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'team', tab: 'invites' } })) },
+                 { label: 'Federation', icon: <Icon.Lightning size={12} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'team', tab: 'federation' } })) },
                  { label: 'Mark all read', icon: null, onClick: () => {
                    // Local clear via useUnreadStore, then ws.markChannelRead for
                    // every channel in this team so other devices reconcile via
@@ -1700,7 +1700,7 @@ export function ServerRail({ servers, activeServer, onPick }) {
                        } catch { /* ignore per-channel failures */ }
                      }
                    }
-                   window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: s.name, author: 'system', text: 'All kanals in ' + s.name + ' marked as read.', duration: 2500 } }));
+                   globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: s.name, author: 'system', text: 'All kanals in ' + s.name + ' marked as read.', duration: 2500 } }));
                  } },
                  { sep: true },
                  { label: 'Leave team', danger: true, icon: null, onClick: async () => {
@@ -1719,14 +1719,14 @@ export function ServerRail({ servers, activeServer, onPick }) {
                      // clients drop us + rotate channel keys.
                      api.leaveTeam(teamId).then(() => {
                        useAuthStore.getState().removeTeam?.(teamId);
-                       window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: s.name, author: 'system', text: 'Left ' + s.name + '.', duration: 3000 } }));
-                       window.location.assign('/');
+                       globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: s.name, author: 'system', text: 'Left ' + s.name + '.', duration: 3000 } }));
+                       globalThis.location.assign('/');
                      }).catch((err: unknown) => {
                        console.warn('[ChatApp] leave team failed', err);
-                       window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: s.name, author: 'system', text: 'Leave failed: ' + (err as Error).message, duration: 4000 } }));
+                       globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: s.name, author: 'system', text: 'Leave failed: ' + (err as Error).message, duration: 4000 } }));
                      });
                    } else {
-                     window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: s.name, author: 'system', text: 'Demo only — leave would propagate across the mesh on a live server.', duration: 3000 } }));
+                     globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: s.name, author: 'system', text: 'Demo only — leave would propagate across the mesh on a live server.', duration: 3000 } }));
                    }
                  } },
                ] } }));
@@ -1736,7 +1736,7 @@ export function ServerRail({ servers, activeServer, onPick }) {
           {!s.federated && <span className="rail-dot" style={{ background: 'var(--warn)' }}></span>}
         </div>
       ))}
-      <button className="rail-add" title="Add team" onClick={() => window.dispatchEvent(new CustomEvent('dilla:open-add-server'))}><Icon.Plus /></button>
+      <button className="rail-add" title="Add team" onClick={() => globalThis.dispatchEvent(new CustomEvent('dilla:open-add-server'))}><Icon.Plus /></button>
     </aside>
   );
 }
@@ -1805,14 +1805,14 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
     if (typeof window === 'undefined' || !collapsedKey) return new Set();
     try {
-      const raw = window.localStorage.getItem(collapsedKey);
+      const raw = globalThis.localStorage.getItem(collapsedKey);
       return new Set(raw ? (JSON.parse(raw) as string[]) : []);
     } catch { return new Set(); }
   });
   useEffect(() => {
     if (!collapsedKey) return;
     try {
-      const raw = window.localStorage.getItem(collapsedKey);
+      const raw = globalThis.localStorage.getItem(collapsedKey);
       setCollapsedGroups(new Set(raw ? (JSON.parse(raw) as string[]) : []));
     } catch { setCollapsedGroups(new Set()); }
   }, [collapsedKey]);
@@ -1821,7 +1821,7 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
       const next = new Set(prev);
       if (next.has(cat)) next.delete(cat); else next.add(cat);
       if (collapsedKey) {
-        try { window.localStorage.setItem(collapsedKey, JSON.stringify([...next])); }
+        try { globalThis.localStorage.setItem(collapsedKey, JSON.stringify([...next])); }
         catch { /* quota or private-mode — collapse state is best-effort */ }
       }
       return next;
@@ -1899,7 +1899,7 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
           <div className="team-name">{team.name}{team.federated && <Icon.Lightning size={11} />}</div>
           <div className="team-node">{team.node} · {team.federated ? 'mesh ok' : 'ready'}</div>
         </div>
-        <button className="icon-btn" title="Team settings" onClick={() => window.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: 'team' }))}>
+        <button className="icon-btn" title="Team settings" onClick={() => globalThis.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: 'team' }))}>
           <Icon.Cog size={14} />
         </button>
       </div>
@@ -1951,17 +1951,17 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
                       // only when this is the channel we're in.
                       const inThisChannel = voiceConnection?.channelId === c.id;
                       const joinAllowed = canJoinChannel(c);
-                      window.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
+                      globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
                         inThisChannel
                           ? { label: 'Disconnect from voice', danger: true, icon: <Icon.Mic size={13} off />, onClick: onLeaveVoice }
                           : { label: joinAllowed ? 'Join voice' : 'Locked', disabled: !joinAllowed, icon: joinAllowed ? <Icon.Speaker size={13} /> : <Icon.Lock size={13} />, onClick: () => { if (joinAllowed) onJoinVoice?.(c.id); } },
-                        { label: 'Copy link', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6 10l4-4M6 6l4 4" stroke="currentColor" strokeWidth="1.4"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/></svg>, onClick: () => { navigator.clipboard?.writeText(('dilla://' + nodeHost + '/k/') + c.id); window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Voice kanal link copied.', duration: 2000 } })); } },
+                        { label: 'Copy link', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6 10l4-4M6 6l4 4" stroke="currentColor" strokeWidth="1.4"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/></svg>, onClick: () => { navigator.clipboard?.writeText(('dilla://' + nodeHost + '/k/') + c.id); globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Voice kanal link copied.', duration: 2000 } })); } },
                         ...(perms.has(PERM_MANAGE_CHANNELS) ? [
                           { sep: true },
                           c.groupId
                             ? { label: 'Access is handled by group', icon: <Icon.Lock size={12} />, disabled: true, onClick: () => {} }
-                            : { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-channel-access', { detail: c.id })) },
-                          { label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-channel-settings', { detail: c.id })) },
+                            : { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-channel-access', { detail: c.id })) },
+                          { label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-channel-settings', { detail: c.id })) },
                         ] : []),
                       ] } }));
                     }}>
@@ -1997,11 +1997,11 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
                         <div key={pid} className={'voice-participant' + (speaking ? ' speaking' : '') + (muted ? ' muted' : '')}
                              onContextMenu={(e) => {
                                e.preventDefault();
-                               window.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
-                                 { label: 'Adjust volume', icon: <Icon.Headphones size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'voice', author: 'mixer', text: 'Per-user volume slider for ' + m.name + ' (drag to set).', duration: 3500 } })) },
-                                 { label: 'View profile', icon: <Icon.People size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-profile', { detail: { memberId: pid, x: 200, y: 200 } })) },
+                               globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
+                                 { label: 'Adjust volume', icon: <Icon.Headphones size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'voice', author: 'mixer', text: 'Per-user volume slider for ' + m.name + ' (drag to set).', duration: 3500 } })) },
+                                 { label: 'View profile', icon: <Icon.People size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-profile', { detail: { memberId: pid, x: 200, y: 200 } })) },
                                  { sep: true },
-                                 { label: 'Mute for me only', icon: <Icon.Mic size={13} off />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'mixer', text: 'Muted ' + m.name + ' for this session only.', duration: 2500 } })) },
+                                 { label: 'Mute for me only', icon: <Icon.Mic size={13} off />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'mixer', text: 'Muted ' + m.name + ' for this session only.', duration: 2500 } })) },
                                  ...(perms.has(PERM_MUTE_VOICE) && pid !== currentUserId() && !muted ? [{
                                    label: 'Server-mute',
                                    danger: true,
@@ -2009,7 +2009,7 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
                                    onClick: () => {
                                      if (!sidebarTeamId) return;
                                      ws.voiceForceMute(sidebarTeamId, c.id, pid);
-                                     window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'admin', text: 'Server-muted ' + m.name + '.', duration: 2500 } }));
+                                     globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'admin', text: 'Server-muted ' + m.name + '.', duration: 2500 } }));
                                    },
                                  }] : []),
                                  ...(perms.has(PERM_MUTE_VOICE) && pid !== currentUserId() ? [{
@@ -2019,7 +2019,7 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
                                    onClick: () => {
                                      if (!sidebarTeamId) return;
                                      ws.voiceForceDisconnect(sidebarTeamId, c.id, pid);
-                                     window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'admin', text: 'Disconnected ' + m.name + ' from voice.', duration: 2500 } }));
+                                     globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'admin', text: 'Disconnected ' + m.name + ' from voice.', duration: 2500 } }));
                                    },
                                  }] : []),
                                ] } }));
@@ -2059,16 +2059,16 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
                   if (!perms.has(PERM_MANAGE_CHANNELS)) return;
                   e.preventDefault();
                   const groupId = grp.key.slice(2);
-                  window.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
-                    { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-group-access', { detail: groupId })) },
-                    { label: 'Group settings', icon: <Icon.Cog size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-group-settings', { detail: groupId })) },
+                  globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
+                    { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-group-access', { detail: groupId })) },
+                    { label: 'Group settings', icon: <Icon.Cog size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-group-settings', { detail: groupId })) },
                   ] } }));
                 }}
               >
                 <span className="cat-chev" style={{ transform: collapsedGroups.has(grp.key) ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▾</span>
                 <span>{grp.label}</span>
                 {gi === 0 && (
-                  <div className="cat-actions"><button className="icon-btn" title="New kanal" onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('dilla:open-new-channel')); }}><Icon.Plus size={12} /></button></div>
+                  <div className="cat-actions"><button className="icon-btn" title="New kanal" onClick={(e) => { e.stopPropagation(); globalThis.dispatchEvent(new CustomEvent('dilla:open-new-channel')); }}><Icon.Plus size={12} /></button></div>
                 )}
               </div>
               {!collapsedGroups.has(grp.key) && grp.channels.map(c => (
@@ -2083,7 +2083,7 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
                  onClick={() => onPickChannel(c.id)}
                  onContextMenu={(e) => {
                    e.preventDefault();
-                   window.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
+                   globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
                    { label: 'Mark as read', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M3 4h10M3 12h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>, onClick: () => {
                      useUnreadStore.getState().markRead(c.id);
                      const teamId = useTeamStore.getState().activeTeamId;
@@ -2094,16 +2094,16 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
                          try { ws.markChannelRead(teamId, c.id, lastId); } catch { /* ignore */ }
                        }
                      }
-                     window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Marked all messages in #' + c.name + ' as read.', duration: 2500 } }));
+                     globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Marked all messages in #' + c.name + ' as read.', duration: 2500 } }));
                    } },
-                   { label: (mutedChannels.has(c.id) ? 'Unmute kanal' : 'Mute kanal'), icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 6h2l3-3v10l-3-3H2zM10 5l3 3-3 3M13 5l-3 3 3 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>, onClick: () => { toggleMuteChannel(c.id); window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: (mutedChannels.has(c.id) ? 'Unmuted ' : 'Muted ') + '#' + c.name + '.', duration: 2500 } })); } },
-                   { label: 'Copy link', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6 10l4-4M6 6l4 4" stroke="currentColor" strokeWidth="1.4"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/></svg>, onClick: () => { navigator.clipboard?.writeText(('dilla://' + nodeHost + '/k/') + c.id); window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Link copied.', duration: 2000 } })); } },
+                   { label: (mutedChannels.has(c.id) ? 'Unmute kanal' : 'Mute kanal'), icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 6h2l3-3v10l-3-3H2zM10 5l3 3-3 3M13 5l-3 3 3 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>, onClick: () => { toggleMuteChannel(c.id); globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: (mutedChannels.has(c.id) ? 'Unmuted ' : 'Muted ') + '#' + c.name + '.', duration: 2500 } })); } },
+                   { label: 'Copy link', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6 10l4-4M6 6l4 4" stroke="currentColor" strokeWidth="1.4"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/></svg>, onClick: () => { navigator.clipboard?.writeText(('dilla://' + nodeHost + '/k/') + c.id); globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Link copied.', duration: 2000 } })); } },
                    ...(perms.has(PERM_MANAGE_CHANNELS) ? [
                      { sep: true },
                      c.groupId
                        ? { label: 'Access is handled by group', icon: <Icon.Lock size={12} />, disabled: true, onClick: () => {} }
-                       : { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-channel-access', { detail: c.id })) },
-                     { label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-channel-settings', { detail: c.id })) },
+                       : { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-channel-access', { detail: c.id })) },
+                     { label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-channel-settings', { detail: c.id })) },
                    ] : []),
                  ] } }));
                  }}>
@@ -2130,9 +2130,9 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
                   if (!perms.has(PERM_MANAGE_CHANNELS)) return;
                   e.preventDefault();
                   const groupId = grp.key.slice(2);
-                  window.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
-                    { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-group-access', { detail: groupId })) },
-                    { label: 'Group settings', icon: <Icon.Cog size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-group-settings', { detail: groupId })) },
+                  globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
+                    { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-group-access', { detail: groupId })) },
+                    { label: 'Group settings', icon: <Icon.Cog size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-group-settings', { detail: groupId })) },
                   ] } }));
                 }}
               >
@@ -2147,15 +2147,15 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
                      onContextMenu={(e) => {
                        e.preventDefault();
                        const joinAllowed = canJoinChannel(c);
-                       window.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
+                       globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
                          { label: joinAllowed ? 'Join voice' : 'Locked', disabled: !joinAllowed, icon: joinAllowed ? <Icon.Speaker size={13} /> : <Icon.Lock size={13} />, onClick: () => { if (joinAllowed) { onPickChannel(c.id); onJoinVoice?.(c.id); } } },
-                         { label: 'Copy link', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6 10l4-4M6 6l4 4" stroke="currentColor" strokeWidth="1.4"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/></svg>, onClick: () => { navigator.clipboard?.writeText(('dilla://' + nodeHost + '/k/') + c.id); window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Voice kanal link copied.', duration: 2000 } })); } },
+                         { label: 'Copy link', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6 10l4-4M6 6l4 4" stroke="currentColor" strokeWidth="1.4"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/></svg>, onClick: () => { navigator.clipboard?.writeText(('dilla://' + nodeHost + '/k/') + c.id); globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Voice kanal link copied.', duration: 2000 } })); } },
                          ...(perms.has(PERM_MANAGE_CHANNELS) ? [
                            { sep: true },
                            c.groupId
                              ? { label: 'Access is handled by group', icon: <Icon.Lock size={12} />, disabled: true, onClick: () => {} }
-                             : { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-channel-access', { detail: c.id })) },
-                           { label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-channel-settings', { detail: c.id })) },
+                             : { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-channel-access', { detail: c.id })) },
+                           { label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-channel-settings', { detail: c.id })) },
                          ] : []),
                        ] } }));
                      }}>
@@ -2186,7 +2186,7 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
                    onClick={() => onPickDM(d.id)}
                    onContextMenu={(e) => {
                      e.preventDefault();
-                     window.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
+                     globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
                        { label: 'Mark as read', icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M3 4h10M3 12h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>, onClick: () => {
                          // DMs share the unread store with channels; the dm.id is
                          // the same key the store uses. Server-side mark-read is
@@ -2200,18 +2200,18 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
                              try { ws.markChannelRead(teamId, d.id, lastId); } catch { /* ignore */ }
                            }
                          }
-                         window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'system', text: 'Marked DM as read.', duration: 2000 } }));
+                         globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'system', text: 'Marked DM as read.', duration: 2000 } }));
                        } },
                        { label: 'Mute notifications', icon: <Icon.Mic size={13} off />, onClick: () => {
                          // Mute uses the same per-channel mute set as channels —
                          // DM ids are stored alongside channel ids.
                          toggleMuteChannel(d.id);
-                         window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'system', text: mutedChannels.has(d.id) ? 'Unmuted DM.' : 'DM muted.', duration: 2000 } }));
+                         globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'system', text: mutedChannels.has(d.id) ? 'Unmuted DM.' : 'DM muted.', duration: 2000 } }));
                        } },
                        { sep: true },
                        { label: 'Close DM', danger: true, icon: null, onClick: () => {
-                         window.dispatchEvent(new CustomEvent('dilla:close-dm', { detail: d.id }));
-                         window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'system', text: 'Closed DM. Re-open it from a member profile.', duration: 2500 } }));
+                         globalThis.dispatchEvent(new CustomEvent('dilla:close-dm', { detail: d.id }));
+                         globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'system', text: 'Closed DM. Re-open it from a member profile.', duration: 2500 } }));
                        } },
                      ] } }));
                    }}>
@@ -2296,7 +2296,7 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
 
 export function UserPanel({ member }) {
   // `member` can legitimately be undefined for a beat after sign-in —
-  // currentUserId() reads from window.SHELL_DATA which AppShell refreshes
+  // currentUserId() reads from globalThis.SHELL_DATA which AppShell refreshes
   // every render, but between an auth-store update and the next shell-data
   // re-derive there's a window where byId[currentUserId()] returns
   // undefined. Render nothing rather than crash on `member.status`.
@@ -2349,7 +2349,7 @@ export function UserPanel({ member }) {
       </div>
       <div className="actions">
         <button className="icon-btn" title="Set status" onClick={() => setPickerOpen(o => !o)}><Icon.Emoji size={13} /></button>
-        <button className="icon-btn" title="Preferences" onClick={() => window.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: 'user' }))}>
+        <button className="icon-btn" title="Preferences" onClick={() => globalThis.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: 'user' }))}>
           <Icon.Cog size={14} />
         </button>
       </div>
@@ -2449,8 +2449,8 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
         setLightbox((cur) => cur ? { ...cur, index: (cur.index + 1) % cur.sources.length } : cur);
       }
     }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    globalThis.addEventListener('keydown', onKey);
+    return () => globalThis.removeEventListener('keydown', onKey);
   }, [lightbox]);
   const [unreadAt, setUnreadAt] = useState(null);
   const [mention, setMention] = useState(null); // { query }
@@ -2624,13 +2624,13 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
     snapInstant(el);
     const retries: number[] = [];
     [50, 150, 400, 900].forEach((ms) => {
-      retries.push(window.setTimeout(() => {
+      retries.push(globalThis.setTimeout(() => {
         if (userPagedUpRef.current) return;
         if (feedRef.current) snapInstant(feedRef.current);
       }, ms));
     });
     return () => {
-      retries.forEach((id) => window.clearTimeout(id));
+      retries.forEach((id) => globalThis.clearTimeout(id));
     };
   }, [channel.id]);
 
@@ -2800,7 +2800,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                             <div key={tm.id} className="pin-row"
                                  onClick={() => {
                                    setThreadsOpen(false);
-                                   window.dispatchEvent(new CustomEvent('dilla:open-thread', { detail: { channelId: channel.id, messageId: tm.id } }));
+                                   globalThis.dispatchEvent(new CustomEvent('dilla:open-thread', { detail: { channelId: channel.id, messageId: tm.id } }));
                                  }}>
                               <div className="pin-av" style={{ background: a.color }}>{a.initials}</div>
                               <div>
@@ -2935,7 +2935,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
             <Icon.People size={14} />
           </button>}
           <div className="search-box" role="button" tabIndex={0}
-               onClick={() => window.dispatchEvent(new CustomEvent('dilla:open-search', { detail: { scopeChannel: channel.id, scopeName: channel.name } }))}>
+               onClick={() => globalThis.dispatchEvent(new CustomEvent('dilla:open-search', { detail: { scopeChannel: channel.id, scopeName: channel.name } }))}>
             <Icon.Search size={13} />
             <span>{channel.type === 'dm' ? 'Search this DM…' : 'Search in #' + channel.name + '…'}</span>
             <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)', fontSize: 10, opacity: 0.7 }}>/</span>
@@ -3017,7 +3017,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                     {isFirst ? (
                       <span style={{ cursor: 'pointer' }} onClick={(e) => {
                         const r = e.currentTarget.getBoundingClientRect();
-                        window.dispatchEvent(new CustomEvent('dilla:open-profile', {
+                        globalThis.dispatchEvent(new CustomEvent('dilla:open-profile', {
                           detail: { memberId: author.id || g.author, x: r.right + 8, y: r.top }
                         }));
                       }}><Avatar member={author} /></span>
@@ -3033,7 +3033,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                           <span className="author"
                                 onClick={(e) => {
                                   const r = e.currentTarget.getBoundingClientRect();
-                                  window.dispatchEvent(new CustomEvent('dilla:open-profile', {
+                                  globalThis.dispatchEvent(new CustomEvent('dilla:open-profile', {
                                     detail: { memberId: author.id || g.author, x: r.left, y: r.bottom + 4 }
                                   }));
                                 }}>{author.name}</span>
@@ -3229,7 +3229,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                       )}
                       {m.thread && (
                         <div className="thread-preview"
-                             onClick={() => window.dispatchEvent(new CustomEvent('dilla:open-thread', {
+                             onClick={() => globalThis.dispatchEvent(new CustomEvent('dilla:open-thread', {
                                detail: { channelId: channel.id, messageId: m.id }
                              }))}>
                           <div className="thread-stack">
@@ -3259,7 +3259,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                         <Icon.Reply size={12} />
                       </button>
                       <button title="Open thread"
-                              onClick={() => window.dispatchEvent(new CustomEvent('dilla:open-thread', {
+                              onClick={() => globalThis.dispatchEvent(new CustomEvent('dilla:open-thread', {
                                 detail: { channelId: channel.id, messageId: m.id }
                               }))}>
                         <Icon.Thread size={13} />
@@ -3540,7 +3540,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
             onClose={() => setForwardId(null)}
             onForward={(target) => {
               const name = target.startsWith('dm-') ? members.byId[target.slice(3)]?.name : ('#' + target);
-              window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: target.startsWith('dm-') ? null : target, author: 'system', text: 'Forwarded message to ' + name + '.', duration: 3000 } }));
+              globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: target.startsWith('dm-') ? null : target, author: 'system', text: 'Forwarded message to ' + name + '.', duration: 3000 } }));
               setForwardId(null);
             }}
           />
@@ -3549,7 +3549,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
       {contextMenu && (
         <div className="ctx-overlay" onClick={() => setContextMenu(null)} onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }}>
           <div className="ctx-menu"
-               style={{ left: Math.min(contextMenu.x, window.innerWidth - 220), top: Math.min(contextMenu.y, window.innerHeight - 320) }}
+               style={{ left: Math.min(contextMenu.x, globalThis.innerWidth - 220), top: Math.min(contextMenu.y, globalThis.innerHeight - 320) }}
                onClick={e => e.stopPropagation()}>
             <button onClick={(e) => {
               const anchor = e.currentTarget.getBoundingClientRect();
@@ -3559,7 +3559,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
               <Icon.Emoji size={13} /> Add reaction
             </button>
             <button onClick={() => {
-              window.dispatchEvent(new CustomEvent('dilla:open-thread', { detail: { channelId: channel.id, messageId: contextMenu.msgId } }));
+              globalThis.dispatchEvent(new CustomEvent('dilla:open-thread', { detail: { channelId: channel.id, messageId: contextMenu.msgId } }));
               setContextMenu(null);
             }}>
               <Icon.Thread size={13} /> Reply in thread
@@ -3573,7 +3573,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                 else next.add(contextMenu.msgId);
                 return next;
               });
-              window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'saved', text: wasIn ? 'Removed from saved messages.' : 'Saved. Find it in your bookmarks.', duration: 2200 } }));
+              globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'saved', text: wasIn ? 'Removed from saved messages.' : 'Saved. Find it in your bookmarks.', duration: 2200 } }));
               setContextMenu(null);
             }}>
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M4 2v12l4-3 4 3V2z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/></svg>
@@ -3600,7 +3600,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                       : api.pinMessage(teamId, channel.id, contextMenu.msgId);
                     call.catch((err) => {
                       if (already) ps.pin(channel.id, contextMenu.msgId); else ps.unpin(channel.id, contextMenu.msgId);
-                      window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'pins', text: (err as Error).message || 'Pin failed — manage-messages permission required.', duration: 3500 } }));
+                      globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'pins', text: (err as Error).message || 'Pin failed — manage-messages permission required.', duration: 3500 } }));
                     });
                   } else if (isMockSession() && teamId) {
                     // Keep mockApi store in sync with the UI store on /mesh.
@@ -3653,7 +3653,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                 const host = data?.SERVERS?.[0]?.node || 'local';
                 navigator.clipboard?.writeText(`dilla://${host}/channels/${channel.id}/messages/${contextMenu.msgId}`);
               })()}
-              window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { kind: 'message', channel: channel.name, author: 'system', text: 'Link copied to clipboard.', duration: 3000 } }));
+              globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { kind: 'message', channel: channel.name, author: 'system', text: 'Link copied to clipboard.', duration: 3000 } }));
               setContextMenu(null);
             }}>
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6 10l4-4M6 6l4 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/></svg>
@@ -3875,7 +3875,7 @@ export function detectUnfurls(text) {
 
 // ───────────── main pane: voice channel ─────────────
 export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeave, mute, setMute, deaf, setDeaf, cam, setCam, screen, setScreen, rich, membersOpen, onToggleMembers }) {
-  const nodes = (window.MeshChrome && window.MeshChrome.MEMBER_NODES) || {};
+  const nodes = (globalThis.MeshChrome && globalThis.MeshChrome.MEMBER_NODES) || {};
   const participants = (channel.participants || []).map(id => members.byId[id]);
   const isConnected = voiceConnection && voiceConnection.channelId === channel.id;
   const meIsAdmin = !!members?.byId?.[currentUserId()]?.isAdmin;
@@ -3997,8 +3997,8 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
       if (tabFs) setTabFs(false);
       else if (canExitFocus) setFocused(null);
     }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    globalThis.addEventListener('keydown', onKey);
+    return () => globalThis.removeEventListener('keydown', onKey);
   }, [focused, tabFs, canExitFocus]);
 
   // Whenever focus clears, drop tab-fullscreen too — otherwise the
@@ -4086,7 +4086,7 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
   return (
     <div className="main">
       <div className="main-head">
-        <button className="btn btn--ghost btn--icon btn--sm" title="Open menu" onClick={() => window.dispatchEvent(new CustomEvent('dilla:toggle-drawer'))}>
+        <button className="btn btn--ghost btn--icon btn--sm" title="Open menu" onClick={() => globalThis.dispatchEvent(new CustomEvent('dilla:toggle-drawer'))}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
             <path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
@@ -4156,12 +4156,12 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
                    data-latency={peerLatencies[p.id] ?? '--'}
                    onContextMenu={(e) => {
                      e.preventDefault();
-                     window.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
-                       { label: 'View profile', icon: <Icon.People size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-profile', { detail: { memberId: p.id, x: e.clientX, y: e.clientY } })) },
+                     globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
+                       { label: 'View profile', icon: <Icon.People size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-profile', { detail: { memberId: p.id, x: e.clientX, y: e.clientY } })) },
                        ...(showScreen ? [{ label: focused?.id === p.id && focused.kind === 'screen' ? 'Exit screen focus' : 'Focus screen share', icon: <Icon.Screen size={13} />, onClick: () => setFocused(focused?.id === p.id && focused.kind === 'screen' ? null : { id: p.id, kind: 'screen' as const }) }] : []),
                        ...(showCam ? [{ label: focused?.id === p.id && focused.kind === 'cam' ? 'Exit webcam focus' : 'Focus webcam', icon: <Icon.Video size={13} />, onClick: () => setFocused(focused?.id === p.id && focused.kind === 'cam' ? null : { id: p.id, kind: 'cam' as const }) }] : []),
                        { sep: true },
-                       { label: 'Mute for me only', icon: <Icon.Mic size={13} off />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'mixer', text: 'Muted ' + p.name + ' for this session only.', duration: 2500 } })) },
+                       { label: 'Mute for me only', icon: <Icon.Mic size={13} off />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'mixer', text: 'Muted ' + p.name + ' for this session only.', duration: 2500 } })) },
                        ...(vcPerms.has(PERM_MUTE_VOICE) && p.id !== currentUserId() && !mineMuted ? [{
                          label: 'Server-mute',
                          danger: true,
@@ -4169,7 +4169,7 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
                          onClick: () => {
                            if (!vcTeamId) return;
                            ws.voiceForceMute(vcTeamId, channel.id, p.id);
-                           window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'admin', text: 'Server-muted ' + p.name + '.', duration: 2500 } }));
+                           globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'admin', text: 'Server-muted ' + p.name + '.', duration: 2500 } }));
                          },
                        }] : []),
                        ...(vcPerms.has(PERM_MUTE_VOICE) && p.id !== currentUserId() ? [{
@@ -4179,7 +4179,7 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
                          onClick: () => {
                            if (!vcTeamId) return;
                            ws.voiceForceDisconnect(vcTeamId, channel.id, p.id);
-                           window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'admin', text: 'Disconnected ' + p.name + ' from voice.', duration: 2500 } }));
+                           globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'admin', text: 'Disconnected ' + p.name + ' from voice.', duration: 2500 } }));
                          },
                        }] : []),
                      ] } }));
@@ -4397,7 +4397,7 @@ export function MemberList({ members, voiceConnection, rich, federated }) {
   );
   const data = (useShellDataContext() as any) || EMPTY_SHELL_DATA;
   const teamName = data?.SERVERS?.[0]?.name || '';
-  const MC = window.MeshChrome || {};
+  const MC = globalThis.MeshChrome || {};
   const nodes = MC.MEMBER_NODES || {};
   const fps = MC.FINGERPRINTS || {};
   // Group online members by their highest-priority non-default role.
@@ -4431,21 +4431,21 @@ export function MemberList({ members, voiceConnection, rich, federated }) {
       <div className={'member' + (off ? ' offline' : '')}
            onClick={(e) => {
              const r = e.currentTarget.getBoundingClientRect();
-             window.dispatchEvent(new CustomEvent('dilla:open-profile', {
+             globalThis.dispatchEvent(new CustomEvent('dilla:open-profile', {
                detail: { memberId: m.id, x: r.left - 270, y: r.top }
              }));
            }}
            onContextMenu={(e) => {
              e.preventDefault();
-             window.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
+             globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
                { label: 'Send message', icon: <Icon.Chat size={13} />, onClick: () => {
-                 window.dispatchEvent(new CustomEvent('dilla:open-dm', { detail: m.id }));
+                 globalThis.dispatchEvent(new CustomEvent('dilla:open-dm', { detail: m.id }));
                } },
                { label: 'Mention in current kanal', icon: <span style={{ fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: 13 }}>@</span>, onClick: () => {
-                 window.dispatchEvent(new CustomEvent('dilla:insert-mention', { detail: m.name }));
+                 globalThis.dispatchEvent(new CustomEvent('dilla:insert-mention', { detail: m.name }));
                } },
-               { label: 'View profile', icon: <Icon.People size={13} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:open-profile', { detail: { memberId: m.id, x: 200, y: 200 } })) },
-               { label: 'Verify safety number', icon: <Icon.Shield size={12} />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:verify-safety', { detail: m.id })) },
+               { label: 'View profile', icon: <Icon.People size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-profile', { detail: { memberId: m.id, x: 200, y: 200 } })) },
+               { label: 'Verify safety number', icon: <Icon.Shield size={12} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:verify-safety', { detail: m.id })) },
                { sep: true },
                useBlockStore.getState().isBlocked(m.id)
                  ? { label: 'Unblock', icon: <Icon.Shield size={12} />, onClick: async () => {
@@ -4470,7 +4470,7 @@ export function MemberList({ members, voiceConnection, rich, federated }) {
                        catch { useBlockStore.getState().unblock(m.id); }
                      }
                    } },
-               { label: 'Mute', icon: <Icon.Mic size={13} off />, onClick: () => window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'system', text: m.name + ' muted in voice channels.', duration: 2200 } })) },
+               { label: 'Mute', icon: <Icon.Mic size={13} off />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'system', text: m.name + ' muted in voice channels.', duration: 2200 } })) },
                ...(memberPerms.has(PERM_MANAGE_MEMBERS) && m.id !== currentUserId() ? [
                { label: 'Kick from team', danger: true, icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M10 4V2H3v12h7v-2M6 8h9M12 5l3 3-3 3M9 3v0" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>, onClick: async () => {
                  if (!(await dillaConfirm({
@@ -4482,13 +4482,13 @@ export function MemberList({ members, voiceConnection, rich, federated }) {
                  const teamId = useTeamStore.getState().activeTeamId;
                  if (teamId && !isMockSession()) {
                    api.kickMember(teamId, m.id).then(() => {
-                     window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'admin', text: 'Kicked ' + m.name + ' from the team.', duration: 3000 } }));
+                     globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'admin', text: 'Kicked ' + m.name + ' from the team.', duration: 3000 } }));
                    }).catch((err: unknown) => {
                      console.warn('[ChatApp] kickMember failed', err);
-                     window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'admin', text: 'Kick failed — admin role required.', duration: 3500 } }));
+                     globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'admin', text: 'Kick failed — admin role required.', duration: 3500 } }));
                    });
                  } else {
-                   window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'admin', text: 'Demo only — kick would propagate across the mesh on a live server.', duration: 3000 } }));
+                   globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'admin', text: 'Demo only — kick would propagate across the mesh on a live server.', duration: 3000 } }));
                  }
                } },
                { label: 'Ban from team', danger: true, icon: <Icon.Lock size={12} />, onClick: async () => {
@@ -4501,13 +4501,13 @@ export function MemberList({ members, voiceConnection, rich, federated }) {
                  const teamId = useTeamStore.getState().activeTeamId;
                  if (teamId && !isMockSession()) {
                    api.banMember(teamId, m.id).then(() => {
-                     window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'admin', text: 'Banned ' + m.name + ' from the team.', duration: 3500 } }));
+                     globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'admin', text: 'Banned ' + m.name + ' from the team.', duration: 3500 } }));
                    }).catch((err: unknown) => {
                      console.warn('[ChatApp] banMember failed', err);
-                     window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'admin', text: 'Ban failed — admin role required.', duration: 3500 } }));
+                     globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'admin', text: 'Ban failed — admin role required.', duration: 3500 } }));
                    });
                  } else {
-                   window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'admin', text: 'Demo only — ban would propagate across the mesh on a live server.', duration: 3000 } }));
+                   globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'admin', text: 'Demo only — ban would propagate across the mesh on a live server.', duration: 3000 } }));
                  }
                } },
                ] : []),
@@ -4582,9 +4582,9 @@ export function MemberList({ members, voiceConnection, rich, federated }) {
 
 // ───────────── root ─────────────
 function ChatApp({ theme, opts = {}, rich = false, controller }) {
-  // Live shell data via context. Replaces the old `window.SHELL_DATA`
+  // Live shell data via context. Replaces the old `globalThis.SHELL_DATA`
   // global read so re-renders are React-driven and tests can inject a
-  // provider without monkey-patching window. Handlers below close over
+  // provider without monkey-patching globalThis. Handlers below close over
   // this binding instead of re-reading the global.
   const data = (useShellDataContext() as any) || EMPTY_SHELL_DATA;
   // Live store selectors used by the outbound write paths (send/edit/delete).
@@ -4663,7 +4663,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   useEffect(() => {
     const hasActive = Object.values(slowLocks).some((l) => l.until > Date.now());
     if (!hasActive) return;
-    const id = window.setInterval(() => {
+    const id = globalThis.setInterval(() => {
       tickSlowLocks((n) => n + 1);
       setSlowLocks((prev) => {
         const now = Date.now();
@@ -4681,7 +4681,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
         return changed ? next : prev;
       });
     }, 1000);
-    return () => window.clearInterval(id);
+    return () => globalThis.clearInterval(id);
   }, [slowLocks]);
 
   // Server-side rejections (slow mode, future quota/perm gates) — roll
@@ -5031,20 +5031,20 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
       }
     }
     function onMenu(e) { setMenuPop(e.detail); }
-    window.addEventListener('dilla:open-profile', onProfile);
-    window.addEventListener('dilla:open-thread', onThread);
-    window.addEventListener('dilla:toggle-drawer', onDrawer);
-    window.addEventListener('dilla:pickchannel', onPickChannel);
-    window.addEventListener('dilla:open-add-server', onAddSrv);
-    window.addEventListener('dilla:open-new-channel', onAddCh);
-    window.addEventListener('dilla:open-menu', onMenu);
-    window.addEventListener('dilla:open-dm', onOpenDm);
-    window.addEventListener('dilla:close-dm', onCloseDm);
-    window.addEventListener('dilla:insert-mention', onInsertMention);
-    window.addEventListener('dilla:open-channel-settings', onChannelSettings);
-    window.addEventListener('dilla:open-channel-access', onChannelAccess);
-    window.addEventListener('dilla:open-group-access', onGroupAccess);
-    window.addEventListener('dilla:open-group-settings', onGroupSettings);
+    globalThis.addEventListener('dilla:open-profile', onProfile);
+    globalThis.addEventListener('dilla:open-thread', onThread);
+    globalThis.addEventListener('dilla:toggle-drawer', onDrawer);
+    globalThis.addEventListener('dilla:pickchannel', onPickChannel);
+    globalThis.addEventListener('dilla:open-add-server', onAddSrv);
+    globalThis.addEventListener('dilla:open-new-channel', onAddCh);
+    globalThis.addEventListener('dilla:open-menu', onMenu);
+    globalThis.addEventListener('dilla:open-dm', onOpenDm);
+    globalThis.addEventListener('dilla:close-dm', onCloseDm);
+    globalThis.addEventListener('dilla:insert-mention', onInsertMention);
+    globalThis.addEventListener('dilla:open-channel-settings', onChannelSettings);
+    globalThis.addEventListener('dilla:open-channel-access', onChannelAccess);
+    globalThis.addEventListener('dilla:open-group-access', onGroupAccess);
+    globalThis.addEventListener('dilla:open-group-settings', onGroupSettings);
     function onKey(e) {
       const inField = e.target.matches && e.target.matches('input, textarea, [contenteditable="true"]');
       if (inField) return;
@@ -5058,23 +5058,23 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
         e.preventDefault(); setDeaf(v => !v);
       }
     }
-    window.addEventListener('keydown', onKey);
+    globalThis.addEventListener('keydown', onKey);
     return () => {
-      window.removeEventListener('dilla:open-profile', onProfile);
-      window.removeEventListener('dilla:open-thread', onThread);
-      window.removeEventListener('dilla:toggle-drawer', onDrawer);
-      window.removeEventListener('dilla:pickchannel', onPickChannel);
-      window.removeEventListener('dilla:open-add-server', onAddSrv);
-      window.removeEventListener('dilla:open-new-channel', onAddCh);
-      window.removeEventListener('dilla:open-dm', onOpenDm);
-      window.removeEventListener('dilla:close-dm', onCloseDm);
-      window.removeEventListener('dilla:insert-mention', onInsertMention);
-      window.removeEventListener('dilla:open-channel-settings', onChannelSettings);
-      window.removeEventListener('dilla:open-channel-access', onChannelAccess);
-      window.removeEventListener('dilla:open-group-access', onGroupAccess);
-      window.removeEventListener('dilla:open-group-settings', onGroupSettings);
-      window.removeEventListener('dilla:open-menu', onMenu);
-      window.removeEventListener('keydown', onKey);
+      globalThis.removeEventListener('dilla:open-profile', onProfile);
+      globalThis.removeEventListener('dilla:open-thread', onThread);
+      globalThis.removeEventListener('dilla:toggle-drawer', onDrawer);
+      globalThis.removeEventListener('dilla:pickchannel', onPickChannel);
+      globalThis.removeEventListener('dilla:open-add-server', onAddSrv);
+      globalThis.removeEventListener('dilla:open-new-channel', onAddCh);
+      globalThis.removeEventListener('dilla:open-dm', onOpenDm);
+      globalThis.removeEventListener('dilla:close-dm', onCloseDm);
+      globalThis.removeEventListener('dilla:insert-mention', onInsertMention);
+      globalThis.removeEventListener('dilla:open-channel-settings', onChannelSettings);
+      globalThis.removeEventListener('dilla:open-channel-access', onChannelAccess);
+      globalThis.removeEventListener('dilla:open-group-access', onGroupAccess);
+      globalThis.removeEventListener('dilla:open-group-settings', onGroupSettings);
+      globalThis.removeEventListener('dilla:open-menu', onMenu);
+      globalThis.removeEventListener('keydown', onKey);
     };
   }, []);
 
@@ -5149,8 +5149,8 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
       else if (d && typeof d === 'object') setSettings({ open: true, mode: d.mode || 'user', tab: d.tab || null });
       else setSettings({ open: true, mode: 'user', tab: null });
     }
-    window.addEventListener('dilla:open-settings', onOpen);
-    return () => window.removeEventListener('dilla:open-settings', onOpen);
+    globalThis.addEventListener('dilla:open-settings', onOpen);
+    return () => globalThis.removeEventListener('dilla:open-settings', onOpen);
   }, []);
 
   // Handoff cycled fake typing here ('ada', 'mira'). Disabled — real
@@ -5246,8 +5246,8 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
         }
       }
     }
-    window.addEventListener('dilla:giphy-pick', onPick);
-    return () => window.removeEventListener('dilla:giphy-pick', onPick);
+    globalThis.addEventListener('dilla:giphy-pick', onPick);
+    return () => globalThis.removeEventListener('dilla:giphy-pick', onPick);
   }, [channel, activeChannel, activeTeamId, derivedKey]);
 
   function processSlash(text) {
@@ -5255,7 +5255,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     // message". Use dilla:notify for status feedback so the caller doesn't
     // get a silent failure.
     function notify(msg, kind = 'system') {
-      window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: kind, author: 'system', text: msg, duration: 3200 } }));
+      globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: kind, author: 'system', text: msg, duration: 3200 } }));
     }
     function lookupMember(query) {
       const q = query.replace(/^@/, '').toLowerCase().trim();
@@ -5373,19 +5373,19 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     }
 
     if (text === '/help' || text.startsWith('/help ')) {
-      window.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'user', tab: 'keys' } }));
+      globalThis.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'user', tab: 'keys' } }));
       return null;
     }
     if (text.startsWith('/w ')) {
       const m = lookupMember(text.slice(3));
       if (!m) { notify('No member matches that name.'); return null; }
       if (m.id === currentUserId()) { notify('You cannot DM yourself.'); return null; }
-      window.dispatchEvent(new CustomEvent('dilla:open-dm', { detail: m.id }));
+      globalThis.dispatchEvent(new CustomEvent('dilla:open-dm', { detail: m.id }));
       return null;
     }
     if (text.startsWith('/invite ')) {
       const target = text.slice(8).trim();
-      window.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'team', tab: 'invites' } }));
+      globalThis.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'team', tab: 'invites' } }));
       notify(target ? `Open Invites to create a link for ${target}.` : 'Open Invites to create a link.');
       return null;
     }
@@ -5592,7 +5592,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     }
   }
 
-  const rootStyle = window.THEMES.themeVars(theme, opts);
+  const rootStyle = globalThis.THEMES.themeVars(theme, opts);
   rootStyle['--sidebar-w'] = (opts.sidebar || 240) + 'px';
   const isDM = channel.type === 'dm';
   const showFourth = activeThread || (membersOpen && !isDM);
@@ -5748,7 +5748,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
             } catch (err) {
               if (previewUrl) URL.revokeObjectURL(previewUrl);
               console.warn('[ChatApp] attachment upload failed', err);
-              window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: channel.name, author: 'system', text: 'Upload failed — ' + (err as Error).message, duration: 4000 } }));
+              globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: channel.name, author: 'system', text: 'Upload failed — ' + (err as Error).message, duration: 4000 } }));
             }
           }}
           pendingAttachments={pendingAttachments[channel.id] ?? EMPTY_LIST}
@@ -5769,7 +5769,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
         !isDM && membersOpen && <MemberList members={data} voiceConnection={voiceConnection} rich={rich} federated={opts.federated !== false} />
       )}
       {(() => {
-        const SettingsModal = window.Settings;
+        const SettingsModal = globalThis.Settings;
         return SettingsModal ? (
           <SettingsModal
             open={settings.open}
@@ -5790,13 +5790,13 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
       <ProfilePopover
         pop={profilePop}
         onClose={() => setProfilePop(null)}
-        onDM={(id) => window.dispatchEvent(new CustomEvent('dilla:open-dm', { detail: id }))}
+        onDM={(id) => globalThis.dispatchEvent(new CustomEvent('dilla:open-dm', { detail: id }))}
         federated={opts.federated !== false}
       />
       {menuPop && (
         <div className="ctx-overlay" onClick={() => setMenuPop(null)} onContextMenu={(e) => { e.preventDefault(); setMenuPop(null); }}>
           <div className="ctx-menu"
-               style={{ left: Math.min(menuPop.x, window.innerWidth - 220), top: Math.min(menuPop.y, window.innerHeight - (menuPop.items.length * 36 + 16)) }}
+               style={{ left: Math.min(menuPop.x, globalThis.innerWidth - 220), top: Math.min(menuPop.y, globalThis.innerHeight - (menuPop.items.length * 36 + 16)) }}
                onClick={e => e.stopPropagation()}>
             {menuPop.items.map((it, i) => it.sep ? (
               <div key={i} className="ctx-sep" />
@@ -5841,18 +5841,18 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
                 // /mesh embed returns the URL as storage_path; demo
                 // path posts the raw URL since mock has no /attachments
                 // server to fetch from.
-                window.dispatchEvent(new CustomEvent('dilla:giphy-pick', { detail: { url } }));
+                globalThis.dispatchEvent(new CustomEvent('dilla:giphy-pick', { detail: { url } }));
                 return;
               }
               const att = await api.embedGif(teamId, url);
               const attUrl = api.getAttachmentUrl(teamId, att.id);
-              window.dispatchEvent(new CustomEvent('dilla:giphy-pick', { detail: {
+              globalThis.dispatchEvent(new CustomEvent('dilla:giphy-pick', { detail: {
                 url: attUrl,
                 attachment: att,
               } }));
             } catch (err) {
               console.warn('[giphy] embed failed, falling back to URL', err);
-              window.dispatchEvent(new CustomEvent('dilla:giphy-pick', { detail: { url } }));
+              globalThis.dispatchEvent(new CustomEvent('dilla:giphy-pick', { detail: { url } }));
             }
           }}
           onClose={() => setGiphyPicker(null)}
@@ -5893,7 +5893,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
               console.warn('[ChatApp] createChannel failed', err);
             }
           }
-          window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Kanal created.', duration: 3500 } }));
+          globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Kanal created.', duration: 3500 } }));
         }} />
       )}
       {newServerOpen && (
@@ -5905,10 +5905,10 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
           setNewServerOpen(false);
           if (s.kind === 'join') {
             const tokenParam = encodeURIComponent(s.token || '');
-            window.location.assign(`/onboarding?mode=invite&token=${tokenParam}`);
+            globalThis.location.assign(`/onboarding?mode=invite&token=${tokenParam}`);
           } else {
             const nameParam = encodeURIComponent(s.name || '');
-            window.location.assign(`/onboarding?mode=bootstrap&team=${nameParam}`);
+            globalThis.location.assign(`/onboarding?mode=bootstrap&team=${nameParam}`);
           }
         }} />
       )}

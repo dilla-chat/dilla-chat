@@ -947,7 +947,7 @@ class WebRTCService {
             this.toggleMute().catch((err) =>
               console.error('[Voice] force-mute apply failed:', err),
             );
-            window.dispatchEvent(new CustomEvent('dilla:notify', { detail: {
+            globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: {
               channel: '', author: 'admin',
               text: 'You were server-muted by a moderator.',
               duration: 5000,

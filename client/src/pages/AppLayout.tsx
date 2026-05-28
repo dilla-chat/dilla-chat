@@ -156,19 +156,19 @@ export default function AppLayout() {
       const detail = (e as CustomEvent<{ callerName: string; channelName?: string; channelId?: string }>).detail;
       if (detail) setIncomingCall(detail);
     };
-    window.addEventListener('mesh:open-command-palette', openCmd);
-    window.addEventListener('mesh:open-search', openSearch);
-    window.addEventListener('mesh:open-add-peer', openAddPeer);
-    window.addEventListener('mesh:open-safety-compare', openSafety);
-    window.addEventListener('mesh:open-forward', openForward as EventListener);
-    window.addEventListener('mesh:incoming-call', openIncoming as EventListener);
+    globalThis.addEventListener('mesh:open-command-palette', openCmd);
+    globalThis.addEventListener('mesh:open-search', openSearch);
+    globalThis.addEventListener('mesh:open-add-peer', openAddPeer);
+    globalThis.addEventListener('mesh:open-safety-compare', openSafety);
+    globalThis.addEventListener('mesh:open-forward', openForward as EventListener);
+    globalThis.addEventListener('mesh:incoming-call', openIncoming as EventListener);
     return () => {
-      window.removeEventListener('mesh:open-command-palette', openCmd);
-      window.removeEventListener('mesh:open-search', openSearch);
-      window.removeEventListener('mesh:open-add-peer', openAddPeer);
-      window.removeEventListener('mesh:open-safety-compare', openSafety);
-      window.removeEventListener('mesh:open-forward', openForward as EventListener);
-      window.removeEventListener('mesh:incoming-call', openIncoming as EventListener);
+      globalThis.removeEventListener('mesh:open-command-palette', openCmd);
+      globalThis.removeEventListener('mesh:open-search', openSearch);
+      globalThis.removeEventListener('mesh:open-add-peer', openAddPeer);
+      globalThis.removeEventListener('mesh:open-safety-compare', openSafety);
+      globalThis.removeEventListener('mesh:open-forward', openForward as EventListener);
+      globalThis.removeEventListener('mesh:incoming-call', openIncoming as EventListener);
     };
   }, []);
 
@@ -258,7 +258,7 @@ export default function AppLayout() {
       hint: 'dev',
       section: 'VOICE',
       run: () =>
-        window.dispatchEvent(
+        globalThis.dispatchEvent(
           new CustomEvent('mesh:incoming-call', {
             detail: { callerName: 'Ada Lovelace', channelName: 'voice-lounge' },
           }),
@@ -272,7 +272,7 @@ export default function AppLayout() {
       hint: 'opens 4-step wizard',
       section: 'FEDERATION',
       run: () =>
-        window.dispatchEvent(new CustomEvent('mesh:open-add-peer')),
+        globalThis.dispatchEvent(new CustomEvent('mesh:open-add-peer')),
     });
     cmds.push({
       id: 'fed.peers',
@@ -303,7 +303,7 @@ export default function AppLayout() {
       hint: 'side-by-side fingerprint compare',
       section: 'ENCRYPTION',
       run: () =>
-        window.dispatchEvent(new CustomEvent('mesh:open-safety-compare')),
+        globalThis.dispatchEvent(new CustomEvent('mesh:open-safety-compare')),
     });
     cmds.push({
       id: 'enc.settings',
@@ -368,7 +368,7 @@ export default function AppLayout() {
             <button
               type="button"
               className="btn btn--ghost btn--icon btn--sm"
-              onClick={() => window.dispatchEvent(new CustomEvent('mesh:open-saved'))}
+              onClick={() => globalThis.dispatchEvent(new CustomEvent('mesh:open-saved'))}
               title={t('header.saved', 'Saved messages')}
             >
               <IconBookmark size={18} stroke={1.75} />
@@ -386,7 +386,7 @@ export default function AppLayout() {
               type="button"
               className="btn btn--ghost btn--icon btn--sm"
               onClick={() =>
-                window.dispatchEvent(new CustomEvent('mesh:open-search'))
+                globalThis.dispatchEvent(new CustomEvent('mesh:open-search'))
               }
               title={t('search.placeholder', 'Search')}
             >
@@ -418,7 +418,7 @@ export default function AppLayout() {
             <button
               type="button"
               className="btn btn--ghost btn--icon btn--sm"
-              onClick={() => window.dispatchEvent(new CustomEvent('mesh:open-threads'))}
+              onClick={() => globalThis.dispatchEvent(new CustomEvent('mesh:open-threads'))}
               title={t('header.threads', 'Threads')}
             >
               <IconMessageCircle size={18} stroke={1.75} />
@@ -426,7 +426,7 @@ export default function AppLayout() {
             <button
               type="button"
               className="btn btn--ghost btn--icon btn--sm"
-              onClick={() => window.dispatchEvent(new CustomEvent('mesh:open-saved'))}
+              onClick={() => globalThis.dispatchEvent(new CustomEvent('mesh:open-saved'))}
               title={t('header.saved', 'Saved messages')}
             >
               <IconBookmark size={18} stroke={1.75} />
@@ -434,7 +434,7 @@ export default function AppLayout() {
             <button
               type="button"
               className="btn btn--ghost btn--icon btn--sm"
-              onClick={() => window.dispatchEvent(new CustomEvent('mesh:open-pinned'))}
+              onClick={() => globalThis.dispatchEvent(new CustomEvent('mesh:open-pinned'))}
               title={t('header.pinned', 'Pinned messages')}
             >
               <IconPin size={18} stroke={1.75} />
@@ -450,7 +450,7 @@ export default function AppLayout() {
               type="button"
               className="btn btn--ghost btn--icon btn--sm"
               onClick={() =>
-                window.dispatchEvent(new CustomEvent('mesh:open-search'))
+                globalThis.dispatchEvent(new CustomEvent('mesh:open-search'))
               }
               title={t('search.placeholder', 'Search')}
             >
@@ -831,7 +831,7 @@ export default function AppLayout() {
           // pre-flight — best left to the user.)
           const cid = incomingCall?.channelId;
           if (cid) {
-            window.dispatchEvent(new CustomEvent('dilla:pickchannel', { detail: cid }));
+            globalThis.dispatchEvent(new CustomEvent('dilla:pickchannel', { detail: cid }));
           }
           setIncomingCall(null);
         }}

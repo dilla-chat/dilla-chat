@@ -53,7 +53,7 @@ export function usePresenceEvents(activeTeamId: string | null): void {
         vs.leaveChannel();
       }
       const reason = payload.reason === 'locked' ? 'Channel is locked.' : 'Voice join denied.';
-      window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: '', author: 'system', text: reason, duration: 3000 } }));
+      globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: '', author: 'system', text: reason, duration: 3000 } }));
     });
 
     // Server-side eviction: an admin removed access while we were in the
@@ -69,7 +69,7 @@ export function usePresenceEvents(activeTeamId: string | null): void {
         : payload.reason === 'moderator_action'
           ? 'You were disconnected from voice by a moderator.'
           : 'You were disconnected from voice.';
-      window.dispatchEvent(new CustomEvent('dilla:notify', {
+      globalThis.dispatchEvent(new CustomEvent('dilla:notify', {
         detail: { channel: '', author: 'system', text, duration: 4500 },
       }));
     });

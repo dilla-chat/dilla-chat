@@ -28,7 +28,7 @@ export default function UserProfile({ member, presence, x, y, onSendMessage, onC
   const keyChanged = verifyStatus === 'changed';
 
   function openSafetyCompare(): void {
-    window.dispatchEvent(new CustomEvent('dilla:verify-safety', { detail: member.userId }));
+    globalThis.dispatchEvent(new CustomEvent('dilla:verify-safety', { detail: member.userId }));
     onClose?.();
   }
 

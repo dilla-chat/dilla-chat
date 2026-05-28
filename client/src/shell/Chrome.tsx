@@ -83,14 +83,14 @@ function BottomBar({ voiceConnection, peerStatus, federated = true, degraded = f
     <div className="mesh-bottom">
       <div className="mb-chunk mb-clickable"
            title="Click for federation settings"
-           onClick={() => window.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'team', tab: 'federation' } }))}>
+           onClick={() => globalThis.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'team', tab: 'federation' } }))}>
         <span className="mb-k">node</span> {nodeHost}
       </div>
       {federated ?
       <>
           <div className="mb-chunk mb-clickable"
                title="Click for peer status"
-               onClick={() => window.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'team', tab: 'federation' } }))}>
+               onClick={() => globalThis.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'team', tab: 'federation' } }))}>
             <span className="mb-k">peers</span> {degraded
               ? <span style={{ color: 'var(--warn)', fontWeight: 600 }}>1/2 ⚠</span>
               : <span className="mb-ok">2/2 ▲</span>}
@@ -104,7 +104,7 @@ function BottomBar({ voiceConnection, peerStatus, federated = true, degraded = f
              ? 'X3DH key agreement + Double Ratchet, AES-256-GCM AEAD. Click for encryption details.'
              : e2eState === 'initializing' ? 'Identity unlocked; crypto manager booting…'
              : 'No derived key in this session — messages cannot be decrypted until you unlock.'}
-           onClick={() => window.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'user', tab: 'privacy' } }))}>
+           onClick={() => globalThis.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'user', tab: 'privacy' } }))}>
         <span className="mb-k">e2e</span> {e2eLabel}
       </div>
       <div className={'mb-chunk' + (dbEncrypted === false ? ' mb-warn' : '')}
@@ -117,7 +117,7 @@ function BottomBar({ voiceConnection, peerStatus, federated = true, degraded = f
       {voiceConnection && (
         <div className="mb-chunk mb-voice mb-clickable"
              title="Click for voice settings"
-             onClick={() => window.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'user', tab: 'voice' } }))}>
+             onClick={() => globalThis.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'user', tab: 'voice' } }))}>
           <span className="mb-k">voice</span> SFRAME · SRTP · OPUS 48kHz
           <AudioMeter />
         </div>
@@ -214,7 +214,7 @@ function CommandPalette({ open, onClose, onPickChannel, commands }) {
     if (c.channelId && onPickChannel) onPickChannel(c.channelId);
     else if (c.shortcut && onPickChannel) onPickChannel(c.shortcut === 'mesh' ? 'mesh' : c.shortcut);
     if (c.dispatch) {
-      window.dispatchEvent(new CustomEvent(c.dispatch, { detail: c.payload }));
+      globalThis.dispatchEvent(new CustomEvent(c.dispatch, { detail: c.payload }));
     }
     onClose();
   }

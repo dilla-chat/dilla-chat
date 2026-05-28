@@ -38,8 +38,8 @@ function VideoPreview({ stream, onClick, className }: Readonly<{ stream: MediaSt
         setStats({ w, h, fps });
       }
     };
-    const id = window.setInterval(tick, 1000);
-    return () => window.clearInterval(id);
+    const id = globalThis.setInterval(tick, 1000);
+    return () => globalThis.clearInterval(id);
   }, [stream]);
 
   const cls = className ?? 'voice-tile-screen-preview';

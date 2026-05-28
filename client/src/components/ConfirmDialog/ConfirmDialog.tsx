@@ -28,8 +28,8 @@ export default function ConfirmDialog() {
         answer(true);
       }
     }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    globalThis.addEventListener('keydown', onKey);
+    return () => globalThis.removeEventListener('keydown', onKey);
   }, [pending, answer]);
 
   // Focus the safer action on open: Cancel for danger prompts so the

@@ -85,8 +85,8 @@ function Settings({ open, mode, defaultTab, onClose }) {
   useEffectS(() => {
     if (!open) return;
     function onKey(e) { if (e.key === 'Escape') onClose(); }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    globalThis.addEventListener('keydown', onKey);
+    return () => globalThis.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
   if (!open) return null;
@@ -152,7 +152,7 @@ function Settings({ open, mode, defaultTab, onClose }) {
                     if (!next) navigate('/join');
                   } catch (err) {
                     const msg = (err as Error).message || 'Could not leave the team.';
-                    window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'system', text: msg, duration: 4500 } }));
+                    globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'system', text: msg, duration: 4500 } }));
                   }
                   return;
                 }
@@ -180,7 +180,7 @@ function Settings({ open, mode, defaultTab, onClose }) {
                     const results = await Promise.all(calls);
                     const anyFailed = results.some((ok) => !ok);
                     if (anyFailed) {
-                      window.dispatchEvent(new CustomEvent('dilla:notify', { detail: {
+                      globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: {
                         author: 'system',
                         text: 'Signed out locally, but the server-side token revocation may have failed for one or more servers. The token will expire on its own.',
                         duration: 6000,
@@ -301,8 +301,8 @@ export function FormBar({
   useEffectS(() => {
     if (!savedAt) return;
     setShowSaved(true);
-    const id = window.setTimeout(() => setShowSaved(false), 2000);
-    return () => window.clearTimeout(id);
+    const id = globalThis.setTimeout(() => setShowSaved(false), 2000);
+    return () => globalThis.clearTimeout(id);
   }, [savedAt]);
   return (
     <div className="set-form-bar">
@@ -346,8 +346,8 @@ export function CropModal({
 
   useEffectS(() => {
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onCancel(); }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    globalThis.addEventListener('keydown', onKey);
+    return () => globalThis.removeEventListener('keydown', onKey);
   }, [onCancel]);
 
   function onImgLoad(e: React.SyntheticEvent<HTMLImageElement>) {
@@ -601,7 +601,7 @@ export function AvatarUploader() {
 }
 
 export function UserAccount() {
-  // Read the current user from window.SHELL_DATA (set up by useShellData).
+  // Read the current user from globalThis.SHELL_DATA (set up by useShellData).
   // No hardcoded mock fallback — empty when the data hasn't loaded yet.
   const data = useShellDataContext() as any;
   const meId = data?.currentUserId;
@@ -644,7 +644,7 @@ export function UserAccount() {
       setSavedAt(Date.now());
     } catch (err) {
       console.warn('[Settings] account update failed', err);
-      window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'account', text: 'Save failed — try again.', duration: 3500 } }));
+      globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'account', text: 'Save failed — try again.', duration: 3500 } }));
     } finally {
       setSaving(false);
     }
@@ -819,7 +819,7 @@ export function UserNotif() {
   // Quiet hours are server-backed via PATCH /users/me so the window
   // follows the identity across devices. Local draft until the user
   // hits Save; useUserMeSync hydrates the original values at boot so
-  // the form opens with the saved window.
+  // the form opens with the saved globalThis.
   const auth = useActiveTeamAuth();
   const storedQuiet = useUserSettingsStore((s) => s.quietHoursEnabled);
   const storedFrom = useUserSettingsStore((s) => s.quietHoursFrom);
@@ -856,7 +856,7 @@ export function UserNotif() {
       setSavedAt(Date.now());
     } catch (err) {
       console.warn('[Settings] quiet hours update failed', err);
-      window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'notif', text: 'Save failed — try again.', duration: 3500 } }));
+      globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'notif', text: 'Save failed — try again.', duration: 3500 } }));
     } finally {
       setSaving(false);
     }
@@ -881,7 +881,7 @@ export function UserNotif() {
           <Toggle value={soundNotifications} onChange={setSound} />
         </Row>
       </Group>
-      <Group title="Quiet hours" hint="Suppress all push notifications during this window. Mentions still show in-app.">
+      <Group title="Quiet hours" hint="Suppress all push notifications during this globalThis. Mentions still show in-app.">
         <Row label="Enable quiet hours"><Toggle value={quiet} onChange={setQuiet} /></Row>
         <Row label="From → to">
           <div className="set-range">
@@ -1282,7 +1282,7 @@ export function UserPrivacy() {
             <Btn onClick={() => {
               const full = [...block1, ...block2].join(' ');
               navigator.clipboard?.writeText(full);
-              window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'preferences', text: 'Safety number copied.', duration: 2000 } }));
+              globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'preferences', text: 'Safety number copied.', duration: 2000 } }));
             }}>Copy</Btn>
             <Btn disabled={!pkReady} onClick={() => setQrOpen(true)}>Show QR</Btn>
           </div>
@@ -1327,7 +1327,7 @@ export function UserPrivacy() {
                 ws.distributeChannelKey(teamId, ch.id, dist);
                 rotated += 1;
               }
-              window.dispatchEvent(new CustomEvent('dilla:notify', { detail: {
+              globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: {
                 author: 'crypto',
                 text: rotated
                   ? `Rotated sender keys for ${rotated} channel${rotated === 1 ? '' : 's'}.`
@@ -1336,7 +1336,7 @@ export function UserPrivacy() {
               } }));
             } catch (err) {
               console.warn('[Settings] bulk rotate failed', err);
-              window.dispatchEvent(new CustomEvent('dilla:notify', { detail: {
+              globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: {
                 author: 'crypto',
                 text: 'Rotate failed: ' + (err as Error).message,
                 duration: 4500,
@@ -1349,7 +1349,7 @@ export function UserPrivacy() {
             try {
               const blob = await exportIdentityBlob();
               if (!blob) {
-                window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'preferences', text: 'No identity to export.', duration: 3000 } }));
+                globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'preferences', text: 'No identity to export.', duration: 3000 } }));
                 return;
               }
               // Base64 string → trigger a file download.
@@ -1359,10 +1359,10 @@ export function UserPrivacy() {
               document.body.appendChild(a);
               a.click();
               a.remove();
-              window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'preferences', text: 'Identity backup downloaded.', duration: 3000 } }));
+              globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'preferences', text: 'Identity backup downloaded.', duration: 3000 } }));
             } catch (err) {
               console.warn('[Settings] export identity failed', err);
-              window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'preferences', text: 'Export failed: ' + (err as Error).message, duration: 4000 } }));
+              globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'preferences', text: 'Export failed: ' + (err as Error).message, duration: 4000 } }));
             }
           }}>Export…</Btn>
         </Row>
@@ -1391,7 +1391,7 @@ export function UserPrivacy() {
                 )}
               </span>
             }>
-              <Btn onClick={() => window.dispatchEvent(new CustomEvent('dilla:verify-safety', { detail: m.id }))}>
+              <Btn onClick={() => globalThis.dispatchEvent(new CustomEvent('dilla:verify-safety', { detail: m.id }))}>
                 {vstatus === 'verified' ? 'Re-verify' : 'Verify'}
               </Btn>
             </Row>
@@ -1574,7 +1574,7 @@ export function TeamInfo() {
       setSavedAt(Date.now());
     } catch (err) {
       console.warn('[Settings] team update failed', err);
-      window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'team', text: 'Save failed — admin permission required.', duration: 3500 } }));
+      globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'team', text: 'Save failed — admin permission required.', duration: 3500 } }));
     } finally {
       setSaving(false);
     }
@@ -1627,8 +1627,8 @@ export function TeamInvites() {
   // updates without an explicit setTimeout per row.
   const [, setNowTick] = useStateS(0);
   useEffectS(() => {
-    const id = window.setInterval(() => setNowTick((n) => n + 1), 1000);
-    return () => window.clearInterval(id);
+    const id = globalThis.setInterval(() => setNowTick((n) => n + 1), 1000);
+    return () => globalThis.clearInterval(id);
   }, []);
 
   function formatExpiry(expiresAt: Date | null): string {
@@ -1710,7 +1710,7 @@ export function TeamInvites() {
         console.warn('[Settings] revokeInvite failed', err);
       }
     }
-    window.dispatchEvent(
+    globalThis.dispatchEvent(
       new CustomEvent('dilla:notify', {
         detail: { channel: 'system', author: 'team', text: 'Invite revoked.', duration: 3500 },
       }),
@@ -1724,7 +1724,7 @@ export function TeamInvites() {
       const code = 'dilla/invite/' + randomTail(4).toUpperCase();
       setRows((prev) => [...prev, { code, uses: '0 / ∞', expires: '—', who: myLabel }]);
       navigator.clipboard?.writeText(code);
-      window.dispatchEvent(
+      globalThis.dispatchEvent(
         new CustomEvent('dilla:notify', {
           detail: {
             channel: 'system',
@@ -1756,7 +1756,7 @@ export function TeamInvites() {
         },
       ]);
       navigator.clipboard?.writeText(url);
-      window.dispatchEvent(
+      globalThis.dispatchEvent(
         new CustomEvent('dilla:notify', {
           detail: {
             channel: 'system',
@@ -1768,7 +1768,7 @@ export function TeamInvites() {
       );
     } catch (err) {
       console.warn('[Settings] createInvite failed', err);
-      window.dispatchEvent(
+      globalThis.dispatchEvent(
         new CustomEvent('dilla:notify', {
           detail: {
             channel: 'system',
@@ -1802,7 +1802,7 @@ export function TeamInvites() {
                 <code className="set-link-code">{r.code}</code>
                 <Btn onClick={() => {
                   navigator.clipboard?.writeText(r.code);
-                  window.dispatchEvent(new CustomEvent('dilla:notify', {
+                  globalThis.dispatchEvent(new CustomEvent('dilla:notify', {
                     detail: { channel: 'system', author: 'team', text: 'Invite link copied.', duration: 2000 },
                   }));
                 }}>Copy</Btn>
@@ -1921,7 +1921,7 @@ export function TeamRoles() {
       if (created?.id) setEditing({ id: created.id });
     } catch (err) {
       console.warn('[Settings] createRole failed', err);
-      window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'roles', text: 'Create failed — manage-roles permission required.', duration: 3500 } }));
+      globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'roles', text: 'Create failed — manage-roles permission required.', duration: 3500 } }));
     } finally {
       setSaving(false);
     }
@@ -1939,7 +1939,7 @@ export function TeamRoles() {
       await refresh();
     } catch (err) {
       console.warn('[Settings] reorderRoles failed', err);
-      window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'roles', text: 'Reorder failed — manage-roles permission required.', duration: 3500 } }));
+      globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'roles', text: 'Reorder failed — manage-roles permission required.', duration: 3500 } }));
       await refresh();
     }
   }
@@ -1969,7 +1969,7 @@ export function TeamRoles() {
       await refresh();
     } catch (err) {
       console.warn('[Settings] deleteRole failed', err);
-      window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'roles', text: 'Delete failed — admin role required.', duration: 3500 } }));
+      globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'roles', text: 'Delete failed — admin role required.', duration: 3500 } }));
     }
   }
 
@@ -2087,7 +2087,7 @@ export function RoleEditor({ teamId, role, onClose, onSaved }: Readonly<{ teamId
       onSaved();
     } catch (err) {
       console.warn('[Settings] updateRole failed', err);
-      window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'roles', text: 'Save failed — admin role required.', duration: 3500 } }));
+      globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'roles', text: 'Save failed — admin role required.', duration: 3500 } }));
       setSaving(false);
     }
   }
@@ -2257,7 +2257,7 @@ export function TeamMembers() {
       setSavedAt(Date.now());
     } catch (err) {
       console.warn('[Settings] save members failed', err);
-      window.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'members', text: 'Update failed — manage-members permission required.', duration: 3500 } }));
+      globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: 'system', author: 'members', text: 'Update failed — manage-members permission required.', duration: 3500 } }));
     } finally {
       setSaving(false);
     }
@@ -2430,8 +2430,8 @@ export function TeamFederation() {
           <div className="set-empty">No federated peers yet. Click + Add peer below to invite another node onto this team's mesh.</div>
         </div>
         <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
-          <Btn onClick={() => window.dispatchEvent(new CustomEvent('dilla:add-peer'))}>+ Add peer</Btn>
-          <Btn onClick={() => window.dispatchEvent(new CustomEvent('dilla:add-peer'))}>Generate join command</Btn>
+          <Btn onClick={() => globalThis.dispatchEvent(new CustomEvent('dilla:add-peer'))}>+ Add peer</Btn>
+          <Btn onClick={() => globalThis.dispatchEvent(new CustomEvent('dilla:add-peer'))}>Generate join command</Btn>
         </div>
       </Group>
     </>

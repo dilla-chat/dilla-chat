@@ -464,7 +464,7 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
         if (myUserId && myUserId === payload.user_id && payload.actor_user_id !== myUserId) {
           const roleNames = nextRoles.map((r) => r.name).join(', ');
           const actor = list.find((m) => m.userId === payload.actor_user_id);
-          window.dispatchEvent(new CustomEvent('dilla:notify', {
+          globalThis.dispatchEvent(new CustomEvent('dilla:notify', {
             detail: {
               author: actor?.username || 'admin',
               text: roleNames

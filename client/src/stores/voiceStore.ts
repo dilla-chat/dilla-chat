@@ -210,7 +210,7 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
         const s = get();
         if (s.connecting && s.currentChannelId === channelId) {
           console.warn('[Voice] join handshake timed out — tearing down');
-          window.dispatchEvent(new CustomEvent('dilla:notify', { detail: {
+          globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: {
             channel: '', author: 'system', text: 'Voice join timed out — try again.', duration: 4000,
           }}));
           s.leaveChannel();

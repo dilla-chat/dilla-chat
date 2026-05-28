@@ -55,7 +55,7 @@ function genSession(): string {
   // doesn't fire — collision tolerance is high (a single tab
   // worth of log lines) but we may as well source from CSPRNG.
   const bytes = new Uint8Array(4);
-  (globalThis.crypto ?? window.crypto).getRandomValues(bytes);
+  globalThis.crypto.getRandomValues(bytes);
   const r = Array.from(bytes, (b) => b.toString(36).padStart(2, '0')).join('').slice(0, 6);
   const t = Date.now().toString(36).slice(-4);
   return `${r}-${t}`;
@@ -178,19 +178,19 @@ export function installBrowserLogRelay(opts?: { tag?: string }): void {
     };
   }
 
-  window.addEventListener('error', (ev) => {
+  globalThis.addEventListener('error', (ev) => {
     const msg = ev.error
       ? safeStringify(ev.error)
       : `${ev.message} @ ${ev.filename}:${ev.lineno}:${ev.colno}`;
     enqueue('error', `[window.error] ${msg}`, bootTag);
   });
 
-  window.addEventListener('unhandledrejection', (ev) => {
+  globalThis.addEventListener('unhandledrejection', (ev) => {
     enqueue('error', `[unhandledrejection] ${safeStringify(ev.reason)}`, bootTag);
   });
 
   // Make sure the last batch ships when the tab closes.
-  window.addEventListener('pagehide', () => {
+  globalThis.addEventListener('pagehide', () => {
     if (queue.length === 0) return;
     try {
       const body = JSON.stringify({ session, entries: queue });
