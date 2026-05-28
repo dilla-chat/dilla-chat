@@ -153,7 +153,7 @@ function FirstRunSplash({ onDone }) {
         </div>
         <div className="splash-log">
           {phases.slice(0, phase + 1).map((line, i) => (
-            <div key={i} className="splash-line">
+            <div key={`splash-${line}-${i}`} className="splash-line">
               <span className="splash-prompt">{i < phase ? '✓' : '›'}</span> {line}
             </div>
           ))}
@@ -281,7 +281,7 @@ function SafetyCompare({ contactId, onClose }) {
               <span>you</span>
             </div>
             <div className="sc-number">
-              {yp.map((b, i) => <span key={i} className="sc-block">{b}</span>)}
+              {yp.map((b, i) => <span key={`y-${i}-${b}`} className="sc-block">{b}</span>)}
             </div>
           </div>
           <div className="sc-side">
@@ -295,7 +295,7 @@ function SafetyCompare({ contactId, onClose }) {
               <span>{m.name}</span>
             </div>
             <div className="sc-number">
-              {tp.map((b, i) => <span key={i} className={'sc-block' + (comparing ? ' sc-block-pulse' : '')}>{b}</span>)}
+              {tp.map((b, i) => <span key={`t-${i}-${b}`} className={'sc-block' + (comparing ? ' sc-block-pulse' : '')}>{b}</span>)}
             </div>
           </div>
         </div>
@@ -474,7 +474,7 @@ function AddPeerWizard({ open, onClose }) {
             <p className="sc-blurb">Handshaking with rust.berra.io…</p>
             <pre className="onb-log onb-log-big" style={{ minHeight: 200 }}>
               {log.map((l, i) => (
-                <div key={i} className="onb-log-line"><span className="onb-log-prompt">›</span> {l}</div>
+                <div key={`log-${i}-${l}`} className="onb-log-line"><span className="onb-log-prompt">›</span> {l}</div>
               ))}
               <div className="onb-log-line"><span className="onb-log-cursor">_</span></div>
             </pre>

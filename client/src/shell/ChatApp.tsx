@@ -960,8 +960,8 @@ export function ProfilePopover({ pop, onClose, onDM, federated }) {
   if (!pop) return null;
   const m = data?.byId?.[pop.memberId];
   if (!m) return null;
-  const nodes = (globalThis.MeshChrome && globalThis.MeshChrome.MEMBER_NODES) || {};
-  const fps = (globalThis.MeshChrome && globalThis.MeshChrome.FINGERPRINTS) || {};
+  const nodes = globalThis.MeshChrome?.MEMBER_NODES || {};
+  const fps = globalThis.MeshChrome?.FINGERPRINTS || {};
   const node = nodes[m.id] || '';
   const fed = federated && node && !node.includes('gbg-1');
   // Clamp position to viewport
