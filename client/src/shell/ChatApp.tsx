@@ -1479,12 +1479,10 @@ export function FloatingPip({
         h = w / aspect;
       } else if (onlyH) {
         w = h * aspect;
+      } else if (Math.abs(w - startW) > Math.abs(h - startH) * aspect) {
+        h = w / aspect;
       } else {
-        if (Math.abs(w - startW) > Math.abs(h - startH) * aspect) {
-          h = w / aspect;
-        } else {
-          w = h * aspect;
-        }
+        w = h * aspect;
       }
       // Re-anchor whichever edges were *not* grabbed so the dragged
       // corner stays under the cursor.
