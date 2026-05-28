@@ -179,8 +179,7 @@ function serverIdFromUrl(baseUrl: string): string {
 // wrapping key. The wrapping key lives in a non-extractable CryptoKey
 // stored in IndexedDB and is ephemeral per browser session. This prevents
 // the derivedKey from being stored as cleartext in sessionStorage.
-// NOSONAR(typescript:S2068) — storage key namespace, not a credential
-const DERIVED_KEY_STORAGE = 'dilla:derivedKey:enc';
+const DERIVED_KEY_STORAGE = 'dilla:derivedKey:enc'; // NOSONAR — storage key namespace, not a credential
 const WRAP_KEY_DB = 'dilla-wrap';
 const WRAP_KEY_STORE = 'keys';
 const WRAP_KEY_ID = 'session-wrap';
@@ -288,7 +287,7 @@ async function persistDerivedKey(key: string | null): Promise<void> {
 // storage KEY, not a credential — sonar's hardcoded-secret heuristic
 // hit on the `:passphrase:` substring, but the assigned value is just
 // a namespaced storage key used by sessionStorage.{getItem,setItem}.
-const PASSPHRASE_STORAGE = 'dilla:passphrase:enc'; // NOSONAR(typescript:S2068) — storage key namespace, not a credential
+const PASSPHRASE_STORAGE = 'dilla:passphrase:enc'; // NOSONAR — storage key namespace, not a credential
 
 export async function persistPassphrase(passphrase: string | null): Promise<void> {
   try {
