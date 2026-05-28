@@ -49,42 +49,63 @@ function NotificationStack({ teaserOnly = false }) {
           <button onClick={() => setToasts([])}>clear all</button>
         </div>
       )}
-      {toasts.map(t => (
-        <div key={t.id} className={'notify-toast' + (t.mention ? ' mention' : '') + ((t.channelId || t.channel) ? ' clickable' : '')}
-             onMouseEnter={() => pauseDismiss(t.id)}
-             onClick={() => {
-               // Prefer the real channel id (set by mention notifications);
-               // fall back to the channel name for notify events from
-               // older code paths that only pass the human label.
-               const target = t.channelId || t.channel;
-               if (target) {
-                 window.dispatchEvent(new CustomEvent('dilla:pickchannel', { detail: target }));
-                 window.focus();
-               }
-               dismiss(t.id);
-             }}>
-          <div className="nt-icon">
-            {t.kind === 'mention' ? '@' : t.kind === 'voice' ? '◉' : '●'}
-          </div>
-          <div className="nt-body">
-            <div className="nt-head">
-              <span className="nt-team">{t.team || teamName}</span>
-              {t.channel && <><span className="nt-sep">·</span><span className="nt-channel">#{t.channel}</span></>}
+      {toasts.map(t => {
+        const target = t.channelId || t.channel;
+        const handleClick = () => {
+          // Prefer the real channel id (set by mention notifications);
+          // fall back to the channel name for notify events from
+          // older code paths that only pass the human label.
+          if (target) {
+            window.dispatchEvent(new CustomEvent('dilla:pickchannel', { detail: target }));
+            window.focus();
+          }
+          dismiss(t.id);
+        };
+        const className = 'notify-toast' + (t.mention ? ' mention' : '') + (target ? ' clickable' : '');
+        const inner = (
+          <>
+            <div className="nt-icon">
+              {t.kind === 'mention' ? '@' : t.kind === 'voice' ? '◉' : '●'}
             </div>
-            {teaserOnly ? (
-              <div className="nt-text nt-teaser">
-                <span className="nt-lock">🔒</span> {t.author} sent an encrypted message
+            <div className="nt-body">
+              <div className="nt-head">
+                <span className="nt-team">{t.team || teamName}</span>
+                {t.channel && <><span className="nt-sep">·</span><span className="nt-channel">#{t.channel}</span></>}
               </div>
-            ) : (
-              <>
-                <div className="nt-author">{t.author}</div>
-                <div className="nt-text">{t.text}</div>
-              </>
-            )}
+              {teaserOnly ? (
+                <div className="nt-text nt-teaser">
+                  <span className="nt-lock">🔒</span> {t.author} sent an encrypted message
+                </div>
+              ) : (
+                <>
+                  <div className="nt-author">{t.author}</div>
+                  <div className="nt-text">{t.text}</div>
+                </>
+              )}
+            </div>
+            <button className="nt-close" onClick={(e) => { e.stopPropagation(); dismiss(t.id); }}>×</button>
+          </>
+        );
+        return target ? (
+          <button
+            key={t.id}
+            type="button"
+            className={className}
+            onMouseEnter={() => pauseDismiss(t.id)}
+            onClick={handleClick}
+          >
+            {inner}
+          </button>
+        ) : (
+          <div
+            key={t.id}
+            className={className}
+            onMouseEnter={() => pauseDismiss(t.id)}
+          >
+            {inner}
           </div>
-          <button className="nt-close" onClick={() => dismiss(t.id)}>×</button>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
