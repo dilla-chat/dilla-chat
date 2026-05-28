@@ -75,7 +75,7 @@ export function passphraseStrength(p: string) {
   if (p.length >= 8) s++;
   if (p.length >= 14) s++;
   if (p.length >= 20) s++;
-  if (/[A-Z]/.test(p) && /[a-z]/.test(p) && /[0-9]/.test(p)) s++;
+  if (/[A-Z]/.test(p) && /[a-z]/.test(p) && /\d/.test(p)) s++;
   s = Math.min(4, s);
   const labels = ['too short', 'weak', 'fair', 'strong', 'excellent'];
   const colors = ['var(--danger)', 'var(--danger)', 'var(--warn)', 'var(--accent)', 'var(--accent)'];

@@ -813,7 +813,7 @@ export function ChannelSettingsModal({ channel, onClose }) {
           <div className="modal-row">
             <label>
               <span>Slow mode (seconds)</span>
-              <input value={slow} onChange={e => setSlow(e.target.value.replace(/[^0-9]/g, ''))} placeholder="0" />
+              <input value={slow} onChange={e => setSlow(e.target.value.replace(/\D/g, ''))} placeholder="0" />
             </label>
             <div className="modal-hint">Minimum interval between messages per member. 0 disables.</div>
           </div>
