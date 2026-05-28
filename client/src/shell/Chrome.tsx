@@ -280,7 +280,7 @@ function SearchPalette({ open, onClose, onPickChannel }) {
     const free: string[] = [];
     const opRe = /^(from|in|has):(.+)$/i;
     for (const tok of tokens) {
-      const m = tok.match(opRe);
+      const m = opRe.exec(tok);
       if (!m) { free.push(tok); continue; }
       const key = m[1].toLowerCase();
       const val = m[2];

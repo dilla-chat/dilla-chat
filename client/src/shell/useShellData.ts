@@ -164,7 +164,7 @@ function mapMessage(msg, currentUserId, teamId) {
     const tokenRe = /^\[file:([^\]]+)\]\s*(\S+(?:\s+\S+)*?)(?=\s*\[file:|\s*$)/;
     let rest = text;
     while (teamId) {
-      const m = rest.match(tokenRe);
+      const m = tokenRe.exec(rest);
       if (!m) break;
       const [whole, id, label] = m;
       const imageLike = IMAGE_EXT.test(label);

@@ -1196,7 +1196,7 @@ export function SafetyNumberQR({
         // qrcode wants #rrggbb(aa). getComputedStyle().color returns
         // "rgb(r, g, b)" or "rgba(r, g, b, a)", so parse and rebuild.
         function toHex(cssColor: string, fallback: string): string {
-          const m = cssColor.match(/rgba?\(([^)]+)\)/i);
+          const m = /rgba?\(([^)]+)\)/i.exec(cssColor);
           if (!m) return fallback;
           const parts = m[1].split(',').map((s) => Number.parseFloat(s.trim()));
           const [r, g, b] = parts;
