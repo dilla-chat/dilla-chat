@@ -415,12 +415,12 @@ class ApiService {
 
   async setChannelAccess(teamId: string, channelId: string, roleIds: string[]): Promise<{ role_ids: string[] }> {
     const conn = this.getConnection(teamId);
-    return (await this.request(
+    return this.request<{ role_ids: string[] }>(
       conn.baseUrl,
       `/api/v1/teams/${teamId}/channels/${channelId}/access`,
       { method: 'PUT', body: JSON.stringify({ role_ids: roleIds }) },
       conn.token,
-    )) as { role_ids: string[] };
+    );
   }
 
   // Channel groups — first-class entities that own permissions; channels
@@ -437,21 +437,21 @@ class ApiService {
   }
   async createGroup(teamId: string, name: string): Promise<{ id: string; name: string; position: number }> {
     const conn = this.getConnection(teamId);
-    return (await this.request(
+    return this.request<{ id: string; name: string; position: number }>(
       conn.baseUrl,
       `/api/v1/teams/${teamId}/groups`,
       { method: 'POST', body: JSON.stringify({ name }) },
       conn.token,
-    )) as { id: string; name: string; position: number };
+    );
   }
   async updateGroup(teamId: string, groupId: string, body: { name?: string; position?: number }): Promise<{ id: string; name: string; position: number }> {
     const conn = this.getConnection(teamId);
-    return (await this.request(
+    return this.request<{ id: string; name: string; position: number }>(
       conn.baseUrl,
       `/api/v1/teams/${teamId}/groups/${groupId}`,
       { method: 'PUT', body: JSON.stringify(body) },
       conn.token,
-    )) as { id: string; name: string; position: number };
+    );
   }
   async deleteGroup(teamId: string, groupId: string): Promise<void> {
     const conn = this.getConnection(teamId);
@@ -466,12 +466,12 @@ class ApiService {
     const conn = this.getConnection(teamId);
     const body: Record<string, unknown> = { role_ids: roleIds };
     if (hiddenIfRestricted !== undefined) body.hidden_if_restricted = hiddenIfRestricted;
-    return (await this.request(
+    return this.request<{ role_ids: string[]; hidden_if_restricted: boolean }>(
       conn.baseUrl,
       `/api/v1/teams/${teamId}/groups/${groupId}/access`,
       { method: 'PUT', body: JSON.stringify(body) },
       conn.token,
-    )) as { role_ids: string[]; hidden_if_restricted: boolean };
+    );
   }
 
   async deleteChannel(teamId: string, channelId: string): Promise<void> {
@@ -686,12 +686,12 @@ class ApiService {
   /** User-id list of everyone the caller has blocked. */
   async listBlocks(teamId: string): Promise<string[]> {
     const conn = this.getConnection(teamId);
-    const data = await this.request(
+    const data = await this.request<{ user_ids?: string[] }>(
       conn.baseUrl,
       `/api/v1/users/me/blocks`,
       { method: 'GET' },
       conn.token,
-    ) as { user_ids?: string[] };
+    );
     return Array.isArray(data?.user_ids) ? data.user_ids : [];
   }
   async blockUser(teamId: string, blockedId: string): Promise<void> {
