@@ -2,6 +2,82 @@ use crate::db;
 use crate::ws::events::*;
 use crate::ws::hub::Hub;
 
+/// Verify the channel belongs to the user's team AND the user's roles
+/// intersect the channel's access list. Extracted from
+/// `handle_message_send` to keep its cognitive complexity below the
+/// rule threshold.
+async fn check_channel_access(hub: &Hub, channel_id: &str, team_id: &str, user_id: &str) -> bool {
+    let db = hub.db.clone();
+    let cid = channel_id.to_string();
+    let tid = team_id.to_string();
+    let uid = user_id.to_string();
+    tokio::task::spawn_blocking(move || {
+        db.with_conn(|conn| {
+            let channel = db::get_channel_by_id(conn, &cid)?;
+            let belongs = matches!(channel, Some(ref ch) if ch.team_id == tid);
+            if !belongs {
+                return Ok::<bool, rusqlite::Error>(false);
+            }
+            db::user_can_access_channel(conn, &uid, &tid, &cid)
+        })
+    })
+    .await
+    .unwrap_or(Ok(false))
+    .unwrap_or(false)
+}
+
+/// Compute how many seconds the caller must still wait under slow mode,
+/// or `None` when slow mode is off / the caller has bypass permission /
+/// the wait window has already elapsed.
+async fn compute_slow_mode_block(
+    hub: &Hub,
+    channel_id: &str,
+    team_id: &str,
+    user_id: &str,
+) -> Option<i64> {
+    let db_sm = hub.db.clone();
+    let cid_sm = channel_id.to_string();
+    let uid_sm = user_id.to_string();
+    let tid_sm = team_id.to_string();
+    tokio::task::spawn_blocking(move || -> Option<i64> {
+        db_sm.with_read(|conn| {
+            let secs: i32 = conn
+                .query_row(
+                    "SELECT slow_mode_seconds FROM channels WHERE id = ?1",
+                    rusqlite::params![cid_sm],
+                    |row| row.get(0),
+                )
+                .unwrap_or(0);
+            if secs <= 0 { return Ok::<_, rusqlite::Error>(None); }
+            let bypass = db::user_has_permission(conn, &uid_sm, &tid_sm, db::PERM_BYPASS_SLOW_MODE)
+                .unwrap_or(false);
+            if bypass { return Ok::<_, rusqlite::Error>(None); }
+            let last_ts: Option<i64> = conn
+                .query_row(
+                    "SELECT strftime('%s', created_at) FROM messages
+                     WHERE channel_id = ?1 AND author_id = ?2 AND deleted = 0
+                     ORDER BY created_at DESC LIMIT 1",
+                    rusqlite::params![cid_sm, uid_sm],
+                    |row| row.get::<_, Option<String>>(0).map(|s| s.and_then(|x| x.parse::<i64>().ok())),
+                )
+                .unwrap_or(None);
+            let now_ts: i64 = conn
+                .query_row("SELECT strftime('%s','now')", [], |row| {
+                    row.get::<_, String>(0).map(|s| s.parse::<i64>().unwrap_or(0))
+                })
+                .unwrap_or(0);
+            if let Some(last) = last_ts {
+                let remaining = secs as i64 - (now_ts - last);
+                if remaining > 0 { return Ok::<_, rusqlite::Error>(Some(remaining)); }
+            }
+            Ok::<_, rusqlite::Error>(None)
+        })
+        .unwrap_or(None)
+    })
+    .await
+    .unwrap_or(None)
+}
+
 pub(in crate::ws) async fn handle_message_send(
     hub: &Hub,
     _client_id: &str,
@@ -18,29 +94,7 @@ pub(in crate::ws) async fn handle_message_send(
         }
     };
 
-    // Verify the channel belongs to the user's team AND the user's roles
-    // intersect the channel's access list. user_can_access_channel covers
-    // both: it short-circuits on team-owner, returns true when the channel
-    // grants the everyone role, and otherwise checks per-role membership.
-    let db = hub.db.clone();
-    let cid = p.channel_id.clone();
-    let tid = team_id.to_string();
-    let uid = user_id.to_string();
-    let channel_ok = tokio::task::spawn_blocking(move || {
-        db.with_conn(|conn| {
-            let channel = db::get_channel_by_id(conn, &cid)?;
-            let belongs = matches!(channel, Some(ref ch) if ch.team_id == tid);
-            if !belongs {
-                return Ok::<bool, rusqlite::Error>(false);
-            }
-            db::user_can_access_channel(conn, &uid, &tid, &cid)
-        })
-    })
-    .await
-    .unwrap_or(Ok(false))
-    .unwrap_or(false);
-
-    if !channel_ok {
+    if !check_channel_access(hub, &p.channel_id, team_id, user_id).await {
         tracing::warn!(
             user_id = user_id,
             channel_id = %p.channel_id,
@@ -50,56 +104,7 @@ pub(in crate::ws) async fn handle_message_send(
         return;
     }
 
-    // Slow-mode gate: when channel.slow_mode_seconds > 0, look up the
-    // user's most recent message in this channel and reject if the delta
-    // is shorter than the configured minimum. Users in a role with
-    // PERM_BYPASS_SLOW_MODE (Admin gets it implicitly via PERM_ADMIN)
-    // skip the check entirely; the default "everyone" role is rate-
-    // limited by absence of that perm.
-    let db_sm = hub.db.clone();
-    let cid_sm = p.channel_id.clone();
-    let uid_sm = user_id.to_string();
-    let tid_sm = team_id.to_string();
-    let slow_mode_block: Option<i64> = tokio::task::spawn_blocking(move || -> Option<i64> {
-        db_sm.with_read(|conn| {
-            let secs: i32 = conn
-                .query_row(
-                    "SELECT slow_mode_seconds FROM channels WHERE id = ?1",
-                    rusqlite::params![cid_sm],
-                    |row| row.get(0),
-                )
-                .unwrap_or(0);
-            if secs <= 0 { return Ok::<_, rusqlite::Error>(None); }
-            // Bypass-permission shortcut.
-            let bypass = db::user_has_permission(conn, &uid_sm, &tid_sm, db::PERM_BYPASS_SLOW_MODE)
-                .unwrap_or(false);
-            if bypass { return Ok::<_, rusqlite::Error>(None); }
-            // strftime('%s', ...) gives unix seconds for the stored UTC text.
-            let last_ts: Option<i64> = conn
-                .query_row(
-                    "SELECT strftime('%s', created_at) FROM messages
-                     WHERE channel_id = ?1 AND author_id = ?2 AND deleted = 0
-                     ORDER BY created_at DESC LIMIT 1",
-                    rusqlite::params![cid_sm, uid_sm],
-                    |row| row.get::<_, Option<String>>(0).map(|s| s.and_then(|x| x.parse::<i64>().ok())),
-                )
-                .unwrap_or(None);
-            let now_ts: i64 = conn
-                .query_row("SELECT strftime('%s','now')", [], |row| {
-                    row.get::<_, String>(0).map(|s| s.parse::<i64>().unwrap_or(0))
-                })
-                .unwrap_or(0);
-            if let Some(last) = last_ts {
-                let delta = now_ts - last;
-                let remaining = secs as i64 - delta;
-                if remaining > 0 { return Ok::<_, rusqlite::Error>(Some(remaining)); }
-            }
-            Ok::<_, rusqlite::Error>(None)
-        })
-        .unwrap_or(None)
-    })
-    .await
-    .unwrap_or(None);
+    let slow_mode_block = compute_slow_mode_block(hub, &p.channel_id, team_id, user_id).await;
 
     if let Some(remaining) = slow_mode_block {
         tracing::info!(user_id, channel_id = %p.channel_id, "message:send denied — slow mode active");
