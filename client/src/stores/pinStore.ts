@@ -51,7 +51,7 @@ export const usePinStore = create<PinState>((set, get) => ({
   unpin: (channelId, messageId) =>
     set((state) => {
       const existing = state.pinned.get(channelId);
-      if (!existing || !existing.has(messageId)) return state;
+      if (!existing?.has(messageId)) return state;
       const next = new Map(state.pinned);
       const updated = new Set(existing);
       updated.delete(messageId);

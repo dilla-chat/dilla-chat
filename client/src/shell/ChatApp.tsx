@@ -1257,7 +1257,7 @@ export function VideoTile({ stream, fit = 'cover', mirror, showStats = true }: R
       if (cancelled) return;
       frameCount++;
       if (meta.width > 0 && meta.height > 0) {
-        setStats((prev) => (prev && prev.w === meta.width && prev.h === meta.height ? prev : { ...(prev ?? { fps: 0 }), w: meta.width, h: meta.height }));
+        setStats((prev) => (prev?.w === meta.width && prev?.h === meta.height ? prev : { ...(prev ?? { fps: 0 }), w: meta.width, h: meta.height }));
       }
       rvfc?.call(el, onFrame);
     };
@@ -1754,7 +1754,7 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
   const [dragId, setDragId] = useState(null);
   const [overId, setOverId] = useState(null);
   const [orderOverride, setOrderOverride] = useState(null); // [ids…]
-  const isAdminHere = !!(members && members.byId && members.byId[currentUserId()]?.isAdmin);
+  const isAdminHere = !!members?.byId?.[currentUserId()]?.isAdmin;
   // Pull the team's role catalog so we can identify the implicit
   // "everyone" role and resolve which channels the current user can enter.
   // activeTeamId isn't a prop here — read it from the store directly.
@@ -2906,7 +2906,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                               // its layout shift can race with the smooth
                               // scroll and land the target off-screen.
                               setTimeout(() => {
-                                const el = feedRef.current && feedRef.current.querySelector('[data-msg-id="' + pm.id + '"]');
+                                const el = feedRef.current?.querySelector('[data-msg-id="' + pm.id + '"]');
                                 if (el) {
                                   el.classList.add('msg-flash');
                                   el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -3337,7 +3337,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
               <span className="rc-text">{kb}</span>
               <button
                 className="rc-x"
-                onClick={() => onRemoveAttachment && onRemoveAttachment(a.id)}
+                onClick={() => onRemoveAttachment?.(a.id)}
                 title="Remove attachment"
               >
                 ×
@@ -5445,8 +5445,8 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     if (channel.type === 'dm') {
       const draft = drafts[channel.id];
       const staged = pendingAttachments[channel.id] || [];
-      if ((!draft || !draft.trim()) && staged.length === 0) return;
-      const userText = (draft || '').trim();
+      if (!draft?.trim() && staged.length === 0) return;
+      const userText = (draft ?? '').trim();
       const processed = userText ? processSlash(userText) : { kind: 'text', text: '' };
       if (processed === null) {
         // Side-effect slash command handled it — clear the draft, don't send.
@@ -5486,8 +5486,8 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     // Allow sending when EITHER text is non-empty OR there are staged
     // attachments. A bare attachment send is fine; an empty composer
     // with no attachments isn't.
-    if ((!draft || !draft.trim()) && staged.length === 0) return;
-    const text = (draft || '').trim();
+    if (!draft?.trim() && staged.length === 0) return;
+    const text = (draft ?? '').trim();
     const processed = text ? processSlash(text) : { kind: 'text', text: '' };
     if (processed === null) {
       setDrafts(prev => ({ ...prev, [activeChannel]: '' }));

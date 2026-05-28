@@ -82,7 +82,7 @@ export async function tryDecrypt(
   // when the wire ciphertext hasn't changed since the failure. An edit
   // produces a new ciphertext and deserves a fresh attempt.
   const prev = failedDecrypts.get(messageId);
-  if (prev && prev.ciphertext === content) {
+  if (prev?.ciphertext === content) {
     return placeholderFor(clean);
   }
   try {

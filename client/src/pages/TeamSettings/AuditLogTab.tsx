@@ -98,7 +98,7 @@ export default function AuditLogTab({ teamId }: Readonly<{ teamId: string }>) {
       {!error && events === null && (
         <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>{t('common.loading', 'Loading…')}</p>
       )}
-      {!error && events && events.length === 0 && (
+      {!error && events?.length === 0 && (
         <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>
           {t('audit.empty', 'No audit events yet — admin actions (role changes, channel locks, kicks/bans, …) will appear here.')}
         </p>
