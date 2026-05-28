@@ -1309,6 +1309,42 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn init_federation_mesh_returns_some_with_node_name_only() {
+        // peers empty + node_name set → still spins up a MeshNode.
+        let (db, _tmp) = test_db();
+        let hub = Arc::new(ws::Hub::new(db.clone()));
+        let mut cfg = Config::load();
+        cfg.peers = vec![];
+        cfg.node_name = "test-node".into();
+        cfg.join_secret = "secret-32-bytes-or-longer-for-policy-please".into();
+        cfg.insecure = true;
+        // Use a port unlikely to collide.
+        cfg.federation_port = 0;
+        cfg.fed_bind_addr = "127.0.0.1".into();
+        let mesh = init_federation_mesh(&cfg, &db, &hub).await;
+        assert!(mesh.is_some());
+    }
+
+    #[tokio::test]
+    async fn init_federation_mesh_warn_path_with_empty_join_secret() {
+        // peers non-empty + insecure=true + empty join_secret → the
+        // warn branch (L794-798) fires, MeshNode is still constructed.
+        let (db, _tmp) = test_db();
+        let hub = Arc::new(ws::Hub::new(db.clone()));
+        let mut cfg = Config::load();
+        cfg.peers = vec!["127.0.0.1:0".into()];
+        cfg.node_name = "warn-node".into();
+        cfg.join_secret = String::new();
+        cfg.insecure = true;
+        cfg.federation_port = 0;
+        cfg.fed_bind_addr = "127.0.0.1".into();
+        let mesh = init_federation_mesh(&cfg, &db, &hub).await;
+        // mesh.start() may or may not bind to port 0 cleanly across OS;
+        // either Ok or Err just needs to not panic and return Some.
+        assert!(mesh.is_some());
+    }
+
+    #[tokio::test]
     async fn check_first_start_with_existing_users() {
         let (db, _tmp) = test_db();
         let auth_svc = AuthService::new(db.clone(), "");
