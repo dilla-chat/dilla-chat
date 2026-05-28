@@ -703,59 +703,70 @@ fn spawn_hub_event_handler(hub: &Arc<ws::Hub>, presence_mgr: &Arc<PresenceManage
 /// Dispatch an SFU event to the connected WS clients. Extracted from
 /// the closure in main() so the per-variant logic is independently
 /// testable (no real RTCPeerConnection needed).
+async fn send_sfu_ice_candidate(
+    hub: &Arc<ws::Hub>,
+    channel_id: String,
+    user_id: String,
+    candidate: Box<webrtc::ice_transport::ice_candidate::RTCIceCandidateInit>,
+) {
+    let payload = ws::events::VoiceICECandidatePayload {
+        channel_id,
+        candidate: candidate.candidate.clone(),
+        sdp_mid: candidate.sdp_mid.clone().unwrap_or_default(),
+        sdp_mline_index: candidate.sdp_mline_index.unwrap_or(0),
+    };
+    if let Ok(evt) = ws::events::Event::new(ws::events::EVENT_VOICE_ICE_CANDIDATE, payload) {
+        if let Ok(bytes) = evt.to_bytes() {
+            hub.send_to_user(&user_id, bytes).await;
+        }
+    }
+}
+
+async fn send_sfu_renegotiate(
+    hub: &Arc<ws::Hub>,
+    channel_id: String,
+    user_id: String,
+    offer: Box<webrtc::peer_connection::sdp::session_description::RTCSessionDescription>,
+) {
+    let payload = ws::events::VoiceOfferPayload {
+        channel_id,
+        sdp: offer.sdp.clone(),
+    };
+    if let Ok(evt) = ws::events::Event::new(ws::events::EVENT_VOICE_OFFER, payload) {
+        if let Ok(bytes) = evt.to_bytes() {
+            hub.send_to_user(&user_id, bytes).await;
+        }
+    }
+}
+
+async fn handle_sfu_peer_dropped(hub: &Arc<ws::Hub>, channel_id: String, user_id: String) {
+    if let Some(room_mgr) = &hub.voice_room_manager {
+        room_mgr.remove_peer(&channel_id, &user_id).await;
+    }
+    if let Ok(evt) = ws::events::Event::new(
+        ws::events::EVENT_VOICE_USER_LEFT,
+        ws::events::VoiceUserLeftPayload {
+            channel_id: channel_id.clone(),
+            user_id: user_id.clone(),
+        },
+    ) {
+        if let Ok(bytes) = evt.to_bytes() {
+            hub.broadcast_to_all(bytes).await;
+        }
+    }
+}
+
 pub(crate) async fn handle_sfu_event(hub: &Arc<ws::Hub>, evt: voice::SFUEvent) {
     use voice::SFUEvent;
-    use ws::events::*;
     match evt {
-        SFUEvent::ICECandidate {
-            channel_id,
-            user_id,
-            candidate,
-        } => {
-            let payload = VoiceICECandidatePayload {
-                channel_id,
-                candidate: candidate.candidate.clone(),
-                sdp_mid: candidate.sdp_mid.clone().unwrap_or_default(),
-                sdp_mline_index: candidate.sdp_mline_index.unwrap_or(0),
-            };
-            if let Ok(evt) = Event::new(EVENT_VOICE_ICE_CANDIDATE, payload) {
-                if let Ok(bytes) = evt.to_bytes() {
-                    hub.send_to_user(&user_id, bytes).await;
-                }
-            }
+        SFUEvent::ICECandidate { channel_id, user_id, candidate } => {
+            send_sfu_ice_candidate(hub, channel_id, user_id, candidate).await;
         }
-        SFUEvent::Renegotiate {
-            channel_id,
-            user_id,
-            offer,
-        } => {
-            let payload = VoiceOfferPayload {
-                channel_id,
-                sdp: offer.sdp.clone(),
-            };
-            if let Ok(evt) = Event::new(EVENT_VOICE_OFFER, payload) {
-                if let Ok(bytes) = evt.to_bytes() {
-                    hub.send_to_user(&user_id, bytes).await;
-                }
-            }
+        SFUEvent::Renegotiate { channel_id, user_id, offer } => {
+            send_sfu_renegotiate(hub, channel_id, user_id, offer).await;
         }
         SFUEvent::PeerDropped { channel_id, user_id } => {
-            // ICE failed / PC closed / browser reload — clean up the
-            // RoomManager entry and tell every client.
-            if let Some(room_mgr) = &hub.voice_room_manager {
-                room_mgr.remove_peer(&channel_id, &user_id).await;
-            }
-            if let Ok(evt) = Event::new(
-                EVENT_VOICE_USER_LEFT,
-                VoiceUserLeftPayload {
-                    channel_id: channel_id.clone(),
-                    user_id: user_id.clone(),
-                },
-            ) {
-                if let Ok(bytes) = evt.to_bytes() {
-                    hub.broadcast_to_all(bytes).await;
-                }
-            }
+            handle_sfu_peer_dropped(hub, channel_id, user_id).await;
         }
     }
 }
