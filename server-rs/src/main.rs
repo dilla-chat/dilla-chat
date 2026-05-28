@@ -55,10 +55,7 @@ async fn main() {
     // a cloud secret manager via tmpfs mount. See
     // `deploy/secrets/README.md` for the operator-tiered guide.
     let mut cfg = cfg;
-    if let Err(e) = load_secrets_from_files(&mut cfg) {
-        tracing::error!("secret _FILE override: {}", e);
-        std::process::exit(1);
-    }
+    apply_secret_file_overrides_or_exit(&mut cfg);
     let cfg = cfg;
 
     // H2 / AUTH-WEAK-1: refuse to start with a weak JWT-derivation
@@ -120,6 +117,16 @@ async fn main() {
     let app = with_http_observability_middleware(app);
 
     start_server(&cfg, app).await;
+}
+
+/// Thin wrapper around `load_secrets_from_files` that converts Err into
+/// log + exit (so callers can branch on a clean Result in tests instead
+/// of crashing the test process via `std::process::exit`).
+fn apply_secret_file_overrides_or_exit(cfg: &mut Config) {
+    if let Err(e) = load_secrets_from_files(cfg) {
+        tracing::error!("secret _FILE override: {}", e);
+        std::process::exit(1);
+    }
 }
 
 /// Initialize the optional H-8 / A2 auth-risk signals: Tor exit-node
@@ -1220,6 +1227,28 @@ mod tests {
     // Drive each SFUEvent variant through the extracted helper. Hub is
     // real but with no connected clients — broadcast/send are no-ops
     // but the match arms + payload construction run.
+
+    // ── apply_secret_file_overrides_or_exit ──────────────────────────
+
+    #[test]
+    fn apply_secret_file_overrides_or_exit_is_noop_when_no_file_paths() {
+        let mut cfg = Config::default();
+        // Default cfg has no *_FILE env vars set + db_passphrase_file
+        // empty → load_secrets_from_files returns Ok(()) → wrapper
+        // returns without touching exit.
+        apply_secret_file_overrides_or_exit(&mut cfg);
+    }
+
+    #[test]
+    fn apply_secret_file_overrides_or_exit_applies_db_passphrase_from_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("db.pw");
+        std::fs::write(&path, "from-file-32-bytes-long-padding-xxx").unwrap();
+        let mut cfg = Config::default();
+        cfg.db_passphrase_file = path.to_str().unwrap().to_string();
+        apply_secret_file_overrides_or_exit(&mut cfg);
+        assert_eq!(cfg.db_passphrase, "from-file-32-bytes-long-padding-xxx");
+    }
 
     // ── init_auth_risk_signals ───────────────────────────────────────
 
