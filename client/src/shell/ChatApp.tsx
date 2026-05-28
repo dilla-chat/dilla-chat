@@ -4146,6 +4146,18 @@ function toggleRoleInSet(prev: Set<string>, roleId: string): Set<string> {
   return next;
 }
 
+function slashNotify(msg: string, kind = 'system'): void {
+  globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: kind, author: 'system', text: msg, duration: 3200 } }));
+}
+
+function slashLookupMember(query: string, list: any[]): any | null {
+  const q = query.replace(/^@/, '').toLowerCase().trim();
+  if (!q) return null;
+  return list.find((m) => m.name?.toLowerCase() === q || m.id === q)
+    || list.find((m) => m.name?.toLowerCase().startsWith(q))
+    || null;
+}
+
 function openProfileFromTarget(target: HTMLElement, memberId: string, placement: 'right' | 'below'): void {
   const r = target.getBoundingClientRect();
   const detail = placement === 'right'
@@ -5569,17 +5581,8 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     // Side-effect commands. Return null to signal "handled — don't send a
     // message". Use dilla:notify for status feedback so the caller doesn't
     // get a silent failure.
-    function notify(msg, kind = 'system') {
-      globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: kind, author: 'system', text: msg, duration: 3200 } }));
-    }
-    function lookupMember(query) {
-      const q = query.replace(/^@/, '').toLowerCase().trim();
-      if (!q) return null;
-      const list = (data?.MEMBERS || []) as any[];
-      return list.find((m) => m.name?.toLowerCase() === q || m.id === q)
-        || list.find((m) => m.name?.toLowerCase().startsWith(q))
-        || null;
-    }
+    const notify = (msg, kind = 'system') => slashNotify(msg, kind);
+    const lookupMember = (query) => slashLookupMember(query, data?.MEMBERS || []);
     // Post a real text message to the current channel/DM. Used by
     // slash commands that need to dispatch the message asynchronously
     // (e.g. /giphy waits for a fetch round-trip first). Mirrors the
