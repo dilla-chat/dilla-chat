@@ -3806,12 +3806,13 @@ function buildActiveVoiceChannelMenu(
     },
   ];
   if (canManageChannels) {
-    items.push({ sep: true });
-    items.push(c.groupId
-      ? { label: 'Access is handled by group', icon: <Icon.Lock size={12} />, disabled: true, onClick: () => {} }
-      : { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-channel-access', { detail: c.id })) },
+    items.push(
+      { sep: true },
+      c.groupId
+        ? { label: 'Access is handled by group', icon: <Icon.Lock size={12} />, disabled: true, onClick: () => {} }
+        : { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-channel-access', { detail: c.id })) },
+      { label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-channel-settings', { detail: c.id })) },
     );
-    items.push({ label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-channel-settings', { detail: c.id })) });
   }
   return items;
 }
@@ -3841,12 +3842,13 @@ function buildVoiceChannelMenu(
     },
   ];
   if (canManageChannels) {
-    items.push({ sep: true });
-    items.push(c.groupId
-      ? { label: 'Access is handled by group', icon: <Icon.Lock size={12} />, disabled: true, onClick: () => {} }
-      : { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-channel-access', { detail: c.id })) },
+    items.push(
+      { sep: true },
+      c.groupId
+        ? { label: 'Access is handled by group', icon: <Icon.Lock size={12} />, disabled: true, onClick: () => {} }
+        : { label: 'Manage access', icon: <Icon.Lock size={12} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-channel-access', { detail: c.id })) },
+      { label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-channel-settings', { detail: c.id })) },
     );
-    items.push({ label: 'Kanal settings', icon: <Icon.Cog size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-channel-settings', { detail: c.id })) });
   }
   return items;
 }
