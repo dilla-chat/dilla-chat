@@ -771,6 +771,58 @@ pub(crate) async fn handle_sfu_event(hub: &Arc<ws::Hub>, evt: voice::SFUEvent) {
     }
 }
 
+async fn cleanup_user_voice_state(hub: &Arc<ws::Hub>, user_id: &str) {
+    let Some(room_mgr) = &hub.voice_room_manager else { return };
+    let channels = room_mgr.remove_peer_everywhere(user_id).await;
+    for channel_id in channels {
+        broadcast_voice_left(hub, &channel_id, user_id).await;
+        if let Some(sfu) = &hub.voice_sfu {
+            sfu.handle_leave(&channel_id, user_id).await;
+        }
+    }
+}
+
+async fn cleanup_channel_voice_state(
+    hub: &Arc<ws::Hub>,
+    channel_id: &str,
+    user_id: &str,
+) {
+    if let Some(room_mgr) = &hub.voice_room_manager {
+        room_mgr.remove_peer(channel_id, user_id).await;
+    }
+    broadcast_voice_left(hub, channel_id, user_id).await;
+    if let Some(sfu) = &hub.voice_sfu {
+        sfu.handle_leave(channel_id, user_id).await;
+    }
+}
+
+async fn broadcast_voice_left(hub: &Arc<ws::Hub>, channel_id: &str, user_id: &str) {
+    if let Ok(evt) = ws::events::Event::new(
+        ws::events::EVENT_VOICE_USER_LEFT,
+        ws::events::VoiceUserLeftPayload {
+            channel_id: channel_id.to_string(),
+            user_id: user_id.to_string(),
+        },
+    ) {
+        if let Ok(bytes) = evt.to_bytes() {
+            hub.broadcast_to_all(bytes).await;
+        }
+    }
+}
+
+async fn persist_presence_update(
+    db_evt: &Database,
+    user_id: String,
+    status: String,
+    custom_status: String,
+) {
+    let db = db_evt.clone();
+    let _ = tokio::task::spawn_blocking(move || {
+        db.with_conn(|conn| db::update_user_status(conn, &user_id, &status, &custom_status))
+    })
+    .await;
+}
+
 async fn handle_hub_event(
     pm: &PresenceManager,
     db_evt: &Database,
@@ -783,61 +835,17 @@ async fn handle_hub_event(
         }
         ws::hub::HubEvent::ClientDisconnected { user_id } => {
             pm.set_offline(&user_id).await;
-            // Last WS for this user gone — also clean voice as a
-            // safety net (the per-client VoiceClientGone path already
-            // handled it if the closed WS was the voice-holder, but
-            // this catches edge cases like the user_index falling
-            // out of sync).
-            if let Some(room_mgr) = &hub.voice_room_manager {
-                let channels = room_mgr.remove_peer_everywhere(&user_id).await;
-                for channel_id in channels {
-                    if let Ok(evt) = ws::events::Event::new(
-                        ws::events::EVENT_VOICE_USER_LEFT,
-                        ws::events::VoiceUserLeftPayload {
-                            channel_id: channel_id.clone(),
-                            user_id: user_id.clone(),
-                        },
-                    ) {
-                        if let Ok(bytes) = evt.to_bytes() {
-                            hub.broadcast_to_all(bytes).await;
-                        }
-                    }
-                    if let Some(sfu) = &hub.voice_sfu {
-                        sfu.handle_leave(&channel_id, &user_id).await;
-                    }
-                }
-            }
+            // Safety-net voice cleanup: the per-client VoiceClientGone
+            // path already ran if the closed WS was the voice-holder,
+            // but this catches user_index drift.
+            cleanup_user_voice_state(hub, &user_id).await;
         }
         ws::hub::HubEvent::VoiceClientGone { client_id, user_id, channel_id } => {
             tracing::info!(
                 "voice: VoiceClientGone — cleaning up voice for client={} user={} channel={}",
-                client_id,
-                user_id,
-                channel_id
+                client_id, user_id, channel_id
             );
-            // The specific WS that held the voice session closed
-            // without an explicit voice:leave (tab reload, network
-            // drop, crash). Clean up just THIS channel for this user
-            // — without this the room would still show the user as
-            // present in their pre-reload channel even though they
-            // have no live voice session.
-            if let Some(room_mgr) = &hub.voice_room_manager {
-                room_mgr.remove_peer(&channel_id, &user_id).await;
-            }
-            if let Ok(evt) = ws::events::Event::new(
-                ws::events::EVENT_VOICE_USER_LEFT,
-                ws::events::VoiceUserLeftPayload {
-                    channel_id: channel_id.clone(),
-                    user_id: user_id.clone(),
-                },
-            ) {
-                if let Ok(bytes) = evt.to_bytes() {
-                    hub.broadcast_to_all(bytes).await;
-                }
-            }
-            if let Some(sfu) = &hub.voice_sfu {
-                sfu.handle_leave(&channel_id, &user_id).await;
-            }
+            cleanup_channel_voice_state(hub, &channel_id, &user_id).await;
         }
         ws::hub::HubEvent::ClientActivity { user_id } => {
             pm.update_activity(&user_id).await;
@@ -845,14 +853,7 @@ async fn handle_hub_event(
         ws::hub::HubEvent::PresenceUpdate { user_id, status, custom_status } => {
             pm.update_presence(&user_id, presence::Status::from_str(&status), &custom_status)
                 .await;
-            let db = db_evt.clone();
-            let uid = user_id.clone();
-            let st = status.clone();
-            let cs = custom_status.clone();
-            let _ = tokio::task::spawn_blocking(move || {
-                db.with_conn(|conn| db::update_user_status(conn, &uid, &st, &cs))
-            })
-            .await;
+            persist_presence_update(db_evt, user_id, status, custom_status).await;
         }
         _ => {}
     }
