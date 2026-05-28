@@ -101,7 +101,7 @@ export default function CommandPalette({ open, onClose, commands }: Readonly<Pro
         aria-label="Command palette"
         className="command-palette"
         onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
+        onCancel={onClose}
       >
         <div className="command-palette-prompt">
           <span className="command-palette-prompt-glyph" aria-hidden="true">

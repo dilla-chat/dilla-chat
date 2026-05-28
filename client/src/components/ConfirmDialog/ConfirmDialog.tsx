@@ -59,7 +59,7 @@ export default function ConfirmDialog() {
         open
         className="modal-card confirm-card"
         onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => { if (e.key === 'Escape') answer(false); else e.stopPropagation(); }}
+        onCancel={() => answer(false)}
       >
         <header className="modal-head">
           <h2>{title}</h2>

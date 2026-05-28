@@ -89,7 +89,7 @@ export default function ForwardModal({
         aria-label="Forward message"
         className="forward-modal"
         onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
+        onCancel={onClose}
       >
         <header className="forward-modal-header">
           <div className="forward-modal-eyebrow">FORWARD</div>

@@ -104,7 +104,7 @@ export default function SearchPalette({
         aria-label="Search palette"
         className="search-palette"
         onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
+        onCancel={onClose}
       >
         <div className="search-palette-prompt">
           <span className="search-palette-prompt-glyph" aria-hidden="true">/</span>
