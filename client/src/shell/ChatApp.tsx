@@ -2447,15 +2447,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
         { ms: 100, p: 55, phase: 'encrypting' },
         { ms: 200, p: 85, phase: 'uploading' },
       ];
-      let acc = 0;
-      phases.forEach((ph) => {
-        acc += ph.ms;
-        setTimeout(() => {
-          setUploads(prev => prev.map(u => u.id === id ? { ...u, progress: ph.p, phase: ph.phase } : u));
-        }, acc);
-      });
-      // Hand the real File off to the parent's onAttach (uploads via
-      // api.uploadFile). When that resolves the strip disappears.
+      schedulePhaseUpdates(phases, id, setUploads);
       Promise.resolve(onAttach?.(file)).finally(() => {
         setUploads(prev => prev.filter(u => u.id !== id));
       });
@@ -3916,6 +3908,22 @@ function buildVoiceChannelMenu(
     );
   }
   return items;
+}
+
+type UploadRow = { id: string; name: string; size: number; progress: number; phase: string };
+
+function schedulePhaseUpdates(
+  phases: Array<{ ms: number; p: number; phase: string }>,
+  id: string,
+  setUploads: (updater: (prev: UploadRow[]) => UploadRow[]) => void,
+): void {
+  let acc = 0;
+  for (const ph of phases) {
+    acc += ph.ms;
+    setTimeout(() => {
+      setUploads((prev) => prev.map((u) => u.id === id ? { ...u, progress: ph.p, phase: ph.phase } : u));
+    }, acc);
+  }
 }
 
 function composerStatus(slowModeLock: { secondsLeft: number } | null | undefined, typing: string[]): React.ReactNode {
