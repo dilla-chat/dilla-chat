@@ -1329,6 +1329,36 @@ mod axum_tests {
     }
 
     #[tokio::test]
+    async fn list_channels_resolves_hidden_via_group_inheritance() {
+        // ch1 inherits hidden_if_restricted from its group. Covers the
+        // and_then closure body at L59-60 that looks up the group by id.
+        let (state, _tmp) = make_state();
+        seed_alice_team_and_channel(&state);
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_group(conn, &db::ChannelGroup {
+                id: "g-private".into(),
+                team_id: "t1".into(),
+                name: "Private".into(),
+                position: 0,
+                created_at: now.clone(),
+                updated_at: now,
+                hidden_if_restricted: true,
+            })?;
+            conn.execute(
+                "UPDATE channels SET group_id = 'g-private' WHERE id = 'ch1'",
+                [],
+            ).map(|_| ())
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(Request::get("/teams/t1/channels").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
     async fn list_channels_skips_hidden_channels_for_non_admin() {
         let (state, _tmp) = make_state();
         seed_alice_team_and_channel(&state);
