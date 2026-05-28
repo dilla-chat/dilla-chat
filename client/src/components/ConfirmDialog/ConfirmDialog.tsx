@@ -58,7 +58,6 @@ export default function ConfirmDialog() {
       <dialog
         open
         className="modal-card confirm-card"
-        onClick={(e) => e.stopPropagation()}
         onCancel={() => answer(false)}
       >
         <header className="modal-head">

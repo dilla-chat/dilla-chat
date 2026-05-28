@@ -93,17 +93,17 @@ export default function SearchPalette({
   if (!open) return null;
 
   const body = (
-    <button
-      type="button"
-      className="search-palette-overlay"
-      aria-label="Close search palette"
-      onClick={onClose}
-    >
+    <div className="search-palette-wrap">
+      <button
+        type="button"
+        className="search-palette-overlay"
+        aria-label="Close search palette"
+        onClick={onClose}
+      />
       <dialog
         open
         aria-label="Search palette"
         className="search-palette"
-        onClick={(e) => e.stopPropagation()}
         onCancel={onClose}
       >
         <div className="search-palette-prompt">
@@ -177,7 +177,7 @@ export default function SearchPalette({
           })}
         </div>
       </dialog>
-    </button>
+    </div>
   );
 
   return createPortal(body, document.body);

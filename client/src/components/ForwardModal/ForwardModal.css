@@ -1,21 +1,28 @@
-.forward-modal-overlay {
+.forward-modal-wrap {
   position: fixed;
   inset: 0;
   z-index: var(--z-modal);
-  background: rgba(7, 8, 9, 0.7);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 1.5rem;
+}
+
+.forward-modal-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(7, 8, 9, 0.7);
   border: none;
   margin: 0;
   cursor: default;
   font: inherit;
   text-align: inherit;
   color: inherit;
+  padding: 0;
 }
 
 .forward-modal {
+  position: relative;
   width: 30rem;
   max-width: 100%;
   max-height: calc(100vh - 3rem);

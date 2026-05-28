@@ -78,17 +78,17 @@ export default function ForwardModal({
   if (!open) return null;
 
   const body = (
-    <button
-      type="button"
-      className="forward-modal-overlay"
-      aria-label="Close forward modal"
-      onClick={onClose}
-    >
+    <div className="forward-modal-wrap">
+      <button
+        type="button"
+        className="forward-modal-overlay"
+        aria-label="Close forward modal"
+        onClick={onClose}
+      />
       <dialog
         open
         aria-label="Forward message"
         className="forward-modal"
-        onClick={(e) => e.stopPropagation()}
         onCancel={onClose}
       >
         <header className="forward-modal-header">
@@ -161,7 +161,7 @@ export default function ForwardModal({
           </button>
         </footer>
       </dialog>
-    </button>
+    </div>
   );
 
   return createPortal(body, document.body);
