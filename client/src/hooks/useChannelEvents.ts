@@ -21,6 +21,57 @@ import { useChannelMuteStore } from '../stores/channelMuteStore';
 import { cryptoService, getIdentityKeys } from '../services/crypto';
 import { toBase64 } from '../services/crypto/helpers';
 
+type Member = { userId: string; username?: string; name?: string };
+
+/** Fire a mention toast (+ browser notification when allowed) for a
+ *  decrypted message:new payload. Extracted from useChannelEvents to
+ *  keep its cognitive complexity below the rule threshold. */
+function maybeFireMentionNotification(
+  activeTeamId: string,
+  payload: ServerMessage,
+  content: string,
+  members: Member[],
+): void {
+  // SHELL_DATA legacy reader — same shape as elsewhere in the codebase.
+  const me = (globalThis as { SHELL_DATA?: { currentUserId?: string; byId?: Record<string, { name?: string; username?: string }> } }).SHELL_DATA;
+  const myId = me?.currentUserId;
+  const myRecord = myId ? me?.byId?.[myId] : null;
+  const myHandles: string[] = [];
+  if (myRecord?.name) myHandles.push(myRecord.name);
+  if (myRecord?.username) myHandles.push(myRecord.username);
+  const handlePattern = myHandles.length
+    ? new RegExp('@(' + myHandles.map((h) => h.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')\\b', 'i')
+    : null;
+  const isBroadcast = /@(everyone|here)\b/i.test(content);
+  const isDirect = handlePattern ? handlePattern.test(content) : false;
+  if (!(isDirect || isBroadcast) || payload.author_id === myId) return;
+
+  // Honour channel mutes — but only suppress broadcast pings.
+  const muted = useChannelMuteStore.getState().isMuted(payload.channel_id);
+  if (!isDirect && muted) return;
+
+  const author = members.find((m) => m.userId === payload.author_id);
+  const channelName = (useTeamStore.getState().channels.get(activeTeamId) ?? [])
+    .find((c) => c.id === payload.channel_id)?.name || '';
+  globalThis.dispatchEvent(new CustomEvent('dilla:notify', {
+    detail: {
+      channel: channelName,
+      channelId: payload.channel_id,
+      author: author?.username || 'someone',
+      text: content.slice(0, 240),
+      duration: 5000,
+      kind: 'mention',
+      mention: true,
+    },
+  }));
+  if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.visibilityState !== 'visible') {
+    try {
+      const n = new Notification('Mentioned by ' + (author?.username || 'someone') + (channelName ? ' in #' + channelName : ''), { body: content.slice(0, 240) });
+      n.onclick = () => { globalThis.focus(); n.close(); };
+    } catch { /* ignore */ }
+  }
+}
+
 export function useChannelEvents(activeTeamId: string | null, cryptoReady: boolean = true): void {
   // Loop prevention: remember the exact payload of each incoming distribute
   // we've already processed and echoed back. Keyed as
@@ -53,47 +104,7 @@ export function useChannelEvents(activeTeamId: string | null, cryptoReady: boole
         payload.channel_id,
         serverToMessage(payload, content, members),
       );
-
-      // Mention notifier: if the decrypted content contains @<myUsername>
-      // or @everyone / @here, fire a toast (skip when *I'm* the author).
-      const me = (window as { SHELL_DATA?: { currentUserId?: string; byId?: Record<string, { name?: string; username?: string }> } }).SHELL_DATA;
-      const myId = me?.currentUserId;
-      const myRecord = myId ? me?.byId?.[myId] : null;
-      const myHandles: string[] = [];
-      if (myRecord?.name) myHandles.push(myRecord.name);
-      if (myRecord?.username) myHandles.push(myRecord.username);
-      const handlePattern = myHandles.length ? new RegExp('@(' + myHandles.map((h) => h.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')\\b', 'i') : null;
-      const isBroadcast = /@(everyone|here)\b/i.test(content);
-      const isDirect = handlePattern ? handlePattern.test(content) : false;
-      if ((isDirect || isBroadcast) && payload.author_id !== myId) {
-        // Honour channel mutes — but only suppress broadcast pings.
-        // Direct @me always notifies even on a muted channel (Discord
-        // pattern); broadcast @everyone/@here is suppressed.
-        const muted = useChannelMuteStore.getState().isMuted(payload.channel_id);
-        const shouldNotify = isDirect || !muted;
-        if (shouldNotify) {
-          const author = members.find((m) => m.userId === payload.author_id);
-          const channelName = (useTeamStore.getState().channels.get(activeTeamId) ?? [])
-            .find((c) => c.id === payload.channel_id)?.name || '';
-          window.dispatchEvent(new CustomEvent('dilla:notify', {
-            detail: {
-              channel: channelName,
-              channelId: payload.channel_id,
-              author: author?.username || 'someone',
-              text: content.slice(0, 240),
-              duration: 5000,
-              kind: 'mention',
-              mention: true,
-            },
-          }));
-          if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.visibilityState !== 'visible') {
-            try {
-              const n = new Notification('Mentioned by ' + (author?.username || 'someone') + (channelName ? ' in #' + channelName : ''), { body: content.slice(0, 240) });
-              n.onclick = () => { window.focus(); n.close(); };
-            } catch { /* ignore */ }
-          }
-        }
-      }
+      maybeFireMentionNotification(activeTeamId, payload, content, members);
     });
 
     const unsubRejected = ws.on(
