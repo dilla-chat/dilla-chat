@@ -101,6 +101,31 @@ describe('MessageMarkdown', () => {
     expect(container.textContent).toContain('@alice');
   });
 
+  it('@alice renders as a mention chip span (ic-mention)', () => {
+    // The urlTransform whitelist passes dilla:mention/ through, so
+    // the `a` renderer sees the marker href and returns the chip.
+    const { container } = render(<MessageMarkdown text="hey @alice" />);
+    const chip = container.querySelector('.ic.ic-mention');
+    expect(chip).toBeTruthy();
+    expect(chip!.textContent).toContain('@alice');
+  });
+
+  it('@me renders with ic-mention-mine when currentUserHandle matches', () => {
+    const { container } = render(
+      <MessageMarkdown text="ping @me" currentUserHandle="me" currentUserId="u1" />,
+    );
+    const chip = container.querySelector('.ic.ic-mention-mine');
+    expect(chip).toBeTruthy();
+    expect(chip!.getAttribute('data-user-id')).toBe('u1');
+  });
+
+  it('@everyone renders with ic-mention-broad', () => {
+    const { container } = render(<MessageMarkdown text="@everyone meeting in 5" />);
+    const chip = container.querySelector('.ic.ic-mention-broad');
+    expect(chip).toBeTruthy();
+    expect(chip!.textContent).toContain('@everyone');
+  });
+
   it('isBroadcastHandle: @everyone and @here regress correctly', () => {
     // Direct test on the exported predicate via re-export at the file
     // boundary isn't available — verifying via the public render is

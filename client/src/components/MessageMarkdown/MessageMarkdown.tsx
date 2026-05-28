@@ -1,5 +1,5 @@
 import React from 'react';
-import ReactMarkdown, { type Components } from 'react-markdown';
+import ReactMarkdown, { defaultUrlTransform, type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
 import rehypeHighlight from 'rehype-highlight';
@@ -154,6 +154,13 @@ export default function MessageMarkdown({
         rehypePlugins={[[rehypeHighlight, { detect: true, ignoreMissing: true }]]}
         components={components}
         skipHtml
+        // react-markdown's default urlTransform strips non-standard
+        // schemes (including our `dilla:mention/` markers). Whitelist
+        // ours so the `a` renderer above receives the original href
+        // and can swap it for the chip span.
+        urlTransform={(url) =>
+          url.startsWith('dilla:mention/') ? url : defaultUrlTransform(url)
+        }
         // Headings feel wrong in a chat bubble — strip them but keep
         // their inner text so `# foo` just renders as `foo` instead of
         // a giant 2rem line.
