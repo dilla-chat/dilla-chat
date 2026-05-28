@@ -36,6 +36,12 @@ const EMPTY_LIST: never[] = [];
 // Debounced save helper for autosaved text fields. The handler clears any
 // in-flight timer and schedules a new one — keeps API traffic to one POST
 // per ~700ms of idle, matching typical settings UX.
+function giphyHint(configured: boolean | null | undefined): string {
+  if (configured == null) return 'Loading…';
+  if (configured) return 'A key is on file. Paste a new one to replace it, or clear it below.';
+  return 'No key yet — admins can paste one from developers.giphy.com.';
+}
+
 function useDebouncedSave<T>(action: (value: T) => void, delay = 700) {
   const ref = useRefS<ReturnType<typeof setTimeout> | null>(null);
   return (value: T) => {
@@ -2412,13 +2418,7 @@ export function TeamIntegrations() {
     >
       <Row
         label="API key"
-        hint={
-          configured == null
-            ? 'Loading…'
-            : configured
-            ? 'A key is on file. Paste a new one to replace it, or clear it below.'
-            : 'No key yet — admins can paste one from developers.giphy.com.'
-        }
+        hint={giphyHint(configured)}
       >
         <input
           className="set-input mono"
