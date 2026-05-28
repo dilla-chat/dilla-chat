@@ -293,6 +293,61 @@ pub async fn list_members(
     json_ok(members)
 }
 
+/// Validate every requested role belongs to this team, then OR their
+/// permission bitmasks together. PERM_ADMIN collapses to ~0 (full).
+/// Extracted from update_member so its cognitive complexity stays
+/// below the rule threshold.
+fn collect_team_role_bits(
+    conn: &rusqlite::Connection,
+    role_ids: &[String],
+    team_id: &str,
+) -> Result<i64, rusqlite::Error> {
+    let mut assigned_bits: i64 = 0;
+    for rid in role_ids {
+        let role = db::get_role_by_id(conn, rid)?
+            .ok_or_else(|| rusqlite::Error::InvalidParameterName(format!("role {rid} not found")))?;
+        if role.team_id != team_id {
+            return Err(rusqlite::Error::InvalidParameterName(
+                "role does not belong to this team".into(),
+            ));
+        }
+        assigned_bits |= role.permissions;
+        if role.permissions & db::PERM_ADMIN != 0 {
+            assigned_bits = !0;
+        }
+    }
+    Ok(assigned_bits)
+}
+
+/// Privilege-escalation guard: assigning a role that would grant the
+/// target a permission the actor doesn't hold is a no. Only newly-
+/// added bits are checked — losing bits is always fine.
+fn check_role_escalation(
+    conn: &rusqlite::Connection,
+    member_id: &str,
+    actor_user_id: &str,
+    team_id: &str,
+    assigned_bits: i64,
+) -> Result<(), rusqlite::Error> {
+    let prev = db::get_member_roles(conn, member_id)?;
+    let mut prev_bits: i64 = 0;
+    for r in &prev {
+        prev_bits |= r.permissions;
+        if r.permissions & db::PERM_ADMIN != 0 {
+            prev_bits = !0;
+            break;
+        }
+    }
+    let added = assigned_bits & !prev_bits;
+    if added != 0 {
+        let my_bits = db::user_permissions_bits(conn, actor_user_id, team_id)?;
+        if added & !my_bits != 0 {
+            return Err(rusqlite::Error::InvalidParameterName("escalation".into()));
+        }
+    }
+    Ok(())
+}
+
 pub async fn update_member(
     Extension(UserId(user_id)): Extension<UserId>,
     State(state): State<AppState>,
@@ -326,44 +381,8 @@ pub async fn update_member(
         db::update_member(conn, &member)?;
 
         if let Some(ref role_ids) = body.role_ids {
-            // Validate every role belongs to this team before touching the
-            // member_roles table, so a partial failure can't half-apply.
-            // OR the role bitmasks while we have them so the privilege
-            // check below doesn't repeat the DB read.
-            let mut assigned_bits: i64 = 0;
-            for rid in role_ids {
-                let role = db::get_role_by_id(conn, rid)?
-                    .ok_or_else(|| rusqlite::Error::InvalidParameterName(format!("role {rid} not found")))?;
-                if role.team_id != team_id {
-                    return Err(rusqlite::Error::InvalidParameterName(
-                        "role does not belong to this team".into(),
-                    ));
-                }
-                assigned_bits |= role.permissions;
-                if role.permissions & db::PERM_ADMIN != 0 {
-                    assigned_bits = !0;
-                }
-            }
-            // Privilege-escalation guard: assigning a role that would
-            // grant the target a permission the actor doesn't hold is
-            // a no. Only newly-added bits are checked — losing bits is
-            // always fine. Compare against the union of the target's
-            // CURRENT bits and what they'd hold after.
-            let prev = db::get_member_roles(conn, &member.id)?;
-            let mut prev_bits: i64 = 0;
-            for r in &prev {
-                prev_bits |= r.permissions;
-                if r.permissions & db::PERM_ADMIN != 0 { prev_bits = !0; break; }
-            }
-            let added = assigned_bits & !prev_bits;
-            if added != 0 {
-                let my_bits = db::user_permissions_bits(conn, &user_id, &team_id)?;
-                if added & !my_bits != 0 {
-                    return Err(rusqlite::Error::InvalidParameterName(
-                        "escalation".into(),
-                    ));
-                }
-            }
+            let assigned_bits = collect_team_role_bits(conn, role_ids, &team_id)?;
+            check_role_escalation(conn, &member.id, &user_id, &team_id, assigned_bits)?;
 
             // Replace the full assignment set: drop existing, then re-add.
             let existing = db::get_member_roles(conn, &member.id)?;
