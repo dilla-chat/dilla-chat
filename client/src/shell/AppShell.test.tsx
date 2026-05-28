@@ -23,9 +23,17 @@ vi.mock('./Chrome', () => ({
     </div>
   ),
   BottomBar: () => <div data-testid="bot-bar" />,
-  CommandPalette: ({ open, commands }: { open: boolean; commands: Array<{ cmd: string }> }) =>
-    open ? <div data-testid="cmd-palette" data-count={commands.length} /> : null,
-  SearchPalette: ({ open }: { open: boolean }) => (open ? <div data-testid="search-palette" /> : null),
+  CommandPalette: ({ open, commands, onClose, onPickChannel }: {
+    open: boolean; commands: Array<{ cmd: string }>; onClose: () => void; onPickChannel: (id: string) => void;
+  }) =>
+    open ? (
+      <div data-testid="cmd-palette" data-count={commands.length}>
+        <button data-testid="cmd-close" onClick={onClose}>x</button>
+        <button data-testid="cmd-pick" onClick={() => onPickChannel('c-test')}>pick</button>
+      </div>
+    ) : null,
+  SearchPalette: ({ open, onClose }: { open: boolean; onClose: () => void }) =>
+    open ? <div data-testid="search-palette" onClick={onClose} /> : null,
 }));
 vi.mock('../components/ConfirmDialog/ConfirmDialog', () => ({ default: () => <div data-testid="confirm" /> }));
 vi.mock('./Extras', () => ({
@@ -193,6 +201,58 @@ describe('AppShell', () => {
     const { queryByTestId } = render(<AppShell ready />);
     fireEvent(window, new CustomEvent('dilla:add-peer'));
     expect(queryByTestId('add-peer')).toBeTruthy();
+  });
+
+  it('clicking the search button opens the search palette (covers L198)', () => {
+    seedTeam('A');
+    const { getByTestId, queryByTestId } = render(<AppShell ready />);
+    fireEvent.click(getByTestId('search-btn'));
+    expect(queryByTestId('search-palette')).toBeTruthy();
+  });
+
+  it('CommandPalette onClose closes the palette (covers L211)', () => {
+    seedTeam('A');
+    const { getByTestId, queryByTestId } = render(<AppShell ready />);
+    fireEvent.click(getByTestId('cmdk-btn'));
+    expect(queryByTestId('cmd-palette')).toBeTruthy();
+    fireEvent.click(getByTestId('cmd-close'));
+    expect(queryByTestId('cmd-palette')).toBeNull();
+  });
+
+  it('CommandPalette onPickChannel forwards to controllerRef (covers L212)', () => {
+    // Just confirm the inline arrow doesn't throw when there's no
+    // pickChannel impl on the controllerRef.
+    seedTeam('A', undefined, [{ id: 'c1', name: 'general', type: 'text' }]);
+    const { getByTestId } = render(<AppShell ready />);
+    fireEvent.click(getByTestId('cmdk-btn'));
+    fireEvent.click(getByTestId('cmd-pick'));
+  });
+
+  it('SearchPalette onClose closes the palette (covers L217)', () => {
+    seedTeam('A');
+    const { getByTestId, queryByTestId } = render(<AppShell ready />);
+    fireEvent(window, new CustomEvent('dilla:open-search', { detail: 'channels' }));
+    expect(queryByTestId('search-palette')).toBeTruthy();
+    fireEvent.click(getByTestId('search-palette'));
+    expect(queryByTestId('search-palette')).toBeNull();
+  });
+
+  it('IncomingCall onAccept clears the call overlay (covers L226-227)', () => {
+    seedTeam('A');
+    const { queryByTestId, getByTestId } = render(<AppShell ready />);
+    fireEvent(window, new CustomEvent('dilla:incoming-call', { detail: { from: 'ada', kind: 'voice' } }));
+    expect(queryByTestId('incoming-call')).toBeTruthy();
+    fireEvent.click(getByTestId('incoming-call'));
+    expect(queryByTestId('incoming-call')).toBeNull();
+  });
+
+  it('SafetyCompare onClose closes the compare modal (covers L231)', () => {
+    seedTeam('A');
+    const { queryByTestId, getByTestId } = render(<AppShell ready />);
+    fireEvent(window, new CustomEvent('dilla:verify-safety', { detail: 'peer-1' }));
+    expect(queryByTestId('safety')).toBeTruthy();
+    fireEvent.click(getByTestId('safety'));
+    expect(queryByTestId('safety')).toBeNull();
   });
 
   it('writes shellData onto window.SHELL_DATA for legacy readers', () => {
