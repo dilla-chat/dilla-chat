@@ -385,14 +385,14 @@ export function NewChannelModal({ onClose, onCreate }) {
         </header>
         <div className="modal-body">
           <div className="modal-row">
-            <label>Type</label>
+            <div style={{ fontWeight: 600 }}>Type</div>
             <div className="onb-seg">
               <button className={kind === 'text' ? 'on' : ''} onClick={() => setKind('text')}><Icon.Hash size={11} /> Text</button>
               <button className={kind === 'voice' ? 'on' : ''} onClick={() => setKind('voice')}><Icon.Speaker size={11} /> Voice</button>
             </div>
           </div>
           <div className="modal-row">
-            <label>Name</label>
+            <div style={{ fontWeight: 600 }}>Name</div>
             <div className="modal-input-pre">
               <span className="pre-glyph">{kind === 'voice' ? '🔊' : '#'}</span>
               <input value={name} autoFocus
@@ -597,7 +597,7 @@ export function GroupAccessModal({ group, onClose }: Readonly<{ group: { id: str
         </header>
         <div className="modal-body">
           <div className="modal-row">
-            <label>Roles that can see channels in this group</label>
+            <div style={{ fontWeight: 600 }}>Roles that can see channels in this group</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
               {ordered.map((r: any) => (
                 <label key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', cursor: 'pointer' }}>
@@ -870,24 +870,30 @@ export function NewServerModal({ onClose, onCreate }) {
           {mode === 'create' ? (
             <>
               <div className="modal-row">
-                <label>Team name</label>
-                <input value={name} autoFocus
+                <label>
+                  <span>Team name</span>
+                  <input value={name} autoFocus
                        onChange={e => setName(e.target.value)}
                        placeholder="Team name" />
+                </label>
                 <div className="modal-hint">A team is hosted on a node you run. You'll be the admin.</div>
               </div>
               <div className="modal-row">
-                <label>Server URL <span className="modal-opt">optional</span></label>
-                <input defaultValue="http://localhost:8080" />
+                <label>
+                  <span>Server URL <span className="modal-opt">optional</span></span>
+                  <input defaultValue="http://localhost:8080" />
+                </label>
                 <div className="modal-hint">Where your <code>dilla-server</code> binary is running.</div>
               </div>
             </>
           ) : (
             <>
               <div className="modal-row">
-                <label>Invite link or token</label>
-                <textarea rows={3} value={token} onChange={e => setToken(e.target.value)}
+                <label>
+                  <span>Invite link or token</span>
+                  <textarea rows={3} value={token} onChange={e => setToken(e.target.value)}
                           placeholder="dilla.gbg/invite/4F7A · or paste a full URL"></textarea>
+                </label>
                 <div className="modal-hint">Single-use or capped invites. The server validates this before binding your identity.</div>
               </div>
             </>

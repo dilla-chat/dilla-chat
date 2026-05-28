@@ -855,7 +855,8 @@ export function ConnectStep({
             />
           </div>
           <div className="onb-field">
-            <label>Recovery key</label>
+            <label>
+              <span>Recovery key</span>
             <textarea
               value={recoveryKeyInput}
               onChange={(e) => setRecoveryKeyInput(e.target.value)}
@@ -873,6 +874,7 @@ export function ConnectStep({
                 resize: 'vertical',
               }}
             />
+            </label>
             <div className="onb-hint">
               The 32-byte recovery key you saved when you first enrolled.
             </div>
@@ -969,7 +971,8 @@ export function IdentityStep({
       </p>
 
       <div className="onb-field">
-        <label>Username</label>
+        <label>
+          <span>Username</span>
         <input
           type="text"
           value={username}
@@ -979,24 +982,27 @@ export function IdentityStep({
           placeholder="username"
           autoFocus
         />
+        </label>
         <div className="onb-hint">Lowercase letters, numbers, _, -. Visible to your team.</div>
       </div>
 
       {mode === 'bootstrap' && (
         <div className="onb-field">
-          <label>Team name</label>
+          <label>
+            <span>Team name</span>
           <input
             type="text"
             value={team === 'a new team' ? '' : team}
             onChange={(e) => setTeam(e.target.value)}
             placeholder="berralitos"
           />
+          </label>
           <div className="onb-hint">The display name your team appears under on this server.</div>
         </div>
       )}
 
       <div className="onb-field">
-        <label>Protect this device's private key with</label>
+        <div style={{ fontWeight: 600 }}>Protect this device's private key with</div>
         <div className="onb-seg onb-seg-protect">
           <button
             className={keyProtect === 'passphrase' ? 'on' : ''}
