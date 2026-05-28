@@ -4529,7 +4529,7 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
             const renderKind: 'screen' | 'cam' | 'avatar' =
               focusKind ?? (showCam ? 'cam' : 'avatar');
             return (
-              <div key={p.id}
+              <article key={p.id}
                    className={'voice-card'
                      + (speaking ? ' speaking' : '')
                      + voiceCardKindClass(renderKind)
@@ -4641,7 +4641,7 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
                     <span className="v-volume-val">{vol(p.id)}</span>
                   </span>
                 )}
-              </div>
+              </article>
             );
           }
 
