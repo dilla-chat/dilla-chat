@@ -101,6 +101,25 @@ describe('prekeyVaultWorkerImpl', () => {
     await expect(savePrekeySecrets(b64([1]), [])).rejects.toThrow(/KEK not set/);
   });
 
+  it('decrypts from IDB when cache is cold but KEK matches (covers decrypt path)', async () => {
+    // KEK is deterministic from the input string, so initing twice
+    // with the same string yields the same key. This lets us exercise
+    // the cold-cache → IDB-load → AES-GCM decrypt → JSON.parse path.
+    await initSessionKey('persisted-kek');
+    await savePrekeySecrets(b64([10, 20, 30]), [b64([40, 50])]);
+    // Wipe just the in-memory cache (and KEK), then re-derive same KEK.
+    resetPrekeyVault();
+    await initSessionKey('persisted-kek');
+    const got = await getPrekeySecrets();
+    expect(got).not.toBeNull();
+    expect(Array.from(got!.signed_prekey_private)).toEqual([10, 20, 30]);
+    expect(got!.one_time_prekey_privates.length).toBe(1);
+    expect(Array.from(got!.one_time_prekey_privates[0])).toEqual([40, 50]);
+    // Second call comes from the cache filled by the decrypt path.
+    const cached = await getPrekeySecrets();
+    expect(Array.from(cached!.signed_prekey_private)).toEqual([10, 20, 30]);
+  });
+
   it('rotating the KEK invalidates the existing vault (load returns null)', async () => {
     await initSessionKey('kek-a');
     await savePrekeySecrets(b64([1, 2]), [b64([3, 4])]);
