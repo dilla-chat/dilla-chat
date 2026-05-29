@@ -4422,6 +4422,163 @@ function slashNotify(msg: string, kind = 'system'): void {
   globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: kind, author: 'system', text: msg, duration: 3200 } }));
 }
 
+type SlashCtx = {
+  text: string;
+  data: any;
+  channel: any;
+  activeChannel: string;
+  activeTeamId: string | null | undefined;
+  derivedKey: any;
+  setDmMessages: (updater: (prev: Record<string, any[]>) => Record<string, any[]>) => void;
+  setMessages: (updater: (prev: Record<string, any[]>) => Record<string, any[]>) => void;
+  setGiphyPicker: (p: { query: string; results: any[] }) => void;
+};
+
+type SlashResult = { kind: 'text' | 'action'; text: string } | null;
+
+function slashCodeBlock(text: string): SlashResult {
+  const lang = text.slice(5).trim();
+  return { kind: 'text', text: '```' + lang + '\n' + (lang ? '// type your code here\n' : 'type your code here\n') + '```' };
+}
+
+function slashShrug(text: string): SlashResult {
+  const rest = text.slice(6).trim();
+  return { kind: 'text', text: (rest ? rest + ' ' : '') + String.raw`¯\_(ツ)_/¯` };
+}
+
+function slashWhisper(ctx: SlashCtx): SlashResult {
+  const m = slashLookupMember(ctx.text.slice(3), ctx.data?.MEMBERS || []);
+  if (!m) { slashNotify('No member matches that name.'); return null; }
+  if (m.id === currentUserId()) { slashNotify('You cannot DM yourself.'); return null; }
+  globalThis.dispatchEvent(new CustomEvent('dilla:open-dm', { detail: m.id }));
+  return null;
+}
+
+function slashInvite(text: string): SlashResult {
+  const target = text.slice(8).trim();
+  globalThis.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'team', tab: 'invites' } }));
+  slashNotify(target ? `Open Invites to create a link for ${target}.` : 'Open Invites to create a link.');
+  return null;
+}
+
+function slashHelp(): SlashResult {
+  globalThis.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'user', tab: 'keys' } }));
+  return null;
+}
+
+function slashTopic(ctx: SlashCtx): SlashResult {
+  const topic = ctx.text.slice(6).trim();
+  if (!ctx.activeTeamId || !ctx.channel || ctx.channel.type === 'dm') {
+    slashNotify('Use /topic inside a team channel.');
+    return null;
+  }
+  api.updateChannel(ctx.activeTeamId, ctx.channel.id, { topic }).then(() =>
+    slashNotify('Updated topic for #' + ctx.channel.name + '.'),
+  ).catch((err: unknown) => {
+    console.warn('[slash] topic failed', err);
+    slashNotify('Topic update failed — manage-channels permission required.');
+  });
+  return null;
+}
+
+function slashLock(ctx: SlashCtx, locked: boolean): SlashResult {
+  if (!ctx.activeTeamId || !ctx.channel || ctx.channel.type === 'dm') {
+    slashNotify('Use /lock or /unlock inside a team channel.');
+    return null;
+  }
+  api.updateChannel(ctx.activeTeamId, ctx.channel.id, { locked }).then(() =>
+    slashNotify((locked ? 'Locked ' : 'Unlocked ') + '#' + ctx.channel.name + '.'),
+  ).catch((err: unknown) => {
+    console.warn('[slash] lock failed', err);
+    slashNotify('Lock failed — manage-channels permission required.');
+  });
+  return null;
+}
+
+function slashNick(ctx: SlashCtx): SlashResult {
+  const nick = ctx.text.slice(6).trim();
+  if (!ctx.activeTeamId) { slashNotify('Sign in first.'); return null; }
+  api.updateMember(ctx.activeTeamId, currentUserId(), { nickname: nick }).then(() =>
+    slashNotify(nick ? 'Nickname set to ' + nick + '.' : 'Nickname cleared.'),
+  ).catch((err: unknown) => {
+    console.warn('[slash] nick failed', err);
+    slashNotify('Nickname update failed.');
+  });
+  return null;
+}
+
+function slashPoll(ctx: SlashCtx): SlashResult {
+  const args = ctx.text.slice(6).split('|').map((s) => s.trim()).filter(Boolean);
+  if (args.length < 2) {
+    slashNotify('Poll needs at least one option — /poll <question> | <opt1> | <opt2>');
+    return null;
+  }
+  if (!ctx.activeTeamId) { slashNotify('Sign in first.'); return null; }
+  const question = args[0];
+  const opts = args.slice(1);
+  void (async () => {
+    try {
+      const created: any = await api.createPoll(ctx.activeTeamId!, ctx.activeChannel, { question, options: opts });
+      usePollStore.getState().upsert(normalizePoll(created));
+    } catch (err) {
+      console.warn('[slash] poll create failed', err);
+      slashNotify('Poll create failed.');
+    }
+  })();
+  return null;
+}
+
+async function runGiphySearch(ctx: SlashCtx, q: string): Promise<void> {
+  try {
+    const res = await api.searchGif(ctx.activeTeamId!, q, 3);
+    const results = res.results?.length > 0
+      ? res.results
+      : [{ url: res.url, preview: res.url }];
+    ctx.setGiphyPicker({ query: q, results });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('503') || msg.toLowerCase().includes('not configured')) {
+      slashNotify('Gif search is disabled — an admin can add a Giphy API key in Team Settings → Integrations.');
+      return;
+    }
+    if (msg.includes('404') || msg.toLowerCase().includes('no gif')) {
+      slashNotify(`No gif matches "${q}".`);
+      return;
+    }
+    console.warn('[slash] giphy failed', err);
+    await slashSendRawText('https://giphy.com/search/' + encodeURIComponent(q), ctx);
+  }
+}
+
+function slashGiphy(ctx: SlashCtx): SlashResult {
+  const q = ctx.text.slice(7).trim();
+  if (!q) { slashNotify('Usage: /giphy <search>'); return null; }
+  if (!ctx.activeTeamId) { slashNotify('Sign in first.'); return null; }
+  void runGiphySearch(ctx, q);
+  return null;
+}
+
+function dispatchSlashCommand(ctx: SlashCtx): SlashResult {
+  const text = ctx.text;
+  if (text.startsWith('/me ')) return { kind: 'action', text: text.slice(4) };
+  if (text === '/me') return { kind: 'text', text };
+  if (text.startsWith('/shrug')) return slashShrug(text);
+  if (text.startsWith('/poll ')) return slashPoll(ctx);
+  if (text.startsWith('/giphy ')) return slashGiphy(ctx);
+  if (text.startsWith('/code')) return slashCodeBlock(text);
+  if (text === '/help' || text.startsWith('/help ')) return slashHelp();
+  if (text.startsWith('/w ')) return slashWhisper(ctx);
+  if (text.startsWith('/invite ')) return slashInvite(text);
+  if (text.startsWith('/topic')) return slashTopic(ctx);
+  if (text === '/lock' || text === '/unlock') return slashLock(ctx, text === '/lock');
+  if (text.startsWith('/nick ')) return slashNick(ctx);
+  if (text.startsWith('/')) {
+    slashNotify('Unknown command: ' + text.split(' ')[0] + ' — try /help.');
+    return null;
+  }
+  return { kind: 'text', text };
+}
+
 async function slashSendRawText(
   body: string,
   ctx: {
@@ -6010,147 +6167,18 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   }, [channel, activeChannel, activeTeamId, derivedKey]);
 
   function processSlash(text) {
-    // Side-effect commands. Return null to signal "handled — don't send a
-    // message". Use dilla:notify for status feedback so the caller doesn't
-    // get a silent failure.
-    const notify = (msg, kind = 'system') => slashNotify(msg, kind);
-    const lookupMember = (query) => slashLookupMember(query, data?.MEMBERS || []);
-    // Post a real text message to the current channel/DM. Used by
-    // slash commands that need to dispatch the message asynchronously
-    // (e.g. /giphy waits for a fetch round-trip first). Mirrors the
-    // send() body but without going through processSlash again.
-    const sendRawText = (body: string) =>
-      slashSendRawText(body, { channel, activeChannel, activeTeamId, derivedKey, setDmMessages, setMessages });
-    function setLocked(locked: boolean) {
-      if (!activeTeamId || !channel || channel.type === 'dm') {
-        notify('Use /lock or /unlock inside a team channel.');
-        return;
-      }
-      api.updateChannel(activeTeamId, channel.id, { locked }).then(() =>
-        notify((locked ? 'Locked ' : 'Unlocked ') + '#' + channel.name + '.'),
-      ).catch((err: unknown) => {
-        console.warn('[slash] lock failed', err);
-        notify('Lock failed — manage-channels permission required.');
-      });
-    }
-
-    if (text.startsWith('/me ')) return { kind: 'action', text: text.slice(4) };
-    if (text === '/me') return { kind: 'text', text };
-    if (text.startsWith('/shrug')) {
-      const rest = text.slice(6).trim();
-      return { kind: 'text', text: (rest ? rest + ' ' : '') + String.raw`¯\_(ツ)_/¯` };
-    }
-    if (text.startsWith('/poll ')) {
-      const args = text.slice(6).split('|').map(s => s.trim()).filter(Boolean);
-      if (args.length < 2) {
-        notify('Poll needs at least one option — /poll <question> | <opt1> | <opt2>');
-        return null;
-      }
-      const question = args[0];
-      const opts = args.slice(1);
-      if (!activeTeamId) { notify('Sign in first.'); return null; }
-      // Server-backed: createPoll persists the poll + broadcasts poll:new
-      // to every client in the channel; the WS listener below merges it
-      // into the timeline as a kind:'poll' message.
-      (async () => {
-        try {
-          const created: any = await api.createPoll(activeTeamId, activeChannel, { question, options: opts });
-          // Seed the local store immediately — the WS broadcast is the
-          // canonical source for everyone else, but seeding for the sender
-          // avoids any visible round-trip lag.
-          usePollStore.getState().upsert(normalizePoll(created));
-        } catch (err) {
-          console.warn('[slash] poll create failed', err);
-          notify('Poll create failed.');
-        }
-      })();
-      return null;
-    }
-    if (text.startsWith('/giphy ')) {
-      const q = text.slice(7).trim();
-      if (!q) { notify('Usage: /giphy <search>'); return null; }
-      if (!activeTeamId) { notify('Sign in first.'); return null; }
-      // Three candidates rather than one — open a picker so the user
-      // chooses before posting. The server's gif endpoint returns a
-      // `results` array when limit > 1; the picker calls sendRawText
-      // on the chosen tile. Failure modes match the previous handler:
-      //   503 → operator hasn't configured a key
-      //   404 → no match for that query
-      //   anything else → search link fallback
-      (async () => {
-        try {
-          const res = await api.searchGif(activeTeamId, q, 3);
-          const results = res.results?.length > 0
-            ? res.results
-            : [{ url: res.url, preview: res.url }];
-          setGiphyPicker({ query: q, results });
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          if (msg.includes('503') || msg.toLowerCase().includes('not configured')) {
-            notify('Gif search is disabled — an admin can add a Giphy API key in Team Settings → Integrations.');
-          } else if (msg.includes('404') || msg.toLowerCase().includes('no gif')) {
-            notify(`No gif matches "${q}".`);
-          } else {
-            console.warn('[slash] giphy failed', err);
-            await sendRawText('https://giphy.com/search/' + encodeURIComponent(q));
-          }
-        }
-      })();
-      return null;
-    }
-    if (text.startsWith('/code')) {
-      const lang = text.slice(5).trim();
-      return { kind: 'text', text: '```' + lang + '\n' + (lang ? '// type your code here\n' : 'type your code here\n') + '```' };
-    }
-
-    if (text === '/help' || text.startsWith('/help ')) {
-      globalThis.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'user', tab: 'keys' } }));
-      return null;
-    }
-    if (text.startsWith('/w ')) {
-      const m = lookupMember(text.slice(3));
-      if (!m) { notify('No member matches that name.'); return null; }
-      if (m.id === currentUserId()) { notify('You cannot DM yourself.'); return null; }
-      globalThis.dispatchEvent(new CustomEvent('dilla:open-dm', { detail: m.id }));
-      return null;
-    }
-    if (text.startsWith('/invite ')) {
-      const target = text.slice(8).trim();
-      globalThis.dispatchEvent(new CustomEvent('dilla:open-settings', { detail: { mode: 'team', tab: 'invites' } }));
-      notify(target ? `Open Invites to create a link for ${target}.` : 'Open Invites to create a link.');
-      return null;
-    }
-    if (text.startsWith('/topic')) {
-      const topic = text.slice(6).trim();
-      if (!activeTeamId || !channel || channel.type === 'dm') {
-        notify('Use /topic inside a team channel.');
-        return null;
-      }
-      api.updateChannel(activeTeamId, channel.id, { topic }).then(() =>
-        notify('Updated topic for #' + channel.name + '.'),
-      ).catch((err: unknown) => {
-        console.warn('[slash] topic failed', err);
-        notify('Topic update failed — manage-channels permission required.');
-      });
-      return null;
-    }
-    if (text === '/lock' || text === '/unlock') { setLocked(text === '/lock'); return null; }
-    if (text.startsWith('/nick ')) {
-      const nick = text.slice(6).trim();
-      if (!activeTeamId) { notify('Sign in first.'); return null; }
-      api.updateMember(activeTeamId, currentUserId(), { nickname: nick }).then(() =>
-        notify(nick ? 'Nickname set to ' + nick + '.' : 'Nickname cleared.'),
-      ).catch((err: unknown) => {
-        console.warn('[slash] nick failed', err);
-        notify('Nickname update failed.');
-      });
-      return null;
-    }
-    if (text.startsWith('/')) {
-      notify('Unknown command: ' + text.split(' ')[0] + ' — try /help.');
-      return null;
-    }
-    return { kind: 'text', text };
+    const slashCtx: SlashCtx = {
+      text,
+      data,
+      channel,
+      activeChannel,
+      activeTeamId,
+      derivedKey,
+      setDmMessages,
+      setMessages,
+      setGiphyPicker,
+    };
+    return dispatchSlashCommand(slashCtx);
   }
 
   // Outbound typing indicator. Channel typing uses ws.startTyping, DMs use
