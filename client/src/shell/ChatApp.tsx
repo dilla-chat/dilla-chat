@@ -2569,21 +2569,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
       </div>
 
       <div className="composer-wrap">
-        {showJump && (
-          // Floats just above the composer at the right edge. Positioning
-          // is call-site concern; the .btn modifiers handle the visual.
-          <button
-            className="btn btn--primary btn--pill btn--mono"
-            onClick={scrollToBottom}
-            title="Jump to latest"
-            style={{ position: 'absolute', bottom: '100%', right: '1rem', marginBottom: '0.375rem' }}
-          >
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-              <path d="M8 2v10M3 8l5 5 5-5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            scroll to latest
-          </button>
-        )}
+        {showJump && <ScrollToLatestButton onClick={scrollToBottom} />}
         {replyTo && (
           <ReplyChip
             replyTo={replyTo}
@@ -4522,6 +4508,24 @@ function MessageHead({
         </button>
       )}
     </div>
+  );
+}
+
+function ScrollToLatestButton({ onClick }: Readonly<{ onClick: () => void }>): JSX.Element {
+  // Floats just above the composer at the right edge. Positioning is the
+  // call-site concern; the .btn modifiers handle the visual.
+  return (
+    <button
+      className="btn btn--primary btn--pill btn--mono"
+      onClick={onClick}
+      title="Jump to latest"
+      style={{ position: 'absolute', bottom: '100%', right: '1rem', marginBottom: '0.375rem' }}
+    >
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+        <path d="M8 2v10M3 8l5 5 5-5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+      scroll to latest
+    </button>
   );
 }
 
