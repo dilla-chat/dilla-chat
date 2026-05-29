@@ -6504,7 +6504,15 @@ function ChatAppModals({
   );
 }
 
-function attachGlobalShellListeners(ctx: {
+function attachGlobalShellListeners(ctx: ShellListenerCtx): () => void {
+  const handlers = buildShellEventHandlers(ctx);
+  for (const [name, fn] of handlers) globalThis.addEventListener(name, fn);
+  return () => {
+    for (const [name, fn] of handlers) globalThis.removeEventListener(name, fn);
+  };
+}
+
+type ShellListenerCtx = {
   channel: any;
   activeChannel: string;
   activeDM: string | null;
@@ -6528,66 +6536,34 @@ function attachGlobalShellListeners(ctx: {
   setChanAccess: (v: any) => void;
   setGroupAccess: (v: any) => void;
   setGroupSettings: (v: any) => void;
-}): () => void {
-  const {
-    channel, activeChannel, activeDM, activeTeamId, voiceConnection, data,
-    setActiveChannel, setActiveView, setActiveDM, setTab, setMute, setDeaf,
-    setDrafts, setMenuPop, setNewServerOpen, setNewChanOpen, setProfilePop,
-    setActiveThread, setDrawerOpen, setChanSettings, setChanAccess,
-    setGroupAccess, setGroupSettings,
-  } = ctx;
+};
 
-  const onAddSrv  = () => setNewServerOpen(true);
-  const onAddCh   = () => setNewChanOpen(true);
-  const onProfile = (e: Event) => setProfilePop((e as CustomEvent).detail);
-  const onThread  = (e: Event) => setActiveThread((e as CustomEvent).detail);
-  const onDrawer  = () => setDrawerOpen((v) => !v);
-  const onInsertMention = (e: Event) => insertMentionIntoDraft((e as CustomEvent).detail, channel?.id || activeChannel, setDrafts);
-  const onChannelSettings = (e: Event) => { const ch = lookupChannelById((e as CustomEvent).detail); if (ch) setChanSettings(ch); };
-  const onChannelAccess   = (e: Event) => { const ch = lookupChannelById((e as CustomEvent).detail); if (ch) setChanAccess(ch); };
-  const onGroupAccess     = (e: Event) => {
+function buildShellEventHandlers(ctx: ShellListenerCtx): Array<[string, EventListener]> {
+  const onGroupAccess: EventListener = (e) => {
     const g = lookupGroupById((e as CustomEvent).detail);
-    if (g) setGroupAccess({ id: g.id, name: g.name, accessRoleIds: g.accessRoleIds, hiddenIfRestricted: g.hiddenIfRestricted });
+    if (g) ctx.setGroupAccess({ id: g.id, name: g.name, accessRoleIds: g.accessRoleIds, hiddenIfRestricted: g.hiddenIfRestricted });
   };
-  const onGroupSettings = (e: Event) => { const g = lookupGroupById((e as CustomEvent).detail); if (g) setGroupSettings({ id: g.id, name: g.name }); };
-  const onCloseDm = (e: Event) => closeDmFromEvent((e as CustomEvent).detail, { data, activeDM, activeChannel, setActiveDM, setActiveView });
-  const onOpenDm  = (e: Event) => { void openDmForMember((e as CustomEvent).detail, { data, activeTeamId, setActiveDM, setActiveView, setTab }); };
-  const onPickChannel = (e: Event) => handlePickChannelEvent((e as CustomEvent).detail, data, setActiveChannel, setActiveView, setTab);
-  const onMenu = (e: Event) => setMenuPop((e as CustomEvent).detail);
-  const onKey  = (e: Event) => handleShellGlobalKey(e as KeyboardEvent, { voiceConnection, setActiveChannel, setActiveView, setTab, setMute, setDeaf });
-
-  globalThis.addEventListener('dilla:open-profile', onProfile);
-  globalThis.addEventListener('dilla:open-thread', onThread);
-  globalThis.addEventListener('dilla:toggle-drawer', onDrawer);
-  globalThis.addEventListener('dilla:pickchannel', onPickChannel);
-  globalThis.addEventListener('dilla:open-add-server', onAddSrv);
-  globalThis.addEventListener('dilla:open-new-channel', onAddCh);
-  globalThis.addEventListener('dilla:open-menu', onMenu);
-  globalThis.addEventListener('dilla:open-dm', onOpenDm);
-  globalThis.addEventListener('dilla:close-dm', onCloseDm);
-  globalThis.addEventListener('dilla:insert-mention', onInsertMention);
-  globalThis.addEventListener('dilla:open-channel-settings', onChannelSettings);
-  globalThis.addEventListener('dilla:open-channel-access', onChannelAccess);
-  globalThis.addEventListener('dilla:open-group-access', onGroupAccess);
-  globalThis.addEventListener('dilla:open-group-settings', onGroupSettings);
-  globalThis.addEventListener('keydown', onKey);
-  return () => {
-    globalThis.removeEventListener('dilla:open-profile', onProfile);
-    globalThis.removeEventListener('dilla:open-thread', onThread);
-    globalThis.removeEventListener('dilla:toggle-drawer', onDrawer);
-    globalThis.removeEventListener('dilla:pickchannel', onPickChannel);
-    globalThis.removeEventListener('dilla:open-add-server', onAddSrv);
-    globalThis.removeEventListener('dilla:open-new-channel', onAddCh);
-    globalThis.removeEventListener('dilla:open-dm', onOpenDm);
-    globalThis.removeEventListener('dilla:close-dm', onCloseDm);
-    globalThis.removeEventListener('dilla:insert-mention', onInsertMention);
-    globalThis.removeEventListener('dilla:open-channel-settings', onChannelSettings);
-    globalThis.removeEventListener('dilla:open-channel-access', onChannelAccess);
-    globalThis.removeEventListener('dilla:open-group-access', onGroupAccess);
-    globalThis.removeEventListener('dilla:open-group-settings', onGroupSettings);
-    globalThis.removeEventListener('dilla:open-menu', onMenu);
-    globalThis.removeEventListener('keydown', onKey);
+  const onGroupSettings: EventListener = (e) => {
+    const g = lookupGroupById((e as CustomEvent).detail);
+    if (g) ctx.setGroupSettings({ id: g.id, name: g.name });
   };
+  return [
+    ['dilla:open-profile', (e) => ctx.setProfilePop((e as CustomEvent).detail)],
+    ['dilla:open-thread', (e) => ctx.setActiveThread((e as CustomEvent).detail)],
+    ['dilla:toggle-drawer', () => ctx.setDrawerOpen((v) => !v)],
+    ['dilla:pickchannel', (e) => handlePickChannelEvent((e as CustomEvent).detail, ctx.data, ctx.setActiveChannel, ctx.setActiveView, ctx.setTab)],
+    ['dilla:open-add-server', () => ctx.setNewServerOpen(true)],
+    ['dilla:open-new-channel', () => ctx.setNewChanOpen(true)],
+    ['dilla:open-menu', (e) => ctx.setMenuPop((e as CustomEvent).detail)],
+    ['dilla:open-dm', (e) => { void openDmForMember((e as CustomEvent).detail, { data: ctx.data, activeTeamId: ctx.activeTeamId, setActiveDM: ctx.setActiveDM, setActiveView: ctx.setActiveView, setTab: ctx.setTab }); }],
+    ['dilla:close-dm', (e) => closeDmFromEvent((e as CustomEvent).detail, { data: ctx.data, activeDM: ctx.activeDM, activeChannel: ctx.activeChannel, setActiveDM: ctx.setActiveDM, setActiveView: ctx.setActiveView })],
+    ['dilla:insert-mention', (e) => insertMentionIntoDraft((e as CustomEvent).detail, ctx.channel?.id || ctx.activeChannel, ctx.setDrafts)],
+    ['dilla:open-channel-settings', (e) => { const ch = lookupChannelById((e as CustomEvent).detail); if (ch) ctx.setChanSettings(ch); }],
+    ['dilla:open-channel-access', (e) => { const ch = lookupChannelById((e as CustomEvent).detail); if (ch) ctx.setChanAccess(ch); }],
+    ['dilla:open-group-access', onGroupAccess],
+    ['dilla:open-group-settings', onGroupSettings],
+    ['keydown', (e) => handleShellGlobalKey(e as KeyboardEvent, { voiceConnection: ctx.voiceConnection, setActiveChannel: ctx.setActiveChannel, setActiveView: ctx.setActiveView, setTab: ctx.setTab, setMute: ctx.setMute, setDeaf: ctx.setDeaf })],
+  ];
 }
 
 function updateChannelDraft(
