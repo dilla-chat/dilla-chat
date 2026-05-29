@@ -5839,6 +5839,49 @@ function runDeleteMessage(args: {
 
 const SHELL_KBD_CHANNEL_ORDER = ['general', 'design', 'dev', 'mesh', 'random'];
 
+async function stageAttachment(
+  file: File,
+  channel: { id: string; name: string },
+  activeTeamId: string | null | undefined,
+  setPendingAttachments: (updater: (prev: Record<string, any[]>) => Record<string, any[]>) => void,
+): Promise<void> {
+  // Upload immediately so we have the server attachment id by the time the
+  // user hits Send, but stage on the composer instead of firing a message.
+  if (!activeTeamId || isMockSession()) return;
+  const isImage = file.type?.startsWith('image/');
+  const previewUrl = isImage ? URL.createObjectURL(file) : undefined;
+  try {
+    const att = await api.uploadFile(activeTeamId, file);
+    setPendingAttachments((prev) => ({
+      ...prev,
+      [channel.id]: [
+        ...(prev[channel.id] || []),
+        {
+          id: att.id,
+          name: file.name,
+          size: file.size,
+          type: file.type || 'application/octet-stream',
+          previewUrl,
+        },
+      ],
+    }));
+  } catch (err) {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    console.warn('[ChatApp] attachment upload failed', err);
+    globalThis.dispatchEvent(new CustomEvent('dilla:notify', {
+      detail: { channel: channel.name, author: 'system', text: 'Upload failed — ' + (err as Error).message, duration: 4000 },
+    }));
+  }
+}
+
+function resolveSlowModeLock(
+  lock: { strikes: number; until: number } | undefined,
+): { secondsLeft: number } | null {
+  if (!lock || lock.strikes < 3) return null;
+  const secondsLeft = Math.max(0, Math.ceil((lock.until - Date.now()) / 1000));
+  return secondsLeft > 0 ? { secondsLeft } : null;
+}
+
 function handleShellGlobalKey(
   e: KeyboardEvent,
   ctx: {
@@ -6692,12 +6735,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
           dmPartner={dmPartner}
           draft={drafts[channel.id] || ''}
           setDraft={v => { setDrafts(prev => ({ ...prev, [channel.id]: v })); notifyTyping(); }}
-          slowModeLock={(() => {
-            const l = slowLocks[channel.id];
-            if (!l || l.strikes < 3) return null;
-            const secondsLeft = Math.max(0, Math.ceil((l.until - Date.now()) / 1000));
-            return secondsLeft > 0 ? { secondsLeft } : null;
-          })()}
+          slowModeLock={resolveSlowModeLock(slowLocks[channel.id])}
           onSend={send}
           replyTo={replyTo[channel.id]}
           onSetReply={(id) => setReplyTo(prev => ({ ...prev, [channel.id]: id }))}
@@ -6705,35 +6743,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
           onVote={(msgId, optIdx) => voteOnPoll(channel.id, msgId, optIdx)}
           onEdit={(msgId, text) => editMessage(channel.id, msgId, text)}
           onDelete={(msgId) => deleteMessage(channel.id, msgId)}
-          onAttach={async (file) => {
-            // Upload immediately so we have the server attachment id by
-            // the time the user hits Send, but stage it on the composer
-            // instead of firing a message. Each pending file gets a
-            // chip above the input field with an × to drop it.
-            if (!activeTeamId || isMockSession()) return;
-            const isImage = file.type?.startsWith('image/');
-            const previewUrl = isImage ? URL.createObjectURL(file) : undefined;
-            try {
-              const att = await api.uploadFile(activeTeamId, file);
-              setPendingAttachments((prev) => ({
-                ...prev,
-                [channel.id]: [
-                  ...(prev[channel.id] || []),
-                  {
-                    id: att.id,
-                    name: file.name,
-                    size: file.size,
-                    type: file.type || 'application/octet-stream',
-                    previewUrl,
-                  },
-                ],
-              }));
-            } catch (err) {
-              if (previewUrl) URL.revokeObjectURL(previewUrl);
-              console.warn('[ChatApp] attachment upload failed', err);
-              globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: channel.name, author: 'system', text: 'Upload failed — ' + (err as Error).message, duration: 4000 } }));
-            }
-          }}
+          onAttach={(file) => stageAttachment(file, channel, activeTeamId, setPendingAttachments)}
           pendingAttachments={pendingAttachments[channel.id] ?? EMPTY_LIST}
           onRemoveAttachment={removeStagedAttachment}
           typing={channel.type === 'dm' ? (dmTyping[channel.id] || []) : typing}
