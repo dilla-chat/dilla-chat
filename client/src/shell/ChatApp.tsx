@@ -2377,36 +2377,10 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
     : [];
 
   function applyMention(name) {
-    const ta = textareaRef.current;
-    if (!ta) return;
-    const pos = ta.selectionStart;
-    const before = draft.slice(0, pos);
-    const after = draft.slice(pos);
-    const newBefore = before.replace(/@\w*$/, '@' + name + ' ');
-    const next = newBefore + after;
-    setDraft(next);
-    setMention(null);
-    setMentionIdx(0);
-    setTimeout(() => {
-      if (textareaRef.current) {
-        textareaRef.current.focus();
-        const newPos = newBefore.length;
-        textareaRef.current.setSelectionRange(newPos, newPos);
-      }
-    }, 0);
+    applyMentionToDraft(name, draft, textareaRef, setDraft, setMention, setMentionIdx);
   }
   function applySlash(cmd) {
-    const next = cmd.cmd + (cmd.args ? ' ' : '');
-    setDraft(next);
-    setSlash(null);
-    setSlashIdx(0);
-    setTimeout(() => {
-      if (textareaRef.current) {
-        textareaRef.current.focus();
-        const newPos = next.length;
-        textareaRef.current.setSelectionRange(newPos, newPos);
-      }
-    }, 0);
+    applySlashCommand(cmd, draft, textareaRef, setDraft, setSlash, setSlashIdx);
   }
 
   // Hidden file input + ref so the paperclip button can open the OS picker.
@@ -3451,6 +3425,24 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
       })()}
     </main>
   );
+}
+
+function buildVoiceCardClassName(args: {
+  speaking: boolean;
+  renderKind: VoiceCardKind;
+  isMini: boolean;
+  focused: { id: string } | null;
+  pid: string;
+  focusable: boolean;
+}): string {
+  const { speaking, renderKind, isMini, focused, pid, focusable } = args;
+  let cls = 'voice-card-wrap voice-card';
+  if (speaking) cls += ' speaking';
+  cls += voiceCardKindClass(renderKind);
+  if (isMini) cls += ' mini';
+  if (isMini && focused && pid === focused.id) cls += ' is-focused';
+  if (focusable && !isMini) cls += ' focusable';
+  return cls;
 }
 
 function voiceCardKindClass(kind: VoiceCardKind): string {
@@ -4850,6 +4842,54 @@ function updateVolumeFor(
   setVolumes((v) => ({ ...v, [id]: Number.parseInt(rawValue, 10) }));
 }
 
+function focusTextareaAtEnd(
+  textareaRef: { current: HTMLTextAreaElement | null },
+  pos: number,
+): void {
+  setTimeout(() => {
+    if (textareaRef.current) {
+      textareaRef.current.focus();
+      textareaRef.current.setSelectionRange(pos, pos);
+    }
+  }, 0);
+}
+
+function applyMentionToDraft(
+  name: string,
+  draft: string,
+  textareaRef: { current: HTMLTextAreaElement | null },
+  setDraft: (next: string) => void,
+  setMention: (m: any) => void,
+  setMentionIdx: (i: number) => void,
+): void {
+  const ta = textareaRef.current;
+  if (!ta) return;
+  const pos = ta.selectionStart;
+  const before = draft.slice(0, pos);
+  const after = draft.slice(pos);
+  const newBefore = before.replace(/@\w*$/, '@' + name + ' ');
+  setDraft(newBefore + after);
+  setMention(null);
+  setMentionIdx(0);
+  focusTextareaAtEnd(textareaRef, newBefore.length);
+}
+
+function applySlashCommand(
+  cmd: { cmd: string; args?: string },
+  draft: string,
+  textareaRef: { current: HTMLTextAreaElement | null },
+  setDraft: (next: string) => void,
+  setSlash: (s: any) => void,
+  setSlashIdx: (i: number) => void,
+): void {
+  void draft;
+  const next = cmd.cmd + (cmd.args ? ' ' : '');
+  setDraft(next);
+  setSlash(null);
+  setSlashIdx(0);
+  focusTextareaAtEnd(textareaRef, next.length);
+}
+
 const SLASH_COMMANDS = [
   { cmd: '/me',      args: '<action>',  desc: 'narrate an action in italics' },
   { cmd: '/code',    args: '<language>', desc: 'start a code block' },
@@ -5261,12 +5301,7 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
               focusKind ?? (showCam ? 'cam' : 'avatar');
             return (
               <div key={p.id}
-                   className={'voice-card-wrap voice-card'
-                     + (speaking ? ' speaking' : '')
-                     + voiceCardKindClass(renderKind)
-                     + (isMini ? ' mini' : '')
-                     + (isMini && effectiveFocused && p.id === effectiveFocused.id ? ' is-focused' : '')
-                     + (focusable && !isMini ? ' focusable' : '')}
+                   className={buildVoiceCardClassName({ speaking, renderKind, isMini, focused: effectiveFocused, pid: p.id, focusable })}
                    data-node={node}
                    data-latency={peerLatencies[p.id] ?? '--'}>
                 <button
@@ -5534,6 +5569,76 @@ function toggleLocalMedia(
     console.warn(`[Voice] ${kind} toggle failed`, err);
     setRaw(!target);
   });
+}
+
+function handlePickChannel(
+  id: string,
+  data: any,
+  setActiveChannel: (id: string) => void,
+  setActiveView: (v: { kind: 'channel' | 'dm'; id: string }) => void,
+): void {
+  setActiveChannel(id);
+  setActiveView({ kind: 'channel', id });
+  // Mirror local activeChannel into useTeamStore so the global message:new
+  // listener can suppress the unread bump for the channel you're viewing.
+  useTeamStore.getState().setActiveChannel(id);
+  useDMStore.getState().setActiveDM(null);
+  useUnreadStore.getState().markRead(id);
+  const teamId = useTeamStore.getState().activeTeamId;
+  if (teamId && !isMockSession()) {
+    markLatestRead(teamId, id, data?.MESSAGES?.[id]);
+  }
+}
+
+function handlePickDM(
+  id: string,
+  data: any,
+  setActiveDM: (id: string) => void,
+  setActiveView: (v: { kind: 'channel' | 'dm'; id: string }) => void,
+): void {
+  setActiveDM(id);
+  setActiveView({ kind: 'dm', id });
+  useDMStore.getState().setActiveDM(id);
+  useUnreadStore.getState().markRead(id);
+  const teamId = useTeamStore.getState().activeTeamId;
+  if (teamId && !isMockSession()) {
+    markLatestRead(teamId, id, data?.DM_MESSAGES?.[id]);
+  }
+}
+
+function handleSidebarTabSwitch(
+  next: string,
+  ctx: {
+    setTab: (t: string) => void;
+    setActiveDM: (id: string) => void;
+    setActiveView: (v: { kind: 'channel' | 'dm'; id: string }) => void;
+    setActiveChannel: (id: string) => void;
+    activeDM: string | null;
+    activeChannel: string;
+    dms: Array<{ id: string }>;
+    channelsForServer: Array<{ id: string; type: string }>;
+  },
+): void {
+  const { setTab, setActiveDM, setActiveView, setActiveChannel,
+    activeDM, activeChannel, dms, channelsForServer } = ctx;
+  setTab(next);
+  if (next === 'pms') {
+    const target = activeDM ?? dms[0]?.id ?? null;
+    if (target) {
+      setActiveDM(target);
+      setActiveView({ kind: 'dm', id: target });
+    }
+    return;
+  }
+  if (next === 'kanals') {
+    const target = activeChannel || (channelsForServer.find((c) => c.type === 'text')?.id ?? null);
+    if (target) {
+      setActiveChannel(target);
+      setActiveView({ kind: 'channel', id: target });
+      useTeamStore.getState().setActiveChannel(target);
+      useDMStore.getState().setActiveDM(null);
+    }
+  }
 }
 
 function syncActiveViewToStores(activeView: { kind: string; id: string }, data: any): void {
@@ -6305,68 +6410,17 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
       <ChannelSidebar
         team={team}
         tab={tab}
-        onTab={(next) => {
-          setTab(next);
-          // When switching tabs, refocus the main view to match the
-          // sidebar context — otherwise you'd see Kanals selected while
-          // the chat pane still shows a DM (or vice versa). Falls back
-          // to the first item in the target list if nothing was last
-          // active.
-          if (next === 'pms') {
-            const target = activeDM ?? data.DMS[0]?.id ?? null;
-            if (target) {
-              setActiveDM(target);
-              setActiveView({ kind: 'dm', id: target });
-            }
-          } else if (next === 'kanals') {
-            const target = activeChannel || (channelsForServer.find((c) => c.type === 'text')?.id ?? null);
-            if (target) {
-              setActiveChannel(target);
-              setActiveView({ kind: 'channel', id: target });
-              useTeamStore.getState().setActiveChannel(target);
-              useDMStore.getState().setActiveDM(null);
-            }
-          }
-        }}
+        onTab={(next) => handleSidebarTabSwitch(next, {
+          setTab, setActiveDM, setActiveView, setActiveChannel,
+          activeDM, activeChannel, dms: data.DMS, channelsForServer,
+        })}
         channels={channelsForServer}
         activeChannel={activeChannel}
-        onPickChannel={(id) => {
-          setActiveChannel(id);
-          setActiveView({ kind: 'channel', id });
-          // Mirror local activeChannel into useTeamStore so the global
-          // message:new listener can suppress the unread bump for the
-          // channel you're actually viewing (otherwise every echoed
-          // message increments the pill).
-          useTeamStore.getState().setActiveChannel(id);
-          // useDMStore.activeDMId mirrors ChatApp's local activeDM so that
-          // the global useDMEvents listener can tell whether a DM is open
-          // and skip the unread bump for messages arriving on it.
-          useDMStore.getState().setActiveDM(null);
-          // Clear the unread pill locally and tell the server about the new
-          // read watermark so a reload reconciles to the same state.
-          useUnreadStore.getState().markRead(id);
-          const teamId = useTeamStore.getState().activeTeamId;
-          if (teamId && !isMockSession()) {
-            const msgs = data?.MESSAGES?.[id] ?? [];
-            const lastId = msgs.length > 0 ? msgs[msgs.length - 1].id : '';
-            if (lastId) { try { ws.markChannelRead(teamId, id, lastId); } catch { /* ignore */ } }
-          }
-        }}
+        onPickChannel={(id) => handlePickChannel(id, data, setActiveChannel, setActiveView)}
         members={data}
         dms={data.DMS}
         activeDM={activeView.kind === 'dm' ? activeView.id : null}
-        onPickDM={(id) => {
-          setActiveDM(id);
-          setActiveView({ kind: 'dm', id });
-          useDMStore.getState().setActiveDM(id);
-          useUnreadStore.getState().markRead(id);
-          const teamId = useTeamStore.getState().activeTeamId;
-          if (teamId && !isMockSession()) {
-            const msgs = data?.DM_MESSAGES?.[id] ?? [];
-            const lastId = msgs.length > 0 ? msgs[msgs.length - 1].id : '';
-            if (lastId) { try { ws.markChannelRead(teamId, id, lastId); } catch { /* ignore */ } }
-          }
-        }}
+        onPickDM={(id) => handlePickDM(id, data, setActiveDM, setActiveView)}
         voiceConnection={voiceConnection}
         onLeaveVoice={() => voice.leave()}
         onJoinVoice={(channelId) => {
