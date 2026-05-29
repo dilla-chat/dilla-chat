@@ -2647,19 +2647,13 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
             </div>
             <div className="composer-tools">
               <button ref={emojiBtnRef} className="icon-btn comp-btn" title="Add an emoji"
-                      onClick={() => {
-                        const anchor = emojiBtnRef.current ? emojiBtnRef.current.getBoundingClientRect() : null;
-                        setPicker(p => p.open && p.target === 'draft' ? { ...p, open: false } : { open: true, anchor, target: 'draft' });
-                      }}>
+                      onClick={() => toggleDraftEmojiPicker(emojiBtnRef, setPicker)}>
                 <Icon.Emoji size={15} />
               </button>
             </div>
             <button
               className="btn btn--primary btn--icon"
-              disabled={
-                (!draft.trim() && (pendingAttachments?.length ?? 0) === 0) ||
-                !!slowModeLock
-              }
+              disabled={isSendDisabled(draft, pendingAttachments, slowModeLock)}
               onClick={onSend}
               title={slowModeLock ? `Slow mode — ${slowModeLock.secondsLeft}s remaining` : 'Send (↵)'}
             >
@@ -5458,6 +5452,27 @@ function handleComposerKey(
   if (e.key === 'ArrowUp' && !ctx.mention && !ctx.slash && !ctx.draft) {
     loadLastOwnMessageForEdit(e, ctx.messages, ctx.setEditingId, ctx.setEditDraft);
   }
+}
+
+function toggleDraftEmojiPicker(
+  emojiBtnRef: { current: HTMLButtonElement | null },
+  setPicker: (updater: (p: { open: boolean; anchor: any; target: string }) => { open: boolean; anchor: any; target: string }) => void,
+): void {
+  const anchor = emojiBtnRef.current ? emojiBtnRef.current.getBoundingClientRect() : null;
+  setPicker((p) =>
+    p.open && p.target === 'draft'
+      ? { ...p, open: false }
+      : { open: true, anchor, target: 'draft' },
+  );
+}
+
+function isSendDisabled(
+  draft: string,
+  pendingAttachments: any[] | undefined,
+  slowModeLock: { secondsLeft: number } | null | undefined,
+): boolean {
+  if (slowModeLock) return true;
+  return !draft.trim() && (pendingAttachments?.length ?? 0) === 0;
 }
 
 function composerPlaceholder(
