@@ -2612,16 +2612,12 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
           const author = members.byId[g.author] || { name: g.author, color: '#666', initials: '??' };
           if (g.base.kind === 'system') {
             return (
-              <React.Fragment key={`sys-${g.base.id ?? i}`}>
-                {showDay && <div className="day-divider">{dayLabel(g.at)}</div>}
-                <div className="msg system">
-                  <div></div>
-                  <div>
-                    <div className="body">— {g.base.text}</div>
-                    {g.base.meta && <div className="meta">{g.base.meta}</div>}
-                  </div>
-                </div>
-              </React.Fragment>
+              <SystemMessageRow
+                key={`sys-${g.base.id ?? i}`}
+                base={g.base}
+                showDay={showDay}
+                dayText={dayLabel(g.at)}
+              />
             );
           }
           return (
@@ -2662,26 +2658,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                                 style={{ background: 'transparent', border: 'none', padding: 0, font: 'inherit', color: 'inherit', cursor: 'pointer' }}
                                 onClick={(e) => openProfileFromTarget(e.currentTarget, author.id || g.author, 'below')}>{author.name}</button>
                           <span className="at">{timeShort(m.at)}</span>
-                          {m.author === currentUserId() && (() => {
-                            // Render a real tooltip on the ack glyph. We
-                            // don't have per-user read receipts yet, but
-                            // we DO know the message reached the server
-                            // (echoed back with a server-assigned id —
-                            // optimistic locals are prefixed 'new-'). Show
-                            // "Sending…" for optimistic, "Delivered" once
-                            // the echo lands, with the server timestamp.
-                            const isLocal = typeof m.id === 'string' && m.id.startsWith('new-');
-                            const deliveryTime = m.at instanceof Date ? m.at.toLocaleString() : '';
-                            const tip = isLocal ? 'Sending…' : `Delivered · ${deliveryTime}`;
-                            return (
-                              <span className="msg-seen" title={tip}>
-                                <svg width="14" height="10" viewBox="0 0 14 10" fill="none">
-                                  <title>{tip}</title>
-                                  <path d="M1 5l3 3 6-6M5 5l3 3 5-7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-                                </svg>
-                              </span>
-                            );
-                          })()}
+                          {m.author === currentUserId() && <MessageSeenGlyph m={m} />}
                           {author.role === 'admin' && <span className="enc-badge" style={{ fontSize: 9, padding: '1px 5px' }}>admin</span>}
                           {isPinned && (
                             <button
@@ -4675,6 +4652,47 @@ function SavedPop({
         </div>
       )}
     </div>
+  );
+}
+
+function SystemMessageRow({
+  base,
+  showDay,
+  dayText,
+}: Readonly<{
+  base: { text: string; meta?: string };
+  showDay: boolean;
+  dayText: string;
+}>): JSX.Element {
+  return (
+    <React.Fragment>
+      {showDay && <div className="day-divider">{dayText}</div>}
+      <div className="msg system">
+        <div></div>
+        <div>
+          <div className="body">— {base.text}</div>
+          {base.meta && <div className="meta">{base.meta}</div>}
+        </div>
+      </div>
+    </React.Fragment>
+  );
+}
+
+function MessageSeenGlyph({ m }: Readonly<{ m: { id: string; at: Date | string } }>): JSX.Element {
+  // We don't have per-user read receipts yet, but we DO know the message
+  // reached the server (echoed back with a server-assigned id — optimistic
+  // locals are prefixed 'new-'). Show "Sending…" for optimistic, "Delivered"
+  // once the echo lands with the server timestamp.
+  const isLocal = typeof m.id === 'string' && m.id.startsWith('new-');
+  const deliveryTime = m.at instanceof Date ? m.at.toLocaleString() : '';
+  const tip = isLocal ? 'Sending…' : `Delivered · ${deliveryTime}`;
+  return (
+    <span className="msg-seen" title={tip}>
+      <svg width="14" height="10" viewBox="0 0 14 10" fill="none">
+        <title>{tip}</title>
+        <path d="M1 5l3 3 6-6M5 5l3 3 5-7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    </span>
   );
 }
 
