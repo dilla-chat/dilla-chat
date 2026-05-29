@@ -133,6 +133,14 @@ async function runRecoveryFlow(args: {
   await activateTeamAndNavigate(teamId, navigate);
 }
 
+function pushKeyLine(
+  setKeyLines: (updater: (prev: { line: string; err: boolean }[]) => { line: string; err: boolean }[]) => void,
+  line: string,
+  err: boolean,
+): void {
+  setKeyLines((prev) => [...prev, { line, err }]);
+}
+
 function onbLogPrefix(l: { line: string; err?: boolean }): string {
   if (l.line.startsWith('$')) return '';
   return l.err ? '✗' : '›';
@@ -397,8 +405,7 @@ export default function Onboarding() {
 
     (async () => {
       const url = normalizeServerUrl(server);
-      const push = (line: string, err = false) =>
-        setKeyLines((prev) => [...prev, { line, err }]);
+      const push = (line: string, err = false) => pushKeyLine(setKeyLines, line, err);
       try {
         push('$ dilla identity create');
         push('generating ed25519 keypair…');
