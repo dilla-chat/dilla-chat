@@ -2919,36 +2919,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                               </span>
                             )}
                             {m.kind === 'poll' && (
-                              <div className="msg-poll">
-                                <div className="poll-q">{m.question}</div>
-                                {(() => {
-                                  const total = m.options.reduce((s, o) => s + (o.votes || 0), 0) || 1;
-                                  // Seed each poll's color sequence from a
-                                  // hash of its id so colors stay stable
-                                  // across reloads and matching options.
-                                  const seed = [...String(m.id || '')].reduce((a, c) => (a * 31 + (c.codePointAt(0) ?? 0)) % 360, 0);
-                                  return m.options.map((o, oi) => {
-                                    const hue = (seed + Math.round((360 / m.options.length) * oi)) % 360;
-                                    const dot = `hsl(${hue} 65% 55%)`;
-                                    const bar = `hsl(${hue} 60% 50% / 0.5)`;
-                                    return (
-                                      <button
-                                           type="button"
-                                           key={`poll-${m.id}-${oi}-${o.label}`}
-                                           className={'poll-opt' + (o.mine ? ' mine' : '')}
-                                           onClick={() => onVote?.(m.id, oi)}>
-                                        <div className="poll-bar" style={{ width: ((o.votes || 0) / total * 100) + '%', background: bar }} />
-                                        <span className="poll-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: dot, flex: '0 0 auto' }} />
-                                          {o.label}
-                                        </span>
-                                        <span className="poll-count">{o.votes || 0}</span>
-                                      </button>
-                                    );
-                                  });
-                                })()}
-                                <div className="poll-foot">click to vote · {m.options.reduce((s, o) => s + (o.votes || 0), 0)} votes</div>
-                              </div>
+                              <PollMessage m={m} onVote={onVote} />
                             )}
                             {m.kind === 'text' && detectUnfurls(m.text).map((u, ui) => (
                               <Unfurl key={`unfurl-${m.id}-${ui}-${u.url}`} url={u.url} host={u.host} />
@@ -4202,6 +4173,65 @@ function applyToggleReaction(m: any, emoji: string): any {
     rxns.push({ e: emoji, n: 1, mine: true });
   }
   return { ...m, reactions: rxns };
+}
+
+function PollMessage({
+  m,
+  onVote,
+}: {
+  m: { id: string; question: string; options: Array<{ label: string; votes?: number; mine?: boolean }> };
+  onVote?: (id: string, oi: number) => void;
+}): JSX.Element {
+  const total = m.options.reduce((s, o) => s + (o.votes || 0), 0) || 1;
+  // Seed each poll's color sequence from a hash of its id so colors stay
+  // stable across reloads and matching options.
+  const seed = [...String(m.id || '')].reduce((a, c) => (a * 31 + (c.codePointAt(0) ?? 0)) % 360, 0);
+  return (
+    <div className="msg-poll">
+      <div className="poll-q">{m.question}</div>
+      {m.options.map((o, oi) => {
+        const hue = (seed + Math.round((360 / m.options.length) * oi)) % 360;
+        return (
+          <PollOption
+            key={`poll-${m.id}-${oi}-${o.label}`}
+            option={o}
+            total={total}
+            hue={hue}
+            onClick={() => onVote?.(m.id, oi)}
+          />
+        );
+      })}
+      <div className="poll-foot">click to vote · {m.options.reduce((s, o) => s + (o.votes || 0), 0)} votes</div>
+    </div>
+  );
+}
+
+function PollOption({
+  option,
+  total,
+  hue,
+  onClick,
+}: {
+  option: { label: string; votes?: number; mine?: boolean };
+  total: number;
+  hue: number;
+  onClick: () => void;
+}): JSX.Element {
+  const dot = `hsl(${hue} 65% 55%)`;
+  const bar = `hsl(${hue} 60% 50% / 0.5)`;
+  return (
+    <button
+      type="button"
+      className={'poll-opt' + (option.mine ? ' mine' : '')}
+      onClick={onClick}>
+      <div className="poll-bar" style={{ width: ((option.votes || 0) / total * 100) + '%', background: bar }} />
+      <span className="poll-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ width: 8, height: 8, borderRadius: '50%', background: dot, flex: '0 0 auto' }} />
+        {option.label}
+      </span>
+      <span className="poll-count">{option.votes || 0}</span>
+    </button>
+  );
 }
 
 function MessageAttachments({
