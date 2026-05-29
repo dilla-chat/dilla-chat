@@ -2380,7 +2380,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
     applyMentionToDraft(name, draft, textareaRef, setDraft, setMention, setMentionIdx);
   }
   function applySlash(cmd) {
-    applySlashCommand(cmd, draft, textareaRef, setDraft, setSlash, setSlashIdx);
+    applySlashCommand(cmd, textareaRef, setDraft, setSlash, setSlashIdx);
   }
 
   // Hidden file input + ref so the paperclip button can open the OS picker.
@@ -2591,54 +2591,14 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                       onClick={() => setThreadsOpen(o => !o)}>
                 <Icon.Thread size={14} />
               </button>
-              {threadsOpen && (() => {
-                const threads = messages.filter(m => m.thread);
-                return (
-                  <div className="pin-pop">
-                    <div className="pin-head">
-                      <span>Threads in #{channel.name}</span>
-                      <button className="pin-x" onClick={() => setThreadsOpen(false)}>×</button>
-                    </div>
-                    {threads.length === 0 ? (
-                      <div className="pin-empty">no active threads yet · click the thread icon on any message to start one</div>
-                    ) : (
-                      <div className="pin-list">
-                        {threads.map(tm => {
-                          const a = members.byId[tm.author] || { name: tm.author, color: '#666', initials: '??' };
-                          return (
-                            <button type="button" key={tm.id} className="pin-row"
-                                 onClick={() => {
-                                   setThreadsOpen(false);
-                                   globalThis.dispatchEvent(new CustomEvent('dilla:open-thread', { detail: { channelId: channel.id, messageId: tm.id } }));
-                                 }}>
-                              <div className="pin-av" style={{ background: a.color }}>{a.initials}</div>
-                              <div>
-                                <div className="pin-meta">
-                                  <span className="pin-author">{a.name}</span>
-                                  <span className="pin-time">· {timeShort(tm.at)}</span>
-                                </div>
-                                <div className="pin-text">{tm.text}</div>
-                                <div className="th-foot">
-                                  <span className="th-count">↪ {tm.thread.count} replies</span>
-                                  <span className="th-sep">·</span>
-                                  <span className="th-last">last {timeShort(tm.thread.lastReplyAt)}</span>
-                                  <div className="th-avs">
-                                    {(tm.thread.participants || []).map(pid => {
-                                      const p = members.byId[pid];
-                                      if (!p) return null;
-                                      return <div key={pid} className="rr-av" style={{ background: p.color, marginLeft: -4 }}>{p.initials}</div>;
-                                    })}
-                                  </div>
-                                </div>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
+              {threadsOpen && (
+                <ThreadsPop
+                  channel={channel}
+                  messages={messages}
+                  members={members}
+                  onClose={() => setThreadsOpen(false)}
+                />
+              )}
             </div>
           )}
           {channel.type !== 'dm' && (
@@ -3440,7 +3400,7 @@ function buildVoiceCardClassName(args: {
   if (speaking) cls += ' speaking';
   cls += voiceCardKindClass(renderKind);
   if (isMini) cls += ' mini';
-  if (isMini && focused && pid === focused.id) cls += ' is-focused';
+  if (isMini && pid === focused?.id) cls += ' is-focused';
   if (focusable && !isMini) cls += ' focusable';
   return cls;
 }
@@ -4627,6 +4587,85 @@ function applyToggleReaction(m: any, emoji: string): any {
   return { ...m, reactions: rxns };
 }
 
+function ThreadsPop({
+  channel,
+  messages,
+  members,
+  onClose,
+}: Readonly<{
+  channel: { id: string; name: string };
+  messages: any[];
+  members: { byId: Record<string, any> };
+  onClose: () => void;
+}>): JSX.Element {
+  const threads = messages.filter((m) => m.thread);
+  return (
+    <div className="pin-pop">
+      <div className="pin-head">
+        <span>Threads in #{channel.name}</span>
+        <button className="pin-x" onClick={onClose}>×</button>
+      </div>
+      {threads.length === 0 ? (
+        <div className="pin-empty">no active threads yet · click the thread icon on any message to start one</div>
+      ) : (
+        <div className="pin-list">
+          {threads.map((tm) => (
+            <ThreadRow
+              key={tm.id}
+              tm={tm}
+              members={members}
+              channelId={channel.id}
+              onClose={onClose}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ThreadRow({
+  tm,
+  members,
+  channelId,
+  onClose,
+}: Readonly<{
+  tm: any;
+  members: { byId: Record<string, any> };
+  channelId: string;
+  onClose: () => void;
+}>): JSX.Element {
+  const a = members.byId[tm.author] || { name: tm.author, color: '#666', initials: '??' };
+  const onClick = () => {
+    onClose();
+    globalThis.dispatchEvent(new CustomEvent('dilla:open-thread', { detail: { channelId, messageId: tm.id } }));
+  };
+  return (
+    <button type="button" className="pin-row" onClick={onClick}>
+      <div className="pin-av" style={{ background: a.color }}>{a.initials}</div>
+      <div>
+        <div className="pin-meta">
+          <span className="pin-author">{a.name}</span>
+          <span className="pin-time">· {timeShort(tm.at)}</span>
+        </div>
+        <div className="pin-text">{tm.text}</div>
+        <div className="th-foot">
+          <span className="th-count">↪ {tm.thread.count} replies</span>
+          <span className="th-sep">·</span>
+          <span className="th-last">last {timeShort(tm.thread.lastReplyAt)}</span>
+          <div className="th-avs">
+            {(tm.thread.participants || []).map((pid: string) => {
+              const p = members.byId[pid];
+              if (!p) return null;
+              return <div key={pid} className="rr-av" style={{ background: p.color, marginLeft: -4 }}>{p.initials}</div>;
+            })}
+          </div>
+        </div>
+      </div>
+    </button>
+  );
+}
+
 function MessageReactions({
   m,
   onReact,
@@ -4876,13 +4915,11 @@ function applyMentionToDraft(
 
 function applySlashCommand(
   cmd: { cmd: string; args?: string },
-  draft: string,
   textareaRef: { current: HTMLTextAreaElement | null },
   setDraft: (next: string) => void,
   setSlash: (s: any) => void,
   setSlashIdx: (i: number) => void,
 ): void {
-  void draft;
   const next = cmd.cmd + (cmd.args ? ' ' : '');
   setDraft(next);
   setSlash(null);
