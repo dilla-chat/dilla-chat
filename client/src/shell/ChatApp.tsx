@@ -1960,6 +1960,16 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
                       const speaking = !muted && (isSelf ? selfSpeaking : !!peer?.speaking);
                       return (
                         <article key={pid} className={'voice-participant' + (speaking ? ' speaking' : '') + (muted ? ' muted' : '')}
+                             role="button"
+                             tabIndex={0}
+                             onKeyDown={(e) => {
+                               if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+                                 e.preventDefault();
+                                 globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', {
+                                   detail: { x: 0, y: 0, items: buildVoiceParticipantMenu(m, pid, c.id, muted, perms.has(PERM_MUTE_VOICE), sidebarTeamId) },
+                                 }));
+                               }
+                             }}
                              onContextMenu={(e) => {
                                e.preventDefault();
                                globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', {
@@ -2840,6 +2850,9 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                   <article key={m.id}
                        className={'msg' + (isFirst ? '' : ' compact') + (hasMention ? ' has-mention' : '') + (m.replyTo ? ' has-reply' : '') + (isPinned ? ' is-pinned' : '')}
                        data-msg-id={m.id}
+                       role="button"
+                       tabIndex={0}
+                       onKeyDown={(e) => { if (e.shiftKey && e.key === 'F10') { e.preventDefault(); setContextMenu({ x: 0, y: 0, msgId: m.id, isMine: m.author === currentUserId() }); } }}
                        onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, msgId: m.id, isMine: m.author === currentUserId() }); }}>
                     {m.replyTo && (() => {
                       const orig = messages.find(om => om.id === m.replyTo);
@@ -4665,6 +4678,8 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
                      + (focusable && !isMini ? ' focusable' : '')}
                    data-node={node}
                    data-latency={peerLatencies[p.id] ?? '--'}
+                   role="button"
+                   tabIndex={0}
                    onContextMenu={(e) => {
                      e.preventDefault();
                      const items = buildVoiceCardMenu({
@@ -4695,6 +4710,12 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
                      else if (canScreen) nextKind = 'screen';
                      else if (canCam) nextKind = 'cam';
                      if (nextKind) setFocused({ id: p.id, kind: nextKind });
+                   }}
+                   onKeyDown={(e) => {
+                     if (e.key === 'Enter' || e.key === ' ') {
+                       e.preventDefault();
+                       e.currentTarget.click();
+                     }
                    }}>
                 <div className="voice-media">
                   {focusKind && focusKind === 'screen' && (
