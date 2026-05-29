@@ -2788,96 +2788,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
           }}
         />
       )}
-      {lightbox && (() => {
-        const total = lightbox.sources.length;
-        const current = lightbox.sources[lightbox.index];
-        const go = (delta: number) =>
-          setLightbox((cur) => cur ? { ...cur, index: (cur.index + delta + cur.sources.length) % cur.sources.length } : cur);
-        // Floating overlay chrome — translucent so the underlying
-        // image stays visible behind the buttons, sized to match
-        // the rest of the GUI's small-radius square buttons.
-        const lbBtn = {
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          width: '2.25rem', height: '2.25rem',
-          borderRadius: 'var(--r-sm)',
-          background: 'rgba(0,0,0,0.55)',
-          color: 'var(--accent)',
-          border: '1px solid rgba(255,255,255,0.18)',
-          cursor: 'pointer',
-          padding: 0,
-        } as const;
-        return (
-          <div
-            style={{
-              position: 'fixed', inset: 0, zIndex: 500,
-              background: 'rgba(0,0,0,0.85)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              padding: 32, cursor: 'zoom-out',
-              backdropFilter: 'blur(2px)',
-            }}
-          >
-            <button
-              type="button"
-              aria-label="Close lightbox"
-              onClick={() => setLightbox(null)}
-              style={{ position: 'absolute', inset: 0, background: 'transparent', border: 'none', cursor: 'zoom-out', padding: 0 }}
-            />
-            <img
-              src={current}
-              alt=""
-              style={{ maxWidth: '95vw', maxHeight: '95vh', objectFit: 'contain', borderRadius: 4, position: 'relative' }}
-            />
-            {total > 1 && (
-              <>
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); go(-1); }}
-                  title="Previous (←)"
-                  style={{ ...lbBtn, position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)' }}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M14.7 4.3a1 1 0 010 1.4L8.4 12l6.3 6.3a1 1 0 11-1.4 1.4l-7-7a1 1 0 010-1.4l7-7a1 1 0 011.4 0z" fill="currentColor" />
-                  </svg>
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); go(1); }}
-                  title="Next (→)"
-                  style={{ ...lbBtn, position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)' }}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M9.3 4.3a1 1 0 011.4 0l7 7a1 1 0 010 1.4l-7 7a1 1 0 11-1.4-1.4L15.6 12 9.3 5.7a1 1 0 010-1.4z" fill="currentColor" />
-                  </svg>
-                </button>
-                <div
-                  style={{
-                    position: 'absolute', bottom: '1rem', left: '50%',
-                    transform: 'translateX(-50%)',
-                    padding: '0.25rem 0.75rem',
-                    borderRadius: 'var(--r-sm)',
-                    background: 'rgba(0,0,0,0.55)',
-                    border: '1px solid rgba(255,255,255,0.18)',
-                    color: 'var(--fg)',
-                    fontSize: '0.75rem',
-                    fontFamily: 'var(--font-mono)',
-                  }}
-                >
-                  {lightbox.index + 1} / {total}
-                </div>
-              </>
-            )}
-            <a
-              href={current}
-              download
-              onClick={(e) => e.stopPropagation()}
-              title="Download image"
-              style={{ ...lbBtn, position: 'absolute', top: '1rem', right: '1rem', textDecoration: 'none' }}
-            >
-              <Icon.Download size={16} />
-            </a>
-          </div>
-        );
-      })()}
+      {lightbox && <FullscreenLightbox lightbox={lightbox} setLightbox={setLightbox} />}
     </main>
   );
 }
@@ -4688,6 +4599,104 @@ function MessageHead({
           <Icon.Pin size={11} />
         </button>
       )}
+    </div>
+  );
+}
+
+const LIGHTBOX_BTN_STYLE = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: '2.25rem',
+  height: '2.25rem',
+  borderRadius: 'var(--r-sm)',
+  background: 'rgba(0,0,0,0.55)',
+  color: 'var(--accent)',
+  border: '1px solid rgba(255,255,255,0.18)',
+  cursor: 'pointer',
+  padding: 0,
+} as const;
+
+function FullscreenLightbox({
+  lightbox,
+  setLightbox,
+}: Readonly<{
+  lightbox: { sources: string[]; index: number };
+  setLightbox: (updater: ((cur: any) => any) | null) => void;
+}>): JSX.Element {
+  const total = lightbox.sources.length;
+  const current = lightbox.sources[lightbox.index];
+  const go = (delta: number) =>
+    setLightbox((cur) => cur ? { ...cur, index: (cur.index + delta + cur.sources.length) % cur.sources.length } : cur);
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 500,
+        background: 'rgba(0,0,0,0.85)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 32, cursor: 'zoom-out',
+        backdropFilter: 'blur(2px)',
+      }}
+    >
+      <button
+        type="button"
+        aria-label="Close lightbox"
+        onClick={() => setLightbox(null)}
+        style={{ position: 'absolute', inset: 0, background: 'transparent', border: 'none', cursor: 'zoom-out', padding: 0 }}
+      />
+      <img
+        src={current}
+        alt=""
+        style={{ maxWidth: '95vw', maxHeight: '95vh', objectFit: 'contain', borderRadius: 4, position: 'relative' }}
+      />
+      {total > 1 && (
+        <>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); go(-1); }}
+            title="Previous (←)"
+            style={{ ...LIGHTBOX_BTN_STYLE, position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)' }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M14.7 4.3a1 1 0 010 1.4L8.4 12l6.3 6.3a1 1 0 11-1.4 1.4l-7-7a1 1 0 010-1.4l7-7a1 1 0 011.4 0z" fill="currentColor" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); go(1); }}
+            title="Next (→)"
+            style={{ ...LIGHTBOX_BTN_STYLE, position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)' }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M9.3 4.3a1 1 0 011.4 0l7 7a1 1 0 010 1.4l-7 7a1 1 0 11-1.4-1.4L15.6 12 9.3 5.7a1 1 0 010-1.4z" fill="currentColor" />
+            </svg>
+          </button>
+          <div
+            style={{
+              position: 'absolute', bottom: '1rem', left: '50%',
+              transform: 'translateX(-50%)',
+              padding: '0.25rem 0.75rem',
+              borderRadius: 'var(--r-sm)',
+              background: 'rgba(0,0,0,0.55)',
+              border: '1px solid rgba(255,255,255,0.18)',
+              color: 'var(--fg)',
+              fontSize: '0.75rem',
+              fontFamily: 'var(--font-mono)',
+            }}
+          >
+            {lightbox.index + 1} / {total}
+          </div>
+        </>
+      )}
+      <a
+        href={current}
+        download
+        onClick={(e) => e.stopPropagation()}
+        title="Download image"
+        style={{ ...LIGHTBOX_BTN_STYLE, position: 'absolute', top: '1rem', right: '1rem', textDecoration: 'none' }}
+      >
+        <Icon.Download size={16} />
+      </a>
     </div>
   );
 }
