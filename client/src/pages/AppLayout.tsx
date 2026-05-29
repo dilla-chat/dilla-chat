@@ -50,6 +50,30 @@ import { useUserSettingsStore } from '../stores/userSettingsStore';
 import { useMessageStore } from '../stores/messageStore';
 import './AppLayout.css';
 
+function matchMessagesInChannel(
+  q: string,
+  chId: string,
+  channelName: string,
+  msgs: Array<{ id: string; content: string; username: string; createdAt: string | number; deleted?: boolean }>,
+  hits: SearchHit[],
+  cap: number,
+): boolean {
+  for (const m of msgs) {
+    if (m.deleted) continue;
+    if (!m.content.toLowerCase().includes(q)) continue;
+    hits.push({
+      id: m.id,
+      channelId: chId,
+      channelName,
+      author: m.username,
+      timestamp: new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
+      body: m.content,
+    });
+    if (hits.length >= cap) return true;
+  }
+  return false;
+}
+
 function searchMessages(
   query: string,
   scope: string,
@@ -64,23 +88,7 @@ function searchMessages(
     if (filterChannelId && chId !== filterChannelId) continue;
     const channel = teamChannels.find((c) => c.id === chId);
     if (!channel) continue;
-    for (const m of msgs) {
-      if (m.deleted) continue;
-      if (!m.content.toLowerCase().includes(q)) continue;
-      hits.push({
-        id: m.id,
-        channelId: chId,
-        channelName: channel.name,
-        author: m.username,
-        timestamp: new Date(m.createdAt).toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false,
-        }),
-        body: m.content,
-      });
-      if (hits.length >= 60) return hits;
-    }
+    if (matchMessagesInChannel(q, chId, channel.name, msgs, hits, 60)) return hits;
   }
   return hits;
 }
