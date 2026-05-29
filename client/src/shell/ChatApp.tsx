@@ -3933,25 +3933,32 @@ function slashGiphy(ctx: SlashCtx): SlashResult {
   return null;
 }
 
+const SLASH_HANDLERS: Array<{
+  match: (text: string) => boolean;
+  run: (ctx: SlashCtx) => SlashResult;
+}> = [
+  { match: (t) => t.startsWith('/me '), run: ({ text }) => ({ kind: 'action', text: text.slice(4) }) },
+  { match: (t) => t === '/me', run: ({ text }) => ({ kind: 'text', text }) },
+  { match: (t) => t.startsWith('/shrug'), run: ({ text }) => slashShrug(text) },
+  { match: (t) => t.startsWith('/poll '), run: slashPoll },
+  { match: (t) => t.startsWith('/giphy '), run: slashGiphy },
+  { match: (t) => t.startsWith('/code'), run: ({ text }) => slashCodeBlock(text) },
+  { match: (t) => t === '/help' || t.startsWith('/help '), run: () => slashHelp() },
+  { match: (t) => t.startsWith('/w '), run: slashWhisper },
+  { match: (t) => t.startsWith('/invite '), run: ({ text }) => slashInvite(text) },
+  { match: (t) => t.startsWith('/topic'), run: slashTopic },
+  { match: (t) => t === '/lock' || t === '/unlock', run: (ctx) => slashLock(ctx, ctx.text === '/lock') },
+  { match: (t) => t.startsWith('/nick '), run: slashNick },
+];
+
 function dispatchSlashCommand(ctx: SlashCtx): SlashResult {
-  const text = ctx.text;
-  if (text.startsWith('/me ')) return { kind: 'action', text: text.slice(4) };
-  if (text === '/me') return { kind: 'text', text };
-  if (text.startsWith('/shrug')) return slashShrug(text);
-  if (text.startsWith('/poll ')) return slashPoll(ctx);
-  if (text.startsWith('/giphy ')) return slashGiphy(ctx);
-  if (text.startsWith('/code')) return slashCodeBlock(text);
-  if (text === '/help' || text.startsWith('/help ')) return slashHelp();
-  if (text.startsWith('/w ')) return slashWhisper(ctx);
-  if (text.startsWith('/invite ')) return slashInvite(text);
-  if (text.startsWith('/topic')) return slashTopic(ctx);
-  if (text === '/lock' || text === '/unlock') return slashLock(ctx, text === '/lock');
-  if (text.startsWith('/nick ')) return slashNick(ctx);
-  if (text.startsWith('/')) {
-    slashNotify('Unknown command: ' + text.split(' ')[0] + ' — try /help.');
+  const handler = SLASH_HANDLERS.find((h) => h.match(ctx.text));
+  if (handler) return handler.run(ctx);
+  if (ctx.text.startsWith('/')) {
+    slashNotify('Unknown command: ' + ctx.text.split(' ')[0] + ' — try /help.');
     return null;
   }
-  return { kind: 'text', text };
+  return { kind: 'text', text: ctx.text };
 }
 
 async function slashSendRawText(
