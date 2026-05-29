@@ -88,7 +88,7 @@ function searchMessages(
     if (filterChannelId && chId !== filterChannelId) continue;
     const channel = teamChannels.find((c) => c.id === chId);
     if (!channel) continue;
-    if (matchMessagesInChannel(q, chId, channel.name, msgs, hits, 60)) return hits;
+    if (matchMessagesInChannel(q, chId, channel.name, msgs, hits, 60)) break;
   }
   return hits;
 }

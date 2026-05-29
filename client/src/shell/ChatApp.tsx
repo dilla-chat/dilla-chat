@@ -3741,7 +3741,7 @@ function rollbackOptimistic(
   me: string,
   setDrafts: (updater: (d: Record<string, any>) => Record<string, any>) => void,
 ): Record<string, any[]> {
-  const list = (prev[channelId] || []) as any[];
+  const list = prev[channelId] || [];
   let removedText: string | null = null;
   const next = [...list];
   for (let i = next.length - 1; i >= 0; i--) {
@@ -4687,14 +4687,13 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
                      if (nextKind) setFocused({ id: p.id, kind: nextKind });
                    }}>
                 <div className="voice-media">
-                  {focusKind ? (
-                    // Focused stage: original single-tile render.
-                    focusKind === 'screen' ? (
-                      <ScreenTile member={p} pip={null} showStats />
-                    ) : (
-                      <CamTile member={p} showStats />
-                    )
-                  ) : (
+                  {focusKind && focusKind === 'screen' && (
+                    <ScreenTile member={p} pip={null} showStats />
+                  )}
+                  {focusKind && focusKind !== 'screen' && (
+                    <CamTile member={p} showStats />
+                  )}
+                  {!focusKind && (
                     // Grid card: one wrapper tile that hosts EITHER
                     // the avatar OR the cam / screen video. Same
                     // dimensions and same dot position — the only
@@ -6158,7 +6157,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
             {menuPop.items.map((it, i) => it.sep ? (
               <div key={`sep-${i}-${menuPop.items[i + 1]?.label ?? 'end'}`} className="ctx-sep" />
             ) : (
-              <button key={`item-${it.label}-${i}`} className={it.danger ? 'danger' : ''} disabled={!!it.disabled} onClick={() => { if (it.disabled) return; it.onClick?.(); setMenuPop(null); }}>
+              <button key={`item-${it.label}-${i}`} className={it.danger ? 'danger' : ''} disabled={!!it.disabled} onClick={() => { if (!it.disabled) { it.onClick?.(); setMenuPop(null); } }}>
                 {it.icon}
                 {it.label}
               </button>
