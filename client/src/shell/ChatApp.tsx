@@ -2709,74 +2709,22 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
         );
       })()}
       {contextMenu && (
-        <div className="ctx-overlay">
-          <button
-            type="button"
-            className="ctx-overlay-dismiss"
-            aria-label="Close context menu"
-            onClick={() => setContextMenu(null)}
-            onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }}
-          />
-          <div className="ctx-menu"
-               style={{ left: Math.min(contextMenu.x, globalThis.innerWidth - 220), top: Math.min(contextMenu.y, globalThis.innerHeight - 320) }}>
-            <button onClick={(e) => {
-              const anchor = e.currentTarget.getBoundingClientRect();
-              setPicker({ open: true, anchor, target: 'react:' + contextMenu.msgId });
-              setContextMenu(null);
-            }}>
-              <Icon.Emoji size={13} /> Add reaction
-            </button>
-            <button onClick={() => {
-              globalThis.dispatchEvent(new CustomEvent('dilla:open-thread', { detail: { channelId: channel.id, messageId: contextMenu.msgId } }));
-              setContextMenu(null);
-            }}>
-              <Icon.Thread size={13} /> Reply in thread
-            </button>
-            <button><Icon.Reply size={12} /> Quote reply</button>
-            <button onClick={() => { toggleSavedBookmark(contextMenu.msgId, savedMsgs, setSavedMsgs); setContextMenu(null); }}>
-              <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M4 2v12l4-3 4 3V2z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/></svg>
-              {savedMsgs.has(contextMenu.msgId) ? 'Remove bookmark' : 'Save message'}
-            </button>
-            <button onClick={() => { setForwardId(contextMenu.msgId); setContextMenu(null); }}>
-              <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 8h11l-3-3M13 8l-3 3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              Forward to…
-            </button>
-            {msgPerms.has(PERM_MANAGE_MESSAGES) && (
-              <>
-                <div className="ctx-sep" />
-                <button onClick={() => { togglePinForMessage(channel.id, contextMenu.msgId); setContextMenu(null); }}>
-                  <Icon.Pin size={13} />
-                  {usePinStore.getState().isPinned(channel.id, contextMenu.msgId) ? 'Unpin from channel' : 'Pin to channel'}
-                </button>
-              </>
-            )}
-            <button onClick={() => { markUnreadFromMessage(contextMenu.msgId, channel.id, messages, data, setUnreadAt); setContextMenu(null); }}>
-              <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M3 4h10M3 12h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>
-              Mark unread from here
-            </button>
-            <button onClick={() => { copyMessageLink(data, channel, contextMenu.msgId); setContextMenu(null); }}>
-              <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6 10l4-4M6 6l4 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/></svg>
-              Copy link to message
-            </button>
-            {contextMenu.isMine && <div className="ctx-sep" />}
-            {contextMenu.isMine && (
-              <button onClick={() => {
-                const msg = messages.find(m => m.id === contextMenu.msgId);
-                if (msg) { setEditingId(msg.id); setEditDraft(msg.text || ''); }
-                setContextMenu(null);
-              }}>
-                <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M11.5 1.5l3 3L5 14H2v-3z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" /></svg>
-                Edit message
-              </button>
-            )}
-            {contextMenu.isMine && (
-              <button className="danger" onClick={() => { setDeleteConfirm(contextMenu.msgId); setContextMenu(null); }}>
-                <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 4h10M5 4V2.5h6V4M6 7v5M10 7v5M4 4l1 10h6l1-10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                Delete message
-              </button>
-            )}
-          </div>
-        </div>
+        <MessageContextMenu
+          contextMenu={contextMenu}
+          channel={channel}
+          messages={messages}
+          data={data}
+          msgPerms={msgPerms}
+          savedMsgs={savedMsgs}
+          setSavedMsgs={setSavedMsgs}
+          setForwardId={setForwardId}
+          setUnreadAt={setUnreadAt}
+          setEditingId={setEditingId}
+          setEditDraft={setEditDraft}
+          setDeleteConfirm={setDeleteConfirm}
+          setPicker={setPicker}
+          setContextMenu={setContextMenu}
+        />
       )}
       {deleteTarget && (
         <DeleteMessageConfirm
@@ -4599,6 +4547,106 @@ function MessageHead({
           <Icon.Pin size={11} />
         </button>
       )}
+    </div>
+  );
+}
+
+function MessageContextMenu({
+  contextMenu,
+  channel,
+  messages,
+  data,
+  msgPerms,
+  savedMsgs,
+  setSavedMsgs,
+  setForwardId,
+  setUnreadAt,
+  setEditingId,
+  setEditDraft,
+  setDeleteConfirm,
+  setPicker,
+  setContextMenu,
+}: Readonly<{
+  contextMenu: { x: number; y: number; msgId: string; isMine: boolean };
+  channel: { id: string; name: string };
+  messages: any[];
+  data: any;
+  msgPerms: Set<string>;
+  savedMsgs: Set<string>;
+  setSavedMsgs: (updater: (prev: Set<string>) => Set<string>) => void;
+  setForwardId: (id: string | null) => void;
+  setUnreadAt: (id: string) => void;
+  setEditingId: (id: string | null) => void;
+  setEditDraft: (text: string) => void;
+  setDeleteConfirm: (id: string | null) => void;
+  setPicker: (p: any) => void;
+  setContextMenu: (m: any) => void;
+}>): JSX.Element {
+  return (
+    <div className="ctx-overlay">
+      <button
+        type="button"
+        className="ctx-overlay-dismiss"
+        aria-label="Close context menu"
+        onClick={() => setContextMenu(null)}
+        onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }}
+      />
+      <div className="ctx-menu"
+           style={{ left: Math.min(contextMenu.x, globalThis.innerWidth - 220), top: Math.min(contextMenu.y, globalThis.innerHeight - 320) }}>
+        <button onClick={(e) => {
+          const anchor = e.currentTarget.getBoundingClientRect();
+          setPicker({ open: true, anchor, target: 'react:' + contextMenu.msgId });
+          setContextMenu(null);
+        }}>
+          <Icon.Emoji size={13} /> Add reaction
+        </button>
+        <button onClick={() => { dispatchOpenThread(channel.id, contextMenu.msgId); setContextMenu(null); }}>
+          <Icon.Thread size={13} /> Reply in thread
+        </button>
+        <button><Icon.Reply size={12} /> Quote reply</button>
+        <button onClick={() => { toggleSavedBookmark(contextMenu.msgId, savedMsgs, setSavedMsgs); setContextMenu(null); }}>
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M4 2v12l4-3 4 3V2z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/></svg>
+          {savedMsgs.has(contextMenu.msgId) ? 'Remove bookmark' : 'Save message'}
+        </button>
+        <button onClick={() => { setForwardId(contextMenu.msgId); setContextMenu(null); }}>
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 8h11l-3-3M13 8l-3 3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          Forward to…
+        </button>
+        {msgPerms.has(PERM_MANAGE_MESSAGES) && (
+          <>
+            <div className="ctx-sep" />
+            <button onClick={() => { togglePinForMessage(channel.id, contextMenu.msgId); setContextMenu(null); }}>
+              <Icon.Pin size={13} />
+              {usePinStore.getState().isPinned(channel.id, contextMenu.msgId) ? 'Unpin from channel' : 'Pin to channel'}
+            </button>
+          </>
+        )}
+        <button onClick={() => { markUnreadFromMessage(contextMenu.msgId, channel.id, messages, data, setUnreadAt); setContextMenu(null); }}>
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M3 4h10M3 12h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>
+          Mark unread from here
+        </button>
+        <button onClick={() => { copyMessageLink(data, channel, contextMenu.msgId); setContextMenu(null); }}>
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6 10l4-4M6 6l4 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/></svg>
+          Copy link to message
+        </button>
+        {contextMenu.isMine && <div className="ctx-sep" />}
+        {contextMenu.isMine && (
+          <button onClick={() => {
+            const msg = messages.find((m) => m.id === contextMenu.msgId);
+            if (msg) { setEditingId(msg.id); setEditDraft(msg.text || ''); }
+            setContextMenu(null);
+          }}>
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M11.5 1.5l3 3L5 14H2v-3z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" /></svg>
+            Edit message
+          </button>
+        )}
+        {contextMenu.isMine && (
+          <button className="danger" onClick={() => { setDeleteConfirm(contextMenu.msgId); setContextMenu(null); }}>
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 4h10M5 4V2.5h6V4M6 7v5M10 7v5M4 4l1 10h6l1-10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            Delete message
+          </button>
+        )}
+      </div>
     </div>
   );
 }
