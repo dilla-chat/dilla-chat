@@ -2692,22 +2692,14 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
           setPicker(p => ({ ...p, open: false }));
         }}
       />
-      {forwardId && (() => {
-        const m = messages.find(x => x.id === forwardId);
-        if (!m) return null;
-        return (
-          <ForwardModal
-            sourceMsg={m}
-            members={members}
-            onClose={() => setForwardId(null)}
-            onForward={(target) => {
-              const name = target.startsWith('dm-') ? members.byId[target.slice(3)]?.name : ('#' + target);
-              globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: target.startsWith('dm-') ? null : target, author: 'system', text: 'Forwarded message to ' + name + '.', duration: 3000 } }));
-              setForwardId(null);
-            }}
-          />
-        );
-      })()}
+      {forwardId && (
+        <ForwardModalSlot
+          forwardId={forwardId}
+          messages={messages}
+          members={members}
+          onClose={() => setForwardId(null)}
+        />
+      )}
       {contextMenu && (
         <MessageContextMenu
           contextMenu={contextMenu}
@@ -4548,6 +4540,35 @@ function MessageHead({
         </button>
       )}
     </div>
+  );
+}
+
+function ForwardModalSlot({
+  forwardId,
+  messages,
+  members,
+  onClose,
+}: Readonly<{
+  forwardId: string;
+  messages: any[];
+  members: any;
+  onClose: () => void;
+}>): JSX.Element | null {
+  const m = messages.find((x) => x.id === forwardId);
+  if (!m) return null;
+  return (
+    <ForwardModal
+      sourceMsg={m}
+      members={members}
+      onClose={onClose}
+      onForward={(target) => {
+        const name = target.startsWith('dm-') ? members.byId[target.slice(3)]?.name : ('#' + target);
+        globalThis.dispatchEvent(new CustomEvent('dilla:notify', {
+          detail: { channel: target.startsWith('dm-') ? null : target, author: 'system', text: 'Forwarded message to ' + name + '.', duration: 3000 },
+        }));
+        onClose();
+      }}
+    />
   );
 }
 
