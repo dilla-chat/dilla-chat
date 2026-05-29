@@ -25,6 +25,30 @@ import { getCachedMessage, cacheMessage } from '../services/messageCache';
 import { ws } from '../services/websocket';
 import { usePollStore, normalizePoll } from '../stores/pollStore';
 
+type DecryptFn = (id: string, content: string, authorId: string, channelId: string) => Promise<string>;
+
+function makeChannelDecrypter(decryptChannel: DecryptFn, members: Parameters<typeof serverToMessage>[2], channelId: string) {
+  return async (m: ServerMessage) => {
+    const content = await decryptChannel(m.id, m.content, m.author_id, channelId);
+    return serverToMessage(m, content, members);
+  };
+}
+
+function makeDmDecrypter(
+  decryptDMContent: (msg: ServerMessage, dmId: string) => Promise<string>,
+  members: Parameters<typeof serverToMessage>[2],
+  dmId: string,
+) {
+  return async (m: ServerMessage) => {
+    const content = await decryptDMContent(m, dmId);
+    return { ...serverToMessage(m, content, members), channelId: dmId };
+  };
+}
+
+function makeThreadLoader(loadOneThread: (t: Thread, channelId: string) => Promise<void>, channelId: string) {
+  return (t: Thread) => loadOneThread(t, channelId);
+}
+
 export function useEagerLoad(activeTeamId: string | null, cryptoReady: boolean = true): { ready: boolean } {
   const loaded = useRef<Set<string>>(new Set());
   const [ready, setReady] = useState(false);
@@ -128,14 +152,10 @@ export function useEagerLoad(activeTeamId: string | null, cryptoReady: boolean =
       // Fetch every text channel's history in parallel. Decrypt each message
       // via tryDecrypt before stashing in the store so the UI doesn't render
       // raw ciphertext after a reload.
-      const channelDecrypter = (channelId: string) => async (m: ServerMessage) => {
-        const content = await decryptChannel(m.id, m.content, m.author_id, channelId);
-        return serverToMessage(m, content, members);
-      };
       const messageLoads = textChannels.map(async (ch) => {
         try {
           const raw = (await api.getMessages(activeTeamId, ch.id, 50)) as ServerMessage[];
-          const msgs = await Promise.all(raw.map(channelDecrypter(ch.id)));
+          const msgs = await Promise.all(raw.map(makeChannelDecrypter(decryptChannel, members, ch.id)));
           msgStore.prependMessages(ch.id, msgs);
           msgStore.setHasMore(ch.id, raw.length >= 50);
         } catch { /* mock won't reject; ignore */ }
@@ -154,13 +174,9 @@ export function useEagerLoad(activeTeamId: string | null, cryptoReady: boolean =
 
       // DM channels + per-DM message history (uses decryptDM, not the
       // channel sender-key path).
-      const dmDecrypter = (dmId: string) => async (m: ServerMessage) => {
-        const content = await decryptDMContent(m, dmId);
-        return { ...serverToMessage(m, content, members), channelId: dmId };
-      };
       const loadOneDm = async (dm: DMChannel) => {
         const raw = (await api.getDMMessages(activeTeamId, dm.id, undefined, 50)) as ServerMessage[];
-        const msgs = await Promise.all(raw.map(dmDecrypter(dm.id)));
+        const msgs = await Promise.all(raw.map(makeDmDecrypter(decryptDMContent, members, dm.id)));
         dmStore.setDMMessages(dm.id, msgs);
       };
       const dmLoad = (async () => {
@@ -175,15 +191,14 @@ export function useEagerLoad(activeTeamId: string | null, cryptoReady: boolean =
       // sender-key path as the parent channel (decrypt with channel id).
       const loadOneThread = async (t: Thread, channelId: string) => {
         const raw = (await api.getThreadMessages(activeTeamId, t.id)) as ServerMessage[];
-        const msgs = await Promise.all(raw.map(channelDecrypter(channelId)));
+        const msgs = await Promise.all(raw.map(makeChannelDecrypter(decryptChannel, members, channelId)));
         threadStore.setThreadMessages(t.id, msgs);
       };
-      const threadLoader = (channelId: string) => (t: Thread) => loadOneThread(t, channelId);
       const threadLoads = textChannels.map(async (ch) => {
         try {
           const threads = (await api.getChannelThreads(activeTeamId, ch.id)) as Thread[];
           threadStore.setThreads(ch.id, threads);
-          await Promise.all(threads.map(threadLoader(ch.id)));
+          await Promise.all(threads.map(makeThreadLoader(loadOneThread, ch.id)));
         } catch { /* ignore */ }
       });
 
