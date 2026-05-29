@@ -2455,21 +2455,19 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
   // balances enter/leave fired for every child element the pointer
   // crosses so a quick swipe doesn't flicker the overlay.
   const dragCounterRef = useRef(0);
-  const hasFiles = (e: React.DragEvent) =>
-    Array.from(e.dataTransfer?.types || []).includes('Files');
   function onDragEnter(e: React.DragEvent) {
-    if (!hasFiles(e)) return;
+    if (!dragHasFiles(e)) return;
     e.preventDefault();
     dragCounterRef.current += 1;
     setDragOver(true);
   }
   function onDragOverEvt(e: React.DragEvent) {
-    if (!hasFiles(e)) return;
+    if (!dragHasFiles(e)) return;
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
   }
   function onDragLeave(e: React.DragEvent) {
-    if (!hasFiles(e)) return;
+    if (!dragHasFiles(e)) return;
     dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
     if (dragCounterRef.current === 0) setDragOver(false);
   }
@@ -5406,6 +5404,10 @@ function trackFeedScrollPosition(
   };
   el.addEventListener('scroll', onScroll, { passive: true });
   return () => el.removeEventListener('scroll', onScroll);
+}
+
+function dragHasFiles(e: React.DragEvent): boolean {
+  return Array.from(e.dataTransfer?.types || []).includes('Files');
 }
 
 function queueFileUploads(
