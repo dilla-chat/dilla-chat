@@ -133,6 +133,83 @@ async function runRecoveryFlow(args: {
   await activateTeamAndNavigate(teamId, navigate);
 }
 
+async function tryPasskeyUnlock(
+  info: NonNullable<Awaited<ReturnType<typeof getCredentialInfo>>>,
+  server: string,
+  setConnectLog: React.Dispatch<React.SetStateAction<{ line: string; err?: boolean }[]>>,
+): Promise<{ identity: Awaited<ReturnType<typeof unlockWithPassphrase>> | null; derivedKeyB64: string }> {
+  try {
+    setConnectLog((p) => [...p, { line: 'trying passkey · prompting authenticator' }]);
+    const credentialIds = info.credentials.map((c) => c.id);
+    const storedServer = info.keySlots[0]?.server_url || normalizeServerUrl(server);
+    const auth = await authenticatePasskey(credentialIds, info.prfSalt, storedServer);
+    if (!auth.prfOutput) {
+      setConnectLog((p) => [...p, { line: '  passkey lacks PRF — trying passphrase next' }]);
+      return { identity: null, derivedKeyB64: '' };
+    }
+    const derivedKeyB64 = prfOutputToBase64(auth.prfOutput);
+    const prfKeyBytes = fromBase64(derivedKeyB64);
+    const identity = await unlockWithPrf(prfKeyBytes);
+    setConnectLog((p) => [...p, { line: '  ✓ passkey accepted' }]);
+    return { identity, derivedKeyB64 };
+  } catch (e) {
+    setConnectLog((p) => [...p, { line: `  passkey unlock failed: ${(e as Error).message}`, err: true }]);
+    return { identity: null, derivedKeyB64: '' };
+  }
+}
+
+async function runExistingLoginFlow(args: {
+  passphrase: string;
+  server: string;
+  setConnectError: (msg: string | null) => void;
+  setConnectLog: React.Dispatch<React.SetStateAction<{ line: string; err?: boolean }[]>>;
+  setConnecting: (v: boolean) => void;
+  setDerivedKey: (k: string) => void;
+  setPublicKey: (k: string) => void;
+  navigate: (to: string) => void;
+}): Promise<boolean> {
+  const { passphrase, server, setConnectError, setConnectLog, setConnecting, setDerivedKey, setPublicKey, navigate } = args;
+  setConnectLog((p) => [...p, { line: 'unlocking identity…' }]);
+  const info = await getCredentialInfo();
+  let identity: Awaited<ReturnType<typeof unlockWithPassphrase>> | null = null;
+  let derivedKeyB64 = '';
+  const hasPasskey = !passphrase && (info?.credentials.length ?? 0) > 0;
+
+  if (hasPasskey && info) {
+    const r = await tryPasskeyUnlock(info, server, setConnectLog);
+    identity = r.identity;
+    derivedKeyB64 = r.derivedKeyB64;
+  }
+
+  if (!identity) {
+    if (!passphrase) {
+      setConnectError(
+        hasPasskey
+          ? 'Passkey unlock did not yield a derived key — enter your passphrase as fallback.'
+          : 'Enter your passphrase to unlock.',
+      );
+      setConnecting(false);
+      return true;
+    }
+    identity = await unlockWithPassphrase(passphrase);
+    derivedKeyB64 = btoa(String.fromCodePoint(...new TextEncoder().encode(passphrase.slice(0, 32))));
+    void persistPassphrase(passphrase);
+  }
+
+  await initCrypto(identity, derivedKeyB64);
+  const pubKeyB64 = btoa(String.fromCodePoint(...identity.publicKeyBytes));
+  setDerivedKey(derivedKeyB64);
+  setPublicKey(pubKeyB64);
+  setConnectLog((p) => [...p, { line: 'identity unlocked · refreshing tokens…' }]);
+  await refreshServerTokens(useAuthStore.getState().teams, pubKeyB64);
+  const hasTeams =
+    useAuthStore.getState().teams.size > 0 ||
+    (await tryReconnectToCurrentServer(pubKeyB64));
+  setConnectLog((p) => [...p, { line: hasTeams ? 'reconnected.' : 'no teams found.' }]);
+  navigate(hasTeams ? '/app' : '/join');
+  return true;
+}
+
 function pushKeyLine(
   setKeyLines: (updater: (prev: { line: string; err: boolean }[]) => { line: string; err: boolean }[]) => void,
   line: string,
@@ -289,77 +366,17 @@ export default function Onboarding() {
       }
 
       if (mode === 'existing') {
-        // Already-enrolled is a short-circuit login. Look up locally
-        // stored credentials: if a PRF-capable passkey is registered, try
-        // it first; otherwise fall back to the passphrase entered in the
-        // connect form.
-        setConnectLog((p) => [...p, { line: 'unlocking identity…' }]);
-        const info = await getCredentialInfo();
-        let identity: Awaited<ReturnType<typeof unlockWithPassphrase>> | null = null;
-        let derivedKeyB64 = '';
-        // If the user typed a passphrase, honor that intent — skip the
-        // passkey dialog entirely. Otherwise, only attempt passkey when
-        // credentials were actually registered (passphrase-only enrollments
-        // leave credentials empty so the picker doesn't pop up either).
-        const hasPasskey = !passphrase && (info?.credentials.length ?? 0) > 0;
-
-        if (hasPasskey && info) {
-          try {
-            setConnectLog((p) => [...p, { line: 'trying passkey · prompting authenticator' }]);
-            const credentialIds = info.credentials.map((c) => c.id);
-            const storedServer = info.keySlots[0]?.server_url || normalizeServerUrl(server);
-            const auth = await authenticatePasskey(credentialIds, info.prfSalt, storedServer);
-            if (auth.prfOutput) {
-              derivedKeyB64 = prfOutputToBase64(auth.prfOutput);
-              const prfKeyBytes = fromBase64(derivedKeyB64);
-              identity = await unlockWithPrf(prfKeyBytes);
-              setConnectLog((p) => [...p, { line: '  ✓ passkey accepted' }]);
-            } else {
-              setConnectLog((p) => [
-                ...p,
-                { line: '  passkey lacks PRF — trying passphrase next' },
-              ]);
-            }
-          } catch (e) {
-            setConnectLog((p) => [
-              ...p,
-              { line: `  passkey unlock failed: ${(e as Error).message}`, err: true },
-            ]);
-            // Don't fail outright — let passphrase fallback below handle it.
-          }
-        }
-
-        if (!identity) {
-          if (!passphrase) {
-            setConnectError(
-              hasPasskey
-                ? 'Passkey unlock did not yield a derived key — enter your passphrase as fallback.'
-                : 'Enter your passphrase to unlock.',
-            );
-            setConnecting(false);
-            return;
-          }
-          identity = await unlockWithPassphrase(passphrase);
-          derivedKeyB64 = btoa(
-            String.fromCodePoint(...new TextEncoder().encode(passphrase.slice(0, 32))),
-          );
-          // Persist the raw passphrase (encrypted, per-tab) so reload can
-          // auto-unlock instead of kicking the user back to /login.
-          void persistPassphrase(passphrase);
-        }
-
-        await initCrypto(identity, derivedKeyB64);
-        const pubKeyB64 = btoa(String.fromCodePoint(...identity.publicKeyBytes));
-        setDerivedKey(derivedKeyB64);
-        setPublicKey(pubKeyB64);
-        setConnectLog((p) => [...p, { line: 'identity unlocked · refreshing tokens…' }]);
-        await refreshServerTokens(useAuthStore.getState().teams, pubKeyB64);
-        const hasTeams =
-          useAuthStore.getState().teams.size > 0 ||
-          (await tryReconnectToCurrentServer(pubKeyB64));
-        setConnectLog((p) => [...p, { line: hasTeams ? 'reconnected.' : 'no teams found.' }]);
-        navigate(hasTeams ? '/app' : '/join');
-        return;
+        const handled = await runExistingLoginFlow({
+          passphrase,
+          server,
+          setConnectError,
+          setConnectLog,
+          setConnecting,
+          setDerivedKey,
+          setPublicKey,
+          navigate,
+        });
+        if (handled) return;
       }
 
       // bootstrap and invite: validate server reachable, then advance.
