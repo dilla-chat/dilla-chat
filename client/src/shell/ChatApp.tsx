@@ -6409,6 +6409,65 @@ function handleMessageRejected(
   }
 }
 
+async function createChannelFromModal(
+  c: any,
+  ctx: {
+    data: any;
+    activeTeamId: string | null | undefined;
+    setActiveChannel: (id: string) => void;
+    setActiveView: (v: { kind: 'channel' | 'dm'; id: string }) => void;
+  },
+): Promise<void> {
+  const { data, activeTeamId, setActiveChannel, setActiveView } = ctx;
+  // Optimistic push so the UI advances immediately. On /app the server echoes
+  // the real channel via api.createChannel; we then replace the optimistic
+  // record with the server version (real id, etc.).
+  const optimisticId = c.id;
+  data.CHANNELS.push({ ...c, type: c.kind, unread: 0, encrypted: true });
+  setActiveChannel(optimisticId);
+  setActiveView({ kind: 'channel', id: optimisticId });
+  globalThis.dispatchEvent(new CustomEvent('dilla:notify', {
+    detail: { channel: c.name, author: 'system', text: 'Kanal created.', duration: 3500 },
+  }));
+  if (!activeTeamId || isMockSession()) return;
+  try {
+    const real = (await api.createChannel(activeTeamId, {
+      name: c.name, type: c.kind, topic: c.topic, category: c.category,
+    })) as { id: string; name: string; type: string; topic?: string; category?: string };
+    if (!real?.id) return;
+    useTeamStore.getState().addChannel(activeTeamId, {
+      id: real.id, name: real.name, type: real.type, topic: real.topic ?? '', category: real.category ?? '',
+    } as any);
+    setActiveChannel(real.id);
+    setActiveView({ kind: 'channel', id: real.id });
+  } catch (err) {
+    console.warn('[ChatApp] createChannel failed', err);
+  }
+}
+
+async function dispatchGiphyEmbed(url: string): Promise<void> {
+  // Ask the server to materialize the URL into a team attachment (avoids
+  // hot-linking media.giphy.com from every recipient's browser) and
+  // dispatch the resulting attachment id to the send path. Fallback: if
+  // embed fails, post the URL as plain text so the user isn't empty-handed.
+  const teamId = useTeamStore.getState().activeTeamId;
+  if (!teamId) return;
+  if (isMockSession()) {
+    globalThis.dispatchEvent(new CustomEvent('dilla:giphy-pick', { detail: { url } }));
+    return;
+  }
+  try {
+    const att = await api.embedGif(teamId, url);
+    const attUrl = api.getAttachmentUrl(teamId, att.id);
+    globalThis.dispatchEvent(new CustomEvent('dilla:giphy-pick', {
+      detail: { url: attUrl, attachment: att },
+    }));
+  } catch (err) {
+    console.warn('[giphy] embed failed, falling back to URL', err);
+    globalThis.dispatchEvent(new CustomEvent('dilla:giphy-pick', { detail: { url } }));
+  }
+}
+
 function wireImperativeController(
   controller: any,
   ctx: {
@@ -7505,75 +7564,20 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
           query={giphyPicker.query}
           results={giphyPicker.results}
           onPick={async (url) => {
-            // Drop the picker first so the modal closes before the
-            // round-trip — keeps the UI snappy. Then ask the server
-            // to materialize the URL into a team attachment (avoids
-            // hot-linking media.giphy.com from every recipient's
-            // browser) and dispatch the resulting attachment id to
-            // the send path. Fallback: if embed fails, post the URL
-            // as plain text so the user isn't left empty-handed.
             setGiphyPicker(null);
-            const teamId = useTeamStore.getState().activeTeamId;
-            if (!teamId) return;
-            try {
-              if (isMockSession()) {
-                // /mesh embed returns the URL as storage_path; demo
-                // path posts the raw URL since mock has no /attachments
-                // server to fetch from.
-                globalThis.dispatchEvent(new CustomEvent('dilla:giphy-pick', { detail: { url } }));
-                return;
-              }
-              const att = await api.embedGif(teamId, url);
-              const attUrl = api.getAttachmentUrl(teamId, att.id);
-              globalThis.dispatchEvent(new CustomEvent('dilla:giphy-pick', { detail: {
-                url: attUrl,
-                attachment: att,
-              } }));
-            } catch (err) {
-              console.warn('[giphy] embed failed, falling back to URL', err);
-              globalThis.dispatchEvent(new CustomEvent('dilla:giphy-pick', { detail: { url } }));
-            }
+            await dispatchGiphyEmbed(url);
           }}
           onClose={() => setGiphyPicker(null)}
         />
       )}
       {newChanOpen && (
-        <NewChannelModal onClose={() => setNewChanOpen(false)} onCreate={async (c) => {
-          // Optimistic local push so the UI advances immediately. On /app the
-          // server echoes the real channel via api.createChannel; we replace
-          // the optimistic record with the server version (real id, etc.).
-          // On /mesh the api call is a no-op equivalent so the optimistic
-          // entry is what stays.
-          const optimisticId = c.id;
-          data.CHANNELS.push({ ...c, type: c.kind, unread: 0, encrypted: true });
-          setActiveChannel(optimisticId);
-          setActiveView({ kind: 'channel', id: optimisticId });
-          setNewChanOpen(false);
-          if (activeTeamId && !isMockSession()) {
-            try {
-              const real = (await api.createChannel(activeTeamId, {
-                name: c.name,
-                type: c.kind,
-                topic: c.topic,
-                category: c.category,
-              })) as { id: string; name: string; type: string; topic?: string; category?: string };
-              if (real?.id) {
-                useTeamStore.getState().addChannel(activeTeamId, {
-                  id: real.id,
-                  name: real.name,
-                  type: real.type,
-                  topic: real.topic ?? '',
-                  category: real.category ?? '',
-                } as any);
-                setActiveChannel(real.id);
-                setActiveView({ kind: 'channel', id: real.id });
-              }
-            } catch (err) {
-              console.warn('[ChatApp] createChannel failed', err);
-            }
-          }
-          globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: c.name, author: 'system', text: 'Kanal created.', duration: 3500 } }));
-        }} />
+        <NewChannelModal
+          onClose={() => setNewChanOpen(false)}
+          onCreate={(c) => {
+            setNewChanOpen(false);
+            void createChannelFromModal(c, { data, activeTeamId, setActiveChannel, setActiveView });
+          }}
+        />
       )}
       {newServerOpen && (
         <NewServerModal onClose={() => setNewServerOpen(false)} onCreate={(s) => {
