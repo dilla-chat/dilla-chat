@@ -5116,40 +5116,15 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
       .sort((a, b) => a.localeCompare(b));
     return ids[0] ?? null;
   }, [voicePeers]);
-  const effectiveFocused = (() => {
-    if (focused) {
-      const peer = voicePeers?.[focused.id];
-      const hasLiveScreen = !!(peer?.screen_sharing && remoteScreenStreamsForFocus?.[focused.id]);
-      if (hasLiveScreen && focused.kind !== 'screen') {
-        return { id: focused.id, kind: 'screen' as const };
-      }
-      return focused;
-    }
-    // Manual focus is null: fall back to whichever peer is currently
-    // producing a video stream. Screen wins over cam. Without these
-    // fallbacks a transient focused=null (e.g. liveness gate clearing
-    // ahead of stream arrival) drops the viewer back into the card
-    // grid for the cam case — screen avoided this because
-    // channelSharerId was already its fallback.
-    if (channelSharerId) return { id: channelSharerId, kind: 'screen' as const };
-    if (firstCamSharerIdEarly) return { id: firstCamSharerIdEarly, kind: 'cam' as const };
-    return null;
-  })();
+  const effectiveFocused = resolveEffectiveFocused({
+    focused, voicePeers, remoteScreenStreamsForFocus,
+    channelSharerId, firstCamSharerIdEarly,
+  });
   // Resolve the focused user. Prefer the shell's member record (full
   // profile data) but fall back through voiceStore.peers so a late
   // joiner can render the sharer before channel.participants has
   // caught up via the WS roster broadcast.
-  const focusedMember = (() => {
-    if (!effectiveFocused) return null;
-    const fromParticipants = participants.find(p => p.id === effectiveFocused.id);
-    if (fromParticipants) return fromParticipants;
-    const fromMembers = members?.byId?.[effectiveFocused.id];
-    if (fromMembers) return fromMembers;
-    const peer = voicePeers?.[effectiveFocused.id];
-    return peer
-      ? { id: peer.user_id, name: peer.username, initials: peer.username.slice(0, 2).toUpperCase() }
-      : null;
-  })();
+  const focusedMember = resolveFocusedMember(effectiveFocused, participants, members, voicePeers);
   const canExitFocus = !channelSharerId;
 
   useEffect(() => {
@@ -5456,6 +5431,44 @@ function markLatestRead(
   const lastId = msgs && msgs.length > 0 ? msgs[msgs.length - 1].id : '';
   if (!lastId) return;
   try { ws.markChannelRead(teamId, viewId, lastId); } catch { /* ignore */ }
+}
+
+function resolveEffectiveFocused(args: {
+  focused: { id: string; kind: VoiceFocusKind } | null;
+  voicePeers: Record<string, any> | undefined;
+  remoteScreenStreamsForFocus: Record<string, MediaStream> | undefined;
+  channelSharerId: string | null | undefined;
+  firstCamSharerIdEarly: string | null;
+}): { id: string; kind: VoiceFocusKind } | null {
+  const { focused, voicePeers, remoteScreenStreamsForFocus, channelSharerId, firstCamSharerIdEarly } = args;
+  if (focused) {
+    const peer = voicePeers?.[focused.id];
+    const hasLiveScreen = !!(peer?.screen_sharing && remoteScreenStreamsForFocus?.[focused.id]);
+    if (hasLiveScreen && focused.kind !== 'screen') {
+      return { id: focused.id, kind: 'screen' };
+    }
+    return focused;
+  }
+  if (channelSharerId) return { id: channelSharerId, kind: 'screen' };
+  if (firstCamSharerIdEarly) return { id: firstCamSharerIdEarly, kind: 'cam' };
+  return null;
+}
+
+function resolveFocusedMember(
+  effectiveFocused: { id: string } | null,
+  participants: Array<{ id: string }>,
+  members: { byId?: Record<string, any> } | undefined,
+  voicePeers: Record<string, any> | undefined,
+): any {
+  if (!effectiveFocused) return null;
+  const fromParticipants = participants.find((p) => p.id === effectiveFocused.id);
+  if (fromParticipants) return fromParticipants;
+  const fromMembers = members?.byId?.[effectiveFocused.id];
+  if (fromMembers) return fromMembers;
+  const peer = voicePeers?.[effectiveFocused.id];
+  return peer
+    ? { id: peer.user_id, name: peer.username, initials: peer.username.slice(0, 2).toUpperCase() }
+    : null;
 }
 
 function toggleVoiceMute(next: any, current: boolean): void {
