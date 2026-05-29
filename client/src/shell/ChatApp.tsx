@@ -5458,6 +5458,54 @@ function markLatestRead(
   try { ws.markChannelRead(teamId, viewId, lastId); } catch { /* ignore */ }
 }
 
+function toggleVoiceMute(next: any, current: boolean): void {
+  const target = typeof next === 'function' ? next(current) : next;
+  if (target === current) return;
+  // Must route through webrtcService (not voice.toggleMute, which is just a
+  // store action that flips the boolean). The service actually stops/restarts
+  // the mic track + updates SFU state — the OS mic indicator only turns off
+  // via this path.
+  import('../services/webrtc').then(({ webrtcService }) => {
+    webrtcService.toggleMute();
+  });
+}
+
+function toggleVoiceDeafen(next: any, current: boolean): void {
+  const target = typeof next === 'function' ? next(current) : next;
+  if (target === current) return;
+  import('../services/webrtc').then(({ webrtcService }) => {
+    webrtcService.toggleDeafen();
+  });
+}
+
+async function applyMediaToggle(target: boolean, kind: 'webcam' | 'screen'): Promise<void> {
+  const { webrtcService } = await import('../services/webrtc');
+  if (kind === 'webcam') {
+    if (target) await webrtcService.startWebcam();
+    else await webrtcService.stopWebcam();
+    return;
+  }
+  if (target) await webrtcService.startScreenShare();
+  else await webrtcService.stopScreenShare();
+}
+
+function toggleLocalMedia(
+  next: boolean | ((v: boolean) => boolean),
+  current: boolean,
+  setRaw: (v: boolean) => void,
+  kind: 'webcam' | 'screen',
+): void {
+  const target = typeof next === 'function' ? next(current) : next;
+  if (target === current) return;
+  // Optimistic flip so the button reacts instantly; rewind if the media
+  // request rejects (permission denied, no camera, etc.).
+  setRaw(target);
+  applyMediaToggle(target, kind).catch((err) => {
+    console.warn(`[Voice] ${kind} toggle failed`, err);
+    setRaw(!target);
+  });
+}
+
 function syncActiveViewToStores(activeView: { kind: string; id: string }, data: any): void {
   if (!activeView.id) return;
   const teamId = useTeamStore.getState().activeTeamId;
@@ -5714,28 +5762,9 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     ? { channelId: voice.currentChannelId, channel: voiceCh.name }
     : null;
   const mute = voice.muted;
-  const setMute = (next) => {
-    const target = typeof next === 'function' ? next(voice.muted) : next;
-    if (target === voice.muted) return;
-    // Must route through webrtcService (not voice.toggleMute, which is
-    // just a store action that flips the boolean). The service actually
-    // stops/restarts the mic track + updates SFU state — the OS mic
-    // indicator only turns off via this path.
-    import('../services/webrtc').then(({ webrtcService }) => {
-      webrtcService.toggleMute();
-    });
-  };
+  const setMute = (next) => toggleVoiceMute(next, voice.muted);
   const deaf = voice.deafened;
-  const setDeaf = (next) => {
-    const target = typeof next === 'function' ? next(voice.deafened) : next;
-    if (target === voice.deafened) return;
-    // Same reason as setMute above: voice.toggleDeafen is store-only;
-    // the webrtcService method also pauses incoming-audio playback and
-    // hardware-mutes the mic.
-    import('../services/webrtc').then(({ webrtcService }) => {
-      webrtcService.toggleDeafen();
-    });
-  };
+  const setDeaf = (next) => toggleVoiceDeafen(next, voice.deafened);
   // Wrap the local cam/screen booleans with side effects that actually
   // publish/stop media via webrtcService. Previously these were just
   // useState pairs — the toggle buttons flipped a boolean but no
@@ -5753,38 +5782,10 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
       setScreenRaw(false);
     }
   }, [voice.connected]);
-  const setCam = (next: boolean | ((v: boolean) => boolean)) => {
-    const target = typeof next === 'function' ? next(cam) : next;
-    if (target === cam) return;
-    // Optimistic flip so the button reacts instantly; if the media
-    // request rejects (permission denied, no camera, etc.) we rewind.
-    setCamRaw(target);
-    (async () => {
-      try {
-        const { webrtcService } = await import('../services/webrtc');
-        if (target) await webrtcService.startWebcam();
-        else await webrtcService.stopWebcam();
-      } catch (err) {
-        console.warn('[Voice] webcam toggle failed', err);
-        setCamRaw(!target);
-      }
-    })();
-  };
-  const setScreen = (next: boolean | ((v: boolean) => boolean)) => {
-    const target = typeof next === 'function' ? next(screen) : next;
-    if (target === screen) return;
-    setScreenRaw(target);
-    (async () => {
-      try {
-        const { webrtcService } = await import('../services/webrtc');
-        if (target) await webrtcService.startScreenShare();
-        else await webrtcService.stopScreenShare();
-      } catch (err) {
-        console.warn('[Voice] screen toggle failed', err);
-        setScreenRaw(!target);
-      }
-    })();
-  };
+  const setCam = (next: boolean | ((v: boolean) => boolean)) =>
+    toggleLocalMedia(next, cam, setCamRaw, 'webcam');
+  const setScreen = (next: boolean | ((v: boolean) => boolean)) =>
+    toggleLocalMedia(next, screen, setScreenRaw, 'screen');
   // Channel typing indicator: read straight from useMessageStore which
   // useChannelEvents populates on every typing:indicator WS event. We
   // filter ourselves out, drop entries older than 5s (typing decay),
