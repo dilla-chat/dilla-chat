@@ -2766,13 +2766,8 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
         open={picker.open}
         anchorRect={picker.anchor}
         onClose={() => setPicker(p => ({ ...p, open: false }))}
-        onPick={(e) => {
-          if (picker.target === 'draft') {
-            setDraft(draft + e);
-          } else if (picker.target.startsWith('react:')) {
-            const msgId = picker.target.slice(6);
-            if (onReact) onReact(msgId, e);
-          }
+        onPick={(emoji) => {
+          dispatchEmojiPick(emoji, picker.target, draft, setDraft, onReact);
           setPicker(p => ({ ...p, open: false }));
         }}
       />
@@ -2838,12 +2833,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M3 4h10M3 12h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>
               Mark unread from here
             </button>
-            <button onClick={() => {
-              const host = data?.SERVERS?.[0]?.node || 'local';
-              navigator.clipboard?.writeText(`dilla://${host}/channels/${channel.id}/messages/${contextMenu.msgId}`);
-              globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { kind: 'message', channel: channel.name, author: 'system', text: 'Link copied to clipboard.', duration: 3000 } }));
-              setContextMenu(null);
-            }}>
+            <button onClick={() => { copyMessageLink(data, channel, contextMenu.msgId); setContextMenu(null); }}>
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6 10l4-4M6 6l4 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/><circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.3"/></svg>
               Copy link to message
             </button>
@@ -5276,6 +5266,31 @@ function queueFileUploads(
     schedulePhaseUpdates(phases, id, setUploads);
     Promise.resolve(onAttach?.(file)).finally(() => removeUploadById(setUploads, id));
   }
+}
+
+function dispatchEmojiPick(
+  emoji: string,
+  target: string,
+  draft: string,
+  setDraft: (next: string) => void,
+  onReact?: (msgId: string, e: string) => void,
+): void {
+  if (target === 'draft') {
+    setDraft(draft + emoji);
+    return;
+  }
+  if (target.startsWith('react:')) {
+    const msgId = target.slice(6);
+    if (onReact) onReact(msgId, emoji);
+  }
+}
+
+function copyMessageLink(data: any, channel: { id: string; name: string }, msgId: string): void {
+  const host = data?.SERVERS?.[0]?.node || 'local';
+  navigator.clipboard?.writeText(`dilla://${host}/channels/${channel.id}/messages/${msgId}`);
+  globalThis.dispatchEvent(new CustomEvent('dilla:notify', {
+    detail: { kind: 'message', channel: channel.name, author: 'system', text: 'Link copied to clipboard.', duration: 3000 },
+  }));
 }
 
 function toggleSavedBookmark(
