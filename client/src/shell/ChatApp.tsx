@@ -1358,6 +1358,7 @@ export function VideoTile({ stream, fit = 'cover', mirror, showStats = true }: R
 // 4 corners and 4 edges; drag is the body itself. A click without
 // meaningful movement still fires `onClick` so the pip-swap focus-
 // toggle behavior keeps working.
+type VoiceFocusKind = 'cam' | 'screen';
 type DragHandle = 'move' | 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 
 type PipStart = { startL: number; startT: number; startW: number; startH: number };
@@ -2923,26 +2924,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                           </>
                         )}
                       </div>
-                      {m.reactions?.length > 0 && (
-                        <div className="rxns">
-                          {m.reactions.map((r, ri) => (
-                            <button type="button" key={`rxn-${m.id}-${ri}-${r.e}`}
-                                  className={'rxn' + (r.mine ? ' mine' : '')}
-                                  title={r.mine ? 'click to remove' : 'click to add yours'}
-                                  onClick={() => onReact?.(m.id, r.e)}>
-                              <span>{r.e}</span><span>{r.n}</span>
-                            </button>
-                          ))}
-                          <button type="button" className="rxn rxn-add"
-                                title="Add reaction"
-                                onClick={(e) => {
-                                  const anchor = e.currentTarget.getBoundingClientRect();
-                                  setPicker({ open: true, anchor, target: 'react:' + m.id });
-                                }}>
-                            <Icon.Emoji size={11} />
-                          </button>
-                        </div>
-                      )}
+                      <MessageReactions m={m} onReact={onReact} setPicker={setPicker} />
                       {m.thread && (
                         <button type="button" className="thread-preview"
                              onClick={() => globalThis.dispatchEvent(new CustomEvent('dilla:open-thread', {
@@ -3597,9 +3579,9 @@ function membersWidth(showFourth: boolean, activeThread: unknown, defaultWidth?:
 }
 
 function resolveFocusedKind(
-  focused: { id: string; kind: 'cam' | 'screen' },
+  focused: { id: string; kind: VoiceFocusKind },
   state: { cam: boolean; screen: boolean; voicePeers?: Record<string, { webcam_sharing?: boolean; screen_sharing?: boolean }> },
-): 'cam' | 'screen' | null {
+): VoiceFocusKind | null {
   const isSelf = focused.id === currentUserId();
   const peerVoice = isSelf ? null : state.voicePeers?.[focused.id];
   const camOn = isSelf ? state.cam : !!peerVoice?.webcam_sharing;
@@ -3612,10 +3594,10 @@ function resolveFocusedKind(
 
 function handleVoiceCardClick(args: {
   pid: string;
-  effectiveFocused: { id: string; kind: 'cam' | 'screen' } | null;
+  effectiveFocused: { id: string; kind: VoiceFocusKind } | null;
   canExitFocus: boolean;
-  setFocused: (next: { id: string; kind: 'cam' | 'screen' } | null) => void;
-  remembered?: 'cam' | 'screen' | null;
+  setFocused: (next: { id: string; kind: VoiceFocusKind } | null) => void;
+  remembered?: VoiceFocusKind | null;
   showScreen: boolean;
   showCam: boolean;
 }): void {
@@ -3624,7 +3606,7 @@ function handleVoiceCardClick(args: {
     if (canExitFocus) setFocused(null);
     return;
   }
-  let nextKind: 'cam' | 'screen' | null = null;
+  let nextKind: VoiceFocusKind | null = null;
   if (remembered === 'screen' && showScreen) nextKind = 'screen';
   else if (remembered === 'cam' && showCam) nextKind = 'cam';
   else if (showScreen) nextKind = 'screen';
@@ -3921,8 +3903,8 @@ function buildVoiceCardMenu(args: {
   p: { id: string; name: string };
   showScreen: boolean;
   showCam: boolean;
-  focused: { id: string; kind: 'cam' | 'screen' } | null;
-  setFocused: (next: { id: string; kind: 'cam' | 'screen' } | null) => void;
+  focused: { id: string; kind: VoiceFocusKind } | null;
+  setFocused: (next: { id: string; kind: VoiceFocusKind } | null) => void;
   canMuteVoice: boolean;
   mineMuted: boolean;
   vcTeamId: string | null;
@@ -4170,13 +4152,45 @@ function applyToggleReaction(m: any, emoji: string): any {
   return { ...m, reactions: rxns };
 }
 
+function MessageReactions({
+  m,
+  onReact,
+  setPicker,
+}: Readonly<{
+  m: { id: string; reactions?: Array<{ e: string; n: number; mine?: boolean }> };
+  onReact?: (id: string, emoji: string) => void;
+  setPicker: (p: { open: boolean; anchor: any; target: string }) => void;
+}>): JSX.Element | null {
+  if (!m.reactions?.length) return null;
+  return (
+    <div className="rxns">
+      {m.reactions.map((r, ri) => (
+        <button type="button" key={`rxn-${m.id}-${ri}-${r.e}`}
+              className={'rxn' + (r.mine ? ' mine' : '')}
+              title={r.mine ? 'click to remove' : 'click to add yours'}
+              onClick={() => onReact?.(m.id, r.e)}>
+          <span>{r.e}</span><span>{r.n}</span>
+        </button>
+      ))}
+      <button type="button" className="rxn rxn-add"
+            title="Add reaction"
+            onClick={(e) => {
+              const anchor = e.currentTarget.getBoundingClientRect();
+              setPicker({ open: true, anchor, target: 'react:' + m.id });
+            }}>
+        <Icon.Emoji size={11} />
+      </button>
+    </div>
+  );
+}
+
 function PollMessage({
   m,
   onVote,
-}: {
+}: Readonly<{
   m: { id: string; question: string; options: Array<{ label: string; votes?: number; mine?: boolean }> };
   onVote?: (id: string, oi: number) => void;
-}): JSX.Element {
+}>): JSX.Element {
   const total = m.options.reduce((s, o) => s + (o.votes || 0), 0) || 1;
   // Seed each poll's color sequence from a hash of its id so colors stay
   // stable across reloads and matching options.
@@ -4206,12 +4220,12 @@ function PollOption({
   total,
   hue,
   onClick,
-}: {
+}: Readonly<{
   option: { label: string; votes?: number; mine?: boolean };
   total: number;
   hue: number;
   onClick: () => void;
-}): JSX.Element {
+}>): JSX.Element {
   const dot = `hsl(${hue} 65% 55%)`;
   const bar = `hsl(${hue} 60% 50% / 0.5)`;
   return (
@@ -4232,10 +4246,10 @@ function PollOption({
 function MessageAttachments({
   m,
   openLightbox,
-}: {
+}: Readonly<{
   m: any;
   openLightbox: (sources: string[], index: number) => void;
-}): JSX.Element | null {
+}>): JSX.Element | null {
   const list = resolveAttachmentList(m);
   if (list.length === 0) return null;
   // Lightbox-eligible images for THIS message only — Left/Right inside the
@@ -4277,11 +4291,11 @@ function ImageAttachment({
   att,
   galleryImgs,
   openLightbox,
-}: {
+}: Readonly<{
   att: any;
   galleryImgs: string[];
   openLightbox: (sources: string[], index: number) => void;
-}): JSX.Element {
+}>): JSX.Element {
   const onClick = () => {
     const idx = galleryImgs.indexOf(att.src as string);
     openLightbox(galleryImgs, Math.max(0, idx));
@@ -4318,12 +4332,12 @@ function ReplyRef({
   messages,
   membersById,
   feedRef,
-}: {
+}: Readonly<{
   replyToId: string;
   messages: any[];
   membersById: Record<string, any>;
   feedRef: { current: HTMLElement | null };
-}): JSX.Element {
+}>): JSX.Element {
   const orig = messages.find((om) => om.id === replyToId);
   if (!orig) {
     return (
@@ -4343,6 +4357,14 @@ function ReplyRef({
       <span className="rr-text">{(orig.text || '').slice(0, 80)}{(orig.text || '').length > 80 ? '…' : ''}</span>
     </button>
   );
+}
+
+function updateVolumeFor(
+  setVolumes: (updater: (v: Record<string, number>) => Record<string, number>) => void,
+  id: string,
+  rawValue: string,
+): void {
+  setVolumes((v) => ({ ...v, [id]: Number.parseInt(rawValue, 10) }));
 }
 
 function flashMessageElement(el: Element): void {
@@ -4533,18 +4555,18 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
   // update, and WebRTCService writes the map. Cards look up by
   // member id so every tile shows the right user's number.
   const peerLatencies = useVoiceStore((s) => s.peerLatencies);
-  // Focused stream: a tuple of (participant_id, 'cam' | 'screen'). Tracking
+  // Focused stream: a tuple of (participant_id, VoiceFocusKind). Tracking
   // the kind separately lets you focus the webcam alone, the screen alone,
   // or swap between them — previously a participant with both shared their
   // screen with the webcam stuck as a small PIP that couldn't be promoted.
-  const [focused, setFocusedState] = useState<{ id: string; kind: 'cam' | 'screen' } | null>(null);
+  const [focused, setFocusedState] = useState<{ id: string; kind: VoiceFocusKind } | null>(null);
   // Per-user memory of the last kind ('cam' / 'screen') the viewer
   // had focused for that participant. Used so clicking back to a card
   // restores the last view we were on for that user — e.g. flip from
   // Alice's screen to Bob's cam, click Alice again → land back on
   // her screen, not the default.
-  const lastFocusKindRef = useRef<Record<string, 'cam' | 'screen'>>({});
-  const setFocused = useCallback((next: { id: string; kind: 'cam' | 'screen' } | null) => {
+  const lastFocusKindRef = useRef<Record<string, VoiceFocusKind>>({});
+  const setFocused = useCallback((next: { id: string; kind: VoiceFocusKind } | null) => {
     if (next) lastFocusKindRef.current[next.id] = next.kind;
     setFocusedState(next);
   }, []);
@@ -4734,7 +4756,7 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
 
       <div className="voice-view">
         {(() => {
-          function cardFor(p, isMini, focusKind?: 'cam' | 'screen') {
+          function cardFor(p, isMini, focusKind?: VoiceFocusKind) {
             const speaking = p.id === 'ada' && isConnected;
             const cardState = resolveVoiceCardState({
               participant: p,
@@ -4843,7 +4865,7 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
                     <Icon.Headphones size={10} />
                     <input type="range" min={0} max={100} value={vol(p.id)}
                            onClick={(e) => e.stopPropagation()}
-                           onChange={(e) => setVolumes(v => ({ ...v, [p.id]: Number.parseInt(e.target.value, 10) }))} />
+                           onChange={(e) => updateVolumeFor(setVolumes, p.id, e.target.value)} />
                     <span className="v-volume-val">{vol(p.id)}</span>
                   </span>
                 )}
