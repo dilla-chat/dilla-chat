@@ -2461,11 +2461,6 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
     dragCounterRef.current += 1;
     setDragOver(true);
   }
-  function onDragOverEvt(e: React.DragEvent) {
-    if (!dragHasFiles(e)) return;
-    e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
-  }
   function onDragLeave(e: React.DragEvent) {
     if (!dragHasFiles(e)) return;
     dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
@@ -2476,7 +2471,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
     <main
       className="main"
       onDragEnter={onDragEnter}
-      onDragOver={onDragOverEvt}
+      onDragOver={onDragOverFeed}
       onDragLeave={onDragLeave}
       onDrop={(e) => { dragCounterRef.current = 0; onDrop(e); }}
     >
@@ -3624,9 +3619,12 @@ function makeFocusItem(
   setFocused: (next: { id: string; kind: VoiceFocusKind } | null) => void,
 ): any {
   const isFocused = focused?.id === p.id && focused.kind === kind;
+  const isScreen = kind === 'screen';
+  const exitLabel = isScreen ? 'Exit screen focus' : 'Exit webcam focus';
+  const focusLabel = isScreen ? 'Focus screen share' : 'Focus webcam';
   return {
-    label: isFocused ? (kind === 'screen' ? 'Exit screen focus' : 'Exit webcam focus') : (kind === 'screen' ? 'Focus screen share' : 'Focus webcam'),
-    icon: kind === 'screen' ? <Icon.Screen size={13} /> : <Icon.Video size={13} />,
+    label: isFocused ? exitLabel : focusLabel,
+    icon: isScreen ? <Icon.Screen size={13} /> : <Icon.Video size={13} />,
     onClick: () => setFocused(isFocused ? null : { id: p.id, kind }),
   };
 }
@@ -5416,6 +5414,12 @@ function trackFeedScrollPosition(
 
 function dragHasFiles(e: React.DragEvent): boolean {
   return Array.from(e.dataTransfer?.types || []).includes('Files');
+}
+
+function onDragOverFeed(e: React.DragEvent): void {
+  if (!dragHasFiles(e)) return;
+  e.preventDefault();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
 }
 
 function queueFileUploads(
