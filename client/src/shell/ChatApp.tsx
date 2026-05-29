@@ -1568,10 +1568,11 @@ export function FloatingPip({
     document.addEventListener('mouseup', onUp);
   }, [onClick, minW, minH]);
   return (
-    <section
+    <div
       ref={ref}
       className={className}
       title={title}
+      role="application"
       aria-label={title || 'Floating picture-in-picture'}
       onMouseDown={(e) => start('move', e)}
     >
@@ -1584,7 +1585,7 @@ export function FloatingPip({
       <button type="button" aria-label="Resize PIP from top-right" className="pip-edge pip-ne" onMouseDown={(e) => start('ne', e)} />
       <button type="button" aria-label="Resize PIP from bottom-right" className="pip-edge pip-se" onMouseDown={(e) => start('se', e)} />
       <button type="button" aria-label="Resize PIP from bottom-left" className="pip-edge pip-sw" onMouseDown={(e) => start('sw', e)} />
-    </section>
+    </div>
   );
 }
 
@@ -5255,7 +5256,7 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
             const renderKind: VoiceCardKind =
               focusKind ?? (showCam ? 'cam' : 'avatar');
             return (
-              <article key={p.id}
+              <div key={p.id}
                    className={'voice-card'
                      + (speaking ? ' speaking' : '')
                      + voiceCardKindClass(renderKind)
@@ -5264,6 +5265,9 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
                      + (focusable && !isMini ? ' focusable' : '')}
                    data-node={node}
                    data-latency={peerLatencies[p.id] ?? '--'}
+                   role="button"
+                   tabIndex={0}
+                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}
                    onContextMenu={(e) => openVoiceCardMenu(e, {
                      p, showScreen, showCam, focused, setFocused,
                      canMuteVoice: vcPerms.has(PERM_MUTE_VOICE),
@@ -5296,7 +5300,7 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
                     <span className="v-volume-val">{vol(p.id)}</span>
                   </span>
                 )}
-              </article>
+              </div>
             );
           }
 
