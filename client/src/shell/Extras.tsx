@@ -11,6 +11,11 @@ import { shortId } from '../utils/randomId';
 
 const { useState: useT2, useEffect: useT2E, useRef: useT2R } = React;
 
+function handleCallKey(e: KeyboardEvent, onAccept: () => void, onDecline: () => void): void {
+  if (e.key === 'Escape') onDecline();
+  else if (e.key === 'Enter') onAccept();
+}
+
 function toastIcon(kind?: string): string {
   if (kind === 'mention') return '@';
   if (kind === 'voice') return '◉';
@@ -175,10 +180,7 @@ function IncomingCall({ call, onAccept, onDecline }) {
   const shell = useShellDataContext() as any;
   useT2E(() => {
     if (!call) return;
-    function onKey(e) {
-      if (e.key === 'Escape') onDecline();
-      if (e.key === 'Enter')  onAccept();
-    }
+    const onKey = (e) => handleCallKey(e, onAccept, onDecline);
     globalThis.addEventListener('keydown', onKey);
     return () => globalThis.removeEventListener('keydown', onKey);
   }, [call, onAccept, onDecline]);
