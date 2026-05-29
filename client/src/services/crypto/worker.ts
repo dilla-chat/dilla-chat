@@ -16,7 +16,7 @@
 //     of SHA-256), so moving it off the main thread also helps
 //     responsiveness during the Settings → Identity reveal panel.
 //
-// Future migrations (TODO follow-up):
+// Future migrations (planned follow-up):
 //   - X3DH initiate / respond — needs prekey-secret access in the worker.
 //   - Double Ratchet encrypt / decrypt — needs ratchet state.
 //   - Group sender-key derivation / rotation.
