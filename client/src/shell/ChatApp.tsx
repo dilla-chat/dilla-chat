@@ -3748,6 +3748,28 @@ function resolveFocusedKind(
   return focused.kind;
 }
 
+function handleVoiceCardClick(args: {
+  pid: string;
+  effectiveFocused: { id: string; kind: 'cam' | 'screen' } | null;
+  canExitFocus: boolean;
+  setFocused: (next: { id: string; kind: 'cam' | 'screen' } | null) => void;
+  remembered?: 'cam' | 'screen' | null;
+  showScreen: boolean;
+  showCam: boolean;
+}): void {
+  const { pid, effectiveFocused, canExitFocus, setFocused, remembered, showScreen, showCam } = args;
+  if (effectiveFocused?.id === pid) {
+    if (canExitFocus) setFocused(null);
+    return;
+  }
+  let nextKind: 'cam' | 'screen' | null = null;
+  if (remembered === 'screen' && showScreen) nextKind = 'screen';
+  else if (remembered === 'cam' && showCam) nextKind = 'cam';
+  else if (showScreen) nextKind = 'screen';
+  else if (showCam) nextKind = 'cam';
+  if (nextKind) setFocused({ id: pid, kind: nextKind });
+}
+
 function rollbackOptimistic(
   prev: Record<string, any[]>,
   channelId: string,
@@ -4678,27 +4700,12 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
                      });
                      globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items } }));
                    }}
-                   onClick={() => {
-                     // Click an already-focused tile → exit focus, unless
-                     // a screen share is locking us in focus mode.
-                     if (effectiveFocused?.id === p.id) {
-                       if (canExitFocus) setFocused(null);
-                       return;
-                     }
-                     // Prefer the last kind we had focused for THIS
-                     // user (so screen→cam→screen click sequences feel
-                     // sticky), falling back to whichever stream is
-                     // currently live.
-                     const remembered = lastFocusKindRef.current[p.id];
-                     const canScreen = showScreen;
-                     const canCam = showCam;
-                     let nextKind: 'cam' | 'screen' | null = null;
-                     if (remembered === 'screen' && canScreen) nextKind = 'screen';
-                     else if (remembered === 'cam' && canCam) nextKind = 'cam';
-                     else if (canScreen) nextKind = 'screen';
-                     else if (canCam) nextKind = 'cam';
-                     if (nextKind) setFocused({ id: p.id, kind: nextKind });
-                   }}>
+                   onClick={() => handleVoiceCardClick({
+                     pid: p.id,
+                     effectiveFocused, canExitFocus, setFocused,
+                     remembered: lastFocusKindRef.current[p.id],
+                     showScreen, showCam,
+                   })}>
                 <div className="voice-media">
                   {focusKind && focusKind === 'screen' && (
                     <ScreenTile member={p} pip={null} showStats />
