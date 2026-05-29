@@ -2427,16 +2427,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
   //   scrollTop staying constant means no scroll event fires.
   const userPagedUpRef = useRef(false);
 
-  useEffect(() => {
-    const el = feedRef.current;
-    if (!el) return;
-    function onScroll() {
-      const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-      userPagedUpRef.current = dist > 30;
-    }
-    el.addEventListener('scroll', onScroll, { passive: true });
-    return () => el.removeEventListener('scroll', onScroll);
-  }, [channel.id]);
+  useEffect(() => trackFeedScrollPosition(feedRef, userPagedUpRef), [channel.id]);
 
   // Instant scroll-to-bottom helper. `.feed` has scroll-behavior:
   // smooth set for the user-facing "jump to latest" button; that
@@ -2464,17 +2455,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
   // snap to bottom unless the user has paged up in the meantime.
   useEffect(() => observeFeedForLateMedia(feedRef.current, userPagedUpRef), [channel.id]);
 
-  useEffect(() => {
-    const el = feedRef.current;
-    if (!el) return;
-    function onScroll() {
-      const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-      setShowJump(dist > 120);
-    }
-    el.addEventListener('scroll', onScroll, { passive: true });
-    onScroll();
-    return () => el.removeEventListener('scroll', onScroll);
-  }, [channel.id]);
+  useEffect(() => trackJumpButtonVisibility(feedRef, setShowJump), [channel.id]);
 
   function scrollToBottom() {
     if (feedRef.current) {
@@ -5051,6 +5032,35 @@ const SLASH_COMMANDS = [
   { cmd: '/w',       args: '<user>',    desc: 'open a private message (whisper)' },
   { cmd: '/help',    args: '',          desc: 'show keyboard shortcuts' },
 ];
+
+function trackJumpButtonVisibility(
+  feedRef: { current: HTMLElement | null },
+  setShowJump: (visible: boolean) => void,
+): (() => void) | undefined {
+  const el = feedRef.current;
+  if (!el) return undefined;
+  const onScroll = () => {
+    const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setShowJump(dist > 120);
+  };
+  el.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+  return () => el.removeEventListener('scroll', onScroll);
+}
+
+function trackFeedScrollPosition(
+  feedRef: { current: HTMLElement | null },
+  userPagedUpRef: { current: boolean },
+): (() => void) | undefined {
+  const el = feedRef.current;
+  if (!el) return undefined;
+  const onScroll = () => {
+    const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+    userPagedUpRef.current = dist > 30;
+  };
+  el.addEventListener('scroll', onScroll, { passive: true });
+  return () => el.removeEventListener('scroll', onScroll);
+}
 
 function snapInstant(el: HTMLElement): void {
   // scrollTo({ behavior: 'instant' }) bypasses smooth-scroll so the snap
