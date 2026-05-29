@@ -2330,15 +2330,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
     setLightbox({ sources, index });
   useEffect(() => {
     if (!lightbox) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setLightbox(null);
-      if (e.key === 'ArrowLeft') {
-        setLightbox((cur) => cur ? { ...cur, index: (cur.index - 1 + cur.sources.length) % cur.sources.length } : cur);
-      }
-      if (e.key === 'ArrowRight') {
-        setLightbox((cur) => cur ? { ...cur, index: (cur.index + 1) % cur.sources.length } : cur);
-      }
-    }
+    const onKey = (e: KeyboardEvent) => handleLightboxKey(e, setLightbox);
     globalThis.addEventListener('keydown', onKey);
     return () => globalThis.removeEventListener('keydown', onKey);
   }, [lightbox]);
@@ -2375,20 +2367,6 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
     ? (members.MEMBERS || []).filter(m => m.name.toLowerCase().startsWith(mention.query) && m.id !== currentUserId()).slice(0, 6)
     : [];
 
-  const SLASH_COMMANDS = [
-    { cmd: '/me',      args: '<action>',  desc: 'narrate an action in italics' },
-    { cmd: '/code',    args: '<language>', desc: 'start a code block' },
-    { cmd: '/shrug',   args: '',          desc: String.raw`appends ¯\_(ツ)_/¯` },
-    { cmd: '/poll',    args: '<question> | <opt1> | <opt2>', desc: 'post a poll · react with numbers to vote' },
-    { cmd: '/giphy',   args: '<search>',  desc: 'post a giphy search link' },
-    { cmd: '/topic',   args: '<text>',    desc: "set the channel topic (needs manage-channels)" },
-    { cmd: '/lock',    args: '',          desc: 'lock this voice channel (needs manage-channels)' },
-    { cmd: '/unlock',  args: '',          desc: 'unlock this voice channel (needs manage-channels)' },
-    { cmd: '/nick',    args: '<name>',    desc: 'set your nickname for this team' },
-    { cmd: '/invite',  args: '<user>',    desc: 'open Invites to create a link' },
-    { cmd: '/w',       args: '<user>',    desc: 'open a private message (whisper)' },
-    { cmd: '/help',    args: '',          desc: 'show keyboard shortcuts' },
-  ];
   const slashMatches = slash
     ? SLASH_COMMANDS.filter(s => s.cmd.startsWith('/' + slash.query))
     : [];
@@ -4865,6 +4843,35 @@ function updateVolumeFor(
   rawValue: string,
 ): void {
   setVolumes((v) => ({ ...v, [id]: Number.parseInt(rawValue, 10) }));
+}
+
+const SLASH_COMMANDS = [
+  { cmd: '/me',      args: '<action>',  desc: 'narrate an action in italics' },
+  { cmd: '/code',    args: '<language>', desc: 'start a code block' },
+  { cmd: '/shrug',   args: '',          desc: String.raw`appends ¯\_(ツ)_/¯` },
+  { cmd: '/poll',    args: '<question> | <opt1> | <opt2>', desc: 'post a poll · react with numbers to vote' },
+  { cmd: '/giphy',   args: '<search>',  desc: 'post a giphy search link' },
+  { cmd: '/topic',   args: '<text>',    desc: 'set the channel topic (needs manage-channels)' },
+  { cmd: '/lock',    args: '',          desc: 'lock this voice channel (needs manage-channels)' },
+  { cmd: '/unlock',  args: '',          desc: 'unlock this voice channel (needs manage-channels)' },
+  { cmd: '/nick',    args: '<name>',    desc: 'set your nickname for this team' },
+  { cmd: '/invite',  args: '<user>',    desc: 'open Invites to create a link' },
+  { cmd: '/w',       args: '<user>',    desc: 'open a private message (whisper)' },
+  { cmd: '/help',    args: '',          desc: 'show keyboard shortcuts' },
+];
+
+function handleLightboxKey(
+  e: KeyboardEvent,
+  setLightbox: (next: any) => void,
+): void {
+  if (e.key === 'Escape') { setLightbox(null); return; }
+  if (e.key === 'ArrowLeft') {
+    setLightbox((cur: any) => cur ? { ...cur, index: (cur.index - 1 + cur.sources.length) % cur.sources.length } : cur);
+    return;
+  }
+  if (e.key === 'ArrowRight') {
+    setLightbox((cur: any) => cur ? { ...cur, index: (cur.index + 1) % cur.sources.length } : cur);
+  }
 }
 
 function flashMessageElement(el: Element): void {
