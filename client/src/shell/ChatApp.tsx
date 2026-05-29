@@ -2806,31 +2806,9 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
             onCancel={() => onSetReply?.(null)}
           />
         )}
-        {(pendingAttachments ?? []).map((a) => {
-          const isImage = (a.type || '').startsWith('image/');
-          const kb = a.size >= 1024 * 1024
-            ? (a.size / (1024 * 1024)).toFixed(1) + ' MB'
-            : (a.size / 1024).toFixed(1) + ' kB';
-          return (
-            <div key={a.id} className="reply-chip attach-chip">
-              {isImage && a.previewUrl ? (
-                <img src={a.previewUrl} alt="" className="ac-thumb" />
-              ) : (
-                <Icon.Attach size={12} />
-              )}
-              <span className="rc-label">Attaching</span>
-              <span className="rc-author">{a.name}</span>
-              <span className="rc-text">{kb}</span>
-              <button
-                className="rc-x"
-                onClick={() => onRemoveAttachment?.(a.id)}
-                title="Remove attachment"
-              >
-                ×
-              </button>
-            </div>
-          );
-        })}
+        {(pendingAttachments ?? []).map((a) => (
+          <AttachmentChip key={a.id} attachment={a} onRemove={onRemoveAttachment} />
+        ))}
         {uploads.length > 0 && (
           <div className="upload-tray">
             {uploads.map(u => (
@@ -4648,6 +4626,40 @@ function SavedPop({
   );
 }
 
+function formatAttachmentSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  return (bytes / 1024).toFixed(1) + ' kB';
+}
+
+function AttachmentChip({
+  attachment,
+  onRemove,
+}: Readonly<{
+  attachment: { id: string; name: string; size: number; type?: string; previewUrl?: string };
+  onRemove?: (id: string) => void;
+}>): JSX.Element {
+  const isImage = (attachment.type || '').startsWith('image/');
+  return (
+    <div className="reply-chip attach-chip">
+      {isImage && attachment.previewUrl ? (
+        <img src={attachment.previewUrl} alt="" className="ac-thumb" />
+      ) : (
+        <Icon.Attach size={12} />
+      )}
+      <span className="rc-label">Attaching</span>
+      <span className="rc-author">{attachment.name}</span>
+      <span className="rc-text">{formatAttachmentSize(attachment.size)}</span>
+      <button
+        className="rc-x"
+        onClick={() => onRemove?.(attachment.id)}
+        title="Remove attachment"
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
 function ReplyChip({
   replyTo,
   messages,
@@ -5836,13 +5848,13 @@ async function openDmForMember(
   }
 }
 
-function lookupChannelById(id: string): any | undefined {
+function lookupChannelById(id: string): any {
   const tid = useTeamStore.getState().activeTeamId;
   if (!tid) return undefined;
   return (useTeamStore.getState().channels.get(tid) ?? []).find((c: any) => c.id === id);
 }
 
-function lookupGroupById(id: string): any | undefined {
+function lookupGroupById(id: string): any {
   const tid = useTeamStore.getState().activeTeamId;
   if (!tid) return undefined;
   return (useTeamStore.getState().groups.get(tid) ?? []).find((x: any) => x.id === id);
