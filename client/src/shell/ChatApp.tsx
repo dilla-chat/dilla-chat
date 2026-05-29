@@ -4864,6 +4864,61 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
 }
 
 // ───────────── member list ─────────────
+function MemberRow({ m, ctx }) {
+  const { nodes, fps, rich, federated, teamName, memberPerms } = ctx;
+  const off = m.status === 'offline';
+  const node = nodes[m.id] || '';
+  const fed = node && !node.includes('gbg-1');
+  return (
+    <button type="button" className={'member' + (off ? ' offline' : '')}
+         onClick={(e) => {
+           const r = e.currentTarget.getBoundingClientRect();
+           globalThis.dispatchEvent(new CustomEvent('dilla:open-profile', {
+             detail: { memberId: m.id, x: r.left - 270, y: r.top }
+           }));
+         }}
+         onContextMenu={(e) => {
+           e.preventDefault();
+           globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
+             { label: 'Send message', icon: <Icon.Chat size={13} />, onClick: () => {
+               globalThis.dispatchEvent(new CustomEvent('dilla:open-dm', { detail: m.id }));
+             } },
+             { label: 'Mention in current kanal', icon: <span style={{ fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: 13 }}>@</span>, onClick: () => {
+               globalThis.dispatchEvent(new CustomEvent('dilla:insert-mention', { detail: m.name }));
+             } },
+             { label: 'View profile', icon: <Icon.People size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-profile', { detail: { memberId: m.id, x: 200, y: 200 } })) },
+             { label: 'Verify safety number', icon: <Icon.Shield size={12} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:verify-safety', { detail: m.id })) },
+             { sep: true },
+             useBlockStore.getState().isBlocked(m.id)
+               ? { label: 'Unblock', icon: <Icon.Shield size={12} />, onClick: () => unblockMember(m.id) }
+               : { label: 'Block', danger: true, icon: <Icon.Shield size={12} />, onClick: () => blockMember(m.id, m.name) },
+             { label: 'Mute', icon: <Icon.Mic size={13} off />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'system', text: m.name + ' muted in voice channels.', duration: 2200 } })) },
+             ...(memberPerms.has(PERM_MANAGE_MEMBERS) && m.id !== currentUserId() ? [
+               { label: 'Kick from team', danger: true, icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M10 4V2H3v12h7v-2M6 8h9M12 5l3 3-3 3M9 3v0" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>, onClick: () => kickMember(m.id, m.name, teamName) },
+               { label: 'Ban from team', danger: true, icon: <Icon.Lock size={12} />, onClick: () => banMember(m.id, m.name, teamName) },
+             ] : []),
+           ] } }));
+         }}>
+      <Avatar member={m} />
+      <span style={{ minWidth: 0, flex: 1, display: 'block' }}>
+        <span className="member-name" style={{ display: 'block' }}>{m.name}</span>
+        <span className="member-status" style={{ display: 'block' }}>{m.custom || m.status}</span>
+      </span>
+      {rich && fed && federated && (
+        <span className="node-tag fed" title={`Account hosted on federated node "${node}" — relayed to gbg-1 over the dilla mesh.`}>
+          {node.replace('.io','').replace('.dilla.local','')}
+        </span>
+      )}
+      {rich && fps[m.id] && (
+        <span className="member-fingerprint">
+          <span style={{ color: 'var(--accent)', marginBottom: 2 }}>SAFETY NUMBER · {node || 'local'}</span>
+          {fps[m.id]}
+        </span>
+      )}
+    </button>
+  );
+}
+
 export function MemberList({ members, voiceConnection, rich, federated }) {
   // Resolve the viewer's perms once per render so menu items can hide
   // admin actions for non-admins instead of toasting 'permission required'
@@ -4902,59 +4957,7 @@ export function MemberList({ members, voiceConnection, rich, federated }) {
   });
   groupOrder.sort((a, b) => (groupMeta[b].position ?? 0) - (groupMeta[a].position ?? 0));
 
-  function Row({ m }) {
-    const off = m.status === 'offline';
-    const node = nodes[m.id] || '';
-    const fed = node && !node.includes('gbg-1');
-    return (
-      <button type="button" className={'member' + (off ? ' offline' : '')}
-           onClick={(e) => {
-             const r = e.currentTarget.getBoundingClientRect();
-             globalThis.dispatchEvent(new CustomEvent('dilla:open-profile', {
-               detail: { memberId: m.id, x: r.left - 270, y: r.top }
-             }));
-           }}
-           onContextMenu={(e) => {
-             e.preventDefault();
-             globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
-               { label: 'Send message', icon: <Icon.Chat size={13} />, onClick: () => {
-                 globalThis.dispatchEvent(new CustomEvent('dilla:open-dm', { detail: m.id }));
-               } },
-               { label: 'Mention in current kanal', icon: <span style={{ fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: 13 }}>@</span>, onClick: () => {
-                 globalThis.dispatchEvent(new CustomEvent('dilla:insert-mention', { detail: m.name }));
-               } },
-               { label: 'View profile', icon: <Icon.People size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-profile', { detail: { memberId: m.id, x: 200, y: 200 } })) },
-               { label: 'Verify safety number', icon: <Icon.Shield size={12} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:verify-safety', { detail: m.id })) },
-               { sep: true },
-               useBlockStore.getState().isBlocked(m.id)
-                 ? { label: 'Unblock', icon: <Icon.Shield size={12} />, onClick: () => unblockMember(m.id) }
-                 : { label: 'Block', danger: true, icon: <Icon.Shield size={12} />, onClick: () => blockMember(m.id, m.name) },
-               { label: 'Mute', icon: <Icon.Mic size={13} off />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'system', text: m.name + ' muted in voice channels.', duration: 2200 } })) },
-               ...(memberPerms.has(PERM_MANAGE_MEMBERS) && m.id !== currentUserId() ? [
-                 { label: 'Kick from team', danger: true, icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M10 4V2H3v12h7v-2M6 8h9M12 5l3 3-3 3M9 3v0" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>, onClick: () => kickMember(m.id, m.name, teamName) },
-                 { label: 'Ban from team', danger: true, icon: <Icon.Lock size={12} />, onClick: () => banMember(m.id, m.name, teamName) },
-               ] : []),
-             ] } }));
-           }}>
-        <Avatar member={m} />
-        <span style={{ minWidth: 0, flex: 1, display: 'block' }}>
-          <span className="member-name" style={{ display: 'block' }}>{m.name}</span>
-          <span className="member-status" style={{ display: 'block' }}>{m.custom || m.status}</span>
-        </span>
-        {rich && fed && federated && (
-          <span className="node-tag fed" title={`Account hosted on federated node "${node}" — relayed to gbg-1 over the dilla mesh.`}>
-            {node.replace('.io','').replace('.dilla.local','')}
-          </span>
-        )}
-        {rich && fps[m.id] && (
-          <span className="member-fingerprint">
-            <span style={{ color: 'var(--accent)', marginBottom: 2 }}>SAFETY NUMBER · {node || 'local'}</span>
-            {fps[m.id]}
-          </span>
-        )}
-      </button>
-    );
-  }
+  const rowCtx = { nodes, fps, rich, federated, teamName, memberPerms };
 
   return (
     <aside className="members">
@@ -4984,19 +4987,19 @@ export function MemberList({ members, voiceConnection, rich, federated }) {
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: groupMeta[key].color }} />
             {groupMeta[key].name} — {groups[key].length}
           </div>
-          {groups[key].map((m: any) => <Row key={m.id} m={m} />)}
+          {groups[key].map((m: any) => <MemberRow key={m.id} m={m} ctx={rowCtx} />)}
         </React.Fragment>
       ))}
       {onlineDefault.length > 0 && (
         <>
           <div className="members-section">Online — {onlineDefault.length}</div>
-          {onlineDefault.map((m: any) => <Row key={m.id} m={m} />)}
+          {onlineDefault.map((m: any) => <MemberRow key={m.id} m={m} ctx={rowCtx} />)}
         </>
       )}
       {offline.length > 0 && (
         <>
           <div className="members-section">Offline — {offline.length}</div>
-          {offline.map((m: any) => <Row key={m.id} m={m} />)}
+          {offline.map((m: any) => <MemberRow key={m.id} m={m} ctx={rowCtx} />)}
         </>
       )}
     </aside>
