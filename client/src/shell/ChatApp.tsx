@@ -6417,6 +6417,93 @@ function handleMessageRejected(
   }
 }
 
+function ChatAppModals({
+  chanAccess,
+  groupAccess,
+  groupSettings,
+  chanSettings,
+  giphyPicker,
+  newChanOpen,
+  newServerOpen,
+  newDmOpen,
+  data,
+  activeTeamId,
+  setChanAccess,
+  setGroupAccess,
+  setGroupSettings,
+  setChanSettings,
+  setGiphyPicker,
+  setNewChanOpen,
+  setNewServerOpen,
+  setNewDmOpen,
+  setActiveChannel,
+  setActiveView,
+  setActiveDM,
+  setTab,
+}: Readonly<{
+  chanAccess: any;
+  groupAccess: any;
+  groupSettings: any;
+  chanSettings: any;
+  giphyPicker: { query: string; results: any[] } | null;
+  newChanOpen: boolean;
+  newServerOpen: boolean;
+  newDmOpen: boolean;
+  data: any;
+  activeTeamId: string | null | undefined;
+  setChanAccess: (v: any) => void;
+  setGroupAccess: (v: any) => void;
+  setGroupSettings: (v: any) => void;
+  setChanSettings: (v: any) => void;
+  setGiphyPicker: (v: any) => void;
+  setNewChanOpen: (v: boolean) => void;
+  setNewServerOpen: (v: boolean) => void;
+  setNewDmOpen: (v: boolean) => void;
+  setActiveChannel: (id: string) => void;
+  setActiveView: (v: { kind: 'channel' | 'dm'; id: string }) => void;
+  setActiveDM: (id: string) => void;
+  setTab: (t: string) => void;
+}>): JSX.Element {
+  return (
+    <>
+      {chanAccess && <ChannelAccessModal channel={chanAccess} onClose={() => setChanAccess(null)} />}
+      {groupAccess && <GroupAccessModal group={groupAccess} onClose={() => setGroupAccess(null)} />}
+      {groupSettings && <GroupSettingsModal group={groupSettings} onClose={() => setGroupSettings(null)} />}
+      {chanSettings && <ChannelSettingsModal channel={chanSettings} onClose={() => setChanSettings(null)} />}
+      {giphyPicker && (
+        <GiphyPicker
+          query={giphyPicker.query}
+          results={giphyPicker.results}
+          onPick={async (url) => { setGiphyPicker(null); await dispatchGiphyEmbed(url); }}
+          onClose={() => setGiphyPicker(null)}
+        />
+      )}
+      {newChanOpen && (
+        <NewChannelModal
+          onClose={() => setNewChanOpen(false)}
+          onCreate={(c) => {
+            setNewChanOpen(false);
+            void createChannelFromModal(c, { data, activeTeamId, setActiveChannel, setActiveView });
+          }}
+        />
+      )}
+      {newServerOpen && (
+        <NewServerModal onClose={() => setNewServerOpen(false)} onCreate={(s) => { setNewServerOpen(false); redirectToOnboarding(s); }} />
+      )}
+      {newDmOpen && (
+        <NewDmModal
+          members={data}
+          onClose={() => setNewDmOpen(false)}
+          onPick={async (id) => {
+            setNewDmOpen(false);
+            await openDmForMember(id, { data, activeTeamId, setActiveDM, setActiveView, setTab });
+          }}
+        />
+      )}
+    </>
+  );
+}
+
 function updateChannelDraft(
   channelId: string,
   value: string,
@@ -7559,54 +7646,30 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
           </div>
         </div>
       )}
-      {chanAccess && (
-        <ChannelAccessModal channel={chanAccess} onClose={() => setChanAccess(null)} />
-      )}
-      {groupAccess && (
-        <GroupAccessModal group={groupAccess} onClose={() => setGroupAccess(null)} />
-      )}
-      {groupSettings && (
-        <GroupSettingsModal group={groupSettings} onClose={() => setGroupSettings(null)} />
-      )}
-      {chanSettings && (
-        <ChannelSettingsModal channel={chanSettings} onClose={() => setChanSettings(null)} />
-      )}
-      {giphyPicker && (
-        <GiphyPicker
-          query={giphyPicker.query}
-          results={giphyPicker.results}
-          onPick={async (url) => {
-            setGiphyPicker(null);
-            await dispatchGiphyEmbed(url);
-          }}
-          onClose={() => setGiphyPicker(null)}
-        />
-      )}
-      {newChanOpen && (
-        <NewChannelModal
-          onClose={() => setNewChanOpen(false)}
-          onCreate={(c) => {
-            setNewChanOpen(false);
-            void createChannelFromModal(c, { data, activeTeamId, setActiveChannel, setActiveView });
-          }}
-        />
-      )}
-      {newServerOpen && (
-        <NewServerModal onClose={() => setNewServerOpen(false)} onCreate={(s) => {
-          setNewServerOpen(false);
-          redirectToOnboarding(s);
-        }} />
-      )}
-      {newDmOpen && (
-        <NewDmModal
-          members={data}
-          onClose={() => setNewDmOpen(false)}
-          onPick={async (id) => {
-            setNewDmOpen(false);
-            await openDmForMember(id, { data, activeTeamId, setActiveDM, setActiveView, setTab });
-          }}
-        />
-      )}
+      <ChatAppModals
+        chanAccess={chanAccess}
+        groupAccess={groupAccess}
+        groupSettings={groupSettings}
+        chanSettings={chanSettings}
+        giphyPicker={giphyPicker}
+        newChanOpen={newChanOpen}
+        newServerOpen={newServerOpen}
+        newDmOpen={newDmOpen}
+        data={data}
+        activeTeamId={activeTeamId}
+        setChanAccess={setChanAccess}
+        setGroupAccess={setGroupAccess}
+        setGroupSettings={setGroupSettings}
+        setChanSettings={setChanSettings}
+        setGiphyPicker={setGiphyPicker}
+        setNewChanOpen={setNewChanOpen}
+        setNewServerOpen={setNewServerOpen}
+        setNewDmOpen={setNewDmOpen}
+        setActiveChannel={setActiveChannel}
+        setActiveView={setActiveView}
+        setActiveDM={setActiveDM}
+        setTab={setTab}
+      />
       <button
         type="button"
         className="chat-backdrop"
