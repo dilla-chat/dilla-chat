@@ -2454,22 +2454,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
   // ResizeObserver covers most of those, but giphy/CDN media that
   // mounts <img> elements asynchronously sometimes lands between
   // observer cycles.
-  useLayoutEffect(() => {
-    userPagedUpRef.current = false;
-    const el = feedRef.current;
-    if (!el) return;
-    snapInstant(el);
-    const retries: number[] = [];
-    [50, 150, 400, 900].forEach((ms) => {
-      retries.push(globalThis.setTimeout(() => {
-        if (userPagedUpRef.current) return;
-        if (feedRef.current) snapInstant(feedRef.current);
-      }, ms));
-    });
-    return () => {
-      retries.forEach((id) => globalThis.clearTimeout(id));
-    };
-  }, [channel.id]);
+  useLayoutEffect(() => scheduleFeedSnapRetries(feedRef, userPagedUpRef), [channel.id]);
 
   // Stick to bottom after any commit that changed the messages array.
   // useLayoutEffect runs synchronously after DOM mutations and before
@@ -2483,38 +2468,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
   // Late-loading media: when an image (or any child's intrinsic size)
   // arrives after the layout that triggered our useLayoutEffect, re-
   // snap to bottom unless the user has paged up in the meantime.
-  useEffect(() => {
-    const el = feedRef.current;
-    if (!el) return;
-    let raf = 0;
-    const snap = () => {
-      raf = 0;
-      if (!el) return;
-      if (!userPagedUpRef.current) snapInstant(el);
-    };
-    const schedule = () => {
-      if (raf) return;
-      raf = requestAnimationFrame(snap);
-    };
-    const ro = new ResizeObserver(schedule);
-    const observed = new Set<Element>();
-    const observeChildren = () => {
-      for (const c of Array.from(el.children)) {
-        if (!observed.has(c)) {
-          ro.observe(c);
-          observed.add(c);
-        }
-      }
-    };
-    observeChildren();
-    const mo = new MutationObserver(observeChildren);
-    mo.observe(el, { childList: true });
-    return () => {
-      ro.disconnect();
-      mo.disconnect();
-      if (raf) cancelAnimationFrame(raf);
-    };
-  }, [channel.id]);
+  useEffect(() => observeFeedForLateMedia(feedRef.current, userPagedUpRef), [channel.id]);
 
   useEffect(() => {
     const el = feedRef.current;
@@ -5104,6 +5058,58 @@ const SLASH_COMMANDS = [
   { cmd: '/help',    args: '',          desc: 'show keyboard shortcuts' },
 ];
 
+function scheduleFeedSnapRetries(
+  feedRef: { current: HTMLElement | null },
+  userPagedUpRef: { current: boolean },
+): () => void {
+  userPagedUpRef.current = false;
+  const el = feedRef.current;
+  if (el) snapInstant(el);
+  const retries = [50, 150, 400, 900].map((ms) =>
+    globalThis.setTimeout(() => {
+      if (userPagedUpRef.current) return;
+      if (feedRef.current) snapInstant(feedRef.current);
+    }, ms),
+  );
+  return () => {
+    retries.forEach((id) => globalThis.clearTimeout(id));
+  };
+}
+
+function observeFeedForLateMedia(
+  el: HTMLElement | null,
+  userPagedUpRef: { current: boolean },
+): (() => void) | undefined {
+  if (!el) return undefined;
+  let raf = 0;
+  const snap = () => {
+    raf = 0;
+    if (!userPagedUpRef.current) snapInstant(el);
+  };
+  const schedule = () => {
+    if (raf) return;
+    raf = requestAnimationFrame(snap);
+  };
+  const ro = new ResizeObserver(schedule);
+  const observed = new Set<Element>();
+  const observeChildren = () => {
+    for (const c of Array.from(el.children)) {
+      if (!observed.has(c)) {
+        ro.observe(c);
+        observed.add(c);
+      }
+    }
+  };
+  observeChildren();
+  const mo = new MutationObserver(observeChildren);
+  mo.observe(el, { childList: true });
+  return () => {
+    ro.disconnect();
+    mo.disconnect();
+    if (raf) cancelAnimationFrame(raf);
+  };
+}
+
 function handleLightboxKey(
   e: KeyboardEvent,
   setLightbox: (next: any) => void,
@@ -6261,9 +6267,6 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     e.preventDefault();
     setMenuPop({ x: e.clientX, y: e.clientY, items });
   }
-  function toggleMuteChannel(id) {
-    toggleChannelMuteState(id);
-  }
 
   useEffect(() => {
     function onAddSrv()  { setNewServerOpen(true); }
@@ -6616,7 +6619,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
         cam={cam} setCam={setCam}
         screen={screen} setScreen={setScreen}
         mutedChannels={mutedChannels}
-        toggleMuteChannel={toggleMuteChannel}
+        toggleMuteChannel={toggleChannelMuteState}
         onNewDm={() => setNewDmOpen(true)}
       />
       {channel.type === 'voice' ? (
