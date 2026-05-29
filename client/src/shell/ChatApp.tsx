@@ -2442,12 +2442,6 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
   // smooth set for the user-facing "jump to latest" button; that
   // would otherwise animate every programmatic snap and let
   // late-loading media interrupt the animation mid-flight, leaving
-  // the viewport stranded. scrollTo({ behavior: 'instant' }) bypasses
-  // the smoothing for the snap path.
-  const snapInstant = (el: HTMLElement) => {
-    el.scrollTo({ top: el.scrollHeight, behavior: 'instant' as ScrollBehavior });
-  };
-
   // Reset follow state whenever we switch channels. We also schedule
   // a few retries over the next second to catch late-loading images
   // and other content that grows the feed after our initial snap —
@@ -5057,6 +5051,12 @@ const SLASH_COMMANDS = [
   { cmd: '/w',       args: '<user>',    desc: 'open a private message (whisper)' },
   { cmd: '/help',    args: '',          desc: 'show keyboard shortcuts' },
 ];
+
+function snapInstant(el: HTMLElement): void {
+  // scrollTo({ behavior: 'instant' }) bypasses smooth-scroll so the snap
+  // never strands the viewport mid-animation.
+  el.scrollTo({ top: el.scrollHeight, behavior: 'instant' as ScrollBehavior });
+}
 
 function scheduleFeedSnapRetries(
   feedRef: { current: HTMLElement | null },
