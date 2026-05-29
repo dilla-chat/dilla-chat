@@ -133,6 +133,62 @@ async function runRecoveryFlow(args: {
   await activateTeamAndNavigate(teamId, navigate);
 }
 
+async function createIdentityViaPasskey(args: {
+  url: string;
+  username: string;
+  passphrase: string;
+  keyProtect: string;
+  push: (line: string, err?: boolean) => void;
+  setRecoveryKey: (k: string) => void;
+}): Promise<{
+  publicKeyB64: string;
+  publicKeyHex: string;
+  identity: Awaited<ReturnType<typeof createIdentityWithPassphrase>>['identity'];
+  derivedKey: string;
+}> {
+  const { url, username, passphrase, keyProtect, push, setRecoveryKey } = args;
+  push('binding to webauthn credential…');
+  const prfSalt = generatePrfSalt();
+  const userIdBytes = new TextEncoder().encode(username.padEnd(32, '\0').slice(0, 32));
+  const passkey = await registerPasskey(username.trim(), userIdBytes, prfSalt, url);
+  push(`  credential: ${passkey.credentialName}`);
+  const credentialDescriptor = [{
+    id: passkey.credentialId,
+    name: passkey.credentialName,
+    created_at: new Date().toISOString(),
+  }];
+
+  if (passkey.prfSupported) {
+    push('  ✓ prf evaluated · 32 bytes derived');
+    const prfDerivedKeyB64 = prfOutputToBase64(passkey.prfOutput);
+    const prfKeyBytes = fromBase64(prfDerivedKeyB64);
+    const created = await createIdentity(url, prfKeyBytes, prfSalt, credentialDescriptor);
+    setRecoveryKey(encodeRecoveryKey(created.recoveryKey));
+    return {
+      publicKeyB64: created.publicKeyB64,
+      publicKeyHex: created.publicKeyHex,
+      identity: created.identity,
+      derivedKey: prfDerivedKeyB64,
+    };
+  }
+  if (keyProtect === 'hardware') {
+    throw new Error(
+      'This passkey does not support the PRF extension required for key derivation. Use "Both" or "Passphrase" instead.',
+    );
+  }
+  // 'both' fallback: passphrase as the wrap key, recovery via recovery key.
+  // Passkey credential is still recorded so a future unlock attempt can try it first.
+  push('  ! passkey lacks PRF — falling back to passphrase wrap');
+  const created = await createIdentityWithPassphrase(url, passphrase, credentialDescriptor);
+  setRecoveryKey(encodeRecoveryKey(created.recoveryKey));
+  return {
+    publicKeyB64: created.publicKeyB64,
+    publicKeyHex: created.publicKeyHex,
+    identity: created.identity,
+    derivedKey: created.publicKeyB64,
+  };
+}
+
 async function tryPasskeyUnlock(
   info: NonNullable<Awaited<ReturnType<typeof getCredentialInfo>>>,
   server: string,
@@ -459,52 +515,13 @@ export default function Onboarding() {
             .join('');
           derivedKey = publicKeyB64;
         } else if (keyProtect === 'hardware' || keyProtect === 'both') {
-          push('binding to webauthn credential…');
-          const prfSalt = generatePrfSalt();
-          const userIdBytes = new TextEncoder().encode(
-            username.padEnd(32, '\0').slice(0, 32),
-          );
-          const passkey = await registerPasskey(username.trim(), userIdBytes, prfSalt, url);
-          push(`  credential: ${passkey.credentialName}`);
-          if (passkey.prfSupported) {
-            push('  ✓ prf evaluated · 32 bytes derived');
-            const prfDerivedKeyB64 = prfOutputToBase64(passkey.prfOutput);
-            const prfKeyBytes = fromBase64(prfDerivedKeyB64);
-            const created = await createIdentity(url, prfKeyBytes, prfSalt, [
-              {
-                id: passkey.credentialId,
-                name: passkey.credentialName,
-                created_at: new Date().toISOString(),
-              },
-            ]);
-            publicKeyB64 = created.publicKeyB64;
-            publicKeyHex = created.publicKeyHex;
-            identity = created.identity;
-            derivedKey = prfDerivedKeyB64;
-            setRecoveryKey(encodeRecoveryKey(created.recoveryKey));
-          } else {
-            if (keyProtect === 'hardware') {
-              throw new Error(
-                'This passkey does not support the PRF extension required for key derivation. Use "Both" or "Passphrase" instead.',
-              );
-            }
-            // 'both' fallback: use passphrase as the wrap key, recovery via
-            // recovery key. The passkey credential is still recorded so a
-            // future unlock attempt can try it first.
-            push('  ! passkey lacks PRF — falling back to passphrase wrap');
-            const created = await createIdentityWithPassphrase(url, passphrase, [
-              {
-                id: passkey.credentialId,
-                name: passkey.credentialName,
-                created_at: new Date().toISOString(),
-              },
-            ]);
-            publicKeyB64 = created.publicKeyB64;
-            publicKeyHex = created.publicKeyHex;
-            identity = created.identity;
-            derivedKey = publicKeyB64;
-            setRecoveryKey(encodeRecoveryKey(created.recoveryKey));
-          }
+          const r = await createIdentityViaPasskey({
+            url, username, passphrase, keyProtect, push, setRecoveryKey,
+          });
+          publicKeyB64 = r.publicKeyB64;
+          publicKeyHex = r.publicKeyHex;
+          identity = r.identity;
+          derivedKey = r.derivedKey;
         } else {
           const created = await createIdentityWithPassphrase(url, passphrase, []);
           publicKeyB64 = created.publicKeyB64;
