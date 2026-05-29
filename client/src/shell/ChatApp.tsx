@@ -2609,41 +2609,12 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                 <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M4 2v12l4-3 4 3V2z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/></svg>
               </button>
               {savedOpen && (
-                <div className="pin-pop">
-                  <div className="pin-head">
-                    <span>Saved messages · all kanals</span>
-                    <button className="pin-x" onClick={() => setSavedOpen(false)}>×</button>
-                  </div>
-                  {savedMsgs.size === 0 ? (
-                    <div className="pin-empty">no saved messages yet · right-click a message to bookmark it</div>
-                  ) : (
-                    <div className="pin-list">
-                      {Array.from(savedMsgs).map(sid => {
-                        let msg = null, chanName = '';
-                        for (const [chId, list] of Object.entries(data.MESSAGES)) {
-                          const f = list.find(x => x.id === sid);
-                          if (f) { msg = f; chanName = chId; break; }
-                        }
-                        if (!msg) return null;
-                        const a = data.byId[msg.author] || { name: msg.author, color: '#666', initials: '??' };
-                        return (
-                          <button
-                            key={sid}
-                            type="button"
-                            className="pin-row"
-                            onClick={() => { setSavedOpen(false); setActiveChannel(chanName); setActiveView({ kind: 'channel', id: chanName }); }}
-                          >
-                            <div className="pin-av" style={{ background: a.color }}>{a.initials}</div>
-                            <div>
-                              <div className="pin-meta"><span className="pin-author">{a.name}</span> <span className="pin-time">· #{chanName} · {timeShort(msg.at)}</span></div>
-                              <div className="pin-text">{msg.text}</div>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                <SavedPop
+                  savedMsgs={savedMsgs}
+                  data={data}
+                  onClose={() => setSavedOpen(false)}
+                  onJump={(chanName) => { setSavedOpen(false); setActiveChannel(chanName); setActiveView({ kind: 'channel', id: chanName }); }}
+                />
               )}
             </div>
           )}
@@ -4721,6 +4692,61 @@ function applyToggleReaction(m: any, emoji: string): any {
     rxns.push({ e: emoji, n: 1, mine: true });
   }
   return { ...m, reactions: rxns };
+}
+
+function findSavedMessage(savedId: string, allMessages: Record<string, any[]>): { msg: any; chanName: string } | null {
+  for (const [chId, list] of Object.entries(allMessages)) {
+    const f = list.find((x: any) => x.id === savedId);
+    if (f) return { msg: f, chanName: chId };
+  }
+  return null;
+}
+
+function SavedPop({
+  savedMsgs,
+  data,
+  onClose,
+  onJump,
+}: Readonly<{
+  savedMsgs: Set<string>;
+  data: any;
+  onClose: () => void;
+  onJump: (chanName: string) => void;
+}>): JSX.Element {
+  return (
+    <div className="pin-pop">
+      <div className="pin-head">
+        <span>Saved messages · all kanals</span>
+        <button className="pin-x" onClick={onClose}>×</button>
+      </div>
+      {savedMsgs.size === 0 ? (
+        <div className="pin-empty">no saved messages yet · right-click a message to bookmark it</div>
+      ) : (
+        <div className="pin-list">
+          {Array.from(savedMsgs).map((sid) => {
+            const found = findSavedMessage(sid, data.MESSAGES);
+            if (!found) return null;
+            const { msg, chanName } = found;
+            const a = data.byId[msg.author] || { name: msg.author, color: '#666', initials: '??' };
+            return (
+              <button
+                key={sid}
+                type="button"
+                className="pin-row"
+                onClick={() => onJump(chanName)}
+              >
+                <div className="pin-av" style={{ background: a.color }}>{a.initials}</div>
+                <div>
+                  <div className="pin-meta"><span className="pin-author">{a.name}</span> <span className="pin-time">· #{chanName} · {timeShort(msg.at)}</span></div>
+                  <div className="pin-text">{msg.text}</div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ThreadsPop({
