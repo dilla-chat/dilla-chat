@@ -3717,6 +3717,38 @@ async function leaveTeamFromRail(s: { name: string }): Promise<void> {
   }
 }
 
+function rollbackOptimistic(
+  prev: Record<string, any[]>,
+  channelId: string,
+  me: string,
+  setDrafts: (updater: (d: Record<string, any>) => Record<string, any>) => void,
+): Record<string, any[]> {
+  const list = (prev[channelId] || []) as any[];
+  let removedText: string | null = null;
+  const next = [...list];
+  for (let i = next.length - 1; i >= 0; i--) {
+    const m = next[i];
+    if (m.author === me && typeof m.id === 'string' && m.id.startsWith('new-')) {
+      removedText = m.text ?? null;
+      next.splice(i, 1);
+      break;
+    }
+  }
+  if (removedText) {
+    setDrafts(d => ({ ...d, [channelId]: removedText }));
+  }
+  return { ...prev, [channelId]: next };
+}
+
+function addSlowLockStrike(
+  prev: Record<string, { strikes: number; until: number }>,
+  channelId: string,
+  retryIn: number,
+): Record<string, { strikes: number; until: number }> {
+  const cur = prev[channelId] ?? { strikes: 0, until: 0 };
+  return { ...prev, [channelId]: { strikes: cur.strikes + 1, until: Date.now() + retryIn * 1000 } };
+}
+
 function pruneExpiredSlowLocks(
   prev: Record<string, { strikes: number; until: number }>,
 ): Record<string, { strikes: number; until: number }> {
@@ -5035,30 +5067,10 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     const unsub = ws.on('message:rejected', (payload: any) => {
       const channelId = payload?.channel_id;
       if (!channelId) return;
-      const reason = payload?.reason;
+      setMessages(prev => rollbackOptimistic(prev, channelId, me, setDrafts));
       const retryIn = Number(payload?.retry_in ?? 0);
-      setMessages(prev => {
-        const list = (prev[channelId] || []) as any[];
-        let removedText: string | null = null;
-        const next = [...list];
-        for (let i = next.length - 1; i >= 0; i--) {
-          const m = next[i];
-          if (m.author === me && typeof m.id === 'string' && m.id.startsWith('new-')) {
-            removedText = m.text ?? null;
-            next.splice(i, 1);
-            break;
-          }
-        }
-        if (removedText) {
-          setDrafts(d => ({ ...d, [channelId]: removedText }));
-        }
-        return { ...prev, [channelId]: next };
-      });
-      if (reason === 'slow_mode' && retryIn > 0) {
-        setSlowLocks((prev) => {
-          const cur = prev[channelId] ?? { strikes: 0, until: 0 };
-          return { ...prev, [channelId]: { strikes: cur.strikes + 1, until: Date.now() + retryIn * 1000 } };
-        });
+      if (payload?.reason === 'slow_mode' && retryIn > 0) {
+        setSlowLocks((prev) => addSlowLockStrike(prev, channelId, retryIn));
       }
     });
     return () => { unsub(); };
