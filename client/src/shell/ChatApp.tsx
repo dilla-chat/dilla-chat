@@ -2798,21 +2798,14 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
             scroll to latest
           </button>
         )}
-        {replyTo && (() => {
-          const orig = messages.find(om => om.id === replyTo);
-          if (!orig) return null;
-          const oa = members.byId[orig.author] || { name: orig.author, color: '#666', initials: '??' };
-          return (
-            <div className="reply-chip">
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M5 9L1 5l4-4M1 5h8a4 4 0 014 4v2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              <span className="rc-label">Replying to</span>
-              <span className="rc-av" style={{ background: oa.color }}>{oa.initials}</span>
-              <span className="rc-author">{oa.name}</span>
-              <span className="rc-text">{(orig.text || '').slice(0, 90)}{(orig.text||'').length > 90 ? '…' : ''}</span>
-              <button className="rc-x" onClick={() => onSetReply?.(null)} title="Cancel reply (esc)">×</button>
-            </div>
-          );
-        })()}
+        {replyTo && (
+          <ReplyChip
+            replyTo={replyTo}
+            messages={messages}
+            membersById={members.byId}
+            onCancel={() => onSetReply?.(null)}
+          />
+        )}
         {(pendingAttachments ?? []).map((a) => {
           const isImage = (a.type || '').startsWith('image/');
           const kb = a.size >= 1024 * 1024
@@ -4651,6 +4644,32 @@ function SavedPop({
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+function ReplyChip({
+  replyTo,
+  messages,
+  membersById,
+  onCancel,
+}: Readonly<{
+  replyTo: string;
+  messages: any[];
+  membersById: Record<string, any>;
+  onCancel: () => void;
+}>): JSX.Element | null {
+  const orig = messages.find((om) => om.id === replyTo);
+  if (!orig) return null;
+  const oa = membersById[orig.author] || { name: orig.author, color: '#666', initials: '??' };
+  return (
+    <div className="reply-chip">
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M5 9L1 5l4-4M1 5h8a4 4 0 014 4v2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+      <span className="rc-label">Replying to</span>
+      <span className="rc-av" style={{ background: oa.color }}>{oa.initials}</span>
+      <span className="rc-author">{oa.name}</span>
+      <span className="rc-text">{(orig.text || '').slice(0, 90)}{(orig.text || '').length > 90 ? '…' : ''}</span>
+      <button className="rc-x" onClick={onCancel} title="Cancel reply (esc)">×</button>
     </div>
   );
 }
