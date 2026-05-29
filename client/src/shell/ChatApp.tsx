@@ -2482,15 +2482,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
       onDragLeave={onDragLeave}
       onDrop={(e) => { dragCounterRef.current = 0; onDrop(e); }}
     >
-      {dragOver && (
-        <div className="drop-overlay">
-          <div className="drop-card">
-            <div className="drop-glyph"><Icon.Attach size={36} /></div>
-            <div className="drop-title">Drop to attach</div>
-            <div className="drop-sub">files are encrypted on this device before upload · Signal sender keys for {channel.type === 'dm' ? 'this DM' : '#' + channel.name}</div>
-          </div>
-        </div>
-      )}
+      {dragOver && <DropOverlay channel={channel} />}
       <TextChannelHeader
         channel={channel}
         dmPartner={dmPartner}
@@ -4507,6 +4499,20 @@ function MessageHead({
           <Icon.Pin size={11} />
         </button>
       )}
+    </div>
+  );
+}
+
+function DropOverlay({ channel }: Readonly<{ channel: { type: string; name: string } }>): JSX.Element {
+  return (
+    <div className="drop-overlay">
+      <div className="drop-card">
+        <div className="drop-glyph"><Icon.Attach size={36} /></div>
+        <div className="drop-title">Drop to attach</div>
+        <div className="drop-sub">
+          files are encrypted on this device before upload · Signal sender keys for {channel.type === 'dm' ? 'this DM' : '#' + channel.name}
+        </div>
+      </div>
     </div>
   );
 }
