@@ -1566,10 +1566,11 @@ export function FloatingPip({
     document.addEventListener('mouseup', onUp);
   }, [onClick, minW, minH]);
   return (
-    <div
+    <section
       ref={ref}
       className={className}
       title={title}
+      aria-label={title || 'Floating picture-in-picture'}
       onMouseDown={(e) => start('move', e)}
     >
       {children}
@@ -1581,7 +1582,7 @@ export function FloatingPip({
       <button type="button" aria-label="Resize PIP from top-right" className="pip-edge pip-ne" onMouseDown={(e) => start('ne', e)} />
       <button type="button" aria-label="Resize PIP from bottom-right" className="pip-edge pip-se" onMouseDown={(e) => start('se', e)} />
       <button type="button" aria-label="Resize PIP from bottom-left" className="pip-edge pip-sw" onMouseDown={(e) => start('sw', e)} />
-    </div>
+    </section>
   );
 }
 
@@ -1696,7 +1697,8 @@ export function ServerRail({ servers, activeServer, onPick }) {
   return (
     <aside className="rail">
       {ordered.map(s => (
-        <div key={s.id}
+        <button key={s.id}
+             type="button"
              className={'rail-item' + (s.id === activeServer ? ' active' : '') + (overId === s.id && dragId && dragId !== s.id ? ' drop-target' : '') + (dragId === s.id ? ' dragging' : '')}
              draggable
              onDragStart={(e) => { setDragId(s.id); e.dataTransfer.effectAllowed = 'move'; }}
@@ -1714,7 +1716,7 @@ export function ServerRail({ servers, activeServer, onPick }) {
              title={s.name}>
           {s.short}
           {!s.federated && <span className="rail-dot" style={{ background: 'var(--warn)' }}></span>}
-        </div>
+        </button>
       ))}
       <button className="rail-add" title="Add team" onClick={() => globalThis.dispatchEvent(new CustomEvent('dilla:open-add-server'))}><Icon.Plus /></button>
     </aside>
@@ -1986,7 +1988,10 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
             <React.Fragment key={'tg-' + grp.key}>
               <div
                 className="cat cat-collapsible"
+                role="button"
+                tabIndex={0}
                 onClick={() => toggleGroupCollapsed(grp.key)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleGroupCollapsed(grp.key); } }}
                 title={collapsedGroups.has(grp.key) ? 'Expand' : 'Collapse'}
                 onContextMenu={(e) => {
                   // Real groups have key 'g:<id>'. The default and legacy
@@ -2011,11 +2016,12 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
                 )}
               </div>
               {!collapsedGroups.has(grp.key) && grp.channels.map(c => (
-            <div key={c.id}
+            <button key={c.id}
+                 type="button"
                  draggable
                  onDragStart={(e) => { setDragId(c.id); e.dataTransfer.effectAllowed = 'move'; }}
                  onDragOver={(e) => { e.preventDefault(); setOverId(c.id); }}
-                 onDragLeave={(e) => { if (overId === c.id) setOverId(null); }}
+                 onDragLeave={() => { if (overId === c.id) setOverId(null); }}
                  onDrop={(e) => { e.preventDefault(); if (dragId && dragId !== c.id) { reorderTextCh(dragId, c.id); } setDragId(null); setOverId(null); }}
                  onDragEnd={() => { setDragId(null); setOverId(null); }}
                  className={'channel-row' + (c.id === activeChannel ? ' active' : '') + (c.unread > 0 ? ' unread' : '') + (mutedChannels.has(c.id) ? ' muted' : '') + (overId === c.id && dragId && dragId !== c.id ? ' drop-target' : '') + (dragId === c.id ? ' dragging' : '')}
@@ -2033,7 +2039,7 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
               {c.unread > 0 && !mutedChannels.has(c.id) && (
                 <span className={'unread-pill' + (c.mention ? ' mention' : '')}>{c.unread}</span>
               )}
-            </div>
+            </button>
           ))}
             </React.Fragment>
           ))}
@@ -2042,7 +2048,10 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
             <React.Fragment key={'vg-' + grp.key}>
               <div
                 className="cat cat-collapsible"
+                role="button"
+                tabIndex={0}
                 onClick={() => toggleGroupCollapsed('voice:' + grp.key)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleGroupCollapsed('voice:' + grp.key); } }}
                 title={collapsedGroups.has('voice:' + grp.key) ? 'Expand' : 'Collapse'}
                 onContextMenu={(e) => {
                   if (!grp.key.startsWith('g:')) return;
@@ -2907,13 +2916,14 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                         </div>
                       )}
                       {isPinned && !isFirst && (
-                        <span
+                        <button
+                          type="button"
                           className="msg-pin-chip msg-pin-chip-compact"
                           title="Pinned to this channel"
                           onClick={() => setPinnedOpen(true)}
                         >
                           <Icon.Pin size={11} />
-                        </span>
+                        </button>
                       )}
                       <div className="body">
                         {editingId === m.id ? (
