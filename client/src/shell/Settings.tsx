@@ -6,7 +6,6 @@
 
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Icon } from './icons';
 import { randomTail } from '../utils/randomId';
 import { useAuthStore } from '../stores/authStore';
 import { useTeamStore } from '../stores/teamStore';

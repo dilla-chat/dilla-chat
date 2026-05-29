@@ -81,10 +81,8 @@
 
   /* Disabled state */
   --opacity-disabled: 0.4;
-}
 
-/* Density modes — applied via [data-density] on <html> by themeStore */
-:root {
+  /* Density mode defaults — overridden via [data-density] on <html> by themeStore */
   --row-pad-y: 0.375rem;
   --row-pad-x: 1.125rem;
   --row-gap: 0.125rem;

@@ -3487,10 +3487,8 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
               Mark unread from here
             </button>
             <button onClick={() => {
-              {(() => {
-                const host = data?.SERVERS?.[0]?.node || 'local';
-                navigator.clipboard?.writeText(`dilla://${host}/channels/${channel.id}/messages/${contextMenu.msgId}`);
-              })()}
+              const host = data?.SERVERS?.[0]?.node || 'local';
+              navigator.clipboard?.writeText(`dilla://${host}/channels/${channel.id}/messages/${contextMenu.msgId}`);
               globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { kind: 'message', channel: channel.name, author: 'system', text: 'Link copied to clipboard.', duration: 3000 } }));
               setContextMenu(null);
             }}>
@@ -4202,7 +4200,7 @@ function slashNotify(msg: string, kind = 'system'): void {
   globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: kind, author: 'system', text: msg, duration: 3200 } }));
 }
 
-function slashLookupMember(query: string, list: any[]): any | null {
+function slashLookupMember(query: string, list: any[]): any {
   const q = query.replace(/^@/, '').toLowerCase().trim();
   if (!q) return null;
   return list.find((m) => m.name?.toLowerCase() === q || m.id === q)
@@ -4610,7 +4608,7 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
               localScreenStream, localWebcamStream,
               remoteScreenStreams, remoteWebcamStreams,
             });
-            const { isSelf, mineMuted, mineDeaf, showScreen, showCam } = cardState;
+            const { mineMuted, mineDeaf, showScreen, showCam } = cardState;
             const node = (nodes[p.id] || '').split('.')[0] || 'local';
             const focusable = showScreen || showCam;
             const renderKind: 'screen' | 'cam' | 'avatar' =
