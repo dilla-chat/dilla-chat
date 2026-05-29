@@ -3717,6 +3717,20 @@ async function leaveTeamFromRail(s: { name: string }): Promise<void> {
   }
 }
 
+function resolveFocusedKind(
+  focused: { id: string; kind: 'cam' | 'screen' },
+  state: { cam: boolean; screen: boolean; voicePeers?: Record<string, { webcam_sharing?: boolean; screen_sharing?: boolean }> },
+): 'cam' | 'screen' | null {
+  const isSelf = focused.id === currentUserId();
+  const peerVoice = isSelf ? null : state.voicePeers?.[focused.id];
+  const camOn = isSelf ? !!state.cam : !!peerVoice?.webcam_sharing;
+  const screenOn = isSelf ? !!state.screen : !!peerVoice?.screen_sharing;
+  if (!camOn && !screenOn) return null;
+  if (focused.kind === 'cam' && !camOn && screenOn) return 'screen';
+  if (focused.kind === 'screen' && !screenOn && camOn) return 'cam';
+  return focused.kind;
+}
+
 function rollbackOptimistic(
   prev: Record<string, any[]>,
   channelId: string,
@@ -4548,26 +4562,10 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
   // Same liveness gating as the showCam/showScreen rule in cardFor.
   useEffect(() => {
     if (!focused) return;
-    const isSelf = focused.id === currentUserId();
-    const peerVoice = isSelf ? null : voicePeers?.[focused.id];
-    // Trust the sharing FLAG, not stream presence. The flag flips
-    // synchronously when the publisher toggles cam/screen (via voice:*-update
-    // broadcast), whereas the remote MediaStream lands later via SFU
-    // renegotiation. Gating on stream presence created a race: focus was set
-    // by the auto-focus effect, then this gate cleared it before ontrack
-    // populated remoteWebcamStreams, dropping the viewer back into the
-    // card grid even though the publisher was actively sharing.
-    const camOn = isSelf ? !!cam : !!peerVoice?.webcam_sharing;
-    const screenOn = isSelf ? !!screen : !!peerVoice?.screen_sharing;
-    if (!camOn && !screenOn) {
-      setFocused(null);
-      return;
-    }
-    if (focused.kind === 'cam' && !camOn && screenOn) {
-      setFocused({ id: focused.id, kind: 'screen' });
-    } else if (focused.kind === 'screen' && !screenOn && camOn) {
-      setFocused({ id: focused.id, kind: 'cam' });
-    }
+    const next = resolveFocusedKind(focused, { cam, screen, voicePeers });
+    if (next === focused.kind) return;
+    if (next === null) setFocused(null);
+    else setFocused({ id: focused.id, kind: next });
   }, [focused, voicePeers, cam, screen]);
 
   return (
