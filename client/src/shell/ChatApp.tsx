@@ -2508,8 +2508,6 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
         setThreadsOpen={setThreadsOpen}
         setSavedOpen={setSavedOpen}
         setPinnedOpen={setPinnedOpen}
-        setActiveChannel={setActiveChannel}
-        setActiveView={setActiveView}
       />
 
       <div className="feed" ref={feedRef}>
@@ -2615,36 +2613,20 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
             />
             <div className="composer-textwrap">
               {mention && mentionMatches.length > 0 && (
-                <div className="mention-pop">
-                  <div className="mention-head">members in this kanal · ↑↓ navigate · ⇥/↵ pick · esc cancel</div>
-                  {mentionMatches.map((m, i) => (
-                    <button type="button" key={m.id}
-                         className={'mention-row' + (i === mentionIdx ? ' selected' : '')}
-                         onMouseEnter={() => setMentionIdx(i)}
-                         onMouseDown={(e) => { e.preventDefault(); applyMention(m.name); }}>
-                      <div className={memberAvatarClass(m, 'mention-av')} style={memberAvatarStyle(m)}>{!m.avatarUrl && m.initials}</div>
-                      <div className="mention-name">{m.name}</div>
-                      {m.custom && <div className="mention-status">{m.custom}</div>}
-                      <div className="mention-presence"><span className={'presence ' + m.status}></span></div>
-                    </button>
-                  ))}
-                </div>
+                <MentionPop
+                  matches={mentionMatches}
+                  selectedIdx={mentionIdx}
+                  setMentionIdx={setMentionIdx}
+                  applyMention={applyMention}
+                />
               )}
               {slash && slashMatches.length > 0 && (
-                <div className="mention-pop slash-pop" style={{ maxHeight: 320, overflowY: 'auto' }}>
-                  <div className="mention-head">slash commands · ↑↓ navigate · ⇥/↵ pick · esc cancel</div>
-                  {slashMatches.map((s, i) => (
-                    <button type="button" key={s.cmd}
-                         ref={(el) => { if (el && i === slashIdx) el.scrollIntoView({ block: 'nearest' }); }}
-                         className={'slash-row' + (i === slashIdx ? ' selected' : '')}
-                         onMouseEnter={() => setSlashIdx(i)}
-                         onMouseDown={(e) => { e.preventDefault(); applySlash(s); }}>
-                      <div className="slash-cmd">{s.cmd}</div>
-                      {s.args && <div className="slash-args">{s.args}</div>}
-                      <div className="slash-desc">{s.desc}</div>
-                    </button>
-                  ))}
-                </div>
+                <SlashPop
+                  matches={slashMatches}
+                  selectedIdx={slashIdx}
+                  setSlashIdx={setSlashIdx}
+                  applySlash={applySlash}
+                />
               )}
               <textarea
                 ref={textareaRef}
@@ -4710,6 +4692,64 @@ function MessageHead({
   );
 }
 
+function MentionPop({
+  matches,
+  selectedIdx,
+  setMentionIdx,
+  applyMention,
+}: Readonly<{
+  matches: any[];
+  selectedIdx: number;
+  setMentionIdx: (i: number) => void;
+  applyMention: (name: string) => void;
+}>): JSX.Element {
+  return (
+    <div className="mention-pop">
+      <div className="mention-head">members in this kanal · ↑↓ navigate · ⇥/↵ pick · esc cancel</div>
+      {matches.map((m, i) => (
+        <button type="button" key={m.id}
+             className={'mention-row' + (i === selectedIdx ? ' selected' : '')}
+             onMouseEnter={() => setMentionIdx(i)}
+             onMouseDown={(e) => { e.preventDefault(); applyMention(m.name); }}>
+          <div className={memberAvatarClass(m, 'mention-av')} style={memberAvatarStyle(m)}>{!m.avatarUrl && m.initials}</div>
+          <div className="mention-name">{m.name}</div>
+          {m.custom && <div className="mention-status">{m.custom}</div>}
+          <div className="mention-presence"><span className={'presence ' + m.status}></span></div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function SlashPop({
+  matches,
+  selectedIdx,
+  setSlashIdx,
+  applySlash,
+}: Readonly<{
+  matches: any[];
+  selectedIdx: number;
+  setSlashIdx: (i: number) => void;
+  applySlash: (cmd: any) => void;
+}>): JSX.Element {
+  return (
+    <div className="mention-pop slash-pop" style={{ maxHeight: 320, overflowY: 'auto' }}>
+      <div className="mention-head">slash commands · ↑↓ navigate · ⇥/↵ pick · esc cancel</div>
+      {matches.map((s, i) => (
+        <button type="button" key={s.cmd}
+             ref={(el) => { if (el && i === selectedIdx) el.scrollIntoView({ block: 'nearest' }); }}
+             className={'slash-row' + (i === selectedIdx ? ' selected' : '')}
+             onMouseEnter={() => setSlashIdx(i)}
+             onMouseDown={(e) => { e.preventDefault(); applySlash(s); }}>
+          <div className="slash-cmd">{s.cmd}</div>
+          {s.args && <div className="slash-args">{s.args}</div>}
+          <div className="slash-desc">{s.desc}</div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function TextChannelHeader({
   channel,
   dmPartner,
@@ -4727,8 +4767,6 @@ function TextChannelHeader({
   setThreadsOpen,
   setSavedOpen,
   setPinnedOpen,
-  setActiveChannel,
-  setActiveView,
 }: Readonly<{
   channel: any;
   dmPartner: any;
@@ -4746,8 +4784,6 @@ function TextChannelHeader({
   setThreadsOpen: (updater: any) => void;
   setSavedOpen: (updater: any) => void;
   setPinnedOpen: (updater: any) => void;
-  setActiveChannel: (id: string) => void;
-  setActiveView: (v: { kind: 'channel' | 'dm'; id: string }) => void;
 }>): JSX.Element {
   const isDm = channel.type === 'dm';
   return (
@@ -4782,7 +4818,7 @@ function TextChannelHeader({
                 savedMsgs={savedMsgs}
                 data={data}
                 onClose={() => setSavedOpen(false)}
-                onJump={(chanName) => { setSavedOpen(false); setActiveChannel(chanName); setActiveView({ kind: 'channel', id: chanName }); }}
+                onJump={(chanName) => { setSavedOpen(false); globalThis.dispatchEvent(new CustomEvent('dilla:pickchannel', { detail: chanName })); }}
               />
             )}
           </div>
