@@ -5987,6 +5987,47 @@ function toggleLocalMedia(
 
 const TYPING_EXPIRY_MS = 5000;
 
+function useChatAppVoiceState(data: any): {
+  voice: ReturnType<typeof useVoiceConnection>;
+  voiceConnection: { channelId: string; channel: string } | null;
+  mute: boolean;
+  deaf: boolean;
+  cam: boolean;
+  screen: boolean;
+  setMute: (next: any) => void;
+  setDeaf: (next: any) => void;
+  setCam: (next: boolean | ((v: boolean) => boolean)) => void;
+  setScreen: (next: boolean | ((v: boolean) => boolean)) => void;
+} {
+  const voice = useVoiceConnection();
+  const voiceCh = data.CHANNELS?.find((c: any) => c.id === voice.currentChannelId);
+  const voiceConnection = voice.connected && voiceCh
+    ? { channelId: voice.currentChannelId, channel: voiceCh.name }
+    : null;
+  const [cam, setCamRaw] = useState(false);
+  const [screen, setScreenRaw] = useState(false);
+  // Reset cam/screen when voice disconnects so the user-panel icons go back
+  // to off — leaveChannel already stops the media tracks in the store.
+  useEffect(() => {
+    if (!voice.connected) {
+      setCamRaw(false);
+      setScreenRaw(false);
+    }
+  }, [voice.connected]);
+  const setMute = (next: any) => toggleVoiceMute(next, voice.muted);
+  const setDeaf = (next: any) => toggleVoiceDeafen(next, voice.deafened);
+  const setCam = (next: boolean | ((v: boolean) => boolean)) =>
+    toggleLocalMedia(next, cam, setCamRaw, 'webcam');
+  const setScreen = (next: boolean | ((v: boolean) => boolean)) =>
+    toggleLocalMedia(next, screen, setScreenRaw, 'screen');
+  return {
+    voice, voiceConnection,
+    mute: voice.muted, deaf: voice.deafened,
+    cam, screen,
+    setMute, setDeaf, setCam, setScreen,
+  };
+}
+
 function useActiveChannelTyping(activeChannel: string): string[] {
   const myUserId = currentUserId();
   const typingUsersForActive = useMessageStore((s) => s.typing.get(activeChannel));
@@ -6659,36 +6700,8 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   // and WebRTC events). voiceConnection is a derived view (channelId +
   // friendly channel name) that the legacy UI props expect. mute/deaf
   // come straight from the store so the icons reflect real mic state.
-  const voice = useVoiceConnection();
-  const voiceCh = data.CHANNELS?.find((c) => c.id === voice.currentChannelId);
-  const voiceConnection = voice.connected && voiceCh
-    ? { channelId: voice.currentChannelId, channel: voiceCh.name }
-    : null;
-  const mute = voice.muted;
-  const setMute = (next) => toggleVoiceMute(next, voice.muted);
-  const deaf = voice.deafened;
-  const setDeaf = (next) => toggleVoiceDeafen(next, voice.deafened);
-  // Wrap the local cam/screen booleans with side effects that actually
-  // publish/stop media via webrtcService. Previously these were just
-  // useState pairs — the toggle buttons flipped a boolean but no
-  // getUserMedia/getDisplayMedia call ever happened, which is why the
-  // UI showed CamTile/ScreenTile placeholders forever.
-  const [cam, setCamRaw] = useState(false);
-  const [screen, setScreenRaw] = useState(false);
-  // Reset cam/screen when voice disconnects so the user-panel icons go
-  // back to off — leaveChannel already stops the media tracks in the
-  // store, but the local toggle flags live here so the user-panel
-  // button doesn't have a state source to sync against otherwise.
-  useEffect(() => {
-    if (!voice.connected) {
-      setCamRaw(false);
-      setScreenRaw(false);
-    }
-  }, [voice.connected]);
-  const setCam = (next: boolean | ((v: boolean) => boolean)) =>
-    toggleLocalMedia(next, cam, setCamRaw, 'webcam');
-  const setScreen = (next: boolean | ((v: boolean) => boolean)) =>
-    toggleLocalMedia(next, screen, setScreenRaw, 'screen');
+  const voiceUi = useChatAppVoiceState(data);
+  const { voice, voiceConnection, mute, deaf, cam, screen, setMute, setDeaf, setCam, setScreen } = voiceUi;
   // Channel typing indicator: read straight from useMessageStore which
   // useChannelEvents populates on every typing:indicator WS event. We
   // filter ourselves out, drop entries older than 5s (typing decay),
