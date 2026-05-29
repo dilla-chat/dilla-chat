@@ -4975,6 +4975,34 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
 }
 
 // ───────────── member list ─────────────
+function groupMembersByRole(membersArr: any[]): {
+  offline: any[];
+  groupOrder: string[];
+  groupMeta: Record<string, { name: string; color: string; position: number }>;
+  groups: Record<string, any[]>;
+  onlineDefault: any[];
+} {
+  const offline: any[] = [];
+  const groupOrder: string[] = [];
+  const groupMeta: Record<string, { name: string; color: string; position: number }> = {};
+  const groups: Record<string, any[]> = {};
+  const onlineDefault: any[] = [];
+  membersArr.forEach((m: any) => {
+    if (m.status === 'offline') { offline.push(m); return; }
+    const top = m.roles?.[0] || null;
+    if (!top) { onlineDefault.push(m); return; }
+    const key = top.id;
+    if (!groups[key]) {
+      groups[key] = [];
+      groupMeta[key] = { name: top.name, color: top.color, position: top.position ?? 0 };
+      groupOrder.push(key);
+    }
+    groups[key].push(m);
+  });
+  groupOrder.sort((a, b) => (groupMeta[b].position ?? 0) - (groupMeta[a].position ?? 0));
+  return { offline, groupOrder, groupMeta, groups, onlineDefault };
+}
+
 function MemberRow({ m, ctx }) {
   const { nodes, fps, rich, federated, teamName, memberPerms } = ctx;
   const off = m.status === 'offline';
@@ -5046,27 +5074,7 @@ export function MemberList({ members, voiceConnection, rich, federated }) {
   const MC = globalThis.MeshChrome || {};
   const nodes = MC.MEMBER_NODES || {};
   const fps = MC.FINGERPRINTS || {};
-  // Group online members by their highest-priority non-default role.
-  // Members with no explicit role land under "Online" (the default group).
-  // Offline members stay in their own group regardless of role.
-  const offline: any[] = [];
-  const groupOrder: string[] = []; // role names, ordered by max position desc
-  const groupMeta: Record<string, { name: string; color: string; position: number }> = {};
-  const groups: Record<string, any[]> = {};
-  const onlineDefault: any[] = [];
-  members.MEMBERS.forEach((m: any) => {
-    if (m.status === 'offline') { offline.push(m); return; }
-    const top = m.roles?.[0] || null;
-    if (!top) { onlineDefault.push(m); return; }
-    const key = top.id;
-    if (!groups[key]) {
-      groups[key] = [];
-      groupMeta[key] = { name: top.name, color: top.color, position: top.position ?? 0 };
-      groupOrder.push(key);
-    }
-    groups[key].push(m);
-  });
-  groupOrder.sort((a, b) => (groupMeta[b].position ?? 0) - (groupMeta[a].position ?? 0));
+  const { offline, groupOrder, groupMeta, groups, onlineDefault } = groupMembersByRole(members.MEMBERS);
 
   const rowCtx = { nodes, fps, rich, federated, teamName, memberPerms };
 
