@@ -4779,6 +4779,26 @@ function ThreadRow({
   );
 }
 
+function redirectToOnboarding(s: { kind: string; token?: string; name?: string }): void {
+  // Adding a team requires server URL + identity binding — too much for a
+  // single modal. Redirect into the onboarding flow with the appropriate
+  // mode + token pre-filled. The user's existing identity is reused (no new
+  // keypair).
+  if (s.kind === 'join') {
+    const tokenParam = encodeURIComponent(s.token || '');
+    globalThis.location.assign(`/onboarding?mode=invite&token=${tokenParam}`);
+    return;
+  }
+  const nameParam = encodeURIComponent(s.name || '');
+  globalThis.location.assign(`/onboarding?mode=bootstrap&team=${nameParam}`);
+}
+
+function dispatchOpenThread(channelId: string, messageId: string): void {
+  globalThis.dispatchEvent(new CustomEvent('dilla:open-thread', {
+    detail: { channelId, messageId },
+  }));
+}
+
 function MessageTools({
   m,
   channelId,
@@ -4796,9 +4816,6 @@ function MessageTools({
   onEdit: () => void;
   onDelete: () => void;
 }>): JSX.Element {
-  const openThread = () => globalThis.dispatchEvent(new CustomEvent('dilla:open-thread', {
-    detail: { channelId, messageId: m.id },
-  }));
   return (
     <div className="msg-tools">
       <button title="Add reaction" onClick={onAddReaction}>
@@ -4807,7 +4824,7 @@ function MessageTools({
       <button title="Reply" onClick={onReply}>
         <Icon.Reply size={12} />
       </button>
-      <button title="Open thread" onClick={openThread}>
+      <button title="Open thread" onClick={() => dispatchOpenThread(channelId, m.id)}>
         <Icon.Thread size={13} />
       </button>
       {isMine && (
@@ -4837,11 +4854,8 @@ function ThreadPreview({
   channelId: string;
   membersById: Record<string, any>;
 }>): JSX.Element {
-  const onClick = () => globalThis.dispatchEvent(new CustomEvent('dilla:open-thread', {
-    detail: { channelId, messageId: m.id },
-  }));
   return (
-    <button type="button" className="thread-preview" onClick={onClick}>
+    <button type="button" className="thread-preview" onClick={() => dispatchOpenThread(channelId, m.id)}>
       <div className="thread-stack">
         {m.thread.participants.map((pid) => {
           const p = membersById[pid];
@@ -7042,46 +7056,19 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
       )}
       {newServerOpen && (
         <NewServerModal onClose={() => setNewServerOpen(false)} onCreate={(s) => {
-          // Adding a team requires server URL + identity binding — too much
-          // for a single modal. Redirect into the onboarding flow with the
-          // appropriate mode + token pre-filled. The user's existing
-          // identity is reused (no new keypair).
           setNewServerOpen(false);
-          if (s.kind === 'join') {
-            const tokenParam = encodeURIComponent(s.token || '');
-            globalThis.location.assign(`/onboarding?mode=invite&token=${tokenParam}`);
-          } else {
-            const nameParam = encodeURIComponent(s.name || '');
-            globalThis.location.assign(`/onboarding?mode=bootstrap&team=${nameParam}`);
-          }
+          redirectToOnboarding(s);
         }} />
       )}
       {newDmOpen && (
-        <NewDmModal members={data} onClose={() => setNewDmOpen(false)}
+        <NewDmModal
+          members={data}
+          onClose={() => setNewDmOpen(false)}
           onPick={async (id) => {
-            // Optimistic: synthesize a local DM id so the UI advances even
-            // when offline / on /mesh. On /app the server returns the real
-            // channel id; we re-route to it once the round-trip completes.
-            const optimisticId = 'dm-' + id;
-            if (!data.DMS.some(d => d.id === optimisticId)) {
-              data.DMS.push({ id: optimisticId, with: id, preview: '', at: new Date(), unread: 0 });
-            }
-            setActiveDM(optimisticId);
-            setActiveView({ kind: 'dm', id: optimisticId });
-            setTab('pms');
             setNewDmOpen(false);
-            if (activeTeamId && !isMockSession()) {
-              try {
-                const real = (await api.createDM(activeTeamId, [id])) as { id: string };
-                if (real?.id && real.id !== optimisticId) {
-                  setActiveDM(real.id);
-                  setActiveView({ kind: 'dm', id: real.id });
-                }
-              } catch (err) {
-                console.warn('[ChatApp] createDM failed', err);
-              }
-            }
-          }} />
+            await openDmForMember(id, { data, activeTeamId, setActiveDM, setActiveView, setTab });
+          }}
+        />
       )}
       <button
         type="button"
