@@ -3617,6 +3617,44 @@ function composerStatus(slowModeLock: { secondsLeft: number } | null | undefined
   );
 }
 
+function makeFocusItem(
+  kind: VoiceFocusKind,
+  p: { id: string },
+  focused: { id: string; kind: VoiceFocusKind } | null,
+  setFocused: (next: { id: string; kind: VoiceFocusKind } | null) => void,
+): any {
+  const isFocused = focused?.id === p.id && focused.kind === kind;
+  return {
+    label: isFocused ? (kind === 'screen' ? 'Exit screen focus' : 'Exit webcam focus') : (kind === 'screen' ? 'Focus screen share' : 'Focus webcam'),
+    icon: kind === 'screen' ? <Icon.Screen size={13} /> : <Icon.Video size={13} />,
+    onClick: () => setFocused(isFocused ? null : { id: p.id, kind }),
+  };
+}
+
+function makeAdminVoiceActions(p: { id: string; name: string }, vcTeamId: string | null, channelId: string, mineMuted: boolean): any[] {
+  if (p.id === currentUserId()) return [];
+  const out: any[] = [];
+  if (!mineMuted) {
+    out.push({
+      label: 'Server-mute', danger: true, icon: <Icon.Mic size={13} off />,
+      onClick: () => {
+        if (!vcTeamId) return;
+        ws.voiceForceMute(vcTeamId, channelId, p.id);
+        globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'admin', text: 'Server-muted ' + p.name + '.', duration: 2500 } }));
+      },
+    });
+  }
+  out.push({
+    label: 'Disconnect from voice', danger: true, icon: null,
+    onClick: () => {
+      if (!vcTeamId) return;
+      ws.voiceForceDisconnect(vcTeamId, channelId, p.id);
+      globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'admin', text: 'Disconnected ' + p.name + ' from voice.', duration: 2500 } }));
+    },
+  });
+  return out;
+}
+
 function buildVoiceCardMenu(args: {
   p: { id: string; name: string };
   showScreen: boolean;
@@ -3634,50 +3672,13 @@ function buildVoiceCardMenu(args: {
   const items: any[] = [
     { label: 'View profile', icon: <Icon.People size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-profile', { detail: { memberId: p.id, x, y } })) },
   ];
-  if (showScreen) {
-    const focusedScreen = focused?.id === p.id && focused.kind === 'screen';
-    items.push({
-      label: focusedScreen ? 'Exit screen focus' : 'Focus screen share',
-      icon: <Icon.Screen size={13} />,
-      onClick: () => setFocused(focusedScreen ? null : { id: p.id, kind: 'screen' }),
-    });
-  }
-  if (showCam) {
-    const focusedCam = focused?.id === p.id && focused.kind === 'cam';
-    items.push({
-      label: focusedCam ? 'Exit webcam focus' : 'Focus webcam',
-      icon: <Icon.Video size={13} />,
-      onClick: () => setFocused(focusedCam ? null : { id: p.id, kind: 'cam' }),
-    });
-  }
+  if (showScreen) items.push(makeFocusItem('screen', p, focused, setFocused));
+  if (showCam) items.push(makeFocusItem('cam', p, focused, setFocused));
   items.push(
     { sep: true },
     { label: 'Mute for me only', icon: <Icon.Mic size={13} off />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'mixer', text: 'Muted ' + p.name + ' for this session only.', duration: 2500 } })) },
   );
-  if (canMuteVoice && p.id !== currentUserId() && !mineMuted) {
-    items.push({
-      label: 'Server-mute',
-      danger: true,
-      icon: <Icon.Mic size={13} off />,
-      onClick: () => {
-        if (!vcTeamId) return;
-        ws.voiceForceMute(vcTeamId, channelId, p.id);
-        globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'admin', text: 'Server-muted ' + p.name + '.', duration: 2500 } }));
-      },
-    });
-  }
-  if (canMuteVoice && p.id !== currentUserId()) {
-    items.push({
-      label: 'Disconnect from voice',
-      danger: true,
-      icon: null,
-      onClick: () => {
-        if (!vcTeamId) return;
-        ws.voiceForceDisconnect(vcTeamId, channelId, p.id);
-        globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'admin', text: 'Disconnected ' + p.name + ' from voice.', duration: 2500 } }));
-      },
-    });
-  }
+  if (canMuteVoice) items.push(...makeAdminVoiceActions(p, vcTeamId, channelId, mineMuted));
   return items;
 }
 
