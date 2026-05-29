@@ -1570,12 +1570,16 @@ export function FloatingPip({
   return (
     <div
       ref={ref}
-      className={className}
+      className={`${className} pip-wrap`}
       title={title}
-      role="application"
       aria-label={title || 'Floating picture-in-picture'}
-      onMouseDown={(e) => start('move', e)}
     >
+      <button
+        type="button"
+        className="pip-move-handle"
+        aria-label="Drag to move; click without dragging to activate"
+        onMouseDown={(e) => start('move', e)}
+      />
       {children}
       <button type="button" aria-label="Resize PIP from top edge" className="pip-edge pip-n"  onMouseDown={(e) => start('n', e)} />
       <button type="button" aria-label="Resize PIP from bottom edge" className="pip-edge pip-s"  onMouseDown={(e) => start('s', e)} />
@@ -5257,28 +5261,30 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
               focusKind ?? (showCam ? 'cam' : 'avatar');
             return (
               <div key={p.id}
-                   className={'voice-card'
+                   className={'voice-card-wrap voice-card'
                      + (speaking ? ' speaking' : '')
                      + voiceCardKindClass(renderKind)
                      + (isMini ? ' mini' : '')
                      + (isMini && effectiveFocused && p.id === effectiveFocused.id ? ' is-focused' : '')
                      + (focusable && !isMini ? ' focusable' : '')}
                    data-node={node}
-                   data-latency={peerLatencies[p.id] ?? '--'}
-                   role="button"
-                   tabIndex={0}
-                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}
-                   onContextMenu={(e) => openVoiceCardMenu(e, {
-                     p, showScreen, showCam, focused, setFocused,
-                     canMuteVoice: vcPerms.has(PERM_MUTE_VOICE),
-                     mineMuted, vcTeamId, channelId: channel.id,
-                   })}
-                   onClick={() => handleVoiceCardClick({
-                     pid: p.id,
-                     effectiveFocused, canExitFocus, setFocused,
-                     remembered: lastFocusKindRef.current[p.id],
-                     showScreen, showCam,
-                   })}>
+                   data-latency={peerLatencies[p.id] ?? '--'}>
+                <button
+                  type="button"
+                  className="voice-card-hit"
+                  aria-label={`Focus ${p.name}`}
+                  onContextMenu={(e) => openVoiceCardMenu(e, {
+                    p, showScreen, showCam, focused, setFocused,
+                    canMuteVoice: vcPerms.has(PERM_MUTE_VOICE),
+                    mineMuted, vcTeamId, channelId: channel.id,
+                  })}
+                  onClick={() => handleVoiceCardClick({
+                    pid: p.id,
+                    effectiveFocused, canExitFocus, setFocused,
+                    remembered: lastFocusKindRef.current[p.id],
+                    showScreen, showCam,
+                  })}
+                />
                 <VoiceCardMedia
                   p={p} focusKind={focusKind} isMini={isMini}
                   renderKind={renderKind} showCam={showCam} showScreen={showScreen}
@@ -5439,7 +5445,7 @@ function markLatestRead(
   viewId: string,
   msgs: Array<{ id: string }> | undefined,
 ): void {
-  const lastId = msgs && msgs.length > 0 ? msgs[msgs.length - 1].id : '';
+  const lastId = msgs?.at(-1)?.id ?? '';
   if (!lastId) return;
   try { ws.markChannelRead(teamId, viewId, lastId); } catch { /* ignore */ }
 }

@@ -2439,6 +2439,22 @@ img.attach-img {
   transition: transform .15s, border-color .15s;
   animation: dilla-voice-in 0.28s cubic-bezier(.3,.7,.4,1) both;
 }
+.voice-card-hit {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  border: none;
+  border-radius: inherit;
+  cursor: pointer;
+  z-index: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+}
+.voice-card-wrap > *:not(.voice-card-hit) {
+  position: relative;
+  z-index: 1;
+}
 .voice-card.speaking {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent), 0 8px 24px var(--accent-soft);
@@ -2772,6 +2788,20 @@ img.attach-img {
   background: transparent;
   border: none;
   padding: 0;
+}
+.pip-wrap > *:not(.pip-move-handle):not(.pip-edge) {
+  position: relative;
+  z-index: 1;
+}
+.pip-move-handle {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: move;
+  border-radius: inherit;
 }
 .pip-edge.pip-n  { top: -2px;    left: 6px;   right: 6px;  height: 5px;  cursor: ns-resize; }
 .pip-edge.pip-s  { bottom: -2px; left: 6px;   right: 6px;  height: 5px;  cursor: ns-resize; }

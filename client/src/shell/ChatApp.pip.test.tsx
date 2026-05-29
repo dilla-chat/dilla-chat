@@ -155,12 +155,13 @@ describe('FloatingPip', () => {
     const onClick = vi.fn();
     const { container } = render(<FloatingPip className="pf-click" onClick={onClick}>kid</FloatingPip>);
     const root = container.querySelector('.pf-click') as HTMLElement;
+    const handle = container.querySelector('.pip-move-handle') as HTMLElement;
     Object.defineProperty(root, 'offsetParent', { value: document.body, configurable: true });
     Object.defineProperty(root, 'getBoundingClientRect', {
       value: () => ({ left: 0, top: 0, right: 100, bottom: 80, width: 100, height: 80, x: 0, y: 0, toJSON: () => ({}) }),
       configurable: true,
     });
-    fireEvent.mouseDown(root, { clientX: 50, clientY: 40 });
+    fireEvent.mouseDown(handle, { clientX: 50, clientY: 40 });
     // No mousemove — straight to mouseup with no movement.
     fireEvent.mouseUp(document, { clientX: 50, clientY: 40 });
     expect(onClick).toHaveBeenCalled();
