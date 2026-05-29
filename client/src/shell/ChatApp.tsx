@@ -2540,35 +2540,14 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                 <Icon.Pin />
               </button>
               {pinnedOpen && (
-                <div className="pin-pop">
-                  <div className="pin-head">
-                    <span>Pinned in #{channel.name}</span>
-                    <button className="pin-x" onClick={() => setPinnedOpen(false)}>×</button>
-                  </div>
-                  {pinnedMsgs.length === 0 ? (
-                    <div className="pin-empty">no pinned messages yet · pin one via the message menu</div>
-                  ) : (
-                    <div className="pin-list">
-                      {pinnedMsgs.map(pm => {
-                        const a = members.byId[pm.author] || { name: pm.author, color: '#666', initials: '??' };
-                        return (
-                          <button
-                            type="button"
-                            key={pm.id}
-                            className="pin-row"
-                            onClick={() => jumpToPinnedMessage(setPinnedOpen, feedRef, pm.id)}
-                          >
-                            <div className="pin-av" style={{ background: a.color }}>{a.initials}</div>
-                            <div>
-                              <div className="pin-meta"><span className="pin-author">{a.name}</span> <span className="pin-time">· {timeShort(pm.at)}</span></div>
-                              <div className="pin-text">{pm.text}</div>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                <PinnedPop
+                  channel={channel}
+                  pinnedMsgs={pinnedMsgs}
+                  membersById={members.byId}
+                  onClose={() => setPinnedOpen(false)}
+                  setPinnedOpen={setPinnedOpen}
+                  feedRef={feedRef}
+                />
               )}
             </div>
           )}
@@ -4396,6 +4375,54 @@ function findSavedMessage(savedId: string, allMessages: Record<string, any[]>): 
     if (f) return { msg: f, chanName: chId };
   }
   return null;
+}
+
+function PinnedPop({
+  channel,
+  pinnedMsgs,
+  membersById,
+  onClose,
+  setPinnedOpen,
+  feedRef,
+}: Readonly<{
+  channel: { name: string };
+  pinnedMsgs: any[];
+  membersById: Record<string, any>;
+  onClose: () => void;
+  setPinnedOpen: (open: boolean) => void;
+  feedRef: { current: HTMLElement | null };
+}>): JSX.Element {
+  return (
+    <div className="pin-pop">
+      <div className="pin-head">
+        <span>Pinned in #{channel.name}</span>
+        <button className="pin-x" onClick={onClose}>×</button>
+      </div>
+      {pinnedMsgs.length === 0 ? (
+        <div className="pin-empty">no pinned messages yet · pin one via the message menu</div>
+      ) : (
+        <div className="pin-list">
+          {pinnedMsgs.map((pm) => {
+            const a = membersById[pm.author] || { name: pm.author, color: '#666', initials: '??' };
+            return (
+              <button
+                type="button"
+                key={pm.id}
+                className="pin-row"
+                onClick={() => jumpToPinnedMessage(setPinnedOpen, feedRef, pm.id)}
+              >
+                <div className="pin-av" style={{ background: a.color }}>{a.initials}</div>
+                <div>
+                  <div className="pin-meta"><span className="pin-author">{a.name}</span> <span className="pin-time">· {timeShort(pm.at)}</span></div>
+                  <div className="pin-text">{pm.text}</div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function SavedPop({
