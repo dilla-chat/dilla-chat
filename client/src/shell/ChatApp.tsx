@@ -5291,6 +5291,27 @@ function groupMembersByRole(membersArr: any[]): {
   return { offline, groupOrder, groupMeta, groups, onlineDefault };
 }
 
+function buildMemberContextItems(m: any, memberPerms: any, teamName: string): any[] {
+  const items: any[] = [
+    { label: 'Send message', icon: <Icon.Chat size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-dm', { detail: m.id })) },
+    { label: 'Mention in current kanal', icon: <span style={{ fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: 13 }}>@</span>, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:insert-mention', { detail: m.name })) },
+    { label: 'View profile', icon: <Icon.People size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-profile', { detail: { memberId: m.id, x: 200, y: 200 } })) },
+    { label: 'Verify safety number', icon: <Icon.Shield size={12} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:verify-safety', { detail: m.id })) },
+    { sep: true },
+    useBlockStore.getState().isBlocked(m.id)
+      ? { label: 'Unblock', icon: <Icon.Shield size={12} />, onClick: () => unblockMember(m.id) }
+      : { label: 'Block', danger: true, icon: <Icon.Shield size={12} />, onClick: () => blockMember(m.id, m.name) },
+    { label: 'Mute', icon: <Icon.Mic size={13} off />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'system', text: m.name + ' muted in voice channels.', duration: 2200 } })) },
+  ];
+  if (memberPerms.has(PERM_MANAGE_MEMBERS) && m.id !== currentUserId()) {
+    items.push(
+      { label: 'Kick from team', danger: true, icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M10 4V2H3v12h7v-2M6 8h9M12 5l3 3-3 3M9 3v0" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>, onClick: () => kickMember(m.id, m.name, teamName) },
+      { label: 'Ban from team', danger: true, icon: <Icon.Lock size={12} />, onClick: () => banMember(m.id, m.name, teamName) },
+    );
+  }
+  return items;
+}
+
 function MemberRow({ m, ctx }) {
   const { nodes, fps, rich, federated, teamName, memberPerms } = ctx;
   const off = m.status === 'offline';
@@ -5306,25 +5327,9 @@ function MemberRow({ m, ctx }) {
          }}
          onContextMenu={(e) => {
            e.preventDefault();
-           globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items: [
-             { label: 'Send message', icon: <Icon.Chat size={13} />, onClick: () => {
-               globalThis.dispatchEvent(new CustomEvent('dilla:open-dm', { detail: m.id }));
-             } },
-             { label: 'Mention in current kanal', icon: <span style={{ fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: 13 }}>@</span>, onClick: () => {
-               globalThis.dispatchEvent(new CustomEvent('dilla:insert-mention', { detail: m.name }));
-             } },
-             { label: 'View profile', icon: <Icon.People size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-profile', { detail: { memberId: m.id, x: 200, y: 200 } })) },
-             { label: 'Verify safety number', icon: <Icon.Shield size={12} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:verify-safety', { detail: m.id })) },
-             { sep: true },
-             useBlockStore.getState().isBlocked(m.id)
-               ? { label: 'Unblock', icon: <Icon.Shield size={12} />, onClick: () => unblockMember(m.id) }
-               : { label: 'Block', danger: true, icon: <Icon.Shield size={12} />, onClick: () => blockMember(m.id, m.name) },
-             { label: 'Mute', icon: <Icon.Mic size={13} off />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { team: teamName, author: 'system', text: m.name + ' muted in voice channels.', duration: 2200 } })) },
-             ...(memberPerms.has(PERM_MANAGE_MEMBERS) && m.id !== currentUserId() ? [
-               { label: 'Kick from team', danger: true, icon: <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M10 4V2H3v12h7v-2M6 8h9M12 5l3 3-3 3M9 3v0" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>, onClick: () => kickMember(m.id, m.name, teamName) },
-               { label: 'Ban from team', danger: true, icon: <Icon.Lock size={12} />, onClick: () => banMember(m.id, m.name, teamName) },
-             ] : []),
-           ] } }));
+           globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', {
+             detail: { x: e.clientX, y: e.clientY, items: buildMemberContextItems(m, memberPerms, teamName) },
+           }));
          }}>
       <Avatar member={m} />
       <span style={{ minWidth: 0, flex: 1, display: 'block' }}>
