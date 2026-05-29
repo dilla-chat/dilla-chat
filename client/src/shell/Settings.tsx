@@ -174,6 +174,10 @@ function describeRotationResult(rotated: number): string {
   return `Rotated sender keys for ${rotated} ${noun}.`;
 }
 
+function escapeToClose(e: KeyboardEvent, onClose: () => void): void {
+  if (e.key === 'Escape') onClose();
+}
+
 function applyAvatarUrl(url: string, userId?: string): void {
   if (!userId) return;
   const ts = useTeamStore.getState();
@@ -278,7 +282,7 @@ function Settings({ open, mode, defaultTab, onClose }) {
   useEffectS(() => { if (open) setActive(defaultTab || tabs[0].id); }, [open, mode, defaultTab]);
   useEffectS(() => {
     if (!open) return;
-    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    const onKey = (e: KeyboardEvent) => escapeToClose(e, onClose);
     globalThis.addEventListener('keydown', onKey);
     return () => globalThis.removeEventListener('keydown', onKey);
   }, [open, onClose]);
@@ -471,7 +475,7 @@ export function CropModal({
   }, [file]);
 
   useEffectS(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onCancel(); }
+    const onKey = (e: KeyboardEvent) => escapeToClose(e, onCancel);
     globalThis.addEventListener('keydown', onKey);
     return () => globalThis.removeEventListener('keydown', onKey);
   }, [onCancel]);
