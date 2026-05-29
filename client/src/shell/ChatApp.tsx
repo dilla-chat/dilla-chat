@@ -2630,30 +2630,18 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
               )}
               <textarea
                 ref={textareaRef}
-                placeholder={(() => {
-                  if (slowModeLock) return `Slow mode — wait ${slowModeLock.secondsLeft}s before posting again`;
-                  return channel.type === 'dm' ? `Message ${channel.name}` : `Message #${channel.name}`;
-                })()}
+                placeholder={composerPlaceholder(channel, slowModeLock)}
                 disabled={!!slowModeLock}
                 value={draft}
                 onChange={(e) => handleDraftChange(e.target.value, e.target.selectionStart, {
                   setDraft, setMention, setMentionIdx, setSlash, setSlashIdx,
                 })}
-                onKeyDown={e => {
-                  if (handleMentionPickerKey(e, { mention, mentionMatches, mentionIdx, setMentionIdx, setMention, applyMention })) return;
-                  if (handleSlashPickerKey(e, { slash, slashMatches, slashIdx, setSlashIdx, setSlash, applySlash })) return;
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    // Either text or a staged attachment is enough to send.
-                    if (draft.trim() || (pendingAttachments?.length ?? 0) > 0) onSend();
-                  }
-                  // Empty-draft ArrowUp loads the most recent message you
-                  // sent in this channel for editing — matches the Slack /
-                  // Discord pattern.
-                  if (e.key === 'ArrowUp' && !mention && !slash && !draft) {
-                    loadLastOwnMessageForEdit(e, messages, setEditingId, setEditDraft);
-                  }
-                }}
+                onKeyDown={(e) => handleComposerKey(e, {
+                  mention, mentionMatches, mentionIdx, setMentionIdx, setMention, applyMention,
+                  slash, slashMatches, slashIdx, setSlashIdx, setSlash, applySlash,
+                  draft, pendingAttachmentsCount: pendingAttachments?.length ?? 0,
+                  onSend, messages, setEditingId, setEditDraft,
+                })}
                 rows={1}
               />
             </div>
@@ -5433,6 +5421,51 @@ function queueFileUploads(
     schedulePhaseUpdates(phases, id, setUploads);
     Promise.resolve(onAttach?.(file)).finally(() => removeUploadById(setUploads, id));
   }
+}
+
+function handleComposerKey(
+  e: React.KeyboardEvent<HTMLTextAreaElement>,
+  ctx: {
+    mention: { query: string } | null;
+    mentionMatches: any[];
+    mentionIdx: number;
+    setMentionIdx: (updater: (i: number) => number) => void;
+    setMention: (m: any) => void;
+    applyMention: (name: string) => void;
+    slash: { query: string } | null;
+    slashMatches: any[];
+    slashIdx: number;
+    setSlashIdx: (updater: (i: number) => number) => void;
+    setSlash: (s: any) => void;
+    applySlash: (cmd: any) => void;
+    draft: string;
+    pendingAttachmentsCount: number;
+    onSend: () => void;
+    messages: any[];
+    setEditingId: (id: string) => void;
+    setEditDraft: (text: string) => void;
+  },
+): void {
+  if (handleMentionPickerKey(e, ctx)) return;
+  if (handleSlashPickerKey(e, ctx)) return;
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    if (ctx.draft.trim() || ctx.pendingAttachmentsCount > 0) ctx.onSend();
+    return;
+  }
+  // Empty-draft ArrowUp loads the most recent own message for editing
+  // (matches the Slack / Discord pattern).
+  if (e.key === 'ArrowUp' && !ctx.mention && !ctx.slash && !ctx.draft) {
+    loadLastOwnMessageForEdit(e, ctx.messages, ctx.setEditingId, ctx.setEditDraft);
+  }
+}
+
+function composerPlaceholder(
+  channel: { type: string; name: string },
+  slowModeLock: { secondsLeft: number } | null | undefined,
+): string {
+  if (slowModeLock) return `Slow mode — wait ${slowModeLock.secondsLeft}s before posting again`;
+  return channel.type === 'dm' ? `Message ${channel.name}` : `Message #${channel.name}`;
 }
 
 function handleDraftChange(
