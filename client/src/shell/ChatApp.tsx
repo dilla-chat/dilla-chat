@@ -6409,6 +6409,55 @@ function handleMessageRejected(
   }
 }
 
+function wireImperativeController(
+  controller: any,
+  ctx: {
+    data: any;
+    voice: { leave: () => void };
+    voiceConnection: any;
+    setActiveChannel: (id: string) => void;
+    setActiveView: (v: { kind: 'channel' | 'dm'; id: string }) => void;
+    setTab: (t: string) => void;
+    setMute: (next: (v: boolean) => boolean) => void;
+    setDeaf: (next: (v: boolean) => boolean) => void;
+  },
+): void {
+  if (!controller) return;
+  const { data, voice, voiceConnection, setActiveChannel, setActiveView, setTab, setMute, setDeaf } = ctx;
+  controller.pickChannel = (id: string) => {
+    if (data.CHANNELS.some((c: any) => c.id === id)) {
+      setActiveChannel(id);
+      setTab('kanals');
+      setActiveView({ kind: 'channel', id });
+    }
+  };
+  controller.toggleMute = () => setMute((v: boolean) => !v);
+  controller.toggleDeafen = () => setDeaf((v: boolean) => !v);
+  controller.disconnect = () => voice.leave();
+  controller.getVoiceConn = () => voiceConnection;
+}
+
+function resolveActiveView(
+  activeView: { kind: string; id: string },
+  baseChannel: any,
+  data: any,
+): { channel: any; dmPartner: any } {
+  if (activeView.kind !== 'dm') return { channel: baseChannel, dmPartner: null };
+  const dm = data.DMS.find((d: any) => d.id === activeView.id);
+  if (!dm) return { channel: baseChannel, dmPartner: null };
+  if (dm.group) {
+    return {
+      channel: { id: dm.id, name: dm.name, type: 'dm', encrypted: true, topic: 'group · ' + (dm.with.map((id: string) => data.byId[id]?.name).join(', ')), group: true },
+      dmPartner: null,
+    };
+  }
+  const partner = data.byId[dm.with];
+  return {
+    channel: { id: dm.id, name: partner?.name || 'dm', type: 'dm', encrypted: true, topic: partner?.custom || partner?.status },
+    dmPartner: partner,
+  };
+}
+
 function parseOpenSettingsEvent(detail: unknown): { open: boolean; mode: string; tab: string | null } {
   if (typeof detail === 'string') return { open: true, mode: detail, tab: null };
   if (detail && typeof detail === 'object') {
@@ -7224,16 +7273,9 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
 
   // Expose imperative controls to a parent via the optional `controller` object.
   useEffect(() => {
-    if (!controller) return;
-    controller.pickChannel = (id) => {
-      if (data.CHANNELS.some(c => c.id === id)) {
-        setActiveChannel(id); setTab('kanals'); setActiveView({ kind: 'channel', id });
-      }
-    };
-    controller.toggleMute   = () => setMute(v => !v);
-    controller.toggleDeafen = () => setDeaf(v => !v);
-    controller.disconnect   = () => voice.leave();
-    controller.getVoiceConn = () => voiceConnection;
+    wireImperativeController(controller, {
+      data, voice, voiceConnection, setActiveChannel, setActiveView, setTab, setMute, setDeaf,
+    });
   }, [controller, voiceConnection]);
 
   const team = data.SERVERS.find(s => s.id === activeServer) || data.SERVERS[0];
@@ -7241,21 +7283,9 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   const baseChannel = channelsForServer.find(c => c.id === activeChannel) || channelsForServer[0];
 
   // Resolve the active view: either a channel or a DM (synthesized as a channel-like object).
-  let viewChannel = baseChannel;
-  let dmPartner = null;
-  if (activeView.kind === 'dm') {
-    const dm = data.DMS.find(d => d.id === activeView.id);
-    if (dm) {
-      if (dm.group) {
-        viewChannel = { id: dm.id, name: dm.name, type: 'dm', encrypted: true, topic: 'group · ' + (dm.with.map(id => data.byId[id]?.name).join(', ')), group: true };
-      } else {
-        const partner = data.byId[dm.with];
-        dmPartner = partner;
-        viewChannel = { id: dm.id, name: partner?.name || 'dm', type: 'dm', encrypted: true, topic: partner?.custom || partner?.status };
-      }
-    }
-  }
-  const channel = viewChannel;
+  const resolved = resolveActiveView(activeView, baseChannel, data);
+  const channel = resolved.channel;
+  const dmPartner = resolved.dmPartner;
 
   // /giphy picker handoff. Two flavours of payload:
   //   • { url, attachment }: server materialized the gif into an
