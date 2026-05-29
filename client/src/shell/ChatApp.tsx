@@ -1359,6 +1359,7 @@ export function VideoTile({ stream, fit = 'cover', mirror, showStats = true }: R
 // meaningful movement still fires `onClick` so the pip-swap focus-
 // toggle behavior keeps working.
 type VoiceFocusKind = 'cam' | 'screen';
+type VoiceCardKind = VoiceFocusKind | 'avatar';
 type DragHandle = 'move' | 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 
 type PipStart = { startL: number; startT: number; startW: number; startH: number };
@@ -3469,7 +3470,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
   );
 }
 
-function voiceCardKindClass(kind: 'screen' | 'cam' | 'avatar'): string {
+function voiceCardKindClass(kind: VoiceCardKind): string {
   if (kind === 'screen') return ' has-screen';
   if (kind === 'cam') return ' has-cam';
   return '';
@@ -3563,6 +3564,67 @@ function resolveFocusedKind(
   return focused.kind;
 }
 
+function VoiceCardMedia({
+  p,
+  focusKind,
+  isMini,
+  renderKind,
+  showCam,
+  showScreen,
+  setFocused,
+}: Readonly<{
+  p: any;
+  focusKind?: VoiceFocusKind;
+  isMini: boolean;
+  renderKind: VoiceCardKind;
+  showCam: boolean;
+  showScreen: boolean;
+  setFocused: (next: { id: string; kind: VoiceFocusKind } | null) => void;
+}>): JSX.Element {
+  return (
+    <div className="voice-media">
+      {focusKind === 'screen' && <ScreenTile member={p} pip={null} showStats />}
+      {focusKind && focusKind !== 'screen' && <CamTile member={p} showStats />}
+      {!focusKind && (
+        <AvatarTile p={p} renderKind={renderKind} showCam={showCam} isMini={isMini} />
+      )}
+      {focusKind && !isMini && showCam && showScreen && (
+        <FloatingPip
+          className="voice-pip-swap"
+          minW={128}
+          minH={72}
+          title={focusKind === 'screen' ? 'Switch to webcam' : 'Switch to screen'}
+          onClick={() => setFocused({ id: p.id, kind: focusKind === 'screen' ? 'cam' : 'screen' })}
+        >
+          {focusKind === 'screen'
+            ? <CamTile member={p} mini />
+            : <ScreenTile member={p} pip={null} />}
+        </FloatingPip>
+      )}
+    </div>
+  );
+}
+
+function VoiceCardBadges({
+  mineMuted,
+  mineDeaf,
+  showCam,
+  showScreen,
+}: Readonly<{ mineMuted: boolean; mineDeaf: boolean; showCam: boolean; showScreen: boolean }>): JSX.Element {
+  return (
+    <div className="v-badges v-badges-inline">
+      {mineMuted
+        ? <span className="v-badge danger" title="muted"><Icon.Mic size={11} off /></span>
+        : <span className="v-badge ok" title="mic on"><Icon.Mic size={11} /></span>}
+      {mineDeaf
+        ? <span className="v-badge danger" title="deafened"><Icon.Headphones size={11} off /></span>
+        : <span className="v-badge ok" title="headphones on"><Icon.Headphones size={11} /></span>}
+      {showCam && <span className="v-badge ok" title="camera on"><Icon.Video size={11} /></span>}
+      {showScreen && <span className="v-badge ok" title="sharing screen"><Icon.Screen size={11} /></span>}
+    </div>
+  );
+}
+
 function AvatarTile({
   p,
   renderKind,
@@ -3570,7 +3632,7 @@ function AvatarTile({
   isMini,
 }: Readonly<{
   p: any;
-  renderKind: 'screen' | 'cam' | 'avatar';
+  renderKind: VoiceCardKind;
   showCam: boolean;
   isMini: boolean;
 }>): JSX.Element {
@@ -4914,7 +4976,7 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
             const { mineMuted, mineDeaf, showScreen, showCam } = cardState;
             const node = (nodes[p.id] || '').split('.')[0] || 'local';
             const focusable = showScreen || showCam;
-            const renderKind: 'screen' | 'cam' | 'avatar' =
+            const renderKind: VoiceCardKind =
               focusKind ?? (showCam ? 'cam' : 'avatar');
             return (
               <article key={p.id}
@@ -4937,50 +4999,17 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
                      remembered: lastFocusKindRef.current[p.id],
                      showScreen, showCam,
                    })}>
-                <div className="voice-media">
-                  {focusKind && focusKind === 'screen' && (
-                    <ScreenTile member={p} pip={null} showStats />
-                  )}
-                  {focusKind && focusKind !== 'screen' && (
-                    <CamTile member={p} showStats />
-                  )}
-                  {!focusKind && (
-                    <AvatarTile p={p} renderKind={renderKind} showCam={showCam} isMini={isMini} />
-                  )}
-                  {/* Clickable swap PIP — only shown in focus mode when
-                      the participant has BOTH streams. Click the PIP to
-                      swap focus to the other stream. The pip shows the
-                      OPPOSITE kind of what's currently focused: if you're
-                      focused on the screen, the pip is the webcam (and
-                      vice versa). voice-media is now position: relative
-                      so the FloatingPip clamps to it (= the tile in
-                      normal mode, the full stage in tab-fs). */}
-                  {focusKind && !isMini && showCam && showScreen && (
-                    <FloatingPip
-                      className="voice-pip-swap"
-                      minW={128}
-                      minH={72}
-                      title={focusKind === 'screen' ? 'Switch to webcam' : 'Switch to screen'}
-                      onClick={() => setFocused({ id: p.id, kind: focusKind === 'screen' ? 'cam' : 'screen' })}
-                    >
-                      {focusKind === 'screen'
-                        ? <CamTile member={p} mini />
-                        : <ScreenTile member={p} pip={null} />}
-                    </FloatingPip>
-                  )}
-                </div>
+                <VoiceCardMedia
+                  p={p} focusKind={focusKind} isMini={isMini}
+                  renderKind={renderKind} showCam={showCam} showScreen={showScreen}
+                  setFocused={setFocused}
+                />
                 <div className="v-name">{p.name}</div>
                 {!isMini && (
-                  <div className="v-badges v-badges-inline">
-                    {mineMuted
-                      ? <span className="v-badge danger" title="muted"><Icon.Mic size={11} off /></span>
-                      : <span className="v-badge ok" title="mic on"><Icon.Mic size={11} /></span>}
-                    {mineDeaf
-                      ? <span className="v-badge danger" title="deafened"><Icon.Headphones size={11} off /></span>
-                      : <span className="v-badge ok" title="headphones on"><Icon.Headphones size={11} /></span>}
-                    {showCam && <span className="v-badge ok" title="camera on"><Icon.Video size={11} /></span>}
-                    {showScreen && <span className="v-badge ok" title="sharing screen"><Icon.Screen size={11} /></span>}
-                  </div>
+                  <VoiceCardBadges
+                    mineMuted={mineMuted} mineDeaf={mineDeaf}
+                    showCam={showCam} showScreen={showScreen}
+                  />
                 )}
                 {!isMini && p.id !== currentUserId() && (
                   <span className="v-volume">
