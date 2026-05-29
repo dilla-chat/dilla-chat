@@ -2611,103 +2611,34 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
               {showUnreadAbove && (
                 <div className="unread-divider"><span>new</span></div>
               )}
-              {g.children.map((m, idx) => {
-                const isFirst = idx === 0;
-                const hasMention = (m.mentions || []).includes(currentUserId());
-                const isPinned = pinnedSet?.has(m.id) ?? false;
-                return (
-                  <article key={m.id}
-                       className={'msg' + (isFirst ? '' : ' compact') + (hasMention ? ' has-mention' : '') + (m.replyTo ? ' has-reply' : '') + (isPinned ? ' is-pinned' : '')}
-                       data-msg-id={m.id}
-                       onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, msgId: m.id, isMine: m.author === currentUserId() }); }}>
-                    {m.replyTo && (
-                      <ReplyRef
-                        replyToId={m.replyTo}
-                        messages={messages}
-                        membersById={members.byId}
-                        feedRef={feedRef}
-                      />
-                    )}
-                    {isFirst ? (
-                      <button type="button" style={{ cursor: 'pointer', background: 'transparent', border: 'none', padding: 0 }} onClick={(e) => openProfileFromTarget(e.currentTarget, author.id || g.author, 'right')}><Avatar member={author} /></button>
-                    ) : (
-                      <div style={{ position: 'relative' }}>
-                        <span style={{ position: 'absolute', right: 6, top: 4, fontFamily: 'var(--font-mono)', fontSize: 9.5, color: 'var(--fg-3)', opacity: 0 }}
-                              className="hover-time">{timeShort(m.at)}</span>
-                      </div>
-                    )}
-                    <div>
-                      {isFirst && (
-                        <div className="head">
-                          <button type="button" className="author"
-                                style={{ background: 'transparent', border: 'none', padding: 0, font: 'inherit', color: 'inherit', cursor: 'pointer' }}
-                                onClick={(e) => openProfileFromTarget(e.currentTarget, author.id || g.author, 'below')}>{author.name}</button>
-                          <span className="at">{timeShort(m.at)}</span>
-                          {m.author === currentUserId() && <MessageSeenGlyph m={m} />}
-                          {author.role === 'admin' && <span className="enc-badge" style={{ fontSize: 9, padding: '1px 5px' }}>admin</span>}
-                          {isPinned && (
-                            <button
-                              type="button"
-                              className="msg-pin-chip"
-                              title="Pinned to this channel — open the pin pop to see all pins"
-                              onClick={() => setPinnedOpen(true)}
-                            >
-                              <Icon.Pin size={11} />
-                            </button>
-                          )}
-                        </div>
-                      )}
-                      {isPinned && !isFirst && (
-                        <button
-                          type="button"
-                          className="msg-pin-chip msg-pin-chip-compact"
-                          title="Pinned to this channel"
-                          onClick={() => setPinnedOpen(true)}
-                        >
-                          <Icon.Pin size={11} />
-                        </button>
-                      )}
-                      <div className="body">
-                        {editingId === m.id ? (
-                          <MessageEditor
-                            editDraft={editDraft}
-                            setEditDraft={setEditDraft}
-                            onSave={saveEdit}
-                            onCancel={() => setEditingId(null)}
-                          />
-                        ) : (
-                          <MessageBody
-                            m={m}
-                            members={members}
-                            authorName={author.name}
-                            openLightbox={openLightbox}
-                            onVote={onVote}
-                          />
-                        )}
-                      </div>
-                      <MessageReactions m={m} onReact={onReact} setPicker={setPicker} />
-                      {m.thread && (
-                        <ThreadPreview m={m} channelId={channel.id} membersById={members.byId} />
-                      )}
-                    </div>
-                    <MessageTools
-                      m={m}
-                      channelId={channel.id}
-                      isMine={m.author === currentUserId()}
-                      onAddReaction={(e) => {
-                        const anchor = e.currentTarget.getBoundingClientRect();
-                        setPicker({ open: true, anchor, target: 'react:' + m.id });
-                      }}
-                      onReply={() => {
-                        if (onSetReply) onSetReply(m.id);
-                        if (textareaRef.current) textareaRef.current.focus();
-                      }}
-                      onEdit={() => { setEditingId(m.id); setEditDraft(m.text || ''); }}
-                      onDelete={() => setDeleteConfirm(m.id)}
-                    />
-                  </article>
-                );
-              })}
+              {g.children.map((m, idx) => (
+                <MessageRow
+                  key={m.id}
+                  m={m}
+                  idx={idx}
+                  author={author}
+                  groupAuthor={g.author}
+                  channel={channel}
+                  members={members}
+                  messages={messages}
+                  feedRef={feedRef}
+                  pinnedSet={pinnedSet}
+                  editingId={editingId}
+                  editDraft={editDraft}
+                  setEditDraft={setEditDraft}
+                  saveEdit={saveEdit}
+                  setEditingId={setEditingId}
+                  openLightbox={openLightbox}
+                  onVote={onVote}
+                  onReact={onReact}
+                  onSetReply={onSetReply}
+                  textareaRef={textareaRef}
+                  setPicker={setPicker}
+                  setDeleteConfirm={setDeleteConfirm}
+                  setContextMenu={setContextMenu}
+                  setPinnedOpen={setPinnedOpen}
+                />
+              ))}
             </React.Fragment>
           );
         })}
@@ -4741,6 +4672,148 @@ function dispatchOpenThread(channelId: string, messageId: string): void {
   globalThis.dispatchEvent(new CustomEvent('dilla:open-thread', {
     detail: { channelId, messageId },
   }));
+}
+
+function MessageRow({
+  m,
+  idx,
+  author,
+  groupAuthor,
+  channel,
+  members,
+  messages,
+  feedRef,
+  pinnedSet,
+  editingId,
+  editDraft,
+  setEditDraft,
+  saveEdit,
+  setEditingId,
+  openLightbox,
+  onVote,
+  onReact,
+  onSetReply,
+  textareaRef,
+  setPicker,
+  setDeleteConfirm,
+  setContextMenu,
+  setPinnedOpen,
+}: Readonly<{
+  m: any;
+  idx: number;
+  author: any;
+  groupAuthor: string;
+  channel: { id: string };
+  members: any;
+  messages: any[];
+  feedRef: { current: HTMLElement | null };
+  pinnedSet: Set<string> | undefined;
+  editingId: string | null;
+  editDraft: string;
+  setEditDraft: (next: string) => void;
+  saveEdit: () => void;
+  setEditingId: (id: string | null) => void;
+  openLightbox: (sources: string[], index: number) => void;
+  onVote?: (id: string, oi: number) => void;
+  onReact?: (id: string, e: string) => void;
+  onSetReply?: (id: string | null) => void;
+  textareaRef: { current: HTMLTextAreaElement | null };
+  setPicker: (p: any) => void;
+  setDeleteConfirm: (id: string | null) => void;
+  setContextMenu: (m: any) => void;
+  setPinnedOpen: (open: boolean) => void;
+}>): JSX.Element {
+  const isFirst = idx === 0;
+  const hasMention = (m.mentions || []).includes(currentUserId());
+  const isPinned = pinnedSet?.has(m.id) ?? false;
+  const isMine = m.author === currentUserId();
+  const cls = 'msg' + (isFirst ? '' : ' compact') + (hasMention ? ' has-mention' : '') + (m.replyTo ? ' has-reply' : '') + (isPinned ? ' is-pinned' : '');
+  return (
+    <article key={m.id} className={cls} data-msg-id={m.id}
+         onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, msgId: m.id, isMine }); }}>
+      {m.replyTo && (
+        <ReplyRef replyToId={m.replyTo} messages={messages} membersById={members.byId} feedRef={feedRef} />
+      )}
+      {isFirst ? (
+        <button type="button" style={{ cursor: 'pointer', background: 'transparent', border: 'none', padding: 0 }}
+                onClick={(e) => openProfileFromTarget(e.currentTarget, author.id || groupAuthor, 'right')}>
+          <Avatar member={author} />
+        </button>
+      ) : (
+        <div style={{ position: 'relative' }}>
+          <span style={{ position: 'absolute', right: 6, top: 4, fontFamily: 'var(--font-mono)', fontSize: 9.5, color: 'var(--fg-3)', opacity: 0 }}
+                className="hover-time">{timeShort(m.at)}</span>
+        </div>
+      )}
+      <div>
+        {isFirst && (
+          <MessageHead m={m} author={author} groupAuthor={groupAuthor} isPinned={isPinned} setPinnedOpen={setPinnedOpen} />
+        )}
+        {isPinned && !isFirst && (
+          <button type="button" className="msg-pin-chip msg-pin-chip-compact"
+                  title="Pinned to this channel" onClick={() => setPinnedOpen(true)}>
+            <Icon.Pin size={11} />
+          </button>
+        )}
+        <div className="body">
+          {editingId === m.id ? (
+            <MessageEditor editDraft={editDraft} setEditDraft={setEditDraft} onSave={saveEdit} onCancel={() => setEditingId(null)} />
+          ) : (
+            <MessageBody m={m} members={members} authorName={author.name} openLightbox={openLightbox} onVote={onVote} />
+          )}
+        </div>
+        <MessageReactions m={m} onReact={onReact} setPicker={setPicker} />
+        {m.thread && <ThreadPreview m={m} channelId={channel.id} membersById={members.byId} />}
+      </div>
+      <MessageTools
+        m={m} channelId={channel.id} isMine={isMine}
+        onAddReaction={(e) => {
+          const anchor = e.currentTarget.getBoundingClientRect();
+          setPicker({ open: true, anchor, target: 'react:' + m.id });
+        }}
+        onReply={() => {
+          if (onSetReply) onSetReply(m.id);
+          if (textareaRef.current) textareaRef.current.focus();
+        }}
+        onEdit={() => { setEditingId(m.id); setEditDraft(m.text || ''); }}
+        onDelete={() => setDeleteConfirm(m.id)}
+      />
+    </article>
+  );
+}
+
+function MessageHead({
+  m,
+  author,
+  groupAuthor,
+  isPinned,
+  setPinnedOpen,
+}: Readonly<{
+  m: { id: string; at: any; author: string };
+  author: any;
+  groupAuthor: string;
+  isPinned: boolean;
+  setPinnedOpen: (open: boolean) => void;
+}>): JSX.Element {
+  return (
+    <div className="head">
+      <button type="button" className="author"
+              style={{ background: 'transparent', border: 'none', padding: 0, font: 'inherit', color: 'inherit', cursor: 'pointer' }}
+              onClick={(e) => openProfileFromTarget(e.currentTarget, author.id || groupAuthor, 'below')}>
+        {author.name}
+      </button>
+      <span className="at">{timeShort(m.at)}</span>
+      {m.author === currentUserId() && <MessageSeenGlyph m={m} />}
+      {author.role === 'admin' && <span className="enc-badge" style={{ fontSize: 9, padding: '1px 5px' }}>admin</span>}
+      {isPinned && (
+        <button type="button" className="msg-pin-chip"
+                title="Pinned to this channel — open the pin pop to see all pins"
+                onClick={() => setPinnedOpen(true)}>
+          <Icon.Pin size={11} />
+        </button>
+      )}
+    </div>
+  );
 }
 
 function DeleteMessageConfirm({
