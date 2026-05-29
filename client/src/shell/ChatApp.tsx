@@ -5768,6 +5768,68 @@ function useActiveChannelTyping(activeChannel: string): string[] {
   }, [typingUsersForActive, myUserId, typingTick]);
 }
 
+function runToggleReaction(args: {
+  channelId: string;
+  msgId: string;
+  emoji: string;
+  activeTeamId: string | null | undefined;
+  dmMessages: Record<string, any[]>;
+  messages: Record<string, any[]>;
+  setDmMessages: (updater: (prev: Record<string, any[]>) => Record<string, any[]>) => void;
+  setMessages: (updater: (prev: Record<string, any[]>) => Record<string, any[]>) => void;
+}): void {
+  const { channelId, msgId, emoji, activeTeamId, dmMessages, messages, setDmMessages, setMessages } = args;
+  const isDM = channelId.startsWith('dm-');
+  const setter = isDM ? setDmMessages : setMessages;
+  // Capture the pre-toggle mine flag before optimistic state changes — used
+  // to decide add vs remove on the backend.
+  const currentList = isDM ? dmMessages[channelId] : messages[channelId];
+  const currentMsg = currentList?.find((m) => m.id === msgId);
+  const wasMine = !!currentMsg?.reactions?.find((r: any) => r.e === emoji)?.mine;
+  setter((prev) => {
+    const arr = prev[channelId] || [];
+    return {
+      ...prev,
+      [channelId]: arr.map((m) => m.id === msgId ? applyToggleReaction(m, emoji) : m),
+    };
+  });
+  // Real reaction toggle (channel only — DM reactions API not exposed yet).
+  if (!activeTeamId || isDM) return;
+  const call = wasMine
+    ? api.removeReaction(activeTeamId, channelId, msgId, emoji)
+    : api.addReaction(activeTeamId, channelId, msgId, emoji);
+  call.catch((err) => console.warn('[ChatApp] reaction toggle failed', err));
+}
+
+function runVoteOnPoll(args: {
+  channelId: string;
+  msgId: string;
+  optIdx: number;
+  activeTeamId: string | null | undefined;
+}): void {
+  const { channelId, msgId, optIdx, activeTeamId } = args;
+  if (channelId.startsWith('dm-')) return; // polls only in team channels
+  if (!activeTeamId) return;
+  const me = currentUserId();
+  const state = usePollStore.getState();
+  const current = (state.polls.get(channelId) ?? []).find((p) => p.id === msgId);
+  if (!current) return;
+  const alreadyMine = (current.voters[optIdx] || []).includes(me);
+  const nextVoters = current.voters.map((arr: string[], i: number) => {
+    if (i === optIdx) return alreadyMine ? arr.filter((u) => u !== me) : Array.from(new Set([...arr, me]));
+    return arr.filter((u) => u !== me); // single-choice
+  });
+  state.upsert({
+    ...current,
+    tallies: nextVoters.map((arr: string[]) => arr.length),
+    voters: nextVoters,
+  });
+  const promise = alreadyMine
+    ? api.unvotePoll(activeTeamId, msgId)
+    : api.votePoll(activeTeamId, msgId, optIdx);
+  promise.catch((err) => console.warn('[poll] vote failed', err));
+}
+
 async function sendChannelEdit(
   activeTeamId: string,
   channelId: string,
@@ -6496,51 +6558,11 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   }, []);
 
   function toggleReaction(channelId, msgId, emoji) {
-    const isDM = channelId.startsWith('dm-');
-    const setter = isDM ? setDmMessages : setMessages;
-    // Capture the pre-toggle mine flag before optimistic state changes — used
-    // to decide add vs remove on the backend.
-    const currentList = isDM ? dmMessages[channelId] : messages[channelId];
-    const currentMsg = currentList?.find((m) => m.id === msgId);
-    const wasMine = !!currentMsg?.reactions?.find((r) => r.e === emoji)?.mine;
-    setter(prev => {
-      const arr = prev[channelId] || [];
-      return {
-        ...prev,
-        [channelId]: arr.map(m => m.id === msgId ? applyToggleReaction(m, emoji) : m),
-      };
-    });
-    // Real reaction toggle (channel only — DM reactions API not exposed yet).
-    if (!activeTeamId || isDM) return;
-    const call = wasMine
-      ? api.removeReaction(activeTeamId, channelId, msgId, emoji)
-      : api.addReaction(activeTeamId, channelId, msgId, emoji);
-    call.catch((err) => console.warn('[ChatApp] reaction toggle failed', err));
+    runToggleReaction({ channelId, msgId, emoji, activeTeamId, dmMessages, messages, setDmMessages, setMessages });
   }
 
   function voteOnPoll(channelId, msgId, optIdx) {
-    if (channelId.startsWith('dm-')) return; // polls only in team channels
-    if (!activeTeamId) return;
-    const me = currentUserId();
-    // Optimistic store mutation so the bar fills before the WS echo lands.
-    const state = usePollStore.getState();
-    const list = state.polls.get(channelId) ?? [];
-    const current = list.find((p) => p.id === msgId);
-    if (!current) return;
-    const alreadyMine = (current.voters[optIdx] || []).includes(me);
-    const nextVoters = current.voters.map((arr, i) => {
-      if (i === optIdx) return alreadyMine ? arr.filter((u) => u !== me) : Array.from(new Set([...arr, me]));
-      return arr.filter((u) => u !== me); // single-choice
-    });
-    state.upsert({
-      ...current,
-      tallies: nextVoters.map((arr) => arr.length),
-      voters: nextVoters,
-    });
-    const promise = alreadyMine
-      ? api.unvotePoll(activeTeamId, msgId)
-      : api.votePoll(activeTeamId, msgId, optIdx);
-    promise.catch((err) => console.warn('[poll] vote failed', err));
+    runVoteOnPoll({ channelId, msgId, optIdx, activeTeamId });
   }
 
   useEffect(() => {
