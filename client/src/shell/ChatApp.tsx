@@ -2809,28 +2809,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
         {(pendingAttachments ?? []).map((a) => (
           <AttachmentChip key={a.id} attachment={a} onRemove={onRemoveAttachment} />
         ))}
-        {uploads.length > 0 && (
-          <div className="upload-tray">
-            {uploads.map(u => (
-              <div key={u.id} className="upload-row">
-                <div className="up-icon"><Icon.Shield size={12} /></div>
-                <div className="up-body">
-                  <div className="up-name">{u.name}</div>
-                  <div className="up-bar">
-                    <div className="up-fill" style={{ width: u.progress + '%' }} />
-                  </div>
-                  <div className="up-meta">
-                    <span className="up-phase">{u.phase}</span>
-                    <span>·</span>
-                    <span>{Math.round((u.size / 1024) * (u.progress / 100))} / {Math.round(u.size / 1024)} KB</span>
-                    <span>·</span>
-                    <span>{u.progress}%</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        {uploads.length > 0 && <UploadTray uploads={uploads} />}
         <div className="composer">
           <div className="composer-input">
             <button className="icon-btn comp-btn" title="Attach a file or image" onClick={openFilePicker}><Icon.Attach size={15} /></button>
@@ -4629,6 +4608,35 @@ function SavedPop({
 function formatAttachmentSize(bytes: number): string {
   if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   return (bytes / 1024).toFixed(1) + ' kB';
+}
+
+function UploadTray({
+  uploads,
+}: Readonly<{
+  uploads: Array<{ id: string; name: string; size: number; progress: number; phase: string }>;
+}>): JSX.Element {
+  return (
+    <div className="upload-tray">
+      {uploads.map((u) => (
+        <div key={u.id} className="upload-row">
+          <div className="up-icon"><Icon.Shield size={12} /></div>
+          <div className="up-body">
+            <div className="up-name">{u.name}</div>
+            <div className="up-bar">
+              <div className="up-fill" style={{ width: u.progress + '%' }} />
+            </div>
+            <div className="up-meta">
+              <span className="up-phase">{u.phase}</span>
+              <span>·</span>
+              <span>{Math.round((u.size / 1024) * (u.progress / 100))} / {Math.round(u.size / 1024)} KB</span>
+              <span>·</span>
+              <span>{u.progress}%</span>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function AttachmentChip({
