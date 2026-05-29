@@ -1571,8 +1571,13 @@ export function FloatingPip({
       className={className}
       title={title}
       aria-label={title || 'Floating picture-in-picture'}
-      onMouseDown={(e) => start('move', e)}
     >
+      <button
+        type="button"
+        className="pip-move-handle"
+        aria-label="Drag to move PIP"
+        onMouseDown={(e) => start('move', e)}
+      />
       {children}
       <button type="button" aria-label="Resize PIP from top edge" className="pip-edge pip-n"  onMouseDown={(e) => start('n', e)} />
       <button type="button" aria-label="Resize PIP from bottom edge" className="pip-edge pip-s"  onMouseDown={(e) => start('s', e)} />

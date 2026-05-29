@@ -2769,6 +2769,18 @@ img.attach-img {
 .pip-edge {
   position: absolute;
   z-index: 2;
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+.pip-move-handle {
+  position: absolute;
+  inset: 6px;
+  z-index: 1;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: move;
 }
 .pip-edge.pip-n  { top: -2px;    left: 6px;   right: 6px;  height: 5px;  cursor: ns-resize; }
 .pip-edge.pip-s  { bottom: -2px; left: 6px;   right: 6px;  height: 5px;  cursor: ns-resize; }
