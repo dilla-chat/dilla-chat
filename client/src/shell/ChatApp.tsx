@@ -2721,59 +2721,24 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                       </div>
                       <MessageReactions m={m} onReact={onReact} setPicker={setPicker} />
                       {m.thread && (
-                        <button type="button" className="thread-preview"
-                             onClick={() => globalThis.dispatchEvent(new CustomEvent('dilla:open-thread', {
-                               detail: { channelId: channel.id, messageId: m.id }
-                             }))}>
-                          <div className="thread-stack">
-                            {m.thread.participants.map(pid => {
-                              const p = members.byId[pid];
-                              return <div key={pid} className={memberAvatarClass(p, 'avatar')} style={memberAvatarStyle(p)}>{!p.avatarUrl && p.initials}</div>;
-                            })}
-                          </div>
-                          <span style={{ fontWeight: 600 }}>{m.thread.count} replies</span>
-                          <span style={{ color: 'var(--fg-3)' }}>· last {timeShort(m.thread.lastReplyAt)}</span>
-                        </button>
+                        <ThreadPreview m={m} channelId={channel.id} membersById={members.byId} />
                       )}
                     </div>
-                    <div className="msg-tools">
-                      <button title="Add reaction"
-                              onClick={(e) => {
-                                const anchor = e.currentTarget.getBoundingClientRect();
-                                setPicker({ open: true, anchor, target: 'react:' + m.id });
-                              }}>
-                        <Icon.Emoji size={13} />
-                      </button>
-                      <button title="Reply"
-                              onClick={() => {
-                                if (onSetReply) onSetReply(m.id);
-                                if (textareaRef.current) textareaRef.current.focus();
-                              }}>
-                        <Icon.Reply size={12} />
-                      </button>
-                      <button title="Open thread"
-                              onClick={() => globalThis.dispatchEvent(new CustomEvent('dilla:open-thread', {
-                                detail: { channelId: channel.id, messageId: m.id }
-                              }))}>
-                        <Icon.Thread size={13} />
-                      </button>
-                      {m.author === currentUserId() && (
-                        <button title="Edit"
-                                onClick={() => { setEditingId(m.id); setEditDraft(m.text || ''); }}>
-                          <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-                            <path d="M11.5 1.5l3 3L5 14H2v-3z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
-                          </svg>
-                        </button>
-                      )}
-                      {m.author === currentUserId() && (
-                        <button title="Delete"
-                                onClick={() => setDeleteConfirm(m.id)}>
-                          <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-                            <path d="M3 4h10M5 4V2.5h6V4M6 7v5M10 7v5M4 4l1 10h6l1-10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
+                    <MessageTools
+                      m={m}
+                      channelId={channel.id}
+                      isMine={m.author === currentUserId()}
+                      onAddReaction={(e) => {
+                        const anchor = e.currentTarget.getBoundingClientRect();
+                        setPicker({ open: true, anchor, target: 'react:' + m.id });
+                      }}
+                      onReply={() => {
+                        if (onSetReply) onSetReply(m.id);
+                        if (textareaRef.current) textareaRef.current.focus();
+                      }}
+                      onEdit={() => { setEditingId(m.id); setEditDraft(m.text || ''); }}
+                      onDelete={() => setDeleteConfirm(m.id)}
+                    />
                   </article>
                 );
               })}
@@ -4810,6 +4775,81 @@ function ThreadRow({
           </div>
         </div>
       </div>
+    </button>
+  );
+}
+
+function MessageTools({
+  m,
+  channelId,
+  isMine,
+  onAddReaction,
+  onReply,
+  onEdit,
+  onDelete,
+}: Readonly<{
+  m: { id: string };
+  channelId: string;
+  isMine: boolean;
+  onAddReaction: (e: React.MouseEvent<HTMLButtonElement>) => void;
+  onReply: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}>): JSX.Element {
+  const openThread = () => globalThis.dispatchEvent(new CustomEvent('dilla:open-thread', {
+    detail: { channelId, messageId: m.id },
+  }));
+  return (
+    <div className="msg-tools">
+      <button title="Add reaction" onClick={onAddReaction}>
+        <Icon.Emoji size={13} />
+      </button>
+      <button title="Reply" onClick={onReply}>
+        <Icon.Reply size={12} />
+      </button>
+      <button title="Open thread" onClick={openThread}>
+        <Icon.Thread size={13} />
+      </button>
+      {isMine && (
+        <button title="Edit" onClick={onEdit}>
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+            <path d="M11.5 1.5l3 3L5 14H2v-3z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+          </svg>
+        </button>
+      )}
+      {isMine && (
+        <button title="Delete" onClick={onDelete}>
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+            <path d="M3 4h10M5 4V2.5h6V4M6 7v5M10 7v5M4 4l1 10h6l1-10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      )}
+    </div>
+  );
+}
+
+function ThreadPreview({
+  m,
+  channelId,
+  membersById,
+}: Readonly<{
+  m: { id: string; thread: { participants: string[]; count: number; lastReplyAt: any } };
+  channelId: string;
+  membersById: Record<string, any>;
+}>): JSX.Element {
+  const onClick = () => globalThis.dispatchEvent(new CustomEvent('dilla:open-thread', {
+    detail: { channelId, messageId: m.id },
+  }));
+  return (
+    <button type="button" className="thread-preview" onClick={onClick}>
+      <div className="thread-stack">
+        {m.thread.participants.map((pid) => {
+          const p = membersById[pid];
+          return <div key={pid} className={memberAvatarClass(p, 'avatar')} style={memberAvatarStyle(p)}>{!p.avatarUrl && p.initials}</div>;
+        })}
+      </div>
+      <span style={{ fontWeight: 600 }}>{m.thread.count} replies</span>
+      <span style={{ color: 'var(--fg-3)' }}>· last {timeShort(m.thread.lastReplyAt)}</span>
     </button>
   );
 }
