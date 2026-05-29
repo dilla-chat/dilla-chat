@@ -5786,6 +5786,49 @@ function useActiveChannelTyping(activeChannel: string): string[] {
   }, [typingUsersForActive, myUserId, typingTick]);
 }
 
+async function openDmForMember(
+  memberId: string,
+  ctx: {
+    data: any;
+    activeTeamId: string | null | undefined;
+    setActiveDM: (id: string) => void;
+    setActiveView: (v: { kind: 'channel' | 'dm'; id: string }) => void;
+    setTab: (t: string) => void;
+  },
+): Promise<void> {
+  if (!memberId) return;
+  const { data, activeTeamId, setActiveDM, setActiveView, setTab } = ctx;
+  const optimisticId = 'dm-' + memberId;
+  if (!data.DMS.some((d: any) => d.id === optimisticId)) {
+    data.DMS.push({ id: optimisticId, with: memberId, preview: '', at: new Date(), unread: 0 });
+  }
+  setActiveDM(optimisticId);
+  setActiveView({ kind: 'dm', id: optimisticId });
+  setTab('pms');
+  if (!activeTeamId || isMockSession()) return;
+  try {
+    const real = (await api.createDM(activeTeamId, [memberId])) as { id: string };
+    if (real?.id && real.id !== optimisticId) {
+      setActiveDM(real.id);
+      setActiveView({ kind: 'dm', id: real.id });
+    }
+  } catch (err) {
+    console.warn('[ChatApp] open-dm createDM failed', err);
+  }
+}
+
+function lookupChannelById(id: string): any | undefined {
+  const tid = useTeamStore.getState().activeTeamId;
+  if (!tid) return undefined;
+  return (useTeamStore.getState().channels.get(tid) ?? []).find((c: any) => c.id === id);
+}
+
+function lookupGroupById(id: string): any | undefined {
+  const tid = useTeamStore.getState().activeTeamId;
+  if (!tid) return undefined;
+  return (useTeamStore.getState().groups.get(tid) ?? []).find((x: any) => x.id === id);
+}
+
 function runToggleReaction(args: {
   channelId: string;
   msgId: string;
@@ -6460,37 +6503,19 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
       }));
     }
     function onChannelSettings(e) {
-      const id = e.detail;
-      // Read from the LIVE teamStore each time the menu fires — the
-      // closure that captured `data` may be stale.
-      const tid = useTeamStore.getState().activeTeamId;
-      const ch = tid
-        ? (useTeamStore.getState().channels.get(tid) ?? []).find((c) => c.id === id)
-        : undefined;
+      const ch = lookupChannelById(e.detail);
       if (ch) setChanSettings(ch);
     }
     function onChannelAccess(e) {
-      const id = e.detail;
-      const tid = useTeamStore.getState().activeTeamId;
-      const ch = tid
-        ? (useTeamStore.getState().channels.get(tid) ?? []).find((c) => c.id === id)
-        : undefined;
+      const ch = lookupChannelById(e.detail);
       if (ch) setChanAccess(ch);
     }
     function onGroupAccess(e) {
-      const id = e.detail;
-      const tid = useTeamStore.getState().activeTeamId;
-      const g = tid
-        ? (useTeamStore.getState().groups.get(tid) ?? []).find((x) => x.id === id)
-        : undefined;
+      const g = lookupGroupById(e.detail);
       if (g) setGroupAccess({ id: g.id, name: g.name, accessRoleIds: g.accessRoleIds, hiddenIfRestricted: g.hiddenIfRestricted });
     }
     function onGroupSettings(e) {
-      const id = e.detail;
-      const tid = useTeamStore.getState().activeTeamId;
-      const g = tid
-        ? (useTeamStore.getState().groups.get(tid) ?? []).find((x) => x.id === id)
-        : undefined;
+      const g = lookupGroupById(e.detail);
       if (g) setGroupSettings({ id: g.id, name: g.name });
     }
     function onCloseDm(e) {
@@ -6504,30 +6529,8 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
         setActiveView({ kind: 'channel', id: activeChannel });
       }
     }
-    async function onOpenDm(e) {
-      // Member context menu / "send message" handler. Mirrors NewDmModal
-      // onPick but with the member id passed in via custom event detail so
-      // any rendered MemberList row can trigger it.
-      const memberId = e.detail;
-      if (!memberId) return;
-      const optimisticId = 'dm-' + memberId;
-      if (!data.DMS.some(d => d.id === optimisticId)) {
-        data.DMS.push({ id: optimisticId, with: memberId, preview: '', at: new Date(), unread: 0 });
-      }
-      setActiveDM(optimisticId);
-      setActiveView({ kind: 'dm', id: optimisticId });
-      setTab('pms');
-      if (activeTeamId && !isMockSession()) {
-        try {
-          const real = (await api.createDM(activeTeamId, [memberId])) as { id: string };
-          if (real?.id && real.id !== optimisticId) {
-            setActiveDM(real.id);
-            setActiveView({ kind: 'dm', id: real.id });
-          }
-        } catch (err) {
-          console.warn('[ChatApp] open-dm createDM failed', err);
-        }
-      }
+    function onOpenDm(e) {
+      void openDmForMember(e.detail, { data, activeTeamId, setActiveDM, setActiveView, setTab });
     }
     function onPickChannel(e) {
       const id = e.detail;
