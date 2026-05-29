@@ -3133,26 +3133,8 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                   else { setMention(null); setSlash(null); }
                 }}
                 onKeyDown={e => {
-                  if (mention && mentionMatches.length > 0) {
-                    if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
-                      e.preventDefault();
-                      applyMention(mentionMatches[mentionIdx].name);
-                      return;
-                    }
-                    if (e.key === 'ArrowDown') { e.preventDefault(); setMentionIdx(i => Math.min(mentionMatches.length - 1, i + 1)); return; }
-                    if (e.key === 'ArrowUp')   { e.preventDefault(); setMentionIdx(i => Math.max(0, i - 1)); return; }
-                    if (e.key === 'Escape')    { e.preventDefault(); setMention(null); return; }
-                  }
-                  if (slash && slashMatches.length > 0) {
-                    if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
-                      e.preventDefault();
-                      applySlash(slashMatches[slashIdx]);
-                      return;
-                    }
-                    if (e.key === 'ArrowDown') { e.preventDefault(); setSlashIdx(i => Math.min(slashMatches.length - 1, i + 1)); return; }
-                    if (e.key === 'ArrowUp')   { e.preventDefault(); setSlashIdx(i => Math.max(0, i - 1)); return; }
-                    if (e.key === 'Escape')    { e.preventDefault(); setSlash(null); return; }
-                  }
+                  if (handleMentionPickerKey(e, { mention, mentionMatches, mentionIdx, setMentionIdx, setMention, applyMention })) return;
+                  if (handleSlashPickerKey(e, { slash, slashMatches, slashIdx, setSlashIdx, setSlash, applySlash })) return;
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
                     // Either text or a staged attachment is enough to send.
@@ -3160,20 +3142,9 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                   }
                   // Empty-draft ArrowUp loads the most recent message you
                   // sent in this channel for editing — matches the Slack /
-                  // Discord pattern. Skip when the autocomplete popups are
-                  // active (they own ArrowUp above) or when there's already
-                  // text the user might be navigating.
+                  // Discord pattern.
                   if (e.key === 'ArrowUp' && !mention && !slash && !draft) {
-                    const mine = currentUserId();
-                    for (let i = messages.length - 1; i >= 0; i--) {
-                      const m: any = messages[i];
-                      if (m.author === mine && (m.kind === 'text' || m.kind === 'action' || !m.kind) && typeof m.text === 'string') {
-                        e.preventDefault();
-                        setEditingId(m.id);
-                        setEditDraft(m.text);
-                        return;
-                      }
-                    }
+                    loadLastOwnMessageForEdit(e, messages, setEditingId, setEditDraft);
                   }
                 }}
                 rows={1}
@@ -3617,6 +3588,72 @@ function AvatarTile({
       )}
     </div>
   );
+}
+
+function handleMentionPickerKey(
+  e: React.KeyboardEvent,
+  ctx: {
+    mention: { query: string } | null;
+    mentionMatches: any[];
+    mentionIdx: number;
+    setMentionIdx: (updater: (i: number) => number) => void;
+    setMention: (m: any) => void;
+    applyMention: (name: string) => void;
+  },
+): boolean {
+  const { mention, mentionMatches, mentionIdx, setMentionIdx, setMention, applyMention } = ctx;
+  if (!mention || mentionMatches.length === 0) return false;
+  if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+    e.preventDefault();
+    applyMention(mentionMatches[mentionIdx].name);
+    return true;
+  }
+  if (e.key === 'ArrowDown') { e.preventDefault(); setMentionIdx((i) => Math.min(mentionMatches.length - 1, i + 1)); return true; }
+  if (e.key === 'ArrowUp')   { e.preventDefault(); setMentionIdx((i) => Math.max(0, i - 1)); return true; }
+  if (e.key === 'Escape')    { e.preventDefault(); setMention(null); return true; }
+  return false;
+}
+
+function handleSlashPickerKey(
+  e: React.KeyboardEvent,
+  ctx: {
+    slash: { query: string } | null;
+    slashMatches: any[];
+    slashIdx: number;
+    setSlashIdx: (updater: (i: number) => number) => void;
+    setSlash: (s: any) => void;
+    applySlash: (cmd: any) => void;
+  },
+): boolean {
+  const { slash, slashMatches, slashIdx, setSlashIdx, setSlash, applySlash } = ctx;
+  if (!slash || slashMatches.length === 0) return false;
+  if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+    e.preventDefault();
+    applySlash(slashMatches[slashIdx]);
+    return true;
+  }
+  if (e.key === 'ArrowDown') { e.preventDefault(); setSlashIdx((i) => Math.min(slashMatches.length - 1, i + 1)); return true; }
+  if (e.key === 'ArrowUp')   { e.preventDefault(); setSlashIdx((i) => Math.max(0, i - 1)); return true; }
+  if (e.key === 'Escape')    { e.preventDefault(); setSlash(null); return true; }
+  return false;
+}
+
+function loadLastOwnMessageForEdit(
+  e: React.KeyboardEvent,
+  messages: any[],
+  setEditingId: (id: string) => void,
+  setEditDraft: (text: string) => void,
+): void {
+  const mine = currentUserId();
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m: any = messages[i];
+    if (m.author === mine && (m.kind === 'text' || m.kind === 'action' || !m.kind) && typeof m.text === 'string') {
+      e.preventDefault();
+      setEditingId(m.id);
+      setEditDraft(m.text);
+      return;
+    }
+  }
 }
 
 function buildGiphyOptimistic(url: string, att?: { id: string }) {
