@@ -3020,36 +3020,14 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
         </div>
       )}
       {deleteTarget && (
-        <div className="modal-overlay modal-overlay--soft">
-          <button
-            type="button"
-            className="modal-overlay-dismiss"
-            aria-label="Cancel"
-            onClick={() => setDeleteConfirm(null)}
-          />
-          <div className="confirm-dialog">
-            <div className="cd-head">
-              <div className="cd-icon">
-                <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
-                  <path d="M3 4h10M5 4V2.5h6V4M6 7v5M10 7v5M4 4l1 10h6l1-10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </div>
-              <div>
-                <h3>Delete message?</h3>
-                <p>This removes it for everyone in the kanal. Other peer nodes will be told to drop it on their next sync.</p>
-              </div>
-            </div>
-            <blockquote className="cd-preview">{deleteTarget.text}</blockquote>
-            <div className="cd-actions">
-              <button className="btn" onClick={() => setDeleteConfirm(null)}>Cancel · esc</button>
-              <button className="btn btn--danger" autoFocus
-                      onClick={() => {
-                        if (onDelete) onDelete(deleteConfirm);
-                        setDeleteConfirm(null);
-                      }}>Delete · ↵</button>
-            </div>
-          </div>
-        </div>
+        <DeleteMessageConfirm
+          previewText={deleteTarget.text}
+          onCancel={() => setDeleteConfirm(null)}
+          onConfirm={() => {
+            if (onDelete) onDelete(deleteConfirm);
+            setDeleteConfirm(null);
+          }}
+        />
       )}
       {lightbox && (() => {
         const total = lightbox.sources.length;
@@ -4763,6 +4741,45 @@ function dispatchOpenThread(channelId: string, messageId: string): void {
   globalThis.dispatchEvent(new CustomEvent('dilla:open-thread', {
     detail: { channelId, messageId },
   }));
+}
+
+function DeleteMessageConfirm({
+  previewText,
+  onCancel,
+  onConfirm,
+}: Readonly<{
+  previewText: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}>): JSX.Element {
+  return (
+    <div className="modal-overlay modal-overlay--soft">
+      <button
+        type="button"
+        className="modal-overlay-dismiss"
+        aria-label="Cancel"
+        onClick={onCancel}
+      />
+      <div className="confirm-dialog">
+        <div className="cd-head">
+          <div className="cd-icon">
+            <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
+              <path d="M3 4h10M5 4V2.5h6V4M6 7v5M10 7v5M4 4l1 10h6l1-10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+          <div>
+            <h3>Delete message?</h3>
+            <p>This removes it for everyone in the kanal. Other peer nodes will be told to drop it on their next sync.</p>
+          </div>
+        </div>
+        <blockquote className="cd-preview">{previewText}</blockquote>
+        <div className="cd-actions">
+          <button className="btn" onClick={onCancel}>Cancel · esc</button>
+          <button className="btn btn--danger" autoFocus onClick={onConfirm}>Delete · ↵</button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function MessageBody({
