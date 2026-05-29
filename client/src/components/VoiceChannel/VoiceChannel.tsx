@@ -73,6 +73,77 @@ function VideoPreview({ stream, onClick, className }: Readonly<{ stream: MediaSt
   );
 }
 
+function FocusedWebcamView({
+  focusedWebcam,
+  peer,
+  focusedStream,
+  peerList,
+  getWebcamStream,
+  onClearFocus,
+  onSetFocus,
+}: Readonly<{
+  focusedWebcam: string;
+  peer: { username?: string } | undefined;
+  focusedStream: MediaStream | null;
+  peerList: Array<{ user_id: string; username: string; speaking?: boolean; muted?: boolean; webcam_sharing?: boolean }>;
+  getWebcamStream: (userId: string) => MediaStream | null;
+  onClearFocus: () => void;
+  onSetFocus: (userId: string) => void;
+}>) {
+  return (
+    <div className="voice-channel-view">
+      <div className="screen-share-fullscreen voice-focus-mode">
+        <div className="screen-share-header">
+          <IconVideo size={16} stroke={1.75} />
+          <span className="voice-focus-viewing">
+            <span className="voice-focus-dot" /> VIEWING {peer?.username ?? '...'}
+          </span>
+          <button className="screen-share-close" onClick={onClearFocus}>
+            <IconArrowsMinimize size={16} stroke={1.75} />
+          </button>
+        </div>
+
+        {focusedStream ? (
+          <VideoPreview stream={focusedStream} className="fullscreen-focused-video" />
+        ) : (
+          <div className="voice-focus-no-stream">
+            <div className="voice-tile-avatar speaking-ring">
+              {(peer?.username ?? '?').slice(0, 2).toUpperCase()}
+            </div>
+          </div>
+        )}
+
+        {peerList.length > 1 && (
+          <div className="fullscreen-thumbnail-bar">
+            {peerList.map((p) => {
+              const webcamStream = getWebcamStream(p.user_id);
+              const hasWebcam = !!(p.webcam_sharing && webcamStream);
+              return (
+                <button
+                  key={p.user_id}
+                  className={`fullscreen-thumbnail ${p.speaking ? 'speaking' : ''} ${focusedWebcam === p.user_id ? 'focused' : ''}`}
+                  onClick={() => onSetFocus(p.user_id)}
+                  type="button"
+                >
+                  {hasWebcam && webcamStream ? (
+                    <VideoPreview stream={webcamStream} className="fullscreen-thumbnail-video" />
+                  ) : (
+                    <div className="fullscreen-thumbnail-avatar">
+                      {p.username.slice(0, 1).toUpperCase()}
+                    </div>
+                  )}
+                  <span className="fullscreen-thumbnail-name">{p.username}</span>
+                  {p.muted && <IconMicrophoneOff size={12} stroke={1.75} className="fullscreen-thumbnail-icon" />}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function VoiceChannel({ channel }: Readonly<Props>) {
   const { t } = useTranslation();
   const { activeTeamId } = useTeamStore();
@@ -124,60 +195,18 @@ export default function VoiceChannel({ channel }: Readonly<Props>) {
   };
 
   // Focus mode without screen share: a single webcam tile fills, others collapse to bottom strip.
-  if (focusedWebcam && !hasScreenShare && isInThisChannel) {
-    const focusedPeer = peers[focusedWebcam];
-    const focusedStream = getWebcamStream(focusedWebcam);
+  const inFocusedMode = !!focusedWebcam && !hasScreenShare && isInThisChannel;
+  if (inFocusedMode && focusedWebcam) {
     return (
-      <div className="voice-channel-view">
-        <div className="screen-share-fullscreen voice-focus-mode">
-          <div className="screen-share-header">
-            <IconVideo size={16} stroke={1.75} />
-            <span className="voice-focus-viewing">
-              <span className="voice-focus-dot" /> VIEWING {focusedPeer?.username ?? '...'}
-            </span>
-            <button className="screen-share-close" onClick={() => setFocusedWebcam(null)}>
-              <IconArrowsMinimize size={16} stroke={1.75} />
-            </button>
-          </div>
-
-          {focusedStream ? (
-            <VideoPreview stream={focusedStream} className="fullscreen-focused-video" />
-          ) : (
-            <div className="voice-focus-no-stream">
-              <div className="voice-tile-avatar speaking-ring">
-                {(focusedPeer?.username ?? '?').slice(0, 2).toUpperCase()}
-              </div>
-            </div>
-          )}
-
-          {peerList.length > 1 && (
-            <div className="fullscreen-thumbnail-bar">
-              {peerList.map((peer) => {
-                const webcamStream = getWebcamStream(peer.user_id);
-                const hasWebcam = !!(peer.webcam_sharing && webcamStream);
-                return (
-                  <button
-                    key={peer.user_id}
-                    className={`fullscreen-thumbnail ${peer.speaking ? 'speaking' : ''} ${focusedWebcam === peer.user_id ? 'focused' : ''}`}
-                    onClick={() => setFocusedWebcam(peer.user_id)}
-                    type="button"
-                  >
-                    {hasWebcam && webcamStream ? (
-                      <VideoPreview stream={webcamStream} className="fullscreen-thumbnail-video" />
-                    ) : (
-                      <div className="fullscreen-thumbnail-avatar">
-                        {peer.username.slice(0, 1).toUpperCase()}
-                      </div>
-                    )}
-                    <span className="fullscreen-thumbnail-name">{peer.username}</span>
-                    {peer.muted && <IconMicrophoneOff size={12} stroke={1.75} className="fullscreen-thumbnail-icon" />}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
+      <FocusedWebcamView
+        focusedWebcam={focusedWebcam}
+        peer={peers[focusedWebcam]}
+        focusedStream={getWebcamStream(focusedWebcam)}
+        peerList={peerList}
+        getWebcamStream={getWebcamStream}
+        onClearFocus={() => setFocusedWebcam(null)}
+        onSetFocus={setFocusedWebcam}
+      />
     );
   }
 
