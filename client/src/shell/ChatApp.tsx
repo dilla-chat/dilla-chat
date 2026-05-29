@@ -2911,74 +2911,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                             {(m.kind === 'image' || m.kind === 'file') && m.text && (
                               <div style={{ marginBottom: 4 }}>{renderText(m.text, members)}</div>
                             )}
-                            {(() => {
-                              const list = resolveAttachmentList(m);
-                              if (list.length === 0) return null;
-                              // Lightbox-eligible images for THIS message
-                              // only — Left/Right inside the modal cycles
-                              // within the same bubble, not across the feed.
-                              const galleryImgs = list
-                                .filter((a) => a.kind === 'image' && a.src)
-                                .map((a) => a.src as string);
-                              return (
-                                <div className={'msg-attachments' + (list.length === 1 ? ' is-single' : '')}>
-                                  {list.map((att, ai) => (
-                                    att.kind === 'image' ? (
-                                      <div key={`img-${att.id ?? ai}`} className="attach">
-                                        {att.src ? (
-                                          <button
-                                            type="button"
-                                            className="attach-img-btn"
-                                            onClick={() => {
-                                              const idx = galleryImgs.indexOf(att.src as string);
-                                              openLightbox(galleryImgs, Math.max(0, idx));
-                                            }}
-                                            style={{ padding: 0, border: 'none', background: 'transparent', cursor: 'zoom-in' }}
-                                          >
-                                            <img
-                                              className="attach-img"
-                                              src={att.src}
-                                              alt={att.label || ''}
-                                              style={{ display: 'block', objectFit: 'cover', borderRadius: 4 }}
-                                            />
-                                          </button>
-                                        ) : (
-                                          <div className="attach-img" style={{ background: att.tint }}></div>
-                                        )}
-                                        <div className="attach-name">
-                                          {att.label}
-                                          {att.size != null && ` · ${Math.max(1, Math.round(att.size / 1024))} KB`}
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      // Compact one-row card for non-image
-                                      // attachments. <a download> triggers
-                                      // the browser download against the
-                                      // existing attachment URL (already
-                                      // authorised for team members).
-                                      <a
-                                        key={`file-${att.id ?? ai}`}
-                                        className="attach-file"
-                                        href={att.src}
-                                        download={att.label || 'file'}
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        <span className="attach-file-icon"><Icon.File size={16} /></span>
-                                        <span className="attach-file-meta">
-                                          <span className="attach-file-name">{att.label || 'file'}</span>
-                                          {att.size != null && (
-                                            <span className="attach-file-size">{Math.max(1, Math.round(att.size / 1024))} KB</span>
-                                          )}
-                                        </span>
-                                        <span className="attach-file-action" title="Download">
-                                          <Icon.Download size={14} />
-                                        </span>
-                                      </a>
-                                    )
-                                  ))}
-                                </div>
-                              );
-                            })()}
+                            <MessageAttachments m={m} openLightbox={openLightbox} />
                             {m.kind === 'text' && renderText(m.text, members)}
                             {m.kind === 'action' && (
                               <span className="msg-action">
@@ -4269,6 +4202,90 @@ function applyToggleReaction(m: any, emoji: string): any {
     rxns.push({ e: emoji, n: 1, mine: true });
   }
   return { ...m, reactions: rxns };
+}
+
+function MessageAttachments({
+  m,
+  openLightbox,
+}: {
+  m: any;
+  openLightbox: (sources: string[], index: number) => void;
+}): JSX.Element | null {
+  const list = resolveAttachmentList(m);
+  if (list.length === 0) return null;
+  // Lightbox-eligible images for THIS message only — Left/Right inside the
+  // modal cycles within the same bubble, not across the feed.
+  const galleryImgs = list
+    .filter((a) => a.kind === 'image' && a.src)
+    .map((a) => a.src as string);
+  return (
+    <div className={'msg-attachments' + (list.length === 1 ? ' is-single' : '')}>
+      {list.map((att, ai) => (
+        att.kind === 'image' ? (
+          <ImageAttachment key={`img-${att.id ?? ai}`} att={att} galleryImgs={galleryImgs} openLightbox={openLightbox} />
+        ) : (
+          <a
+            key={`file-${att.id ?? ai}`}
+            className="attach-file"
+            href={att.src}
+            download={att.label || 'file'}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span className="attach-file-icon"><Icon.File size={16} /></span>
+            <span className="attach-file-meta">
+              <span className="attach-file-name">{att.label || 'file'}</span>
+              {att.size != null && (
+                <span className="attach-file-size">{Math.max(1, Math.round(att.size / 1024))} KB</span>
+              )}
+            </span>
+            <span className="attach-file-action" title="Download">
+              <Icon.Download size={14} />
+            </span>
+          </a>
+        )
+      ))}
+    </div>
+  );
+}
+
+function ImageAttachment({
+  att,
+  galleryImgs,
+  openLightbox,
+}: {
+  att: any;
+  galleryImgs: string[];
+  openLightbox: (sources: string[], index: number) => void;
+}): JSX.Element {
+  const onClick = () => {
+    const idx = galleryImgs.indexOf(att.src as string);
+    openLightbox(galleryImgs, Math.max(0, idx));
+  };
+  return (
+    <div className="attach">
+      {att.src ? (
+        <button
+          type="button"
+          className="attach-img-btn"
+          onClick={onClick}
+          style={{ padding: 0, border: 'none', background: 'transparent', cursor: 'zoom-in' }}
+        >
+          <img
+            className="attach-img"
+            src={att.src}
+            alt={att.label || ''}
+            style={{ display: 'block', objectFit: 'cover', borderRadius: 4 }}
+          />
+        </button>
+      ) : (
+        <div className="attach-img" style={{ background: att.tint }}></div>
+      )}
+      <div className="attach-name">
+        {att.label}
+        {att.size != null && ` · ${Math.max(1, Math.round(att.size / 1024))} KB`}
+      </div>
+    </div>
+  );
 }
 
 function ReplyRef({
