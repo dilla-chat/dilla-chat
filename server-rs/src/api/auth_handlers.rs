@@ -457,49 +457,42 @@ fn user_agent_family(ua: Option<&str>) -> &'static str {
     }
 }
 
+fn country_change_score(prev_country: Option<&str>, new_country: Option<&str>) -> u32 {
+    match (prev_country, new_country) {
+        (Some(p), Some(n)) if p != n => 30,
+        _ => 0,
+    }
+}
+
+fn ua_change_score(prev_ua: Option<&str>, new_ua: Option<&str>) -> u32 {
+    match prev_ua {
+        Some(p) if user_agent_family(Some(p)) != user_agent_family(new_ua) => 20,
+        _ => 0,
+    }
+}
+
+fn ip_risk_score(new_ip: Option<&str>) -> u32 {
+    match new_ip {
+        Some(n) if ip_is_tor_exit(n) => 50,
+        _ => 0,
+    }
+}
+
 fn compute_risk_score(
     prev: Option<&(Option<String>, Option<String>, Option<String>)>,
     new_ip: Option<&str>,
     new_ua: Option<&str>,
     new_country: Option<&str>,
 ) -> u32 {
+    let Some((prev_ip, prev_ua, prev_country)) = prev else { return 0; };
     let mut score: u32 = 0;
-    if let Some(prev) = prev {
-        let (prev_ip, prev_ua, prev_country) = prev;
-        // +30 if country changed (and we have a previous country to
-        // compare against — first login from a fresh device doesn't
-        // get the bonus).
-        if let (Some(p), Some(n)) = (prev_country.as_deref(), new_country) {
-            if p != n {
-                score = score.saturating_add(30);
-            }
-        }
-        // +20 if user-agent family changed.
-        if let Some(p) = prev_ua.as_deref() {
-            let p_family = user_agent_family(Some(p));
-            let n_family = user_agent_family(new_ua);
-            if p_family != n_family {
-                score = score.saturating_add(20);
-            }
-        }
-        // +50 if the new IP is a Tor exit node.
-        if let Some(n) = new_ip {
-            if ip_is_tor_exit(n) {
-                score = score.saturating_add(50);
-            }
-            // Also flag a *complete* IP change as a low signal so the
-            // delta-from-baseline still moves on the first foreign
-            // login.
-            if let Some(p) = prev_ip.as_deref() {
-                if p != n {
-                    // No standalone bonus — country change already
-                    // covers the cross-region case. The IP delta only
-                    // matters as a tie-breaker, which we omit here.
-                    let _ = p;
-                }
-            }
-        }
-    }
+    score = score.saturating_add(country_change_score(prev_country.as_deref(), new_country));
+    score = score.saturating_add(ua_change_score(prev_ua.as_deref(), new_ua));
+    score = score.saturating_add(ip_risk_score(new_ip));
+    // IP delta is logged but doesn't add a standalone bonus — country
+    // change already covers the cross-region case, and the per-IP delta
+    // only matters as a tie-breaker we currently omit.
+    let _ = prev_ip;
     score
 }
 
