@@ -6415,6 +6415,16 @@ function handleMessageRejected(
   }
 }
 
+function updateChannelDraft(
+  channelId: string,
+  value: string,
+  setDrafts: (updater: (prev: Record<string, string>) => Record<string, string>) => void,
+  notifyTyping: () => void,
+): void {
+  setDrafts((prev) => ({ ...prev, [channelId]: value }));
+  notifyTyping();
+}
+
 async function createChannelFromModal(
   c: any,
   ctx: {
@@ -7456,13 +7466,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
           channel={channel}
           members={data}
           voiceConnection={voiceConnection}
-          onJoin={() => {
-            // useVoiceConnection.join → voiceStore.joinChannel → WebRTC
-            // connect against the SFU. On /mesh the mock ws is a no-op so
-            // the connect attempt fails fast and the dock stays hidden.
-            const teamId = useTeamStore.getState().activeTeamId;
-            if (teamId) voice.join(teamId, channel.id);
-          }}
+          onJoin={() => joinVoiceFromSidebar(voice, channel.id)}
           onLeave={() => voice.leave()}
           mute={mute} setMute={setMute}
           deaf={deaf} setDeaf={setDeaf}
@@ -7479,11 +7483,11 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
           members={data}
           dmPartner={dmPartner}
           draft={drafts[channel.id] || ''}
-          setDraft={v => { setDrafts(prev => ({ ...prev, [channel.id]: v })); notifyTyping(); }}
+          setDraft={(v) => updateChannelDraft(channel.id, v, setDrafts, notifyTyping)}
           slowModeLock={resolveSlowModeLock(slowLocks[channel.id])}
           onSend={send}
           replyTo={replyTo[channel.id]}
-          onSetReply={(id) => setReplyTo(prev => ({ ...prev, [channel.id]: id }))}
+          onSetReply={(id) => setReplyTo((prev) => ({ ...prev, [channel.id]: id }))}
           onReact={(msgId, emoji) => toggleReaction(channel.id, msgId, emoji)}
           onVote={(msgId, optIdx) => voteOnPoll(channel.id, msgId, optIdx)}
           onEdit={(msgId, text) => editMessage(channel.id, msgId, text)}
@@ -7493,7 +7497,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
           onRemoveAttachment={removeStagedAttachment}
           typing={channel.type === 'dm' ? (dmTyping[channel.id] || []) : typing}
           membersOpen={membersOpen}
-          onToggleMembers={() => setMembersOpen(o => !o)}
+          onToggleMembers={() => setMembersOpen((o) => !o)}
         />
       )}
       {activeThread ? (
