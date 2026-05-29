@@ -3499,6 +3499,92 @@ function resolveFocusedKind(
   return focused.kind;
 }
 
+function VoiceCard({
+  p,
+  isMini,
+  focusKind,
+  cardState,
+  speaking,
+  node,
+  latency,
+  effectiveFocused,
+  focused,
+  setFocused,
+  canExitFocus,
+  canMuteVoice,
+  vcTeamId,
+  channelId,
+  lastFocusKindRef,
+  vol,
+  setVolumes,
+}: Readonly<{
+  p: any;
+  isMini: boolean;
+  focusKind?: VoiceFocusKind;
+  cardState: { mineMuted: boolean; mineDeaf: boolean; showScreen: boolean; showCam: boolean };
+  speaking: boolean;
+  node: string;
+  latency: any;
+  effectiveFocused: { id: string; kind: VoiceFocusKind } | null;
+  focused: any;
+  setFocused: (next: any) => void;
+  canExitFocus: boolean;
+  canMuteVoice: boolean;
+  vcTeamId: any;
+  channelId: string;
+  lastFocusKindRef: { current: Record<string, any> };
+  vol: (id: string) => number;
+  setVolumes: any;
+}>): JSX.Element {
+  const { mineMuted, mineDeaf, showScreen, showCam } = cardState;
+  const focusable = showScreen || showCam;
+  const renderKind: VoiceCardKind = focusKind ?? (showCam ? 'cam' : 'avatar');
+  return (
+    <div
+      className={buildVoiceCardClassName({ speaking, renderKind, isMini, focused: effectiveFocused, pid: p.id, focusable })}
+      data-node={node}
+      data-latency={latency}>
+      <button
+        type="button"
+        className="voice-card-hit"
+        aria-label={`Focus ${p.name}`}
+        onContextMenu={(e) => openVoiceCardMenu(e, {
+          p, showScreen, showCam, focused, setFocused,
+          canMuteVoice,
+          mineMuted, vcTeamId, channelId,
+        })}
+        onClick={() => handleVoiceCardClick({
+          pid: p.id,
+          effectiveFocused, canExitFocus, setFocused,
+          remembered: lastFocusKindRef.current[p.id],
+          showScreen, showCam,
+        })}
+      />
+      <VoiceCardMedia
+        p={p} focusKind={focusKind} isMini={isMini}
+        renderKind={renderKind} showCam={showCam} showScreen={showScreen}
+        setFocused={setFocused}
+      />
+      <div className="v-name">{p.name}</div>
+      {!isMini && (
+        <VoiceCardBadges
+          mineMuted={mineMuted} mineDeaf={mineDeaf}
+          showCam={showCam} showScreen={showScreen}
+        />
+      )}
+      {!isMini && p.id !== currentUserId() && (
+        <span className="v-volume">
+          <Icon.Headphones size={10} />
+          <input type="range" min={0} max={100} value={vol(p.id)}
+                 onClick={(e) => e.stopPropagation()}
+                 onChange={(e) => updateVolumeFor(setVolumes, p.id, e.target.value)} />
+          <span className="v-volume-val">{vol(p.id)}</span>
+        </span>
+      )}
+    </div>
+  );
+}
+
 function VoiceCardMedia({
   p,
   focusKind,
@@ -5321,7 +5407,6 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
       <div className="voice-view">
         {(() => {
           function cardFor(p, isMini, focusKind?: VoiceFocusKind) {
-            const speaking = p.id === 'ada' && isConnected;
             const cardState = resolveVoiceCardState({
               participant: p,
               isConnected,
@@ -5331,54 +5416,26 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
               localScreenStream, localWebcamStream,
               remoteScreenStreams, remoteWebcamStreams,
             });
-            const { mineMuted, mineDeaf, showScreen, showCam } = cardState;
-            const node = (nodes[p.id] || '').split('.')[0] || 'local';
-            const focusable = showScreen || showCam;
-            const renderKind: VoiceCardKind =
-              focusKind ?? (showCam ? 'cam' : 'avatar');
             return (
-              <div key={p.id}
-                   className={buildVoiceCardClassName({ speaking, renderKind, isMini, focused: effectiveFocused, pid: p.id, focusable })}
-                   data-node={node}
-                   data-latency={peerLatencies[p.id] ?? '--'}>
-                <button
-                  type="button"
-                  className="voice-card-hit"
-                  aria-label={`Focus ${p.name}`}
-                  onContextMenu={(e) => openVoiceCardMenu(e, {
-                    p, showScreen, showCam, focused, setFocused,
-                    canMuteVoice: vcPerms.has(PERM_MUTE_VOICE),
-                    mineMuted, vcTeamId, channelId: channel.id,
-                  })}
-                  onClick={() => handleVoiceCardClick({
-                    pid: p.id,
-                    effectiveFocused, canExitFocus, setFocused,
-                    remembered: lastFocusKindRef.current[p.id],
-                    showScreen, showCam,
-                  })}
-                />
-                <VoiceCardMedia
-                  p={p} focusKind={focusKind} isMini={isMini}
-                  renderKind={renderKind} showCam={showCam} showScreen={showScreen}
-                  setFocused={setFocused}
-                />
-                <div className="v-name">{p.name}</div>
-                {!isMini && (
-                  <VoiceCardBadges
-                    mineMuted={mineMuted} mineDeaf={mineDeaf}
-                    showCam={showCam} showScreen={showScreen}
-                  />
-                )}
-                {!isMini && p.id !== currentUserId() && (
-                  <span className="v-volume">
-                    <Icon.Headphones size={10} />
-                    <input type="range" min={0} max={100} value={vol(p.id)}
-                           onClick={(e) => e.stopPropagation()}
-                           onChange={(e) => updateVolumeFor(setVolumes, p.id, e.target.value)} />
-                    <span className="v-volume-val">{vol(p.id)}</span>
-                  </span>
-                )}
-              </div>
+              <VoiceCard
+                p={p}
+                isMini={isMini}
+                focusKind={focusKind}
+                cardState={cardState}
+                speaking={p.id === 'ada' && isConnected}
+                node={(nodes[p.id] || '').split('.')[0] || 'local'}
+                latency={peerLatencies[p.id] ?? '--'}
+                effectiveFocused={effectiveFocused}
+                focused={focused}
+                setFocused={setFocused}
+                canExitFocus={canExitFocus}
+                canMuteVoice={vcPerms.has(PERM_MUTE_VOICE)}
+                vcTeamId={vcTeamId}
+                channelId={channel.id}
+                lastFocusKindRef={lastFocusKindRef}
+                vol={vol}
+                setVolumes={setVolumes}
+              />
             );
           }
 
