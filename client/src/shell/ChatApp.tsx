@@ -2676,25 +2676,13 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                             onCancel={() => setEditingId(null)}
                           />
                         ) : (
-                          <>
-                            {(m.kind === 'image' || m.kind === 'file') && m.text && (
-                              <div style={{ marginBottom: 4 }}>{renderText(m.text, members)}</div>
-                            )}
-                            <MessageAttachments m={m} openLightbox={openLightbox} />
-                            {m.kind === 'text' && renderText(m.text, members)}
-                            {m.kind === 'action' && (
-                              <span className="msg-action">
-                                <em>* {author.name} {m.text}</em>
-                              </span>
-                            )}
-                            {m.kind === 'poll' && (
-                              <PollMessage m={m} onVote={onVote} />
-                            )}
-                            {m.kind === 'text' && detectUnfurls(m.text).map((u, ui) => (
-                              <Unfurl key={`unfurl-${m.id}-${ui}-${u.url}`} url={u.url} host={u.host} />
-                            ))}
-                            {m.edited && <span className="msg-edited" title={'edited ' + (m.editedAt ? timeShort(new Date(m.editedAt)) : '')}>(edited)</span>}
-                          </>
+                          <MessageBody
+                            m={m}
+                            members={members}
+                            authorName={author.name}
+                            openLightbox={openLightbox}
+                            onVote={onVote}
+                          />
                         )}
                       </div>
                       <MessageReactions m={m} onReact={onReact} setPicker={setPicker} />
@@ -4775,6 +4763,42 @@ function dispatchOpenThread(channelId: string, messageId: string): void {
   globalThis.dispatchEvent(new CustomEvent('dilla:open-thread', {
     detail: { channelId, messageId },
   }));
+}
+
+function MessageBody({
+  m,
+  members,
+  authorName,
+  openLightbox,
+  onVote,
+}: Readonly<{
+  m: any;
+  members: any;
+  authorName: string;
+  openLightbox: (sources: string[], index: number) => void;
+  onVote?: (id: string, oi: number) => void;
+}>): JSX.Element {
+  return (
+    <>
+      {(m.kind === 'image' || m.kind === 'file') && m.text && (
+        <div style={{ marginBottom: 4 }}>{renderText(m.text, members)}</div>
+      )}
+      <MessageAttachments m={m} openLightbox={openLightbox} />
+      {m.kind === 'text' && renderText(m.text, members)}
+      {m.kind === 'action' && (
+        <span className="msg-action"><em>* {authorName} {m.text}</em></span>
+      )}
+      {m.kind === 'poll' && <PollMessage m={m} onVote={onVote} />}
+      {m.kind === 'text' && detectUnfurls(m.text).map((u: any, ui: number) => (
+        <Unfurl key={`unfurl-${m.id}-${ui}-${u.url}`} url={u.url} host={u.host} />
+      ))}
+      {m.edited && (
+        <span className="msg-edited" title={'edited ' + (m.editedAt ? timeShort(new Date(m.editedAt)) : '')}>
+          (edited)
+        </span>
+      )}
+    </>
+  );
 }
 
 function MessageEditor({
