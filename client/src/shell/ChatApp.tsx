@@ -2817,17 +2817,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
               <Icon.Thread size={13} /> Reply in thread
             </button>
             <button><Icon.Reply size={12} /> Quote reply</button>
-            <button onClick={() => {
-              const wasIn = savedMsgs.has(contextMenu.msgId);
-              setSavedMsgs(prev => {
-                const next = new Set(prev);
-                if (next.has(contextMenu.msgId)) next.delete(contextMenu.msgId);
-                else next.add(contextMenu.msgId);
-                return next;
-              });
-              globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'saved', text: wasIn ? 'Removed from saved messages.' : 'Saved. Find it in your bookmarks.', duration: 2200 } }));
-              setContextMenu(null);
-            }}>
+            <button onClick={() => { toggleSavedBookmark(contextMenu.msgId, savedMsgs, setSavedMsgs); setContextMenu(null); }}>
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M4 2v12l4-3 4 3V2z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/></svg>
               {savedMsgs.has(contextMenu.msgId) ? 'Remove bookmark' : 'Save message'}
             </button>
@@ -2838,65 +2828,13 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
             {msgPerms.has(PERM_MANAGE_MESSAGES) && (
               <>
                 <div className="ctx-sep" />
-                <button onClick={() => {
-                  const teamId = useTeamStore.getState().activeTeamId;
-                  const ps = usePinStore.getState();
-                  const already = ps.isPinned(channel.id, contextMenu.msgId);
-                  // Optimistic flip so the icon updates instantly; rollback
-                  // on failure. The server echoes message:pin-update which
-                  // converges every other client.
-                  if (already) ps.unpin(channel.id, contextMenu.msgId); else ps.pin(channel.id, contextMenu.msgId);
-                  if (teamId && !isMockSession()) {
-                    const call = already
-                      ? api.unpinMessage(teamId, channel.id, contextMenu.msgId)
-                      : api.pinMessage(teamId, channel.id, contextMenu.msgId);
-                    call.catch((err) => {
-                      if (already) ps.pin(channel.id, contextMenu.msgId); else ps.unpin(channel.id, contextMenu.msgId);
-                      globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { author: 'pins', text: (err as Error).message || 'Pin failed — manage-messages permission required.', duration: 3500 } }));
-                    });
-                  } else if (isMockSession() && teamId) {
-                    // Keep mockApi store in sync with the UI store on /mesh.
-                    (already
-                      ? api.unpinMessage(teamId, channel.id, contextMenu.msgId)
-                      : api.pinMessage(teamId, channel.id, contextMenu.msgId)
-                    ).catch(() => {});
-                  }
-                  setContextMenu(null);
-                }}>
+                <button onClick={() => { togglePinForMessage(channel.id, contextMenu.msgId); setContextMenu(null); }}>
                   <Icon.Pin size={13} />
                   {usePinStore.getState().isPinned(channel.id, contextMenu.msgId) ? 'Unpin from channel' : 'Pin to channel'}
                 </button>
               </>
             )}
-            <button onClick={() => {
-              setUnreadAt(contextMenu.msgId);
-              // Roll the read watermark back to the message *before* the
-              // selected one so the sidebar pill reflects the unread span
-              // and the server agrees on reload. We use the previous
-              // message id (or empty if it's the first), and count messages
-              // from-here-onwards that aren't ours as the local pill count
-              // — server will recompute on next sync:init, but updating
-              // locally avoids a flicker while the WS round-trips.
-              const all = messages || [];
-              const idx = all.findIndex((m) => m.id === contextMenu.msgId);
-              if (idx >= 0) {
-                const myId = data?.currentUserId;
-                const fromHere = all.slice(idx).filter((m) => m.author !== myId).length;
-                useUnreadStore.setState((s) => ({
-                  counts: { ...s.counts, [channel.id]: fromHere },
-                }));
-                const teamId = useTeamStore.getState().activeTeamId;
-                const prevId = idx > 0 ? all[idx - 1].id : '';
-                if (teamId && !isMockSession()) {
-                  // Sending an empty string would store "" as the watermark
-                  // message, which the server treats as "never read"; that's
-                  // actually the right behaviour for "mark from the very
-                  // first message", so let it through.
-                  try { ws.markChannelRead(teamId, channel.id, prevId); } catch { /* ignore */ }
-                }
-              }
-              setContextMenu(null);
-            }}>
+            <button onClick={() => { markUnreadFromMessage(contextMenu.msgId, channel.id, messages, data, setUnreadAt); setContextMenu(null); }}>
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M3 4h10M3 12h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>
               Mark unread from here
             </button>
@@ -5338,6 +5276,72 @@ function queueFileUploads(
     schedulePhaseUpdates(phases, id, setUploads);
     Promise.resolve(onAttach?.(file)).finally(() => removeUploadById(setUploads, id));
   }
+}
+
+function toggleSavedBookmark(
+  msgId: string,
+  savedMsgs: Set<string>,
+  setSavedMsgs: (updater: (prev: Set<string>) => Set<string>) => void,
+): void {
+  const wasIn = savedMsgs.has(msgId);
+  setSavedMsgs((prev) => {
+    const next = new Set(prev);
+    if (next.has(msgId)) next.delete(msgId);
+    else next.add(msgId);
+    return next;
+  });
+  globalThis.dispatchEvent(new CustomEvent('dilla:notify', {
+    detail: {
+      author: 'saved',
+      text: wasIn ? 'Removed from saved messages.' : 'Saved. Find it in your bookmarks.',
+      duration: 2200,
+    },
+  }));
+}
+
+function togglePinForMessage(channelId: string, msgId: string): void {
+  const teamId = useTeamStore.getState().activeTeamId;
+  const ps = usePinStore.getState();
+  const already = ps.isPinned(channelId, msgId);
+  // Optimistic flip so the icon updates instantly; rollback on failure.
+  // The server echoes message:pin-update to converge other clients.
+  if (already) ps.unpin(channelId, msgId);
+  else ps.pin(channelId, msgId);
+  if (!teamId) return;
+  const call = already ? api.unpinMessage(teamId, channelId, msgId) : api.pinMessage(teamId, channelId, msgId);
+  if (isMockSession()) {
+    call.catch(() => {});
+    return;
+  }
+  call.catch((err) => {
+    if (already) ps.pin(channelId, msgId);
+    else ps.unpin(channelId, msgId);
+    globalThis.dispatchEvent(new CustomEvent('dilla:notify', {
+      detail: { author: 'pins', text: (err as Error).message || 'Pin failed — manage-messages permission required.', duration: 3500 },
+    }));
+  });
+}
+
+function markUnreadFromMessage(
+  msgId: string,
+  channelId: string,
+  messages: any[] | undefined,
+  data: any,
+  setUnreadAt: (id: string) => void,
+): void {
+  setUnreadAt(msgId);
+  const all = messages || [];
+  const idx = all.findIndex((m) => m.id === msgId);
+  if (idx < 0) return;
+  const myId = data?.currentUserId;
+  const fromHere = all.slice(idx).filter((m) => m.author !== myId).length;
+  useUnreadStore.setState((s) => ({ counts: { ...s.counts, [channelId]: fromHere } }));
+  const teamId = useTeamStore.getState().activeTeamId;
+  if (!teamId || isMockSession()) return;
+  const prevId = idx > 0 ? all[idx - 1].id : '';
+  // Empty string is intentional — server treats it as "mark from very first
+  // message" which is the right behaviour for selecting the first message.
+  try { ws.markChannelRead(teamId, channelId, prevId); } catch { /* ignore */ }
 }
 
 function snapInstant(el: HTMLElement): void {
