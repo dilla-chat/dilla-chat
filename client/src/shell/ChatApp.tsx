@@ -3619,6 +3619,72 @@ function AvatarTile({
   );
 }
 
+function buildGiphyOptimistic(url: string, att?: { id: string }) {
+  const ts = new Date();
+  if (att) {
+    return {
+      id: 'new-' + Date.now(),
+      author: currentUserId(),
+      at: ts,
+      kind: 'image',
+      text: '',
+      attachment: { kind: 'image', label: 'giphy.gif', src: url, w: 320, h: 200 },
+      replyTo: null,
+    };
+  }
+  return { id: 'new-' + Date.now(), author: currentUserId(), at: ts, kind: 'text', text: url, replyTo: null };
+}
+
+async function sendGiphyToChannel(
+  body: string,
+  activeChannel: string,
+  activeTeamId: string,
+  derivedKey: any,
+  att?: { id: string },
+): Promise<void> {
+  try {
+    const encrypted = await tryEncrypt(body, activeChannel, derivedKey);
+    ws.sendMessage(activeTeamId, activeChannel, encrypted, 'text', undefined, att ? [att.id] : undefined);
+  } catch (err) {
+    console.warn('[giphy] channel send failed', err);
+  }
+}
+
+function handleGiphyPick(
+  e: Event,
+  ctx: {
+    channel: any;
+    activeChannel: string;
+    activeTeamId: string | null | undefined;
+    derivedKey: any;
+    setDmMessages: (updater: (prev: Record<string, any[]>) => Record<string, any[]>) => void;
+    setMessages: (updater: (prev: Record<string, any[]>) => Record<string, any[]>) => void;
+  },
+): void {
+  const detail = (e as CustomEvent).detail as { url?: string; attachment?: { id: string } } | undefined;
+  const url = detail?.url;
+  const att = detail?.attachment;
+  if (!url) return;
+  const { channel, activeChannel, activeTeamId, derivedKey, setDmMessages, setMessages } = ctx;
+  const optimistic = buildGiphyOptimistic(url, att);
+
+  if (channel?.type === 'dm') {
+    setDmMessages((prev) => ({ ...prev, [channel.id]: [...(prev[channel.id] || []), optimistic] }));
+    if (activeTeamId) {
+      const body = att ? `[file:${att.id}] giphy.gif` : url;
+      api.sendDMMessage(activeTeamId, channel.id, body).catch((err) => console.warn('[giphy] DM send failed', err));
+    }
+    return;
+  }
+  if (activeChannel) {
+    setMessages((prev) => ({ ...prev, [activeChannel]: [...(prev[activeChannel] || []), optimistic] }));
+    if (activeTeamId && !isMockSession()) {
+      const body = att ? ' ' : url;
+      void sendGiphyToChannel(body, activeChannel, activeTeamId, derivedKey, att);
+    }
+  }
+}
+
 function openVoiceCardMenu(
   e: React.MouseEvent,
   args: {
@@ -5717,49 +5783,10 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   //     it via the .gif extension).
   // Must sit AFTER `const channel` because the dep array reads it.
   useEffect(() => {
-    function onPick(e: Event) {
-      const detail = (e as CustomEvent).detail as { url?: string; attachment?: { id: string } } | undefined;
-      const url = detail?.url;
-      const att = detail?.attachment;
-      if (!url) return;
-      const ts = new Date();
-      const isDM = channel?.type === 'dm';
-      const isImagePath = !!att;
-      const optimistic: Record<string, unknown> = isImagePath
-        ? {
-            id: 'new-' + Date.now(),
-            author: currentUserId(),
-            at: ts,
-            kind: 'image',
-            text: '',
-            attachment: { kind: 'image', label: 'giphy.gif', src: url, w: 320, h: 200 },
-            replyTo: null,
-          }
-        : { id: 'new-' + Date.now(), author: currentUserId(), at: ts, kind: 'text', text: url, replyTo: null };
-      if (isDM && channel) {
-        setDmMessages(prev => ({ ...prev, [channel.id]: [...(prev[channel.id] || []), optimistic] }));
-        if (activeTeamId) {
-          // DM endpoint doesn't take attachment_ids — bake the id into
-          // the body the way the file-upload path does. Receivers parse
-          // the [file:<id>] marker and resolve to /attachments.
-          const body = att ? `[file:${att.id}] giphy.gif` : url;
-          api.sendDMMessage(activeTeamId, channel.id, body).catch((err) => console.warn('[giphy] DM send failed', err));
-        }
-      } else if (activeChannel) {
-        setMessages(prev => ({ ...prev, [activeChannel]: [...(prev[activeChannel] || []), optimistic] }));
-        if (activeTeamId && !isMockSession()) {
-          (async () => {
-            try {
-              const body = att ? ' ' : url; // image-only message — body is a space the encrypt step can chew on
-              const encrypted = await tryEncrypt(body, activeChannel, derivedKey);
-              ws.sendMessage(activeTeamId, activeChannel, encrypted, 'text', undefined, att ? [att.id] : undefined);
-            } catch (err) {
-              console.warn('[giphy] channel send failed', err);
-            }
-          })();
-        }
-      }
-    }
+    const onPick = (e: Event) => handleGiphyPick(e, {
+      channel, activeChannel, activeTeamId, derivedKey,
+      setDmMessages, setMessages,
+    });
     globalThis.addEventListener('dilla:giphy-pick', onPick);
     return () => globalThis.removeEventListener('dilla:giphy-pick', onPick);
   }, [channel, activeChannel, activeTeamId, derivedKey]);
