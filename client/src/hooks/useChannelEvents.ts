@@ -72,6 +72,15 @@ function maybeFireMentionNotification(
   }
 }
 
+function decrementReactionForUser(
+  r: { emoji: string; users: string[]; count: number },
+  emoji: string,
+  userId: string,
+): { emoji: string; users: string[]; count: number } {
+  if (r.emoji !== emoji) return r;
+  return { ...r, users: r.users.filter((u) => u !== userId), count: Math.max(0, r.count - 1) };
+}
+
 export function useChannelEvents(activeTeamId: string | null, cryptoReady: boolean = true): void {
   // Loop prevention: remember the exact payload of each incoming distribute
   // we've already processed and echoed back. Keyed as
@@ -241,11 +250,7 @@ export function useChannelEvents(activeTeamId: string | null, cryptoReady: boole
         const msg = list.find((m) => m.id === payload.message_id);
         if (!msg?.reactions) return;
         const reactions = msg.reactions
-          .map((r) =>
-            r.emoji === payload.emoji
-              ? { ...r, users: r.users.filter((u) => u !== payload.user_id), count: Math.max(0, r.count - 1) }
-              : r,
-          )
+          .map((r) => decrementReactionForUser(r, payload.emoji, payload.user_id))
           .filter((r) => r.count > 0);
         useMessageStore.getState().updateReactions(payload.channel_id, payload.message_id, reactions);
       },

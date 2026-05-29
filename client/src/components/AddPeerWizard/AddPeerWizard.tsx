@@ -58,16 +58,13 @@ export default function AddPeerWizard({ open, onClose, onComplete }: Readonly<Pr
     if (step !== 'handshake') return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional reset when entering handshake phase
     setLogLines(0);
-    intervalRef.current = setInterval(() => {
-      setLogLines((n) => {
-        if (n >= HANDSHAKE_LOG.length) {
-          if (intervalRef.current) clearInterval(intervalRef.current);
-          setTimeout(() => setStep('done'), 500);
-          return n;
-        }
-        return n + 1;
-      });
-    }, 320);
+    const advance = (n: number) => {
+      if (n < HANDSHAKE_LOG.length) return n + 1;
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      setTimeout(() => setStep('done'), 500);
+      return n;
+    };
+    intervalRef.current = setInterval(() => setLogLines(advance), 320);
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
