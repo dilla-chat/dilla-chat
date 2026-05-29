@@ -5827,6 +5827,45 @@ function runDeleteMessage(args: {
   ws.deleteMessage(activeTeamId, msgId, channelId);
 }
 
+const SHELL_KBD_CHANNEL_ORDER = ['general', 'design', 'dev', 'mesh', 'random'];
+
+function handleShellGlobalKey(
+  e: KeyboardEvent,
+  ctx: {
+    voiceConnection: any;
+    setActiveChannel: (id: string) => void;
+    setActiveView: (v: { kind: 'channel' | 'dm'; id: string }) => void;
+    setTab: (t: string) => void;
+    setMute: (next: (v: boolean) => boolean) => void;
+    setDeaf: (next: (v: boolean) => boolean) => void;
+  },
+): void {
+  const inField = (e.target as Element | null)?.matches?.('input, textarea, [contenteditable="true"]');
+  if (inField) return;
+  const { voiceConnection, setActiveChannel, setActiveView, setTab, setMute, setDeaf } = ctx;
+  if ((e.metaKey || e.ctrlKey) && /^[1-5]$/.test(e.key)) {
+    const id = SHELL_KBD_CHANNEL_ORDER[Number.parseInt(e.key, 10) - 1];
+    if (id) {
+      e.preventDefault();
+      setActiveChannel(id);
+      setActiveView({ kind: 'channel', id });
+      setTab('kanals');
+    }
+    return;
+  }
+  if (!voiceConnection) return;
+  const key = e.key.toLowerCase();
+  if (key === 'm') {
+    e.preventDefault();
+    setMute((v) => !v);
+    return;
+  }
+  if (key === 'd') {
+    e.preventDefault();
+    setDeaf((v) => !v);
+  }
+}
+
 function toggleChannelMuteState(id: string): void {
   const teamId = useTeamStore.getState().activeTeamId;
   const muteStore = useChannelMuteStore.getState();
@@ -6379,17 +6418,9 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     globalThis.addEventListener('dilla:open-group-access', onGroupAccess);
     globalThis.addEventListener('dilla:open-group-settings', onGroupSettings);
     function onKey(e) {
-      const inField = e.target.matches?.('input, textarea, [contenteditable="true"]');
-      if (inField) return;
-      const order = ['general','design','dev','mesh','random'];
-      if ((e.metaKey || e.ctrlKey) && /^[1-5]$/.test(e.key)) {
-        const id = order[Number.parseInt(e.key, 10) - 1];
-        if (id) { e.preventDefault(); setActiveChannel(id); setActiveView({ kind: 'channel', id }); setTab('kanals'); }
-      } else if (e.key.toLowerCase() === 'm' && voiceConnection) {
-        e.preventDefault(); setMute(v => !v);
-      } else if (e.key.toLowerCase() === 'd' && voiceConnection) {
-        e.preventDefault(); setDeaf(v => !v);
-      }
+      handleShellGlobalKey(e, {
+        voiceConnection, setActiveChannel, setActiveView, setTab, setMute, setDeaf,
+      });
     }
     globalThis.addEventListener('keydown', onKey);
     return () => {
