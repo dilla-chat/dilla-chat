@@ -2707,17 +2707,9 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                 })()}
                 disabled={!!slowModeLock}
                 value={draft}
-                onChange={e => {
-                  const v = e.target.value;
-                  setDraft(v);
-                  const pos = e.target.selectionStart;
-                  const before = v.slice(0, pos);
-                  const mm = /(?:^|\s)@(\w*)$/.exec(before);
-                  const sm = /^\/(\w*)$/.exec(before);
-                  if (mm) { setMention({ query: mm[1].toLowerCase() }); setMentionIdx(0); setSlash(null); }
-                  else if (sm) { setSlash({ query: sm[1].toLowerCase() }); setSlashIdx(0); setMention(null); }
-                  else { setMention(null); setSlash(null); }
-                }}
+                onChange={(e) => handleDraftChange(e.target.value, e.target.selectionStart, {
+                  setDraft, setMention, setMentionIdx, setSlash, setSlashIdx,
+                })}
                 onKeyDown={e => {
                   if (handleMentionPickerKey(e, { mention, mentionMatches, mentionIdx, setMentionIdx, setMention, applyMention })) return;
                   if (handleSlashPickerKey(e, { slash, slashMatches, slashIdx, setSlashIdx, setSlash, applySlash })) return;
@@ -5266,6 +5258,38 @@ function queueFileUploads(
     schedulePhaseUpdates(phases, id, setUploads);
     Promise.resolve(onAttach?.(file)).finally(() => removeUploadById(setUploads, id));
   }
+}
+
+function handleDraftChange(
+  value: string,
+  caret: number,
+  ctx: {
+    setDraft: (next: string) => void;
+    setMention: (m: { query: string } | null) => void;
+    setMentionIdx: (i: number) => void;
+    setSlash: (s: { query: string } | null) => void;
+    setSlashIdx: (i: number) => void;
+  },
+): void {
+  const { setDraft, setMention, setMentionIdx, setSlash, setSlashIdx } = ctx;
+  setDraft(value);
+  const before = value.slice(0, caret);
+  const mm = /(?:^|\s)@(\w*)$/.exec(before);
+  if (mm) {
+    setMention({ query: mm[1].toLowerCase() });
+    setMentionIdx(0);
+    setSlash(null);
+    return;
+  }
+  const sm = /^\/(\w*)$/.exec(before);
+  if (sm) {
+    setSlash({ query: sm[1].toLowerCase() });
+    setSlashIdx(0);
+    setMention(null);
+    return;
+  }
+  setMention(null);
+  setSlash(null);
 }
 
 function dispatchEmojiPick(
