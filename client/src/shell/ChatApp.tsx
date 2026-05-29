@@ -3717,14 +3717,20 @@ async function leaveTeamFromRail(s: { name: string }): Promise<void> {
   }
 }
 
+function membersWidth(showFourth: boolean, activeThread: unknown, defaultWidth?: number): number {
+  if (!showFourth) return 0;
+  if (activeThread) return 380;
+  return defaultWidth || 232;
+}
+
 function resolveFocusedKind(
   focused: { id: string; kind: 'cam' | 'screen' },
   state: { cam: boolean; screen: boolean; voicePeers?: Record<string, { webcam_sharing?: boolean; screen_sharing?: boolean }> },
 ): 'cam' | 'screen' | null {
   const isSelf = focused.id === currentUserId();
   const peerVoice = isSelf ? null : state.voicePeers?.[focused.id];
-  const camOn = isSelf ? !!state.cam : !!peerVoice?.webcam_sharing;
-  const screenOn = isSelf ? !!state.screen : !!peerVoice?.screen_sharing;
+  const camOn = isSelf ? state.cam : !!peerVoice?.webcam_sharing;
+  const screenOn = isSelf ? state.screen : !!peerVoice?.screen_sharing;
   if (!camOn && !screenOn) return null;
   if (focused.kind === 'cam' && !camOn && screenOn) return 'screen';
   if (focused.kind === 'screen' && !screenOn && camOn) return 'cam';
@@ -5927,7 +5933,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   rootStyle['--sidebar-w'] = (opts.sidebar || 240) + 'px';
   const isDM = channel.type === 'dm';
   const showFourth = activeThread || (membersOpen && !isDM);
-  rootStyle['--members-w'] = (showFourth ? (activeThread ? 380 : (opts.members || 232)) : 0) + 'px';
+  rootStyle['--members-w'] = membersWidth(showFourth, activeThread, opts.members) + 'px';
 
   return (
     <div className="chat" data-style={theme.style} data-drawer={drawerOpen ? '1' : '0'} style={rootStyle}>
