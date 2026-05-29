@@ -2389,22 +2389,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   function handleFiles(files: File[]) {
-    if (files.length === 0) return;
-    for (const file of files) {
-      // Animated upload-progress strip — visual stub; actual progress isn't
-      // exposed by api.uploadFile yet so we show the staged phases until
-      // the await resolves, then hide the row.
-      const id = shortId('up');
-      const upload = { id, name: file.name, size: file.size, progress: 0, phase: 'reading' };
-      setUploads(prev => [...prev, upload]);
-      const phases = [
-        { ms: 100, p: 25, phase: 'reading' },
-        { ms: 100, p: 55, phase: 'encrypting' },
-        { ms: 200, p: 85, phase: 'uploading' },
-      ];
-      schedulePhaseUpdates(phases, id, setUploads);
-      Promise.resolve(onAttach?.(file)).finally(() => removeUploadById(setUploads, id));
-    }
+    queueFileUploads(files, setUploads, onAttach);
   }
 
   function openFilePicker() {
@@ -2684,19 +2669,12 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                       )}
                       <div className="body">
                         {editingId === m.id ? (
-                          <div className="msg-edit">
-                            <textarea autoFocus value={editDraft}
-                                      onChange={e => setEditDraft(e.target.value)}
-                                      onKeyDown={e => {
-                                        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(); }
-                                        if (e.key === 'Escape') setEditingId(null);
-                                      }}
-                                      rows={Math.min(6, (editDraft.match(/\n/g) || []).length + 1)} />
-                            <div className="msg-edit-actions">
-                              <button onClick={() => setEditingId(null)}>Cancel · esc</button>
-                              <button className="primary" onClick={saveEdit} disabled={!editDraft.trim()}>Save · ↵</button>
-                            </div>
-                          </div>
+                          <MessageEditor
+                            editDraft={editDraft}
+                            setEditDraft={setEditDraft}
+                            onSave={saveEdit}
+                            onCancel={() => setEditingId(null)}
+                          />
                         ) : (
                           <>
                             {(m.kind === 'image' || m.kind === 'file') && m.text && (
@@ -4799,6 +4777,35 @@ function dispatchOpenThread(channelId: string, messageId: string): void {
   }));
 }
 
+function MessageEditor({
+  editDraft,
+  setEditDraft,
+  onSave,
+  onCancel,
+}: Readonly<{
+  editDraft: string;
+  setEditDraft: (next: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}>): JSX.Element {
+  const onKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSave(); return; }
+    if (e.key === 'Escape') onCancel();
+  };
+  return (
+    <div className="msg-edit">
+      <textarea autoFocus value={editDraft}
+                onChange={(e) => setEditDraft(e.target.value)}
+                onKeyDown={onKey}
+                rows={Math.min(6, (editDraft.match(/\n/g) || []).length + 1)} />
+      <div className="msg-edit-actions">
+        <button onClick={onCancel}>Cancel · esc</button>
+        <button className="primary" onClick={onSave} disabled={!editDraft.trim()}>Save · ↵</button>
+      </div>
+    </div>
+  );
+}
+
 function MessageTools({
   m,
   channelId,
@@ -5171,6 +5178,25 @@ function trackFeedScrollPosition(
   };
   el.addEventListener('scroll', onScroll, { passive: true });
   return () => el.removeEventListener('scroll', onScroll);
+}
+
+function queueFileUploads(
+  files: File[],
+  setUploads: (updater: (prev: any[]) => any[]) => void,
+  onAttach?: (file: File) => Promise<void> | void,
+): void {
+  if (files.length === 0) return;
+  const phases = [
+    { ms: 100, p: 25, phase: 'reading' },
+    { ms: 100, p: 55, phase: 'encrypting' },
+    { ms: 200, p: 85, phase: 'uploading' },
+  ];
+  for (const file of files) {
+    const id = shortId('up');
+    setUploads((prev) => [...prev, { id, name: file.name, size: file.size, progress: 0, phase: 'reading' }]);
+    schedulePhaseUpdates(phases, id, setUploads);
+    Promise.resolve(onAttach?.(file)).finally(() => removeUploadById(setUploads, id));
+  }
 }
 
 function snapInstant(el: HTMLElement): void {
