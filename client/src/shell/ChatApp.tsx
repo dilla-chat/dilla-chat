@@ -5825,6 +5825,36 @@ function useActiveChannelTyping(activeChannel: string): string[] {
   }, [typingUsersForActive, myUserId, typingTick]);
 }
 
+function tickActiveSlowLocks(
+  slowLocks: Record<string, { strikes: number; until: number }>,
+  tickSlowLocks: (updater: (n: number) => number) => void,
+  setSlowLocks: (updater: (prev: Record<string, { strikes: number; until: number }>) => Record<string, { strikes: number; until: number }>) => void,
+): (() => void) | undefined {
+  const hasActive = Object.values(slowLocks).some((l) => l.until > Date.now());
+  if (!hasActive) return undefined;
+  const id = globalThis.setInterval(() => {
+    tickSlowLocks((n) => n + 1);
+    setSlowLocks((prev) => pruneExpiredSlowLocks(prev));
+  }, 1000);
+  return () => globalThis.clearInterval(id);
+}
+
+function handleMessageRejected(
+  payload: any,
+  me: string,
+  setMessages: (updater: (prev: Record<string, any[]>) => Record<string, any[]>) => void,
+  setDrafts: (updater: (d: Record<string, any>) => Record<string, any>) => void,
+  setSlowLocks: (updater: (prev: Record<string, { strikes: number; until: number }>) => Record<string, { strikes: number; until: number }>) => void,
+): void {
+  const channelId = payload?.channel_id;
+  if (!channelId) return;
+  setMessages((prev) => rollbackOptimistic(prev, channelId, me, setDrafts));
+  const retryIn = Number(payload?.retry_in ?? 0);
+  if (payload?.reason === 'slow_mode' && retryIn > 0) {
+    setSlowLocks((prev) => addSlowLockStrike(prev, channelId, retryIn));
+  }
+}
+
 async function openDmForMember(
   memberId: string,
   ctx: {
@@ -6384,30 +6414,16 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   // when the time-left hits zero.
   const [slowLocks, setSlowLocks] = useState<Record<string, { strikes: number; until: number }>>({});
   const [, tickSlowLocks] = useState(0);
-  useEffect(() => {
-    const hasActive = Object.values(slowLocks).some((l) => l.until > Date.now());
-    if (!hasActive) return;
-    const id = globalThis.setInterval(() => {
-      tickSlowLocks((n) => n + 1);
-      setSlowLocks((prev) => pruneExpiredSlowLocks(prev));
-    }, 1000);
-    return () => globalThis.clearInterval(id);
-  }, [slowLocks]);
+  useEffect(() => tickActiveSlowLocks(slowLocks, tickSlowLocks, setSlowLocks), [slowLocks]);
 
   // Server-side rejections (slow mode, future quota/perm gates) — roll
   // back the optimistic message, restore its text to the composer, and
   // bump the strike count so we can disable the composer after three.
   useEffect(() => {
     const me = currentUserId();
-    const unsub = ws.on('message:rejected', (payload: any) => {
-      const channelId = payload?.channel_id;
-      if (!channelId) return;
-      setMessages(prev => rollbackOptimistic(prev, channelId, me, setDrafts));
-      const retryIn = Number(payload?.retry_in ?? 0);
-      if (payload?.reason === 'slow_mode' && retryIn > 0) {
-        setSlowLocks((prev) => addSlowLockStrike(prev, channelId, retryIn));
-      }
-    });
+    const unsub = ws.on('message:rejected', (payload: any) =>
+      handleMessageRejected(payload, me, setMessages, setDrafts, setSlowLocks),
+    );
     return () => { unsub(); };
   }, []);
 
