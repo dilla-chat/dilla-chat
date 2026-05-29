@@ -5752,6 +5752,101 @@ function useActiveChannelTyping(activeChannel: string): string[] {
   }, [typingUsersForActive, myUserId, typingTick]);
 }
 
+async function sendChannelEdit(
+  activeTeamId: string,
+  channelId: string,
+  msgId: string,
+  newText: string,
+  derivedKey: any,
+): Promise<void> {
+  try {
+    const encrypted = await tryEncrypt(newText, channelId, derivedKey);
+    ws.editMessage(activeTeamId, msgId, channelId, encrypted);
+  } catch (err) {
+    console.warn('[ChatApp] channel edit failed', err);
+  }
+}
+
+function runEditMessage(args: {
+  channelId: string;
+  msgId: string;
+  newText: string;
+  activeTeamId: string | null | undefined;
+  derivedKey: any;
+  setDmMessages: (updater: (prev: Record<string, any[]>) => Record<string, any[]>) => void;
+  setMessages: (updater: (prev: Record<string, any[]>) => Record<string, any[]>) => void;
+}): void {
+  const { channelId, msgId, newText, activeTeamId, derivedKey, setDmMessages, setMessages } = args;
+  const isDM = channelId.startsWith('dm-');
+  const setter = isDM ? setDmMessages : setMessages;
+  setter((prev) => ({
+    ...prev,
+    [channelId]: (prev[channelId] || []).map((m) =>
+      m.id === msgId ? { ...m, text: newText, edited: true, editedAt: Date.now() } : m,
+    ),
+  }));
+  if (!activeTeamId) return;
+  if (isDM) {
+    api.editDMMessage(activeTeamId, channelId, msgId, newText).catch((err) =>
+      console.warn('[ChatApp] DM edit failed', err),
+    );
+    return;
+  }
+  if (!isMockSession()) {
+    void sendChannelEdit(activeTeamId, channelId, msgId, newText, derivedKey);
+  }
+}
+
+function runDeleteMessage(args: {
+  channelId: string;
+  msgId: string;
+  activeTeamId: string | null | undefined;
+  setDmMessages: (updater: (prev: Record<string, any[]>) => Record<string, any[]>) => void;
+  setMessages: (updater: (prev: Record<string, any[]>) => Record<string, any[]>) => void;
+}): void {
+  const { channelId, msgId, activeTeamId, setDmMessages, setMessages } = args;
+  const isDM = channelId.startsWith('dm-');
+  const setter = isDM ? setDmMessages : setMessages;
+  setter((prev) => ({
+    ...prev,
+    [channelId]: (prev[channelId] || []).filter((m) => m.id !== msgId),
+  }));
+  if (!activeTeamId) return;
+  if (isDM) {
+    api.deleteDMMessage(activeTeamId, channelId, msgId).catch((err) =>
+      console.warn('[ChatApp] DM delete failed', err),
+    );
+    return;
+  }
+  ws.deleteMessage(activeTeamId, msgId, channelId);
+}
+
+function toggleChannelMuteState(id: string): void {
+  const teamId = useTeamStore.getState().activeTeamId;
+  const muteStore = useChannelMuteStore.getState();
+  if (!teamId || isMockSession()) {
+    // Mock session — flip the local store only.
+    if (muteStore.isMuted(id)) muteStore.clear(id);
+    else muteStore.setMuted(id, null);
+    return;
+  }
+  const currentlyMuted = muteStore.isMuted(id);
+  // Optimistic so the icon flips instantly; WS echo arrives shortly.
+  if (currentlyMuted) {
+    muteStore.clear(id);
+    api.unmuteChannel(teamId, id).catch((err) => {
+      console.warn('[mute] unmute failed', err);
+      useChannelMuteStore.getState().setMuted(id, null);
+    });
+    return;
+  }
+  muteStore.setMuted(id, null);
+  api.muteChannel(teamId, id, null).catch((err) => {
+    console.warn('[mute] mute failed', err);
+    useChannelMuteStore.getState().clear(id);
+  });
+}
+
 function handlePickChannel(
   id: string,
   data: any,
@@ -6167,28 +6262,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     setMenuPop({ x: e.clientX, y: e.clientY, items });
   }
   function toggleMuteChannel(id) {
-    const teamId = useTeamStore.getState().activeTeamId;
-    if (!teamId || isMockSession()) {
-      // Mock session — flip the local store only.
-      const s = useChannelMuteStore.getState();
-      if (s.isMuted(id)) s.clear(id); else s.setMuted(id, null);
-      return;
-    }
-    const currentlyMuted = useChannelMuteStore.getState().isMuted(id);
-    // Optimistic so the icon flips instantly; WS echo arrives shortly.
-    if (currentlyMuted) {
-      useChannelMuteStore.getState().clear(id);
-      api.unmuteChannel(teamId, id).catch((err) => {
-        console.warn('[mute] unmute failed', err);
-        useChannelMuteStore.getState().setMuted(id, null);
-      });
-    } else {
-      useChannelMuteStore.getState().setMuted(id, null);
-      api.muteChannel(teamId, id, null).catch((err) => {
-        console.warn('[mute] mute failed', err);
-        useChannelMuteStore.getState().clear(id);
-      });
-    }
+    toggleChannelMuteState(id);
   }
 
   useEffect(() => {
@@ -6501,50 +6575,11 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   }
 
   function editMessage(channelId, msgId, newText) {
-    const isDM = channelId.startsWith('dm-');
-    const setter = isDM ? setDmMessages : setMessages;
-    setter(prev => ({
-      ...prev,
-      [channelId]: (prev[channelId] || []).map(m =>
-        m.id === msgId ? { ...m, text: newText, edited: true, editedAt: Date.now() } : m
-      )
-    }));
-    // Real edit: channel edits are WS + encrypted; DM edits are HTTP.
-    // On /mesh both paths route to mock services — but channel encryption
-    // would fail noisily without initCrypto, so gate the channel branch on
-    // a real session.
-    if (!activeTeamId) return;
-    if (isDM) {
-      api.editDMMessage(activeTeamId, channelId, msgId, newText).catch((err) =>
-        console.warn('[ChatApp] DM edit failed', err),
-      );
-    } else if (!isMockSession()) {
-      (async () => {
-        try {
-          const encrypted = await tryEncrypt(newText, channelId, derivedKey);
-          ws.editMessage(activeTeamId, msgId, channelId, encrypted);
-        } catch (err) {
-          console.warn('[ChatApp] channel edit failed', err);
-        }
-      })();
-    }
+    runEditMessage({ channelId, msgId, newText, activeTeamId, derivedKey, setDmMessages, setMessages });
   }
 
   function deleteMessage(channelId, msgId) {
-    const isDM = channelId.startsWith('dm-');
-    const setter = isDM ? setDmMessages : setMessages;
-    setter(prev => ({
-      ...prev,
-      [channelId]: (prev[channelId] || []).filter(m => m.id !== msgId)
-    }));
-    if (!activeTeamId) return;
-    if (isDM) {
-      api.deleteDMMessage(activeTeamId, channelId, msgId).catch((err) =>
-        console.warn('[ChatApp] DM delete failed', err),
-      );
-    } else {
-      ws.deleteMessage(activeTeamId, msgId, channelId);
-    }
+    runDeleteMessage({ channelId, msgId, activeTeamId, setDmMessages, setMessages });
   }
 
   const rootStyle = globalThis.THEMES.themeVars(theme, opts);
