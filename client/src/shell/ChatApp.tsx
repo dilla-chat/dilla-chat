@@ -3499,6 +3499,56 @@ function resolveFocusedKind(
   return focused.kind;
 }
 
+function VoiceFullscreenSelector({
+  tabFs,
+  browserFs,
+  setTabFs,
+  toggleBrowserFullscreen,
+}: Readonly<{
+  tabFs: boolean;
+  browserFs: boolean;
+  setTabFs: (v: boolean) => void;
+  toggleBrowserFullscreen: () => void;
+}>): JSX.Element {
+  const onNormal = () => {
+    if (tabFs) setTabFs(false);
+    if (browserFs) toggleBrowserFullscreen();
+  };
+  const onTab = () => {
+    if (browserFs) toggleBrowserFullscreen();
+    setTabFs(true);
+  };
+  const onScreen = () => {
+    if (tabFs) setTabFs(false);
+    if (!browserFs) toggleBrowserFullscreen();
+  };
+  return (
+    <fieldset className="voice-fs-group" aria-label="Fullscreen mode">
+      <button
+        className={'voice-fs-opt' + (!tabFs && !browserFs ? ' is-active' : '')}
+        onClick={onNormal}
+        title="Normal — focus mode within the chat pane"
+      >
+        normal
+      </button>
+      <button
+        className={'voice-fs-opt' + (tabFs ? ' is-active' : '')}
+        onClick={onTab}
+        title="Tab — fill the whole client viewport"
+      >
+        tab
+      </button>
+      <button
+        className={'voice-fs-opt' + (browserFs ? ' is-active' : '')}
+        onClick={onScreen}
+        title="Screen — fill the entire monitor (browser fullscreen)"
+      >
+        screen
+      </button>
+    </fieldset>
+  );
+}
+
 function VoiceCard({
   p,
   isMini,
@@ -5464,35 +5514,12 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
                       </button>
                     )}
                     {effectiveFocused.kind === 'screen' && (
-                      <fieldset className="voice-fs-group" aria-label="Fullscreen mode">
-                        <button
-                          className={'voice-fs-opt' + (!tabFs && !browserFs ? ' is-active' : '')}
-                          onClick={() => { if (tabFs) { setTabFs(false); } if (browserFs) { toggleBrowserFullscreen(); } }}
-                          title="Normal — focus mode within the chat pane"
-                        >
-                          normal
-                        </button>
-                        <button
-                          className={'voice-fs-opt' + (tabFs ? ' is-active' : '')}
-                          onClick={() => {
-                            if (browserFs) toggleBrowserFullscreen();
-                            setTabFs(true);
-                          }}
-                          title="Tab — fill the whole client viewport"
-                        >
-                          tab
-                        </button>
-                        <button
-                          className={'voice-fs-opt' + (browserFs ? ' is-active' : '')}
-                          onClick={() => {
-                            if (tabFs) setTabFs(false);
-                            if (!browserFs) toggleBrowserFullscreen();
-                          }}
-                          title="Screen — fill the entire monitor (browser fullscreen)"
-                        >
-                          screen
-                        </button>
-                      </fieldset>
+                      <VoiceFullscreenSelector
+                        tabFs={tabFs}
+                        browserFs={browserFs}
+                        setTabFs={setTabFs}
+                        toggleBrowserFullscreen={toggleBrowserFullscreen}
+                      />
                     )}
                   </div>
                   {cardFor(focusedMember, false, effectiveFocused.kind)}
