@@ -6409,6 +6409,15 @@ function handleMessageRejected(
   }
 }
 
+function parseOpenSettingsEvent(detail: unknown): { open: boolean; mode: string; tab: string | null } {
+  if (typeof detail === 'string') return { open: true, mode: detail, tab: null };
+  if (detail && typeof detail === 'object') {
+    const d = detail as { mode?: string; tab?: string | null };
+    return { open: true, mode: d.mode || 'user', tab: d.tab || null };
+  }
+  return { open: true, mode: 'user', tab: null };
+}
+
 function joinVoiceFromSidebar(
   voice: { join: (teamId: string, channelId: string) => void },
   channelId: string,
@@ -7202,12 +7211,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   }
 
   useEffect(() => {
-    function onOpen(e) {
-      const d = e.detail;
-      if (typeof d === 'string') setSettings({ open: true, mode: d, tab: null });
-      else if (d && typeof d === 'object') setSettings({ open: true, mode: d.mode || 'user', tab: d.tab || null });
-      else setSettings({ open: true, mode: 'user', tab: null });
-    }
+    const onOpen = (e: Event) => setSettings(parseOpenSettingsEvent((e as CustomEvent).detail));
     globalThis.addEventListener('dilla:open-settings', onOpen);
     return () => globalThis.removeEventListener('dilla:open-settings', onOpen);
   }, []);
