@@ -4200,6 +4200,38 @@ function slashNotify(msg: string, kind = 'system'): void {
   globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: { channel: kind, author: 'system', text: msg, duration: 3200 } }));
 }
 
+async function slashSendRawText(
+  body: string,
+  ctx: {
+    channel: any;
+    activeChannel: string;
+    activeTeamId: string | null | undefined;
+    derivedKey: any;
+    setDmMessages: (updater: (prev: Record<string, any[]>) => Record<string, any[]>) => void;
+    setMessages: (updater: (prev: Record<string, any[]>) => Record<string, any[]>) => void;
+  },
+): Promise<void> {
+  const { channel, activeChannel, activeTeamId, derivedKey, setDmMessages, setMessages } = ctx;
+  const ts = new Date();
+  const optimistic = { id: 'new-' + Date.now(), author: currentUserId(), at: ts, kind: 'text', text: body, replyTo: null };
+  if (channel?.type === 'dm') {
+    setDmMessages(prev => ({ ...prev, [channel.id]: [...(prev[channel.id] || []), optimistic] }));
+    if (activeTeamId) {
+      api.sendDMMessage(activeTeamId, channel.id, body).catch((err) => console.warn('[slash] DM send failed', err));
+    }
+    return;
+  }
+  setMessages(prev => ({ ...prev, [activeChannel]: [...(prev[activeChannel] || []), optimistic] }));
+  if (activeTeamId && !isMockSession()) {
+    try {
+      const encrypted = await tryEncrypt(body, activeChannel, derivedKey);
+      ws.sendMessage(activeTeamId, activeChannel, encrypted);
+    } catch (err) {
+      console.warn('[slash] channel send failed', err);
+    }
+  }
+}
+
 function slashLookupMember(query: string, list: any[]): any {
   const q = query.replace(/^@/, '').toLowerCase().trim();
   if (!q) return null;
@@ -5601,27 +5633,8 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     // slash commands that need to dispatch the message asynchronously
     // (e.g. /giphy waits for a fetch round-trip first). Mirrors the
     // send() body but without going through processSlash again.
-    async function sendRawText(body: string) {
-      const targetChannel = channel;
-      const ts = new Date();
-      const optimistic = { id: 'new-' + Date.now(), author: currentUserId(), at: ts, kind: 'text', text: body, replyTo: null };
-      if (targetChannel?.type === 'dm') {
-        setDmMessages(prev => ({ ...prev, [targetChannel.id]: [...(prev[targetChannel.id] || []), optimistic] }));
-        if (activeTeamId) {
-          api.sendDMMessage(activeTeamId, targetChannel.id, body).catch((err) => console.warn('[slash] DM send failed', err));
-        }
-      } else {
-        setMessages(prev => ({ ...prev, [activeChannel]: [...(prev[activeChannel] || []), optimistic] }));
-        if (activeTeamId && !isMockSession()) {
-          try {
-            const encrypted = await tryEncrypt(body, activeChannel, derivedKey);
-            ws.sendMessage(activeTeamId, activeChannel, encrypted);
-          } catch (err) {
-            console.warn('[slash] channel send failed', err);
-          }
-        }
-      }
-    }
+    const sendRawText = (body: string) =>
+      slashSendRawText(body, { channel, activeChannel, activeTeamId, derivedKey, setDmMessages, setMessages });
     function setLocked(locked: boolean) {
       if (!activeTeamId || !channel || channel.type === 'dm') {
         notify('Use /lock or /unlock inside a team channel.');
