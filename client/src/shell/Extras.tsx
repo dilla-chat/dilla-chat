@@ -31,8 +31,9 @@ function NotificationStack({ teaserOnly = false }) {
   // object ref so changes don't trigger renders.
   const timers = useT2R<Record<string, ReturnType<typeof setTimeout>>>({});
   useT2E(() => {
+    const notId = (id) => (x) => x.id !== id;
     const expireToast = (id) => {
-      setToasts(prev => prev.filter(x => x.id !== id));
+      setToasts(prev => prev.filter(notId(id)));
       delete timers.current[id];
     };
     function add(e) {
@@ -521,9 +522,9 @@ function AddPeerWizard({ open, onClose }) {
 function ConnectionBanner() {
   const [state, setState] = useT2(null); // null | 'offline' | 'reconnecting' | 'degraded'
   useT2E(() => {
-    function on(e) { setState(e.detail); }
-    globalThis.addEventListener('dilla:connection', on);
-    return () => globalThis.removeEventListener('dilla:connection', on);
+    const onConn = (e) => setState(e.detail);
+    globalThis.addEventListener('dilla:connection', onConn);
+    return () => globalThis.removeEventListener('dilla:connection', onConn);
   }, []);
   if (!state) return null;
   const config = {
