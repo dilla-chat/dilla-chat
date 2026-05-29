@@ -3592,6 +3592,47 @@ function resolveFocusedKind(
   return focused.kind;
 }
 
+function AvatarTile({
+  p,
+  renderKind,
+  showCam,
+  isMini,
+}: Readonly<{
+  p: any;
+  renderKind: 'screen' | 'cam' | 'avatar';
+  showCam: boolean;
+  isMini: boolean;
+}>): JSX.Element {
+  let inner: JSX.Element;
+  if (renderKind === 'screen') inner = <ScreenTile member={p} pip={showCam ? p : null} />;
+  else if (renderKind === 'cam') inner = <CamTile member={p} />;
+  else inner = <Avatar member={p} size={isMini ? 32 : 96} />;
+  return (
+    <div className="avatar-tile">
+      {inner}
+      {/* Dot overlay only when the content is a cam / screen tile — the
+          Avatar provides its own dot already. */}
+      {renderKind !== 'avatar' && p.status && (
+        <span className={`voice-media-presence presence ${p.status}`} />
+      )}
+    </div>
+  );
+}
+
+function openVoiceCardMenu(
+  e: React.MouseEvent,
+  args: {
+    p: any; showScreen: boolean; showCam: boolean;
+    focused: any; setFocused: (next: any) => void;
+    canMuteVoice: boolean; mineMuted: boolean;
+    vcTeamId: string | null | undefined; channelId: string;
+  },
+): void {
+  e.preventDefault();
+  const items = buildVoiceCardMenu({ ...args, x: e.clientX, y: e.clientY });
+  globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items } }));
+}
+
 function handleVoiceCardClick(args: {
   pid: string;
   effectiveFocused: { id: string; kind: VoiceFocusKind } | null;
@@ -4782,16 +4823,11 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
                      + (focusable && !isMini ? ' focusable' : '')}
                    data-node={node}
                    data-latency={peerLatencies[p.id] ?? '--'}
-                   onContextMenu={(e) => {
-                     e.preventDefault();
-                     const items = buildVoiceCardMenu({
-                       p, showScreen, showCam, focused, setFocused,
-                       canMuteVoice: vcPerms.has(PERM_MUTE_VOICE),
-                       mineMuted, vcTeamId, channelId: channel.id,
-                       x: e.clientX, y: e.clientY,
-                     });
-                     globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', { detail: { x: e.clientX, y: e.clientY, items } }));
-                   }}
+                   onContextMenu={(e) => openVoiceCardMenu(e, {
+                     p, showScreen, showCam, focused, setFocused,
+                     canMuteVoice: vcPerms.has(PERM_MUTE_VOICE),
+                     mineMuted, vcTeamId, channelId: channel.id,
+                   })}
                    onClick={() => handleVoiceCardClick({
                      pid: p.id,
                      effectiveFocused, canExitFocus, setFocused,
@@ -4806,24 +4842,7 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
                     <CamTile member={p} showStats />
                   )}
                   {!focusKind && (
-                    // Grid card: one wrapper tile that hosts EITHER
-                    // the avatar OR the cam / screen video. Same
-                    // dimensions and same dot position — the only
-                    // thing that changes is the inner content.
-                    <div className="avatar-tile">
-                      {(() => {
-                        if (renderKind === 'screen') return <ScreenTile member={p} pip={showCam ? p : null} />;
-                        if (renderKind === 'cam') return <CamTile member={p} />;
-                        return <Avatar member={p} size={isMini ? 32 : 96} />;
-                      })()}
-                      {/* Dot overlay for when the content is a cam / screen
-                          tile — the Avatar provides its own dot, so we
-                          only add this one when the avatar isn't the
-                          rendered content. */}
-                      {renderKind !== 'avatar' && p.status && (
-                        <span className={`voice-media-presence presence ${p.status}`} />
-                      )}
-                    </div>
+                    <AvatarTile p={p} renderKind={renderKind} showCam={showCam} isMini={isMini} />
                   )}
                   {/* Clickable swap PIP — only shown in focus mode when
                       the participant has BOTH streams. Click the PIP to
