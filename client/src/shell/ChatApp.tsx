@@ -5291,6 +5291,40 @@ function groupMembersByRole(membersArr: any[]): {
   return { offline, groupOrder, groupMeta, groups, onlineDefault };
 }
 
+function markLatestRead(
+  teamId: string,
+  viewId: string,
+  msgs: Array<{ id: string }> | undefined,
+): void {
+  const lastId = msgs && msgs.length > 0 ? msgs[msgs.length - 1].id : '';
+  if (!lastId) return;
+  try { ws.markChannelRead(teamId, viewId, lastId); } catch { /* ignore */ }
+}
+
+function syncActiveViewToStores(activeView: { kind: string; id: string }, data: any): void {
+  if (!activeView.id) return;
+  const teamId = useTeamStore.getState().activeTeamId;
+  if (activeView.kind === 'channel') {
+    useTeamStore.getState().setActiveChannel(activeView.id);
+    useDMStore.getState().setActiveDM(null);
+    useUnreadStore.getState().markRead(activeView.id);
+    if (teamId && !isMockSession()) {
+      markLatestRead(teamId, activeView.id, data?.MESSAGES?.[activeView.id]);
+    }
+    return;
+  }
+  if (activeView.kind === 'dm') {
+    useDMStore.getState().setActiveDM(activeView.id);
+    // Clear the channel id so a channel echo doesn't think it's "live"
+    // while a DM is on screen.
+    useTeamStore.getState().setActiveChannel('');
+    useUnreadStore.getState().markRead(activeView.id);
+    if (teamId && !isMockSession()) {
+      markLatestRead(teamId, activeView.id, data?.DM_MESSAGES?.[activeView.id]);
+    }
+  }
+}
+
 function buildMemberContextItems(m: any, memberPerms: any, teamName: string): any[] {
   const items: any[] = [
     { label: 'Send message', icon: <Icon.Chat size={13} />, onClick: () => globalThis.dispatchEvent(new CustomEvent('dilla:open-dm', { detail: m.id })) },
@@ -5456,31 +5490,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   // there (tab switch, onPickDM, onPickChannel, redirect). Without this,
   // tab-switching to a DM with a stale count required an explicit click
   // on the DM row to clear.
-  React.useEffect(() => {
-    if (!activeView.id) return;
-    const teamId = useTeamStore.getState().activeTeamId;
-    if (activeView.kind === 'channel') {
-      useTeamStore.getState().setActiveChannel(activeView.id);
-      useDMStore.getState().setActiveDM(null);
-      useUnreadStore.getState().markRead(activeView.id);
-      if (teamId && !isMockSession()) {
-        const msgs = data?.MESSAGES?.[activeView.id] ?? [];
-        const lastId = msgs.length > 0 ? msgs[msgs.length - 1].id : '';
-        if (lastId) { try { ws.markChannelRead(teamId, activeView.id, lastId); } catch { /* ignore */ } }
-      }
-    } else if (activeView.kind === 'dm') {
-      useDMStore.getState().setActiveDM(activeView.id);
-      // Clear the channel id so a channel echo doesn't think it's "live"
-      // while a DM is on screen.
-      useTeamStore.getState().setActiveChannel('');
-      useUnreadStore.getState().markRead(activeView.id);
-      if (teamId && !isMockSession()) {
-        const msgs = data?.DM_MESSAGES?.[activeView.id] ?? [];
-        const lastId = msgs.length > 0 ? msgs[msgs.length - 1].id : '';
-        if (lastId) { try { ws.markChannelRead(teamId, activeView.id, lastId); } catch { /* ignore */ } }
-      }
-    }
-  }, [activeView.kind, activeView.id]);
+  React.useEffect(() => syncActiveViewToStores(activeView, data), [activeView.kind, activeView.id]);
   const [messages, setMessages] = useState(data.MESSAGES);
   const [dmMessages, setDmMessages] = useState(data.DM_MESSAGES);
   // Keep local message state in sync with the live store-derived bridge
