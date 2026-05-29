@@ -2491,79 +2491,26 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
           </div>
         </div>
       )}
-      <div className="main-head">
-        <div className="ch-title">
-          {renderChannelTitle(channel, dmPartner)}
-          {channel.encrypted && <span className="enc-badge"><Icon.Shield size={10} /> E2E</span>}
-        </div>
-        <div className="ch-topic">{channel.topic}</div>
-        <div className="head-actions">
-          {channel.type !== 'dm' && (
-            <div style={{ position: 'relative' }}>
-              <button className={'icon-btn' + (threadsOpen ? ' active' : '')}
-                      title="Threads in this kanal"
-                      onClick={() => setThreadsOpen(o => !o)}>
-                <Icon.Thread size={14} />
-              </button>
-              {threadsOpen && (
-                <ThreadsPop
-                  channel={channel}
-                  messages={messages}
-                  members={members}
-                  onClose={() => setThreadsOpen(false)}
-                />
-              )}
-            </div>
-          )}
-          {channel.type !== 'dm' && (
-            <div style={{ position: 'relative' }}>
-              <button className={'icon-btn' + (savedOpen ? ' active' : '')}
-                      title={`Saved messages${savedMsgs.size ? ' (' + savedMsgs.size + ')' : ''}`}
-                      onClick={() => setSavedOpen(o => !o)}>
-                <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M4 2v12l4-3 4 3V2z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/></svg>
-              </button>
-              {savedOpen && (
-                <SavedPop
-                  savedMsgs={savedMsgs}
-                  data={data}
-                  onClose={() => setSavedOpen(false)}
-                  onJump={(chanName) => { setSavedOpen(false); setActiveChannel(chanName); setActiveView({ kind: 'channel', id: chanName }); }}
-                />
-              )}
-            </div>
-          )}
-          {channel.type !== 'dm' && (
-            <div style={{ position: 'relative' }}>
-              <button className={'icon-btn' + (pinnedOpen ? ' active' : '')}
-                      title={`Pinned messages${pinnedMsgs.length ? ' (' + pinnedMsgs.length + ')' : ''}`}
-                      onClick={() => setPinnedOpen(o => !o)}>
-                <Icon.Pin />
-              </button>
-              {pinnedOpen && (
-                <PinnedPop
-                  channel={channel}
-                  pinnedMsgs={pinnedMsgs}
-                  membersById={members.byId}
-                  onClose={() => setPinnedOpen(false)}
-                  setPinnedOpen={setPinnedOpen}
-                  feedRef={feedRef}
-                />
-              )}
-            </div>
-          )}
-          {channel.type !== 'dm' && <button className={'icon-btn' + (membersOpen ? '' : ' off')}
-                  title={membersOpen ? 'Hide members' : 'Show members'}
-                  onClick={onToggleMembers}>
-            <Icon.People size={14} />
-          </button>}
-          <button type="button" className="search-box"
-               onClick={() => globalThis.dispatchEvent(new CustomEvent('dilla:open-search', { detail: { scopeChannel: channel.id, scopeName: channel.name } }))}>
-            <Icon.Search size={13} />
-            <span>{channel.type === 'dm' ? 'Search this DM…' : 'Search in #' + channel.name + '…'}</span>
-            <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)', fontSize: 10, opacity: 0.7 }}>/</span>
-          </button>
-        </div>
-      </div>
+      <TextChannelHeader
+        channel={channel}
+        dmPartner={dmPartner}
+        messages={messages}
+        members={members}
+        data={data}
+        feedRef={feedRef}
+        threadsOpen={threadsOpen}
+        savedOpen={savedOpen}
+        savedMsgs={savedMsgs}
+        pinnedOpen={pinnedOpen}
+        pinnedMsgs={pinnedMsgs}
+        membersOpen={membersOpen}
+        onToggleMembers={onToggleMembers}
+        setThreadsOpen={setThreadsOpen}
+        setSavedOpen={setSavedOpen}
+        setPinnedOpen={setPinnedOpen}
+        setActiveChannel={setActiveChannel}
+        setActiveView={setActiveView}
+      />
 
       <div className="feed" ref={feedRef}>
         {groups.length === 0 ? (
@@ -4763,6 +4710,120 @@ function MessageHead({
   );
 }
 
+function TextChannelHeader({
+  channel,
+  dmPartner,
+  messages,
+  members,
+  data,
+  feedRef,
+  threadsOpen,
+  savedOpen,
+  savedMsgs,
+  pinnedOpen,
+  pinnedMsgs,
+  membersOpen,
+  onToggleMembers,
+  setThreadsOpen,
+  setSavedOpen,
+  setPinnedOpen,
+  setActiveChannel,
+  setActiveView,
+}: Readonly<{
+  channel: any;
+  dmPartner: any;
+  messages: any[];
+  members: any;
+  data: any;
+  feedRef: { current: HTMLElement | null };
+  threadsOpen: boolean;
+  savedOpen: boolean;
+  savedMsgs: Set<string>;
+  pinnedOpen: boolean;
+  pinnedMsgs: any[];
+  membersOpen: boolean;
+  onToggleMembers: () => void;
+  setThreadsOpen: (updater: any) => void;
+  setSavedOpen: (updater: any) => void;
+  setPinnedOpen: (updater: any) => void;
+  setActiveChannel: (id: string) => void;
+  setActiveView: (v: { kind: 'channel' | 'dm'; id: string }) => void;
+}>): JSX.Element {
+  const isDm = channel.type === 'dm';
+  return (
+    <div className="main-head">
+      <div className="ch-title">
+        {renderChannelTitle(channel, dmPartner)}
+        {channel.encrypted && <span className="enc-badge"><Icon.Shield size={10} /> E2E</span>}
+      </div>
+      <div className="ch-topic">{channel.topic}</div>
+      <div className="head-actions">
+        {!isDm && (
+          <div style={{ position: 'relative' }}>
+            <button className={'icon-btn' + (threadsOpen ? ' active' : '')}
+                    title="Threads in this kanal"
+                    onClick={() => setThreadsOpen((o: boolean) => !o)}>
+              <Icon.Thread size={14} />
+            </button>
+            {threadsOpen && (
+              <ThreadsPop channel={channel} messages={messages} members={members} onClose={() => setThreadsOpen(false)} />
+            )}
+          </div>
+        )}
+        {!isDm && (
+          <div style={{ position: 'relative' }}>
+            <button className={'icon-btn' + (savedOpen ? ' active' : '')}
+                    title={`Saved messages${savedMsgs.size ? ' (' + savedMsgs.size + ')' : ''}`}
+                    onClick={() => setSavedOpen((o: boolean) => !o)}>
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M4 2v12l4-3 4 3V2z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/></svg>
+            </button>
+            {savedOpen && (
+              <SavedPop
+                savedMsgs={savedMsgs}
+                data={data}
+                onClose={() => setSavedOpen(false)}
+                onJump={(chanName) => { setSavedOpen(false); setActiveChannel(chanName); setActiveView({ kind: 'channel', id: chanName }); }}
+              />
+            )}
+          </div>
+        )}
+        {!isDm && (
+          <div style={{ position: 'relative' }}>
+            <button className={'icon-btn' + (pinnedOpen ? ' active' : '')}
+                    title={`Pinned messages${pinnedMsgs.length ? ' (' + pinnedMsgs.length + ')' : ''}`}
+                    onClick={() => setPinnedOpen((o: boolean) => !o)}>
+              <Icon.Pin />
+            </button>
+            {pinnedOpen && (
+              <PinnedPop
+                channel={channel}
+                pinnedMsgs={pinnedMsgs}
+                membersById={members.byId}
+                onClose={() => setPinnedOpen(false)}
+                setPinnedOpen={setPinnedOpen}
+                feedRef={feedRef}
+              />
+            )}
+          </div>
+        )}
+        {!isDm && (
+          <button className={'icon-btn' + (membersOpen ? '' : ' off')}
+                  title={membersOpen ? 'Hide members' : 'Show members'}
+                  onClick={onToggleMembers}>
+            <Icon.People size={14} />
+          </button>
+        )}
+        <button type="button" className="search-box"
+             onClick={() => globalThis.dispatchEvent(new CustomEvent('dilla:open-search', { detail: { scopeChannel: channel.id, scopeName: channel.name } }))}>
+          <Icon.Search size={13} />
+          <span>{isDm ? 'Search this DM…' : 'Search in #' + channel.name + '…'}</span>
+          <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)', fontSize: 10, opacity: 0.7 }}>/</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function DeleteMessageConfirm({
   previewText,
   onCancel,
@@ -6182,6 +6243,31 @@ function handleMessageRejected(
   }
 }
 
+function joinVoiceFromSidebar(
+  voice: { join: (teamId: string, channelId: string) => void },
+  channelId: string,
+): void {
+  const teamId = useTeamStore.getState().activeTeamId;
+  if (teamId) voice.join(teamId, channelId);
+}
+
+function debouncedNotifyTyping(
+  activeTeamId: string | null | undefined,
+  channel: { type: string; id: string },
+  activeChannel: string,
+  lastTypingRef: { current: number },
+): void {
+  if (!activeTeamId || isMockSession()) return;
+  const now = Date.now();
+  if (now - lastTypingRef.current < 3000) return;
+  lastTypingRef.current = now;
+  if (channel.type === 'dm') {
+    ws.startDMTyping(activeTeamId, channel.id);
+    return;
+  }
+  ws.startTyping(activeTeamId, activeChannel);
+}
+
 function insertMentionIntoDraft(
   name: string,
   targetId: string | null | undefined,
@@ -7039,16 +7125,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   // frequency, but a 3s window matches the typical typing-decay UX.
   const lastTypingRef = useRef(0);
   function notifyTyping() {
-    if (!activeTeamId) return;
-    if (isMockSession()) return;
-    const now = Date.now();
-    if (now - lastTypingRef.current < 3000) return;
-    lastTypingRef.current = now;
-    if (channel.type === 'dm') {
-      ws.startDMTyping(activeTeamId, channel.id);
-    } else {
-      ws.startTyping(activeTeamId, activeChannel);
-    }
+    debouncedNotifyTyping(activeTeamId, channel, activeChannel, lastTypingRef);
   }
 
   function send() {
@@ -7100,10 +7177,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
         onPickDM={(id) => handlePickDM(id, data, setActiveDM, setActiveView)}
         voiceConnection={voiceConnection}
         onLeaveVoice={() => voice.leave()}
-        onJoinVoice={(channelId) => {
-          const teamId = useTeamStore.getState().activeTeamId;
-          if (teamId) voice.join(teamId, channelId);
-        }}
+        onJoinVoice={(channelId) => joinVoiceFromSidebar(voice, channelId)}
         mute={mute} setMute={setMute}
         deaf={deaf} setDeaf={setDeaf}
         cam={cam} setCam={setCam}
