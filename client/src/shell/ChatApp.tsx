@@ -3718,6 +3718,143 @@ function loadLastOwnMessageForEdit(
   }
 }
 
+function clearStagedAttachments(
+  setPendingAttachments: (updater: (prev: Record<string, any[]>) => Record<string, any[]>) => void,
+  channelId: string,
+  staged: Array<{ previewUrl?: string }>,
+): void {
+  setPendingAttachments((prev) => {
+    for (const a of staged) {
+      if (a.previewUrl) URL.revokeObjectURL(a.previewUrl);
+    }
+    const next = { ...prev };
+    delete next[channelId];
+    return next;
+  });
+}
+
+function sendDmFromComposer(ctx: {
+  channel: { id: string };
+  drafts: Record<string, string>;
+  pendingAttachments: Record<string, Array<{ id: string; name: string; previewUrl?: string }>>;
+  replyTo: Record<string, string | null>;
+  activeTeamId: string | null | undefined;
+  processSlash: (text: string) => any;
+  setDmMessages: (updater: (prev: Record<string, any[]>) => Record<string, any[]>) => void;
+  setDrafts: (updater: (prev: Record<string, string>) => Record<string, string>) => void;
+  setReplyTo: (updater: (prev: Record<string, string | null>) => Record<string, string | null>) => void;
+  setPendingAttachments: (updater: (prev: Record<string, any[]>) => Record<string, any[]>) => void;
+}): void {
+  const { channel, drafts, pendingAttachments, replyTo, activeTeamId, processSlash,
+    setDmMessages, setDrafts, setReplyTo, setPendingAttachments } = ctx;
+  const draft = drafts[channel.id];
+  const staged = pendingAttachments[channel.id] || [];
+  if (!draft?.trim() && staged.length === 0) return;
+  const userText = (draft ?? '').trim();
+  const processed = userText ? processSlash(userText) : { kind: 'text', text: '' };
+  if (processed === null) {
+    setDrafts((prev) => ({ ...prev, [channel.id]: '' }));
+    return;
+  }
+  // DM API doesn't take attachment_ids as a separate field; encode each staged
+  // file as a `[file:<id>] name` token at the front of the body.
+  const tokens = staged.map((a) => `[file:${a.id}] ${a.name}`).join(' ');
+  let wireText: string;
+  if (!tokens) wireText = userText;
+  else if (userText) wireText = `${tokens} ${userText}`;
+  else wireText = tokens;
+  const m = { id: 'new-' + Date.now(), author: currentUserId(), at: new Date(), ...processed, replyTo: replyTo[channel.id] || null };
+  setDmMessages((prev) => ({ ...prev, [channel.id]: [...(prev[channel.id] || []), m] }));
+  setDrafts((prev) => ({ ...prev, [channel.id]: '' }));
+  setReplyTo((prev) => ({ ...prev, [channel.id]: null }));
+  clearStagedAttachments(setPendingAttachments, channel.id, staged);
+  if (activeTeamId) {
+    api.sendDMMessage(activeTeamId, channel.id, wireText).catch((err) =>
+      console.warn('[ChatApp] DM send failed', err),
+    );
+  }
+}
+
+function buildOptimisticChannelMessage(
+  processed: any,
+  replyToId: string | null,
+  staged: Array<{ name: string; size: number; type: string; previewUrl?: string }>,
+) {
+  const base = {
+    id: 'new-' + Date.now(),
+    author: currentUserId(),
+    at: new Date(),
+    ...processed,
+    replyTo: replyToId,
+  };
+  if (staged.length === 0) return base;
+  const first = staged[0];
+  const kind = first.type.startsWith('image/') ? 'image' : 'file';
+  return {
+    ...base,
+    kind,
+    attachment: { kind, label: first.name, size: first.size, src: first.previewUrl ?? '' },
+  };
+}
+
+async function sendEncryptedChannelMessage(
+  text: string,
+  activeChannel: string,
+  activeTeamId: string,
+  derivedKey: any,
+  stagedIds: string[] | undefined,
+  replyTargetId: string | null,
+): Promise<void> {
+  try {
+    const encrypted = await tryEncrypt(text || ' ', activeChannel, derivedKey);
+    ws.sendMessage(activeTeamId, activeChannel, encrypted, 'text', undefined, stagedIds, replyTargetId);
+  } catch (err) {
+    console.warn('[ChatApp] channel send failed', err);
+  }
+}
+
+function sendChannelFromComposer(ctx: {
+  activeChannel: string;
+  drafts: Record<string, string>;
+  pendingAttachments: Record<string, Array<{ id: string; name: string; size: number; type: string; previewUrl?: string }>>;
+  replyTo: Record<string, string | null>;
+  activeTeamId: string | null | undefined;
+  derivedKey: any;
+  processSlash: (text: string) => any;
+  setMessages: (updater: (prev: Record<string, any[]>) => Record<string, any[]>) => void;
+  setDrafts: (updater: (prev: Record<string, string>) => Record<string, string>) => void;
+  setReplyTo: (updater: (prev: Record<string, string | null>) => Record<string, string | null>) => void;
+  setPendingAttachments: (updater: (prev: Record<string, any[]>) => Record<string, any[]>) => void;
+}): void {
+  const { activeChannel, drafts, pendingAttachments, replyTo, activeTeamId, derivedKey, processSlash,
+    setMessages, setDrafts, setReplyTo, setPendingAttachments } = ctx;
+  const draft = drafts[activeChannel];
+  const staged = pendingAttachments[activeChannel] || [];
+  if (!draft?.trim() && staged.length === 0) return;
+  const text = (draft ?? '').trim();
+  const processed = text ? processSlash(text) : { kind: 'text', text: '' };
+  if (processed === null) {
+    setDrafts((prev) => ({ ...prev, [activeChannel]: '' }));
+    return;
+  }
+  const m = buildOptimisticChannelMessage(processed, replyTo[activeChannel] || null, staged);
+  setMessages((prev) => ({ ...prev, [activeChannel]: [...(prev[activeChannel] || []), m] }));
+  setDrafts((prev) => ({ ...prev, [activeChannel]: '' }));
+  setReplyTo((prev) => ({ ...prev, [activeChannel]: null }));
+  clearStagedAttachments(setPendingAttachments, activeChannel, staged);
+  const replyTargetId = replyTo[activeChannel] || null;
+  if (activeTeamId && !isMockSession()) {
+    void sendEncryptedChannelMessage(
+      text,
+      activeChannel,
+      activeTeamId,
+      derivedKey,
+      staged.length > 0 ? staged.map((a) => a.id) : undefined,
+      replyTargetId,
+    );
+  }
+}
+
 function buildGiphyOptimistic(url: string, att?: { id: string }) {
   const ts = new Date();
   if (att) {
@@ -6021,110 +6158,18 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
 
   function send() {
     if (channel.type === 'dm') {
-      const draft = drafts[channel.id];
-      const staged = pendingAttachments[channel.id] || [];
-      if (!draft?.trim() && staged.length === 0) return;
-      const userText = (draft ?? '').trim();
-      const processed = userText ? processSlash(userText) : { kind: 'text', text: '' };
-      if (processed === null) {
-        // Side-effect slash command handled it — clear the draft, don't send.
-        setDrafts(prev => ({ ...prev, [channel.id]: '' }));
-        return;
-      }
-      // DM API doesn't take attachment_ids as a separate field; encode
-      // each staged file as a `[file:<id>] name` token at the front of
-      // the body. useShellData's mapMessage resolves the first token
-      // into an attachment ref; multi-attachment rendering for DMs
-      // still needs broader work — single-token works today.
-      const tokens = staged.map((a) => `[file:${a.id}] ${a.name}`).join(' ');
-      let wireText: string;
-      if (!tokens) wireText = userText;
-      else if (userText) wireText = `${tokens} ${userText}`;
-      else wireText = tokens;
-      const m = { id: 'new-' + Date.now(), author: currentUserId(), at: new Date(), ...processed, replyTo: replyTo[channel.id] || null };
-      setDmMessages(prev => ({ ...prev, [channel.id]: [...(prev[channel.id] || []), m] }));
-      setDrafts(prev => ({ ...prev, [channel.id]: '' }));
-      setReplyTo(prev => ({ ...prev, [channel.id]: null }));
-      setPendingAttachments((prev) => {
-        for (const a of staged) {
-          if (a.previewUrl) URL.revokeObjectURL(a.previewUrl);
-        }
-        const next = { ...prev };
-        delete next[channel.id];
-        return next;
+      sendDmFromComposer({
+        channel, drafts, pendingAttachments, replyTo,
+        activeTeamId, processSlash,
+        setDmMessages, setDrafts, setReplyTo, setPendingAttachments,
       });
-      // Real send: DM API is HTTP. Mock api implementation echoes back via
-      // the dmStore so the bridged data.DM_MESSAGES picks up the round-trip.
-      if (activeTeamId) {
-        api.sendDMMessage(activeTeamId, channel.id, wireText).catch((err) =>
-          console.warn('[ChatApp] DM send failed', err),
-        );
-      }
       return;
     }
-    const draft = drafts[activeChannel];
-    const staged = pendingAttachments[activeChannel] || [];
-    // Allow sending when EITHER text is non-empty OR there are staged
-    // attachments. A bare attachment send is fine; an empty composer
-    // with no attachments isn't.
-    if (!draft?.trim() && staged.length === 0) return;
-    const text = (draft ?? '').trim();
-    const processed = text ? processSlash(text) : { kind: 'text', text: '' };
-    if (processed === null) {
-      setDrafts(prev => ({ ...prev, [activeChannel]: '' }));
-      return;
-    }
-    const m = {
-      id: 'new-' + Date.now(),
-      author: currentUserId(),
-      at: new Date(),
-      ...processed,
-      replyTo: replyTo[activeChannel] || null,
-      // Optimistic preview chip. Only show the FIRST attachment in the
-      // bubble — the server echo will replace this with the real list.
-      ...(staged.length > 0 && {
-        kind: staged[0].type.startsWith('image/') ? 'image' : 'file',
-        attachment: {
-          kind: staged[0].type.startsWith('image/') ? 'image' : 'file',
-          label: staged[0].name,
-          size: staged[0].size,
-          src: staged[0].previewUrl ?? '',
-        },
-      }),
-    };
-    setMessages(prev => ({ ...prev, [activeChannel]: [...(prev[activeChannel] || []), m] }));
-    setDrafts(prev => ({ ...prev, [activeChannel]: '' }));
-    setReplyTo(prev => ({ ...prev, [activeChannel]: null }));
-    // Clear staged attachments for this channel. The blob previewUrls
-    // we minted can be revoked now — once the server echoes the
-    // message back, the real attachment URLs are used for display.
-    setPendingAttachments(prev => {
-      for (const a of staged) {
-        if (a.previewUrl) URL.revokeObjectURL(a.previewUrl);
-      }
-      const next = { ...prev };
-      delete next[activeChannel];
-      return next;
+    sendChannelFromComposer({
+      activeChannel, drafts, pendingAttachments, replyTo,
+      activeTeamId, derivedKey, processSlash,
+      setMessages, setDrafts, setReplyTo, setPendingAttachments,
     });
-    const replyTargetId = replyTo[activeChannel] || null;
-    if (activeTeamId && !isMockSession()) {
-      (async () => {
-        try {
-          const encrypted = await tryEncrypt(text || ' ', activeChannel, derivedKey);
-          ws.sendMessage(
-            activeTeamId,
-            activeChannel,
-            encrypted,
-            'text',
-            undefined,
-            staged.length > 0 ? staged.map((a) => a.id) : undefined,
-            replyTargetId,
-          );
-        } catch (err) {
-          console.warn('[ChatApp] channel send failed', err);
-        }
-      })();
-    }
   }
 
   function editMessage(channelId, msgId, newText) {
