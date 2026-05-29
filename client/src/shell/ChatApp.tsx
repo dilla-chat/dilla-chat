@@ -1192,7 +1192,7 @@ export function ThreadPanel({ channelId, messageId, members, onClose, onReact })
                     {r.reactions.map((rx, i) => (
                       <button type="button" key={`${rx.e}-${i}`}
                             className={'rxn' + (rx.mine ? ' mine' : '')}
-                            onClick={() => setReplies(prev => toggleThreadReaction(prev, r.id, rx.e))}>
+                            onClick={makeToggleThreadRxn(setReplies, r.id, rx.e)}>
                         <span>{rx.e}</span><span>{rx.n}</span>
                       </button>
                     ))}
@@ -2449,9 +2449,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
         { ms: 200, p: 85, phase: 'uploading' },
       ];
       schedulePhaseUpdates(phases, id, setUploads);
-      Promise.resolve(onAttach?.(file)).finally(() => {
-        setUploads(prev => prev.filter(u => u.id !== id));
-      });
+      Promise.resolve(onAttach?.(file)).finally(() => removeUploadById(setUploads, id));
     }
   }
 
@@ -2759,24 +2757,7 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                             type="button"
                             key={pm.id}
                             className="pin-row"
-                            onClick={() => {
-                              // Same scroll+flash pattern as the reply-ref
-                              // jump above. Close the pop first so the
-                              // flash isn't obscured.
-                              setPinnedOpen(false);
-                              // setState is async — wait a tick for the
-                              // pop to unmount before scrolling, otherwise
-                              // its layout shift can race with the smooth
-                              // scroll and land the target off-screen.
-                              setTimeout(() => {
-                                const el = feedRef.current?.querySelector('[data-msg-id="' + pm.id + '"]');
-                                if (el) {
-                                  el.classList.add('msg-flash');
-                                  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                  setTimeout(() => el.classList.remove('msg-flash'), 1400);
-                                }
-                              }, 0);
-                            }}
+                            onClick={() => jumpToPinnedMessage(setPinnedOpen, feedRef, pm.id)}
                           >
                             <div className="pin-av" style={{ background: a.color }}>{a.initials}</div>
                             <div>
@@ -2844,32 +2825,14 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                        className={'msg' + (isFirst ? '' : ' compact') + (hasMention ? ' has-mention' : '') + (m.replyTo ? ' has-reply' : '') + (isPinned ? ' is-pinned' : '')}
                        data-msg-id={m.id}
                        onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, msgId: m.id, isMine: m.author === currentUserId() }); }}>
-                    {m.replyTo && (() => {
-                      const orig = messages.find(om => om.id === m.replyTo);
-                      // When the original isn't in the loaded window
-                      // (older message paged out), render a stub so the
-                      // reply doesn't appear context-less. Clicking it
-                      // doesn't try to scroll (we don't have the target);
-                      // a future enhancement can fetch-and-jump.
-                      if (!orig) {
-                        return (
-                          <div className="reply-ref reply-ref-missing" title="Original message not loaded">
-                            <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M5 9L1 5l4-4M1 5h8a4 4 0 014 4v2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                            <span className="rr-text rr-text-missing">original message not loaded</span>
-                          </div>
-                        );
-                      }
-                      const oa = members.byId[orig.author] || { name: orig.author, color: '#666', initials: '??' };
-                      return (
-                        <button type="button" className="reply-ref"
-                             onClick={() => flashMessage(feedRef.current, orig.id)}>
-                          <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M5 9L1 5l4-4M1 5h8a4 4 0 014 4v2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                          <span className="rr-av" style={{ background: oa.color }}>{oa.initials}</span>
-                          <span className="rr-author">{oa.name}</span>
-                          <span className="rr-text">{(orig.text || '').slice(0, 80)}{(orig.text||'').length > 80 ? '…' : ''}</span>
-                        </button>
-                      );
-                    })()}
+                    {m.replyTo && (
+                      <ReplyRef
+                        replyToId={m.replyTo}
+                        messages={messages}
+                        membersById={members.byId}
+                        feedRef={feedRef}
+                      />
+                    )}
                     {isFirst ? (
                       <button type="button" style={{ cursor: 'pointer', background: 'transparent', border: 'none', padding: 0 }} onClick={(e) => openProfileFromTarget(e.currentTarget, author.id || g.author, 'right')}><Avatar member={author} /></button>
                     ) : (
@@ -4306,6 +4269,71 @@ function applyToggleReaction(m: any, emoji: string): any {
     rxns.push({ e: emoji, n: 1, mine: true });
   }
   return { ...m, reactions: rxns };
+}
+
+function ReplyRef({
+  replyToId,
+  messages,
+  membersById,
+  feedRef,
+}: {
+  replyToId: string;
+  messages: any[];
+  membersById: Record<string, any>;
+  feedRef: { current: HTMLElement | null };
+}): JSX.Element {
+  const orig = messages.find((om) => om.id === replyToId);
+  if (!orig) {
+    return (
+      <div className="reply-ref reply-ref-missing" title="Original message not loaded">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M5 9L1 5l4-4M1 5h8a4 4 0 014 4v2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        <span className="rr-text rr-text-missing">original message not loaded</span>
+      </div>
+    );
+  }
+  const oa = membersById[orig.author] || { name: orig.author, color: '#666', initials: '??' };
+  return (
+    <button type="button" className="reply-ref"
+         onClick={() => flashMessage(feedRef.current, orig.id)}>
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M5 9L1 5l4-4M1 5h8a4 4 0 014 4v2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+      <span className="rr-av" style={{ background: oa.color }}>{oa.initials}</span>
+      <span className="rr-author">{oa.name}</span>
+      <span className="rr-text">{(orig.text || '').slice(0, 80)}{(orig.text || '').length > 80 ? '…' : ''}</span>
+    </button>
+  );
+}
+
+function flashMessageElement(el: Element): void {
+  el.classList.add('msg-flash');
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  setTimeout(() => el.classList.remove('msg-flash'), 1400);
+}
+
+function jumpToPinnedMessage(
+  setPinnedOpen: (open: boolean) => void,
+  feedRef: { current: HTMLElement | null },
+  msgId: string,
+): void {
+  setPinnedOpen(false);
+  setTimeout(() => {
+    const el = feedRef.current?.querySelector('[data-msg-id="' + msgId + '"]');
+    if (el) flashMessageElement(el);
+  }, 0);
+}
+
+function removeUploadById(
+  setUploads: (updater: (prev: any[]) => any[]) => void,
+  id: string,
+): void {
+  setUploads((prev) => prev.filter((u) => u.id !== id));
+}
+
+function makeToggleThreadRxn(
+  setReplies: (updater: (prev: any[]) => any[]) => void,
+  replyId: string,
+  emoji: string,
+): () => void {
+  return () => setReplies((prev) => toggleThreadReaction(prev, replyId, emoji));
 }
 
 function toggleThreadReaction(prev: any[], replyId: string, emoji: string): any[] {
