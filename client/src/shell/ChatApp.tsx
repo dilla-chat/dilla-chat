@@ -1960,16 +1960,6 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
                       const speaking = !muted && (isSelf ? selfSpeaking : !!peer?.speaking);
                       return (
                         <article key={pid} className={'voice-participant' + (speaking ? ' speaking' : '') + (muted ? ' muted' : '')}
-                             role="button"
-                             tabIndex={0}
-                             onKeyDown={(e) => {
-                               if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
-                                 e.preventDefault();
-                                 globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', {
-                                   detail: { x: 0, y: 0, items: buildVoiceParticipantMenu(m, pid, c.id, muted, perms.has(PERM_MUTE_VOICE), sidebarTeamId) },
-                                 }));
-                               }
-                             }}
                              onContextMenu={(e) => {
                                e.preventDefault();
                                globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', {
@@ -1996,31 +1986,31 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
 
           {groupByCategory(textChs, 'Kanals').map((grp, gi) => (
             <React.Fragment key={'tg-' + grp.key}>
-              <div
-                className="cat cat-collapsible"
-                role="button"
-                tabIndex={0}
-                onClick={() => toggleGroupCollapsed(grp.key)}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleGroupCollapsed(grp.key); } }}
-                title={collapsedGroups.has(grp.key) ? 'Expand' : 'Collapse'}
-                onContextMenu={(e) => {
-                  // Real groups have key 'g:<id>'. The default and legacy
-                  // category buckets don't have backing entities, so they
-                  // get no settings menu — admins create a real group via
-                  // Kanal Settings → Group on a channel.
-                  if (!grp.key.startsWith('g:')) return;
-                  // Group settings exist for admins only — no point opening a
-                  // ctx menu that's all-empty for a regular member.
-                  if (!perms.has(PERM_MANAGE_CHANNELS)) return;
-                  e.preventDefault();
-                  const groupId = grp.key.slice(2);
-                  globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', {
-                    detail: { x: e.clientX, y: e.clientY, items: buildGroupContextMenu(groupId) },
-                  }));
-                }}
-              >
-                <span className="cat-chev" style={{ transform: collapsedGroups.has(grp.key) ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▾</span>
-                <span>{grp.label}</span>
+              <div className="cat cat-row">
+                <button
+                  type="button"
+                  className="cat-collapsible"
+                  onClick={() => toggleGroupCollapsed(grp.key)}
+                  title={collapsedGroups.has(grp.key) ? 'Expand' : 'Collapse'}
+                  onContextMenu={(e) => {
+                    // Real groups have key 'g:<id>'. The default and legacy
+                    // category buckets don't have backing entities, so they
+                    // get no settings menu — admins create a real group via
+                    // Kanal Settings → Group on a channel.
+                    if (!grp.key.startsWith('g:')) return;
+                    // Group settings exist for admins only — no point opening a
+                    // ctx menu that's all-empty for a regular member.
+                    if (!perms.has(PERM_MANAGE_CHANNELS)) return;
+                    e.preventDefault();
+                    const groupId = grp.key.slice(2);
+                    globalThis.dispatchEvent(new CustomEvent('dilla:open-menu', {
+                      detail: { x: e.clientX, y: e.clientY, items: buildGroupContextMenu(groupId) },
+                    }));
+                  }}
+                >
+                  <span className="cat-chev" style={{ transform: collapsedGroups.has(grp.key) ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▾</span>
+                  <span>{grp.label}</span>
+                </button>
                 {gi === 0 && (
                   <div className="cat-actions"><button className="icon-btn" title="New kanal" onClick={(e) => { e.stopPropagation(); globalThis.dispatchEvent(new CustomEvent('dilla:open-new-channel')); }}><Icon.Plus size={12} /></button></div>
                 )}
@@ -2056,12 +2046,10 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
 
           {otherVoice.length > 0 && groupByCategory(otherVoice, 'Voice').map((grp) => (
             <React.Fragment key={'vg-' + grp.key}>
-              <div
+              <button
+                type="button"
                 className="cat cat-collapsible"
-                role="button"
-                tabIndex={0}
                 onClick={() => toggleGroupCollapsed('voice:' + grp.key)}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleGroupCollapsed('voice:' + grp.key); } }}
                 title={collapsedGroups.has('voice:' + grp.key) ? 'Expand' : 'Collapse'}
                 onContextMenu={(e) => {
                   if (!grp.key.startsWith('g:')) return;
@@ -2075,7 +2063,7 @@ export function ChannelSidebar({ team, tab, onTab, channels, activeChannel, onPi
               >
                 <span className="cat-chev" style={{ transform: collapsedGroups.has('voice:' + grp.key) ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▾</span>
                 <span>{grp.label}</span>
-              </div>
+              </button>
               {!collapsedGroups.has('voice:' + grp.key) && grp.channels.map(c => (
                 <button
                      type="button"
@@ -2850,9 +2838,6 @@ export function TextChannel({ channel, messages, members, dmPartner, draft, setD
                   <article key={m.id}
                        className={'msg' + (isFirst ? '' : ' compact') + (hasMention ? ' has-mention' : '') + (m.replyTo ? ' has-reply' : '') + (isPinned ? ' is-pinned' : '')}
                        data-msg-id={m.id}
-                       role="button"
-                       tabIndex={0}
-                       onKeyDown={(e) => { if (e.shiftKey && e.key === 'F10') { e.preventDefault(); setContextMenu({ x: 0, y: 0, msgId: m.id, isMine: m.author === currentUserId() }); } }}
                        onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, msgId: m.id, isMine: m.author === currentUserId() }); }}>
                     {m.replyTo && (() => {
                       const orig = messages.find(om => om.id === m.replyTo);
@@ -4678,8 +4663,6 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
                      + (focusable && !isMini ? ' focusable' : '')}
                    data-node={node}
                    data-latency={peerLatencies[p.id] ?? '--'}
-                   role="button"
-                   tabIndex={0}
                    onContextMenu={(e) => {
                      e.preventDefault();
                      const items = buildVoiceCardMenu({
@@ -4710,12 +4693,6 @@ export function VoiceChannel({ channel, members, voiceConnection, onJoin, onLeav
                      else if (canScreen) nextKind = 'screen';
                      else if (canCam) nextKind = 'cam';
                      if (nextKind) setFocused({ id: p.id, kind: nextKind });
-                   }}
-                   onKeyDown={(e) => {
-                     if (e.key === 'Enter' || e.key === ' ') {
-                       e.preventDefault();
-                       e.currentTarget.click();
-                     }
                    }}>
                 <div className="voice-media">
                   {focusKind && focusKind === 'screen' && (

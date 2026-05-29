@@ -214,6 +214,21 @@
 }
 .cat-actions { display: flex; gap: 2px; opacity: 0; transition: opacity .12s; }
 .cat:hover .cat-actions { opacity: 1; }
+.cat-row { gap: 4px; }
+button.cat-collapsible {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  padding: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
 .cat-collapsible { cursor: pointer; user-select: none; gap: 4px; }
 .cat-collapsible:hover { color: var(--fg-2); }
 .cat-collapsible > span:nth-of-type(2) { flex: 1; }
