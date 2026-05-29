@@ -6112,6 +6112,51 @@ function handleMessageRejected(
   }
 }
 
+function insertMentionIntoDraft(
+  name: string,
+  targetId: string | null | undefined,
+  setDrafts: (updater: (prev: Record<string, string>) => Record<string, string>) => void,
+): void {
+  if (!name || !targetId) return;
+  setDrafts((prev) => ({
+    ...prev,
+    [targetId]: ((prev[targetId] || '').trimEnd() + ' @' + name + ' ').trimStart(),
+  }));
+}
+
+function closeDmFromEvent(
+  dmId: string,
+  ctx: {
+    data: any;
+    activeDM: string | null;
+    activeChannel: string;
+    setActiveDM: (id: string | null) => void;
+    setActiveView: (v: { kind: 'channel' | 'dm'; id: string }) => void;
+  },
+): void {
+  if (!dmId) return;
+  // Drop from local DM list. Server-side DM channels stick around for
+  // history retention; users can re-open from a member profile.
+  ctx.data.DMS = ctx.data.DMS.filter((x: any) => x.id !== dmId);
+  if (ctx.activeDM === dmId) {
+    ctx.setActiveDM(null);
+    ctx.setActiveView({ kind: 'channel', id: ctx.activeChannel });
+  }
+}
+
+function handlePickChannelEvent(
+  id: string,
+  data: any,
+  setActiveChannel: (id: string) => void,
+  setActiveView: (v: { kind: 'channel' | 'dm'; id: string }) => void,
+  setTab: (t: string) => void,
+): void {
+  if (!data.CHANNELS.some((c: any) => c.id === id)) return;
+  setActiveChannel(id);
+  setActiveView({ kind: 'channel', id });
+  setTab('kanals');
+}
+
 async function openDmForMember(
   memberId: string,
   ctx: {
@@ -6759,17 +6804,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
     function onThread(e)  { setActiveThread(e.detail); }
     function onDrawer()   { setDrawerOpen(o => !o); }
     function onInsertMention(e) {
-      // Append @name to the active channel/DM draft. The mention picker
-      // (in TextChannel.tsx) already supports @-completions on type; this
-      // handler is for the member-menu "Mention in current kanal" action.
-      const name = e.detail;
-      if (!name) return;
-      const targetId = channel?.id || activeChannel;
-      if (!targetId) return;
-      setDrafts((prev) => ({
-        ...prev,
-        [targetId]: ((prev[targetId] || '').trimEnd() + ' @' + name + ' ').trimStart(),
-      }));
+      insertMentionIntoDraft(e.detail, channel?.id || activeChannel, setDrafts);
     }
     function onChannelSettings(e) {
       const ch = lookupChannelById(e.detail);
@@ -6788,24 +6823,13 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
       if (g) setGroupSettings({ id: g.id, name: g.name });
     }
     function onCloseDm(e) {
-      const dmId = e.detail;
-      if (!dmId) return;
-      // Drop from local DM list. Server-side DM channels stick around for
-      // history retention; users can re-open from a member profile.
-      data.DMS = data.DMS.filter((x: any) => x.id !== dmId);
-      if (activeDM === dmId) {
-        setActiveDM(null);
-        setActiveView({ kind: 'channel', id: activeChannel });
-      }
+      closeDmFromEvent(e.detail, { data, activeDM, activeChannel, setActiveDM, setActiveView });
     }
     function onOpenDm(e) {
       void openDmForMember(e.detail, { data, activeTeamId, setActiveDM, setActiveView, setTab });
     }
     function onPickChannel(e) {
-      const id = e.detail;
-      if (data.CHANNELS.some(c => c.id === id)) {
-        setActiveChannel(id); setActiveView({ kind: 'channel', id }); setTab('kanals');
-      }
+      handlePickChannelEvent(e.detail, data, setActiveChannel, setActiveView, setTab);
     }
     function onMenu(e) { setMenuPop(e.detail); }
     globalThis.addEventListener('dilla:open-profile', onProfile);
