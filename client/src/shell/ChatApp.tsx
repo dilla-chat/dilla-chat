@@ -5825,6 +5825,28 @@ function useActiveChannelTyping(activeChannel: string): string[] {
   }, [typingUsersForActive, myUserId, typingTick]);
 }
 
+function dropStagedAttachment(
+  prev: Record<string, StagedAttachment[]>,
+  attId: string,
+): Record<string, StagedAttachment[]> {
+  const next: Record<string, StagedAttachment[]> = {};
+  for (const [cid, list] of Object.entries(prev)) {
+    const removed = list.find((a) => a.id === attId);
+    if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl);
+    next[cid] = list.filter((a) => a.id !== attId);
+  }
+  return next;
+}
+
+function deriveActiveMutedChannels(mutedMap: Map<string, string | null>): Set<string> {
+  const out = new Set<string>();
+  const now = Date.now();
+  for (const [cid, until] of mutedMap.entries()) {
+    if (until === null || new Date(until).getTime() > now) out.add(cid);
+  }
+  return out;
+}
+
 function tickActiveSlowLocks(
   slowLocks: Record<string, { strikes: number; until: number }>,
   tickSlowLocks: (updater: (n: number) => number) => void,
@@ -6499,15 +6521,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   // currently rendered in the active TextChannel; resolve it through
   // the channel state at call time.
   const removeStagedAttachment = useCallback((attId: string) => {
-    setPendingAttachments((prev) => {
-      const next: Record<string, StagedAttachment[]> = {};
-      for (const [cid, list] of Object.entries(prev)) {
-        const removed = list.find((a) => a.id === attId);
-        if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl);
-        next[cid] = list.filter((a) => a.id !== attId);
-      }
-      return next;
-    });
+    setPendingAttachments((prev) => dropStagedAttachment(prev, attId));
   }, []);
   const [newChanOpen, setNewChanOpen] = useState(false);
   const [chanSettings, setChanSettings] = useState(null); // {id, name, topic} or null
@@ -6524,14 +6538,7 @@ function ChatApp({ theme, opts = {}, rich = false, controller }) {
   // Channel mutes live in a dedicated zustand store now so they persist
   // across reloads and sync to other devices via channel:mute-update.
   const mutedMap = useChannelMuteStore((s) => s.muted);
-  const mutedChannels = useMemo(() => {
-    const out = new Set<string>();
-    const now = Date.now();
-    for (const [cid, until] of mutedMap.entries()) {
-      if (until === null || new Date(until).getTime() > now) out.add(cid);
-    }
-    return out;
-  }, [mutedMap]);
+  const mutedChannels = useMemo(() => deriveActiveMutedChannels(mutedMap), [mutedMap]);
   const [newDmOpen, setNewDmOpen] = useState(false);
   function openMenu(e, items) {
     e.preventDefault();
