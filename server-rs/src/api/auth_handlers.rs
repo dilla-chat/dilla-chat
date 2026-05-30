@@ -520,7 +520,7 @@ pub async fn register(
     let invite_token = body.invite_token.clone();
     let pk = pk_bytes;
 
-    let (user, member, team_id) = spawn_db(state.db.clone(), move |conn| {
+    let (user, member, team_id, device_id) = spawn_db(state.db.clone(), move |conn| {
         check_username_and_key_available(conn, &username, &pk)?;
         let invite = validate_invite(conn, &invite_token)?;
 
@@ -535,11 +535,15 @@ pub async fn register(
         db::increment_invite_uses(conn, &invite.id)?;
         db::log_invite_use(conn, &invite.id, &user.id)?;
 
-        // A1: seed the primary device row so this account starts
-        // multi-device tracking from day one.
-        let _ = db::create_device(conn, &user.id, &user.public_key, "primary");
+        // A1 / SECREVIEW-VULN-3: seed the primary device row AND
+        // capture the resulting device_id so the JWT can bind to it.
+        // The previous code discarded the id (`let _ = ...`) which
+        // minted tokens with did="" — those bypass
+        // assert_device_not_invalidated, defeating
+        // DELETE /devices/{id} and team-role-change force-logout.
+        let device_id = db::create_device(conn, &user.id, &user.public_key, "primary")?;
 
-        Ok((user, member, invite.team_id))
+        Ok((user, member, invite.team_id, device_id))
     })
     .await
     .map_err(|e| match e {
@@ -548,8 +552,13 @@ pub async fn register(
         other => other,
     })?;
 
-    let token = state.auth.generate_jwt(&user.id)?;
-    let refresh_token = state.auth.generate_refresh_token(&user.id)?;
+    // SECREVIEW-VULN-3: mint device-bound JWTs so device revocation
+    // and team-role-change force-logout can actually kill leaked
+    // tokens. The login (verify) handler already does this.
+    let token = state.auth.generate_jwt_for_device(&user.id, &device_id)?;
+    let refresh_token = state
+        .auth
+        .generate_refresh_token_for_device(&user.id, &device_id)?;
 
     // Notify already-connected clients that a new member joined. Existing
     // sessions don't refetch the member list on their own, so without this
@@ -602,7 +611,7 @@ pub async fn bootstrap(
     let team_name = resolve_team_name(&body.team_name, &state.config.team_name);
     let seed_demo = state.config.seed_demo;
 
-    let (user, team_id) = spawn_db(state.db.clone(), move |conn| {
+    let (user, team_id, device_id) = spawn_db(state.db.clone(), move |conn| {
         // Wrap in transaction so partial failures roll back cleanly.
         let tx = conn.unchecked_transaction()?;
 
@@ -626,14 +635,14 @@ pub async fn bootstrap(
 
         create_bootstrap_defaults(&tx, &team_id, &user.id, seed_demo)?;
 
-        // A1: also seed the primary device row inside the same
-        // transaction so multi-device tracking starts immediately
-        // (the 029 migration backfill won't catch users created
-        // *after* the migration runs).
-        let _ = db::create_device(&tx, &user.id, &user.public_key, "primary");
+        // A1 / SECREVIEW-VULN-3: seed the primary device row AND
+        // capture the device_id so the JWT can bind to it. The
+        // previous code discarded the id (`let _ = ...`), minting
+        // tokens with did="" that bypass per-device revocation.
+        let device_id = db::create_device(&tx, &user.id, &user.public_key, "primary")?;
 
         tx.commit()?;
-        Ok((user, team_id))
+        Ok((user, team_id, device_id))
     })
     .await
     .map_err(|e| match e {
@@ -641,8 +650,13 @@ pub async fn bootstrap(
         other => other,
     })?;
 
-    let token = state.auth.generate_jwt(&user.id)?;
-    let refresh_token = state.auth.generate_refresh_token(&user.id)?;
+    // SECREVIEW-VULN-3: bind the bootstrap-minted tokens to the
+    // freshly-seeded primary device so DELETE /devices/{id} and the
+    // team-role-change force-logout can actually invalidate them.
+    let token = state.auth.generate_jwt_for_device(&user.id, &device_id)?;
+    let refresh_token = state
+        .auth
+        .generate_refresh_token_for_device(&user.id, &device_id)?;
 
     // A5: bootstrap.consumed audit event. The team_id is the
     // brand-new team we just created — this is the first record in
@@ -2481,6 +2495,306 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), 200);
+    }
+
+    // ── SECREVIEW-VULN-3: device-bound JWTs on register/bootstrap ──────
+
+    /// Helper: extract a JSON value from an axum response body.
+    async fn json_body(resp: axum::response::Response) -> serde_json::Value {
+        let bytes = axum::body::to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    /// SECREVIEW-VULN-3 regression: register must mint tokens whose
+    /// `did` claim is non-empty (= bound to the seeded primary device).
+    /// Previously the device_id was discarded and `did` was empty,
+    /// which bypasses assert_device_not_invalidated.
+    #[tokio::test]
+    async fn register_mints_jwt_bound_to_seeded_device_id() {
+        use base64::Engine as _;
+        use ed25519_dalek::{Signer, SigningKey};
+
+        let (state, _tmp) = make_state();
+        let now = crate::db::now_str();
+        state.db.with_conn(|conn| {
+            crate::db::create_user(conn, &crate::db::User {
+                id: "u-owner-3".into(),
+                username: "owner3".into(),
+                display_name: "Owner3".into(),
+                public_key: vec![2u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            crate::db::create_team(conn, &crate::db::Team {
+                id: "t-bind".into(),
+                name: "Bind".into(),
+                created_by: "u-owner-3".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            crate::db::create_invite(conn, &crate::db::Invite {
+                id: "inv-bind".into(),
+                team_id: "t-bind".into(),
+                token: "bind-token".into(),
+                created_by: "u-owner-3".into(),
+                max_uses: None,
+                uses: 0,
+                expires_at: None,
+                revoked: false,
+                created_at: now,
+            })
+        }).unwrap();
+
+        let signing_key = SigningKey::from_bytes(&[91u8; 32]);
+        let pk_bytes = signing_key.verifying_key().to_bytes();
+        let (nonce, challenge_id) = state.auth.generate_challenge().unwrap();
+        let signature = signing_key.sign(&nonce);
+        let pk_b64 = base64::engine::general_purpose::STANDARD.encode(pk_bytes);
+        let sig_b64 = base64::engine::general_purpose::STANDARD.encode(signature.to_bytes());
+
+        let body = format!(
+            r#"{{"username":"bindme","challenge_id":"{}","public_key":"{}","signature":"{}","invite_token":"bind-token"}}"#,
+            challenge_id, pk_b64, sig_b64
+        );
+        let auth_clone = state.auth.clone();
+        let db_clone = state.db.clone();
+        let app = Router::new()
+            .route("/auth/register", post(register))
+            .with_state(state);
+        let resp = app
+            .oneshot(
+                Request::post("/auth/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+        let v = json_body(resp).await;
+        let token = v["token"].as_str().expect("token in response").to_string();
+
+        let (sub, did) = auth_clone.validate_jwt_with_device(&token).unwrap();
+        assert_eq!(sub, v["user"]["id"].as_str().unwrap());
+        assert!(!did.is_empty(), "register-issued JWT must have a non-empty did claim");
+
+        // The device_id in the JWT must match the seeded primary device row.
+        let primary_device_id = db_clone.with_conn(|conn| {
+            let d = crate::db::get_device_by_user_and_pubkey(conn, &sub, &pk_bytes)?
+                .expect("primary device row should exist after register");
+            Ok::<String, rusqlite::Error>(d.id)
+        }).unwrap();
+        assert_eq!(did, primary_device_id);
+    }
+
+    /// SECREVIEW-VULN-3 regression: after revoking the seeded primary
+    /// device, the register-issued JWT must no longer validate.
+    #[tokio::test]
+    async fn register_token_invalidates_when_seeded_device_is_revoked() {
+        use base64::Engine as _;
+        use ed25519_dalek::{Signer, SigningKey};
+
+        let (state, _tmp) = make_state();
+        let now = crate::db::now_str();
+        state.db.with_conn(|conn| {
+            crate::db::create_user(conn, &crate::db::User {
+                id: "u-owner-rv".into(),
+                username: "ownerrv".into(),
+                display_name: "OwnerRv".into(),
+                public_key: vec![3u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            crate::db::create_team(conn, &crate::db::Team {
+                id: "t-rv".into(),
+                name: "Rv".into(),
+                created_by: "u-owner-rv".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            crate::db::create_invite(conn, &crate::db::Invite {
+                id: "inv-rv".into(),
+                team_id: "t-rv".into(),
+                token: "rv-token".into(),
+                created_by: "u-owner-rv".into(),
+                max_uses: None,
+                uses: 0,
+                expires_at: None,
+                revoked: false,
+                created_at: now,
+            })
+        }).unwrap();
+
+        let signing_key = SigningKey::from_bytes(&[92u8; 32]);
+        let pk_bytes = signing_key.verifying_key().to_bytes();
+        let (nonce, challenge_id) = state.auth.generate_challenge().unwrap();
+        let signature = signing_key.sign(&nonce);
+        let pk_b64 = base64::engine::general_purpose::STANDARD.encode(pk_bytes);
+        let sig_b64 = base64::engine::general_purpose::STANDARD.encode(signature.to_bytes());
+
+        let body = format!(
+            r#"{{"username":"revoker","challenge_id":"{}","public_key":"{}","signature":"{}","invite_token":"rv-token"}}"#,
+            challenge_id, pk_b64, sig_b64
+        );
+        let auth_clone = state.auth.clone();
+        let db_clone = state.db.clone();
+        let app = Router::new()
+            .route("/auth/register", post(register))
+            .with_state(state);
+        let resp = app
+            .oneshot(
+                Request::post("/auth/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+        let v = json_body(resp).await;
+        let token = v["token"].as_str().unwrap().to_string();
+        let sub = v["user"]["id"].as_str().unwrap().to_string();
+
+        // Token must validate now…
+        assert!(auth_clone.validate_jwt(&token).is_ok());
+
+        // …revoke the seeded primary device…
+        db_clone.with_conn(|conn| {
+            let d = crate::db::get_device_by_user_and_pubkey(conn, &sub, &pk_bytes)?
+                .expect("primary device row exists");
+            crate::db::revoke_device(conn, &d.id)
+        }).unwrap();
+
+        // …and now validation must reject.
+        assert!(matches!(
+            auth_clone.validate_jwt(&token),
+            Err(AppError::Unauthorized(_))
+        ));
+    }
+
+    /// SECREVIEW-VULN-3 regression: bootstrap must mint device-bound
+    /// JWTs (was the second flow that discarded the device_id and
+    /// minted did="" tokens).
+    #[tokio::test]
+    async fn bootstrap_mints_jwt_bound_to_seeded_device_id() {
+        use base64::Engine as _;
+        use ed25519_dalek::{Signer, SigningKey};
+
+        let (state, _tmp) = make_state();
+        state.db.with_conn(|conn| {
+            crate::db::create_bootstrap_token(conn, "bind-bootstrap")
+        }).unwrap();
+
+        let signing_key = SigningKey::from_bytes(&[93u8; 32]);
+        let pk_bytes = signing_key.verifying_key().to_bytes();
+        let (nonce, challenge_id) = state.auth.generate_challenge().unwrap();
+        let signature = signing_key.sign(&nonce);
+        let pk_b64 = base64::engine::general_purpose::STANDARD.encode(pk_bytes);
+        let sig_b64 = base64::engine::general_purpose::STANDARD.encode(signature.to_bytes());
+
+        let body = format!(
+            r#"{{"username":"boot-bind","challenge_id":"{}","public_key":"{}","signature":"{}","bootstrap_token":"bind-bootstrap","team_name":"BindBoot"}}"#,
+            challenge_id, pk_b64, sig_b64
+        );
+        let auth_clone = state.auth.clone();
+        let db_clone = state.db.clone();
+        let app = Router::new()
+            .route("/auth/bootstrap", post(bootstrap))
+            .with_state(state);
+        let resp = app
+            .oneshot(
+                Request::post("/auth/bootstrap")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+        let v = json_body(resp).await;
+        let token = v["token"].as_str().unwrap().to_string();
+        let (sub, did) = auth_clone.validate_jwt_with_device(&token).unwrap();
+        assert_eq!(sub, v["user"]["id"].as_str().unwrap());
+        assert!(!did.is_empty(), "bootstrap-issued JWT must have a non-empty did claim");
+
+        let primary_device_id = db_clone.with_conn(|conn| {
+            let d = crate::db::get_device_by_user_and_pubkey(conn, &sub, &pk_bytes)?
+                .expect("primary device row should exist after bootstrap");
+            Ok::<String, rusqlite::Error>(d.id)
+        }).unwrap();
+        assert_eq!(did, primary_device_id);
+    }
+
+    /// SECREVIEW-VULN-3 regression: a bootstrap-issued token must be
+    /// killable via the user-level force-logout used by team-role
+    /// changes (`invalidate_user_tokens_now`). Empty-`did` tokens
+    /// previously bypassed this check.
+    #[tokio::test]
+    async fn bootstrap_token_invalidates_on_user_force_logout() {
+        use base64::Engine as _;
+        use ed25519_dalek::{Signer, SigningKey};
+
+        let (state, _tmp) = make_state();
+        state.db.with_conn(|conn| {
+            crate::db::create_bootstrap_token(conn, "kill-bootstrap")
+        }).unwrap();
+
+        let signing_key = SigningKey::from_bytes(&[94u8; 32]);
+        let pk_bytes = signing_key.verifying_key().to_bytes();
+        let (nonce, challenge_id) = state.auth.generate_challenge().unwrap();
+        let signature = signing_key.sign(&nonce);
+        let pk_b64 = base64::engine::general_purpose::STANDARD.encode(pk_bytes);
+        let sig_b64 = base64::engine::general_purpose::STANDARD.encode(signature.to_bytes());
+
+        let body = format!(
+            r#"{{"username":"boot-kill","challenge_id":"{}","public_key":"{}","signature":"{}","bootstrap_token":"kill-bootstrap","team_name":"KillBoot"}}"#,
+            challenge_id, pk_b64, sig_b64
+        );
+        let auth_clone = state.auth.clone();
+        let db_clone = state.db.clone();
+        let app = Router::new()
+            .route("/auth/bootstrap", post(bootstrap))
+            .with_state(state);
+        let resp = app
+            .oneshot(
+                Request::post("/auth/bootstrap")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+        let v = json_body(resp).await;
+        let token = v["token"].as_str().unwrap().to_string();
+        let sub = v["user"]["id"].as_str().unwrap().to_string();
+        assert!(auth_clone.validate_jwt(&token).is_ok());
+
+        // The user-level force-logout (called from role-change paths)
+        // bumps tokens_invalidated_after for every device. A
+        // device-bound JWT must now be rejected. tokens_invalidated_after
+        // is compared as `iat < tokens_invalidated_after` with second
+        // resolution — sleep a beat so iat (set during register) is
+        // strictly less than the bump timestamp.
+        tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+        db_clone.with_conn(|conn| {
+            crate::db::invalidate_user_tokens_now(conn, &sub)
+        }).unwrap();
+
+        assert!(matches!(
+            auth_clone.validate_jwt(&token),
+            Err(AppError::Unauthorized(_))
+        ));
     }
 
     #[tokio::test]

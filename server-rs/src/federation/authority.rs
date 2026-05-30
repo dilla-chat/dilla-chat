@@ -84,10 +84,17 @@ pub fn check(
             .and_then(|v| v.as_str())
             .unwrap_or("");
         if author_home.is_empty() {
-            // Legacy event without home_node_id — treat like
-            // LegacyTeam during the rolling upgrade. Future release
-            // requires the field and falls through to Denied.
-            return Ok(Decision::LegacyTeam);
+            // SECREVIEW-VULN-2: previously fell through to
+            // Decision::LegacyTeam, which the dispatcher treats as
+            // Allow. Combined with the fact that no outbound code
+            // path ever populated `home_node_id`, any pinned peer
+            // could forge edit/delete of any message on any other
+            // peer. Legacy v1 traffic never reaches authority::check
+            // (the dispatcher only calls it when origin_node_id is
+            // set, i.e. v3-signed envelopes), so there's no
+            // rolling-upgrade exposure here — a v3-signed message
+            // event MUST carry home_node_id.
+            return Ok(Decision::Denied("message.missing_home_node_id"));
         }
         if author_home == origin {
             return Ok(Decision::Allow);
@@ -304,9 +311,10 @@ mod tests {
     }
 
     #[test]
-    fn message_with_no_home_node_id_falls_back_to_legacy_team() {
-        // Legacy unsigned-era events lack home_node_id. The rolling
-        // upgrade window accepts them; release N+2 will harden this.
+    fn message_with_no_home_node_id_is_denied() {
+        // SECREVIEW-VULN-2: was previously LegacyTeam (= Allow). A
+        // v3-signed message event missing home_node_id is now Denied
+        // — legacy v1 traffic never reaches authority::check anyway.
         let db = fresh_db();
         let id = identity::ensure(&db).unwrap();
         let signed = build_signed(
@@ -315,7 +323,48 @@ mod tests {
             serde_json::json!({ "message_id": "m1" }),
         );
         db.with_conn(|c| {
-            assert_eq!(check(c, &signed).unwrap(), Decision::LegacyTeam);
+            assert!(matches!(
+                check(c, &signed).unwrap(),
+                Decision::Denied("message.missing_home_node_id")
+            ));
+            Ok::<_, rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn message_edit_with_no_home_node_id_is_denied() {
+        let db = fresh_db();
+        let id = identity::ensure(&db).unwrap();
+        let signed = build_signed(
+            &id,
+            "message:edit",
+            serde_json::json!({ "message_id": "m1", "content": "x" }),
+        );
+        db.with_conn(|c| {
+            assert!(matches!(
+                check(c, &signed).unwrap(),
+                Decision::Denied("message.missing_home_node_id")
+            ));
+            Ok::<_, rusqlite::Error>(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn message_delete_with_no_home_node_id_is_denied() {
+        let db = fresh_db();
+        let id = identity::ensure(&db).unwrap();
+        let signed = build_signed(
+            &id,
+            "message:delete",
+            serde_json::json!({ "message_id": "m1" }),
+        );
+        db.with_conn(|c| {
+            assert!(matches!(
+                check(c, &signed).unwrap(),
+                Decision::Denied("message.missing_home_node_id")
+            ));
             Ok::<_, rusqlite::Error>(())
         })
         .unwrap();

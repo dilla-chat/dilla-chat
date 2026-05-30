@@ -670,3 +670,43 @@ export async function signChallenge(
 ): Promise<Uint8Array> {
   return ed25519Sign(signingKey, challenge);
 }
+
+/**
+ * SECREVIEW-VULN-1: sign a device-enrollment challenge.
+ *
+ * The trusted device's signature must cover the SHA-256 digest of
+ * `dilla-device-enroll-v1\0 || user_id \0 || new_pk \0 || nonce` so a
+ * man-in-the-client (extension, XSS) cannot swap `new_pk` while
+ * keeping the trusted-device signature valid. Mirror of
+ * `server-rs/src/auth.rs::enrollment_signing_digest`.
+ */
+export async function signEnrollmentChallenge(
+  signingKey: CryptoKey,
+  nonce: Uint8Array,
+  userId: string,
+  newDevicePublicKey: Uint8Array,
+): Promise<Uint8Array> {
+  if (newDevicePublicKey.length !== 32) {
+    throw new Error('newDevicePublicKey must be 32 bytes');
+  }
+  if (nonce.length !== 32) {
+    throw new Error('nonce must be 32 bytes');
+  }
+  const label = new TextEncoder().encode('dilla-device-enroll-v1');
+  const userBytes = new TextEncoder().encode(userId);
+  const sep = new Uint8Array([0]);
+  const buf = new Uint8Array(
+    label.length + 1 + userBytes.length + 1 + 32 + 1 + 32,
+  );
+  let o = 0;
+  buf.set(label, o); o += label.length;
+  buf.set(sep, o); o += 1;
+  buf.set(userBytes, o); o += userBytes.length;
+  buf.set(sep, o); o += 1;
+  buf.set(newDevicePublicKey, o); o += 32;
+  buf.set(sep, o); o += 1;
+  buf.set(nonce, o);
+
+  const digestBuf = await crypto.subtle.digest('SHA-256', buf);
+  return ed25519Sign(signingKey, new Uint8Array(digestBuf));
+}
