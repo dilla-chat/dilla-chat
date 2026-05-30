@@ -78,11 +78,11 @@
     const [srchOpen, setSrchOpen] = useS(false);
     const [srchScope, setSrchScope] = useS(null);
     const [splash, setSplash] = useS(true);
-    const [splashFade, setSplashFade] = useS(false);
+    const [, setSplashFade] = useS(false);
     const [ringCall, setRingCall] = useS(null);
     const [safetyId, setSafetyId] = useS(null);
     const [addPeerOpen, setAddPeerOpen] = useS(false);
-    const [degraded, setDegraded] = useS(false);
+    const [degraded] = useS(false);
     const controllerRef = useR({});
 
     useE(() => {

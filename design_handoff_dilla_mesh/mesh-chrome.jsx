@@ -35,7 +35,7 @@ const FINGERPRINTS = {
 
 // ───────── top bar ─────────
 function MeshTopBar({ onCmdK, onSearch, onHelp, federated = true, degraded = false }) {
-  const [tick, setTick] = useStateMC(0);
+  const [, setTick] = useStateMC(0);
   useEffectMC(() => {
     const id = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(id);
