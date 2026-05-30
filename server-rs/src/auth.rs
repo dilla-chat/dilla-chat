@@ -11,7 +11,7 @@ use hkdf::Hkdf;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
@@ -66,9 +66,47 @@ struct RefreshClaims {
     did: String,
 }
 
+/// SECREVIEW-VULN-1: an enrollment challenge binds the trusted-device
+/// signature to a specific `(user_id, new_device_public_key)`. Without
+/// this, an attacker who can observe a legitimate enrollment can swap
+/// `new_device_public_key` for their own and still pass signature
+/// verification — see `verify_challenge_bound`.
+#[derive(Debug, Clone)]
+struct ChallengeBinding {
+    user_id: String,
+    target_pk: [u8; 32],
+}
+
 struct Challenge {
     nonce: Vec<u8>,
     created_at: Instant,
+    /// `None` for login/recovery challenges (signed payload is the bare
+    /// nonce). `Some(_)` for device-enrollment challenges (signed
+    /// payload is the SHA-256 digest of
+    /// `dilla-device-enroll-v1\0 || user_id \0 || new_pk \0 || nonce`).
+    binding: Option<ChallengeBinding>,
+}
+
+/// Domain-separation label used inside the enrollment digest. Bumping
+/// the suffix (e.g. `-v2`) forces clients and servers to upgrade in
+/// lock-step.
+const ENROLL_DIGEST_LABEL: &[u8] = b"dilla-device-enroll-v1";
+
+/// Compute the canonical digest that the trusted device signs during
+/// device enrollment. Caller and verifier must produce identical bytes.
+/// Inputs are length-framed implicitly: the label is a constant, the
+/// public key is exactly 32 bytes, and the nonce is exactly 32 bytes,
+/// so the `\0` separators are belt-and-braces.
+fn enrollment_signing_digest(user_id: &str, new_pk: &[u8; 32], nonce: &[u8; 32]) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    hasher.update(ENROLL_DIGEST_LABEL);
+    hasher.update([0u8]);
+    hasher.update(user_id.as_bytes());
+    hasher.update([0u8]);
+    hasher.update(new_pk);
+    hasher.update([0u8]);
+    hasher.update(nonce);
+    hasher.finalize().into()
 }
 
 /// A short-lived, single-use WebSocket ticket.
@@ -149,6 +187,33 @@ impl AuthService {
     }
 
     pub fn generate_challenge(&self) -> Result<(Vec<u8>, String), AppError> {
+        self.insert_challenge(None)
+    }
+
+    /// SECREVIEW-VULN-1: issue a single-use challenge bound to a
+    /// specific `(user_id, target_pk)`. Must be paired with
+    /// `verify_challenge_bound` — the bare-nonce `verify_challenge`
+    /// path refuses to consume bound challenges, preventing an
+    /// attacker from substituting a different `new_device_public_key`
+    /// in the enrollment request body.
+    pub fn generate_challenge_with_binding(
+        &self,
+        user_id: &str,
+        target_pk: &[u8],
+    ) -> Result<(Vec<u8>, String), AppError> {
+        let target_pk_arr: [u8; 32] = target_pk
+            .try_into()
+            .map_err(|_| AppError::BadRequest("target_pk must be 32 bytes".into()))?;
+        self.insert_challenge(Some(ChallengeBinding {
+            user_id: user_id.to_string(),
+            target_pk: target_pk_arr,
+        }))
+    }
+
+    fn insert_challenge(
+        &self,
+        binding: Option<ChallengeBinding>,
+    ) -> Result<(Vec<u8>, String), AppError> {
         let mut nonce = vec![0u8; 32];
         rand::rng().fill_bytes(&mut nonce);
 
@@ -161,6 +226,7 @@ impl AuthService {
             Challenge {
                 nonce: nonce.clone(),
                 created_at: Instant::now(),
+                binding,
             },
         );
 
@@ -184,6 +250,16 @@ impl AuthService {
             return Err(AppError::Unauthorized("challenge expired".into()));
         }
 
+        // SECREVIEW-VULN-1: a challenge that was issued with a binding
+        // must NEVER be verifiable via the bare-nonce path — that's
+        // the whole point of the binding. Reject loudly so a misrouted
+        // caller can't downgrade enrollment to login semantics.
+        if challenge.binding.is_some() {
+            return Err(AppError::Unauthorized(
+                "challenge was issued bound to (user_id, target_pk) — use verify_challenge_bound".into(),
+            ));
+        }
+
         let key_bytes: [u8; 32] = public_key
             .try_into()
             .map_err(|_| AppError::BadRequest("invalid public key length".into()))?;
@@ -196,6 +272,71 @@ impl AuthService {
         let sig = Signature::from_bytes(&sig_bytes);
 
         Ok(verifying_key.verify(&challenge.nonce, &sig).is_ok())
+    }
+
+    /// SECREVIEW-VULN-1: verify a device-enrollment signature. The
+    /// signature must cover the SHA-256 digest of the
+    /// `(user_id, new_pk, nonce)` tuple — see `enrollment_signing_digest`.
+    /// The challenge is consumed single-use even on failure (matches
+    /// the bare-nonce path's semantics). The challenge MUST have been
+    /// issued via `generate_challenge_with_binding` and the supplied
+    /// `user_id` + `new_pk` MUST equal the bound values.
+    pub fn verify_challenge_bound(
+        &self,
+        challenge_id: &str,
+        user_id: &str,
+        new_pk: &[u8],
+        authorizer_pk: &[u8],
+        signature: &[u8],
+    ) -> Result<bool, AppError> {
+        let challenge = self
+            .challenges
+            .write()
+            .unwrap()
+            .remove(challenge_id)
+            .ok_or_else(|| AppError::Unauthorized("challenge not found or expired".into()))?;
+
+        if challenge.created_at.elapsed() > Duration::from_secs(300) {
+            return Err(AppError::Unauthorized("challenge expired".into()));
+        }
+
+        let binding = challenge
+            .binding
+            .ok_or_else(|| AppError::Unauthorized(
+                "challenge was not issued with binding — refusing to verify".into(),
+            ))?;
+
+        let new_pk_arr: [u8; 32] = new_pk
+            .try_into()
+            .map_err(|_| AppError::BadRequest("new public key must be 32 bytes".into()))?;
+        if binding.user_id != user_id {
+            return Err(AppError::Unauthorized("challenge bound to a different user".into()));
+        }
+        if binding.target_pk != new_pk_arr {
+            return Err(AppError::Unauthorized(
+                "challenge bound to a different new_device_public_key".into(),
+            ));
+        }
+
+        let key_bytes: [u8; 32] = authorizer_pk
+            .try_into()
+            .map_err(|_| AppError::BadRequest("invalid public key length".into()))?;
+        let verifying_key = VerifyingKey::from_bytes(&key_bytes)
+            .map_err(|_| AppError::BadRequest("invalid public key".into()))?;
+
+        let sig_bytes: [u8; 64] = signature
+            .try_into()
+            .map_err(|_| AppError::BadRequest("invalid signature length".into()))?;
+        let sig = Signature::from_bytes(&sig_bytes);
+
+        let nonce_arr: [u8; 32] = challenge
+            .nonce
+            .as_slice()
+            .try_into()
+            .map_err(|_| AppError::Internal("stored nonce was not 32 bytes".into()))?;
+        let digest = enrollment_signing_digest(user_id, &new_pk_arr, &nonce_arr);
+
+        Ok(verifying_key.verify(&digest, &sig).is_ok())
     }
 
     pub fn generate_jwt(&self, user_id: &str) -> Result<String, AppError> {
@@ -729,6 +870,109 @@ mod tests {
         assert!(auth.challenges.read().unwrap().contains_key(&challenge_id));
     }
 
+    // ── SECREVIEW-VULN-1: bound-challenge tests ─────────────────────────
+
+    /// Mirror of `enrollment_signing_digest` for use in test sign sites.
+    fn enrollment_digest(user_id: &str, new_pk: &[u8; 32], nonce: &[u8; 32]) -> [u8; 32] {
+        super::enrollment_signing_digest(user_id, new_pk, nonce)
+    }
+
+    #[test]
+    fn verify_challenge_bound_accepts_correct_signature() {
+        let auth = test_auth_service();
+        let sk = SigningKey::from_bytes(&[1u8; 32]);
+        let pk = sk.verifying_key().to_bytes();
+        let new_pk = [9u8; 32];
+        let (nonce, cid) = auth
+            .generate_challenge_with_binding("alice", &new_pk)
+            .unwrap();
+        let nonce_arr: [u8; 32] = nonce.as_slice().try_into().unwrap();
+        let digest = enrollment_digest("alice", &new_pk, &nonce_arr);
+        let sig = sk.sign(&digest).to_bytes();
+        let ok = auth
+            .verify_challenge_bound(&cid, "alice", &new_pk, &pk, &sig)
+            .unwrap();
+        assert!(ok, "valid bound signature must verify");
+    }
+
+    #[test]
+    fn verify_challenge_bound_rejects_swapped_new_pk() {
+        let auth = test_auth_service();
+        let sk = SigningKey::from_bytes(&[2u8; 32]);
+        let pk = sk.verifying_key().to_bytes();
+        let bound_pk = [0xAAu8; 32];
+        let attacker_pk = [0xBBu8; 32];
+        let (nonce, cid) = auth
+            .generate_challenge_with_binding("alice", &bound_pk)
+            .unwrap();
+        let nonce_arr: [u8; 32] = nonce.as_slice().try_into().unwrap();
+        // Signature is over the correct (bound_pk) digest...
+        let digest = enrollment_digest("alice", &bound_pk, &nonce_arr);
+        let sig = sk.sign(&digest).to_bytes();
+        // ...but the call substitutes attacker_pk for new_pk. The
+        // binding check rejects it.
+        let res = auth.verify_challenge_bound(&cid, "alice", &attacker_pk, &pk, &sig);
+        assert!(matches!(res, Err(AppError::Unauthorized(_))));
+    }
+
+    #[test]
+    fn verify_challenge_bound_rejects_swapped_user_id() {
+        let auth = test_auth_service();
+        let sk = SigningKey::from_bytes(&[3u8; 32]);
+        let pk = sk.verifying_key().to_bytes();
+        let new_pk = [7u8; 32];
+        let (_nonce, cid) = auth
+            .generate_challenge_with_binding("alice", &new_pk)
+            .unwrap();
+        // Bind says "alice" but caller claims "bob".
+        let res = auth.verify_challenge_bound(&cid, "bob", &new_pk, &pk, &[0u8; 64]);
+        assert!(matches!(res, Err(AppError::Unauthorized(_))));
+    }
+
+    #[test]
+    fn verify_challenge_bound_rejects_unbound_challenge() {
+        let auth = test_auth_service();
+        let (_nonce, cid) = auth.generate_challenge().unwrap();
+        // Challenge created without binding — bound verifier refuses it.
+        let res = auth.verify_challenge_bound(&cid, "alice", &[0u8; 32], &[0u8; 32], &[0u8; 64]);
+        assert!(matches!(res, Err(AppError::Unauthorized(_))));
+    }
+
+    #[test]
+    fn verify_challenge_rejects_bound_challenge_via_legacy_path() {
+        // SECREVIEW-VULN-1: a bound challenge MUST NOT be consumable
+        // via the bare-nonce `verify_challenge` path — otherwise the
+        // binding could be bypassed by routing the same challenge_id
+        // through the login verifier instead.
+        let auth = test_auth_service();
+        let new_pk = [5u8; 32];
+        let (_nonce, cid) = auth
+            .generate_challenge_with_binding("alice", &new_pk)
+            .unwrap();
+        let res = auth.verify_challenge(&cid, &[0u8; 32], &[0u8; 64]);
+        assert!(matches!(res, Err(AppError::Unauthorized(_))));
+    }
+
+    #[test]
+    fn verify_challenge_bare_nonce_still_works_for_login() {
+        // Regression: login/recovery flows (no binding) must keep
+        // signing the bare nonce and validating via verify_challenge.
+        let auth = test_auth_service();
+        let sk = SigningKey::from_bytes(&[6u8; 32]);
+        let pk = sk.verifying_key().to_bytes();
+        let (nonce, cid) = auth.generate_challenge().unwrap();
+        let sig = sk.sign(&nonce).to_bytes();
+        let ok = auth.verify_challenge(&cid, &pk, &sig).unwrap();
+        assert!(ok);
+    }
+
+    #[test]
+    fn generate_challenge_with_binding_rejects_wrong_pk_length() {
+        let auth = test_auth_service();
+        let res = auth.generate_challenge_with_binding("alice", &[0u8; 16]);
+        assert!(matches!(res, Err(AppError::BadRequest(_))));
+    }
+
     #[test]
     fn test_generate_multiple_challenges_unique() {
         let auth = test_auth_service();
@@ -1160,6 +1404,7 @@ mod tests {
             Challenge {
                 nonce: vec![0u8; 32],
                 created_at: Instant::now() - Duration::from_secs(400), // > 360s
+                binding: None,
             },
         );
 
@@ -1169,6 +1414,7 @@ mod tests {
             Challenge {
                 nonce: vec![1u8; 32],
                 created_at: Instant::now(),
+                binding: None,
             },
         );
 

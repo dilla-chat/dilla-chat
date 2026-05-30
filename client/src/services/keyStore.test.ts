@@ -378,6 +378,78 @@ describe('signChallenge', () => {
   });
 });
 
+// ─── signEnrollmentChallenge (SECREVIEW-VULN-1) ──────────────────────────────
+
+describe('signEnrollmentChallenge', () => {
+  // Mirror of server `enrollment_signing_digest` — used to verify the
+  // signature was produced over the right bytes.
+  async function expectedDigest(
+    userId: string,
+    newPk: Uint8Array,
+    nonce: Uint8Array,
+  ): Promise<Uint8Array> {
+    const label = new TextEncoder().encode('dilla-device-enroll-v1');
+    const userBytes = new TextEncoder().encode(userId);
+    const sep = new Uint8Array([0]);
+    const buf = new Uint8Array(
+      label.length + 1 + userBytes.length + 1 + 32 + 1 + 32,
+    );
+    let o = 0;
+    buf.set(label, o); o += label.length;
+    buf.set(sep, o); o += 1;
+    buf.set(userBytes, o); o += userBytes.length;
+    buf.set(sep, o); o += 1;
+    buf.set(newPk, o); o += 32;
+    buf.set(sep, o); o += 1;
+    buf.set(nonce, o);
+    const h = await crypto.subtle.digest('SHA-256', buf);
+    return new Uint8Array(h);
+  }
+
+  it('produces a signature that verifies against the bound (user_id, new_pk, nonce) digest', async () => {
+    const prfKey = randomBytes(32);
+    const prfSalt = randomBytes(32);
+    const { identity } = await createIdentity('https://example.com', prfKey, prfSalt, makeCredential());
+
+    const nonce = randomBytes(32);
+    const newPk = randomBytes(32);
+    const { signEnrollmentChallenge } = await import('./keyStore');
+    const sig = await signEnrollmentChallenge(identity.signingKey, nonce, 'alice', newPk);
+
+    expect(sig.length).toBe(64);
+
+    const pubKey = await importEd25519PublicKey(identity.publicKeyBytes);
+    const digest = await expectedDigest('alice', newPk, nonce);
+    const valid = await ed25519Verify(pubKey, sig, digest);
+    expect(valid).toBe(true);
+
+    // Sanity: the bare nonce is NOT what's signed — verifying against
+    // the nonce alone must fail.
+    const valid2 = await ed25519Verify(pubKey, sig, nonce);
+    expect(valid2).toBe(false);
+  });
+
+  it('rejects a non-32-byte new device public key', async () => {
+    const prfKey = randomBytes(32);
+    const prfSalt = randomBytes(32);
+    const { identity } = await createIdentity('https://example.com', prfKey, prfSalt, makeCredential());
+    const { signEnrollmentChallenge } = await import('./keyStore');
+    await expect(
+      signEnrollmentChallenge(identity.signingKey, randomBytes(32), 'alice', randomBytes(16)),
+    ).rejects.toThrow(/32 bytes/);
+  });
+
+  it('rejects a non-32-byte nonce', async () => {
+    const prfKey = randomBytes(32);
+    const prfSalt = randomBytes(32);
+    const { identity } = await createIdentity('https://example.com', prfKey, prfSalt, makeCredential());
+    const { signEnrollmentChallenge } = await import('./keyStore');
+    await expect(
+      signEnrollmentChallenge(identity.signingKey, randomBytes(16), 'alice', randomBytes(32)),
+    ).rejects.toThrow(/nonce/);
+  });
+});
+
 // ─── Tampered key file rejection ─────────────────────────────────────────────
 
 describe('corrupt key file handling', () => {
