@@ -139,12 +139,6 @@ function mapReactions(reactions, currentUserId) {
 // attachment per message). `src` resolves via api.getAttachmentUrl when
 // the server didn't include one — which it doesn't on /app where the
 // page is served from vite at a different origin than the API server.
-// DM messages don't get proper attachment rows server-side yet — the
-// uploader stuffs `[file:<attachment_id>] <filename>` into the encrypted
-// text content. Parse that token so DM attachments render the same way
-// channel attachments do. Channels use the attachments[] array instead
-// and never hit this branch.
-const FILE_TOKEN = /^\[file:([^\]]+)\]\s*(.*)$/; // NOSONAR(typescript:S5852) — anchored regex with bounded character class; no catastrophic backtracking
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
 
 function mapMessage(msg, currentUserId, teamId) {

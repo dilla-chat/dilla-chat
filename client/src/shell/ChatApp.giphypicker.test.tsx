@@ -1,6 +1,6 @@
 // Direct unit tests on ChatApp's exported GiphyPicker + GroupCombobox.
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent, act } from '@testing-library/react';
 
 vi.mock('../services/api', () => ({ api: {} }));

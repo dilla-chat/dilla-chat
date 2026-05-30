@@ -2,7 +2,7 @@
 // the 30-50 line async onCreate handlers inside the JSX render tree.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, act, fireEvent, waitFor } from '@testing-library/react';
+import { render, act, fireEvent } from '@testing-library/react';
 
 if (typeof globalThis.ResizeObserver === 'undefined') {
   (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = class {

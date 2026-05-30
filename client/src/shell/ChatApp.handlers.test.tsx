@@ -2,7 +2,7 @@
 // rendering them with realistic props + triggering the deep code paths.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, fireEvent, act } from '@testing-library/react';
+import { render, fireEvent } from '@testing-library/react';
 
 if (typeof globalThis.ResizeObserver === 'undefined') {
   (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = class {
@@ -98,7 +98,6 @@ beforeEach(() => {
     latencySamples: [], bitrateSamples: [],
     localScreenStream: null, remoteScreenStreams: {},
     localWebcamStream: null, remoteWebcamStreams: {},
-    speaking: false,
   } as never);
   useMessageStore.setState({
     messages: new Map([['ch-1', MESSAGES]]),

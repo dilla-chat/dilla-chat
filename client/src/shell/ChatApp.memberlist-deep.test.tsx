@@ -65,7 +65,6 @@ beforeEach(() => {
 
 describe('MemberList', () => {
   const ALICE_WITH_ROLE = { ...ALICE, roles: [{ id: 'r1', name: 'Admin', color: '#f00', position: 2 }] };
-  const BOB_WITH_ROLE = { ...BOB, roles: [{ id: 'r2', name: 'Mod', color: '#0f0', position: 1 }] };
 
   it('renders members with no roles in default Online group', () => {
     const members = { MEMBERS: [ME, ALICE] };

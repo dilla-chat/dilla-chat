@@ -96,7 +96,7 @@ vi.mock('react-router-dom', async () => {
 });
 
 import Onboarding from './Onboarding';
-import { useAuthStore, persistPassphrase as persistPassphraseMod } from '../../stores/authStore';
+import { useAuthStore } from '../../stores/authStore';
 
 vi.mock('../../stores/authStore', async () => {
   const actual = await vi.importActual<typeof import('../../stores/authStore')>('../../stores/authStore');
@@ -140,10 +140,6 @@ beforeEach(() => {
 
 async function flush() {
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-}
-
-function find(container: HTMLElement, selector: string): HTMLElement | null {
-  return container.querySelector(selector) as HTMLElement | null;
 }
 
 function findButton(container: HTMLElement, regex: RegExp): HTMLButtonElement | null {

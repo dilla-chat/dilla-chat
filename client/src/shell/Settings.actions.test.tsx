@@ -3,7 +3,7 @@
 // uncovered blocks in Settings.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, fireEvent, act, waitFor } from '@testing-library/react';
+import { render, fireEvent, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 if (typeof globalThis.ResizeObserver === 'undefined') {

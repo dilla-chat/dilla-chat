@@ -3,7 +3,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
-import { TopBar, BottomBar, CommandPalette, SearchPalette } from './Chrome';
+import { BottomBar, CommandPalette, SearchPalette } from './Chrome';
 import { ShellDataProvider } from './ShellDataContext';
 import { useAuthStore } from '../stores/authStore';
 import { useVoiceStore } from '../stores/voiceStore';

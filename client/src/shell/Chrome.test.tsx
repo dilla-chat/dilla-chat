@@ -228,7 +228,7 @@ describe('Chrome / SearchPalette', () => {
   });
 
   it('renders search input when open', () => {
-    const { container, getByPlaceholderText } = render(
+    const { container } = render(
       withShell(<SearchPalette open onClose={vi.fn()} onPickChannel={vi.fn()} />),
     );
     // The placeholder text varies — we just assert there's a search input.

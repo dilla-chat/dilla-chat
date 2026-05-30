@@ -27,8 +27,8 @@ function cmdkSearchHint(queryLen: number, hitCount: number): string {
 }
 
 // ───────── top bar ─────────
-function TopBar({ onCmdK, onSearch, onHelp, federated = true, degraded = false, teamName = '', nodeName = 'local' }) {
-  const [_tick, setTick] = useStateMC(0);
+function TopBar({ onCmdK, onSearch, onHelp, federated = true, teamName = '', nodeName = 'local' }) {
+  const [, setTick] = useStateMC(0);
   useEffectMC(() => {
     const id = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(id);
@@ -102,7 +102,7 @@ function e2eStatusInfo(state: 'active' | 'initializing' | 'locked'): { label: st
 }
 
 // ───────── bottom status bar ─────────
-function BottomBar({ voiceConnection, peerStatus, federated = true, degraded = false, nodeHost = 'local' }) {
+function BottomBar({ voiceConnection, federated = true, degraded = false, nodeHost = 'local' }) {
   const [lamport, setLamport] = useStateMC(12944);
   const [latency, setLatency] = useStateMC(14);
   const serverConfig = useServerConfig();
