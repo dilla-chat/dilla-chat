@@ -36,12 +36,6 @@ jobs:
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
           prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
-          # GitHub's Copilot Autofix bot pushes commits as
-          # `github-advanced-security[bot]`; without this allow-list
-          # the action rejects the synchronize trigger with
-          # "Workflow initiated by non-human actor". The diff stays
-          # reviewable on the PR.
-          allowed_bots: 'github-advanced-security'
 
   # @claude mentions, auto-fix label, issue assignment
   respond:
