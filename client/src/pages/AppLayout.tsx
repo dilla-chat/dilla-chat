@@ -120,7 +120,11 @@ export default function AppLayout() {
 
   // --- Extracted hooks ---
   const { cryptoReady } = useCryptoRestore();
-  const { authChecked, dataLoaded } = useTeamSync(activeTeamId);
+  // useTeamSync must wait for cryptoReady — the encrypted teams blob in
+  // sessionStorage is hydrated asynchronously by useCryptoRestore, and
+  // firing restoreApiConnections before that pumps through sees an empty
+  // teams Map and bounces the user to /onboarding on every reload.
+  const { authChecked, dataLoaded } = useTeamSync(activeTeamId, cryptoReady);
 
   // Redirect to join/setup if no teams — wait until auth is validated so we
   // don't redirect during the brief window before persisted state is confirmed.
