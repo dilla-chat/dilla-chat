@@ -82,24 +82,6 @@ describe('FloatingPip', () => {
   // state, then mousemove on document to drive the onMove handler, then
   // mouseup to end. Survival + position mutation is the signal.
 
-  function withParent(initial: () => HTMLElement) {
-    // Force a non-null offsetParent + non-zero getBoundingClientRect on
-    // the pip element. jsdom returns zeros by default — patching the
-    // prototype is enough for the start() math to take the live path.
-    const parent = document.createElement('div');
-    parent.style.position = 'relative';
-    parent.style.width = '800px';
-    parent.style.height = '600px';
-    Object.defineProperty(parent, 'getBoundingClientRect', {
-      value: () => ({ left: 0, top: 0, right: 800, bottom: 600, width: 800, height: 600, x: 0, y: 0, toJSON: () => ({}) }),
-      configurable: true,
-    });
-    document.body.appendChild(parent);
-    const el = initial();
-    parent.appendChild(el);
-    return { parent, el };
-  }
-
   it('move handle: mousedown + mousemove + mouseup translates element', () => {
     const { container } = render(<FloatingPip className="pf-move">kid</FloatingPip>);
     const root = container.querySelector('.pf-move') as HTMLElement;

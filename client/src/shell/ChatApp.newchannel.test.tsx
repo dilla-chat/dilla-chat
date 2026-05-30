@@ -1,6 +1,6 @@
 // Exhaustive NewServerModal + ForwardModal + NewDmModal direct tests.
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent, act } from '@testing-library/react';
 
 if (typeof globalThis.ResizeObserver === 'undefined') {

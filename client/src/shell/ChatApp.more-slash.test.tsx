@@ -262,7 +262,7 @@ describe('Reaction toggle (L5084-L5113)', () => {
       dmMessages: { 'dm-1': [{ id: 'm1', author: 'u2', at: new Date(), kind: 'text', text: 'x', reactions: [] } as never] },
       activeDMId: 'dm-1',
     } as never);
-    const { container } = render(
+    render(
       <ShellDataProvider value={data}>
         <ChatApp theme={{ name: 'mesh' }} opts={{}} />
       </ShellDataProvider>,
@@ -318,7 +318,7 @@ describe('Poll vote (L5122-L5145)', () => {
   });
 
   it('vote on DM channel returns early', () => {
-    const { container } = render(
+    render(
       <ShellDataProvider value={data}>
         <ChatApp theme={{ name: 'mesh' }} opts={{}} />
       </ShellDataProvider>,

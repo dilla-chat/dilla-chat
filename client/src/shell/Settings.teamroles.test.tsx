@@ -1,7 +1,7 @@
 // Drive TeamRoles create/edit/delete/reorder flow.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, fireEvent, act, waitFor } from '@testing-library/react';
+import { render, fireEvent, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 const apiMocks = vi.hoisted(() => ({
