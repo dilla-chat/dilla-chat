@@ -499,7 +499,8 @@ fn compute_risk_score(
 pub async fn register(
     State(state): State<AppState>,
     Json(body): Json<RegisterRequest>,
-) -> Result<Json<Value>, AppError> {
+) -> Result<axum::response::Response, AppError> {
+    use axum::response::IntoResponse;
     let pk_bytes = decode_and_verify_challenge(
         &state, &body.challenge_id, &body.public_key, &body.signature,
     )?;
@@ -577,18 +578,27 @@ pub async fn register(
         }
     }
 
-    Ok(Json(json!({
+    // H-13a / SECREVIEW-VULN-4: same as verify — issue the httpOnly
+    // __dilla_jwt cookie alongside the JSON body so the same-origin
+    // SPA can authenticate after a reload (api.ts drops the bearer
+    // header when the page and the API share an origin and relies on
+    // the cookie). Previously register returned only the JSON body,
+    // which made every post-register reload fail with 401 "missing
+    // authorization header".
+    let body = json!({
         "token": token,
         "refresh_token": refresh_token,
         "user": user,
         "team_id": team_id,
-    })))
+    });
+    Ok(json_with_cookie(body, build_auth_cookie(&token, 3600, state.config.insecure)).into_response())
 }
 
 pub async fn bootstrap(
     State(state): State<AppState>,
     Json(body): Json<BootstrapRequest>,
-) -> Result<Json<Value>, AppError> {
+) -> Result<axum::response::Response, AppError> {
+    use axum::response::IntoResponse;
     let pk_bytes = decode_and_verify_challenge(
         &state, &body.challenge_id, &body.public_key, &body.signature,
     )?;
@@ -676,12 +686,16 @@ pub async fn bootstrap(
     })
     .await;
 
-    Ok(Json(json!({
+    // H-13a / SECREVIEW-VULN-4: same as verify and register — issue
+    // the httpOnly __dilla_jwt cookie alongside the JSON body so the
+    // bootstrapped admin's first reload doesn't bounce to /login.
+    let body = json!({
         "token": token,
         "refresh_token": refresh_token,
         "user": user,
         "team_id": team_id,
-    })))
+    });
+    Ok(json_with_cookie(body, build_auth_cookie(&token, 3600, state.config.insecure)).into_response())
 }
 
 /// A4: refresh token endpoint. Validates the supplied refresh token,
@@ -2795,6 +2809,139 @@ mod tests {
             auth_clone.validate_jwt(&token),
             Err(AppError::Unauthorized(_))
         ));
+    }
+
+    // ── SECREVIEW-VULN-4: cookie-set on register + bootstrap ───────────
+
+    /// SECREVIEW-VULN-4 regression: register must attach the
+    /// `__dilla_jwt` Set-Cookie header so the same-origin SPA still
+    /// authenticates after a page reload (api.ts drops the bearer
+    /// header for same-origin requests and relies on the cookie).
+    #[tokio::test]
+    async fn register_sets_dilla_jwt_cookie_on_response() {
+        use base64::Engine as _;
+        use ed25519_dalek::{Signer, SigningKey};
+
+        let (state, _tmp) = make_state();
+        let now = crate::db::now_str();
+        state.db.with_conn(|conn| {
+            crate::db::create_user(conn, &crate::db::User {
+                id: "u-owner-cookie".into(),
+                username: "ownerck".into(),
+                display_name: "OwnerCk".into(),
+                public_key: vec![4u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            crate::db::create_team(conn, &crate::db::Team {
+                id: "t-ck".into(),
+                name: "Ck".into(),
+                created_by: "u-owner-cookie".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            crate::db::create_invite(conn, &crate::db::Invite {
+                id: "inv-ck".into(),
+                team_id: "t-ck".into(),
+                token: "ck-token".into(),
+                created_by: "u-owner-cookie".into(),
+                max_uses: None,
+                uses: 0,
+                expires_at: None,
+                revoked: false,
+                created_at: now,
+            })
+        }).unwrap();
+
+        let signing_key = SigningKey::from_bytes(&[95u8; 32]);
+        let pk_bytes = signing_key.verifying_key().to_bytes();
+        let (nonce, challenge_id) = state.auth.generate_challenge().unwrap();
+        let signature = signing_key.sign(&nonce);
+        let pk_b64 = base64::engine::general_purpose::STANDARD.encode(pk_bytes);
+        let sig_b64 = base64::engine::general_purpose::STANDARD.encode(signature.to_bytes());
+
+        let body = format!(
+            r#"{{"username":"cookieme","challenge_id":"{}","public_key":"{}","signature":"{}","invite_token":"ck-token"}}"#,
+            challenge_id, pk_b64, sig_b64
+        );
+        let app = Router::new()
+            .route("/auth/register", post(register))
+            .with_state(state);
+        let resp = app
+            .oneshot(
+                Request::post("/auth/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+        let cookie = resp
+            .headers()
+            .get(axum::http::header::SET_COOKIE)
+            .and_then(|v| v.to_str().ok())
+            .expect("register response must carry a Set-Cookie header")
+            .to_string();
+        assert!(cookie.starts_with("__dilla_jwt="), "cookie name must be __dilla_jwt, got: {}", cookie);
+        assert!(cookie.contains("HttpOnly"), "cookie must be HttpOnly, got: {}", cookie);
+        assert!(cookie.contains("SameSite=Strict"), "cookie must be SameSite=Strict, got: {}", cookie);
+        assert!(cookie.contains("Path=/api/v1"), "cookie must scope to /api/v1, got: {}", cookie);
+        assert!(cookie.contains("Max-Age=3600"), "cookie must match 1h access-token expiry, got: {}", cookie);
+    }
+
+    /// SECREVIEW-VULN-4 regression: bootstrap must attach the same
+    /// `__dilla_jwt` Set-Cookie header (same root cause as register).
+    #[tokio::test]
+    async fn bootstrap_sets_dilla_jwt_cookie_on_response() {
+        use base64::Engine as _;
+        use ed25519_dalek::{Signer, SigningKey};
+
+        let (state, _tmp) = make_state();
+        state.db.with_conn(|conn| {
+            crate::db::create_bootstrap_token(conn, "ck-bootstrap")
+        }).unwrap();
+
+        let signing_key = SigningKey::from_bytes(&[96u8; 32]);
+        let pk_bytes = signing_key.verifying_key().to_bytes();
+        let (nonce, challenge_id) = state.auth.generate_challenge().unwrap();
+        let signature = signing_key.sign(&nonce);
+        let pk_b64 = base64::engine::general_purpose::STANDARD.encode(pk_bytes);
+        let sig_b64 = base64::engine::general_purpose::STANDARD.encode(signature.to_bytes());
+
+        let body = format!(
+            r#"{{"username":"boot-ck","challenge_id":"{}","public_key":"{}","signature":"{}","bootstrap_token":"ck-bootstrap","team_name":"CkBoot"}}"#,
+            challenge_id, pk_b64, sig_b64
+        );
+        let app = Router::new()
+            .route("/auth/bootstrap", post(bootstrap))
+            .with_state(state);
+        let resp = app
+            .oneshot(
+                Request::post("/auth/bootstrap")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+        let cookie = resp
+            .headers()
+            .get(axum::http::header::SET_COOKIE)
+            .and_then(|v| v.to_str().ok())
+            .expect("bootstrap response must carry a Set-Cookie header")
+            .to_string();
+        assert!(cookie.starts_with("__dilla_jwt="), "cookie name must be __dilla_jwt, got: {}", cookie);
+        assert!(cookie.contains("HttpOnly"), "cookie must be HttpOnly, got: {}", cookie);
+        assert!(cookie.contains("SameSite=Strict"), "cookie must be SameSite=Strict, got: {}", cookie);
+        assert!(cookie.contains("Path=/api/v1"), "cookie must scope to /api/v1, got: {}", cookie);
+        assert!(cookie.contains("Max-Age=3600"), "cookie must match 1h access-token expiry, got: {}", cookie);
     }
 
     #[tokio::test]
