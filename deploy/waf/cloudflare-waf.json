@@ -1,0 +1,68 @@
+{
+  "_comment": "Dilla — Cloudflare WAF Custom Rules. Import via the Cloudflare API: POST /zones/{zone_id}/rulesets. These rules complement the OWASP CRS rules in deploy/waf/caddy-crs.snippet — Cloudflare WAF runs at the edge; CRS runs on the origin. Tested-with: Cloudflare WAF (Free + Pro), Apr 2026.",
+  "name": "dilla-waf",
+  "kind": "zone",
+  "phase": "http_request_firewall_custom",
+  "rules": [
+    {
+      "_comment": "1. Block requests to /api/v1/debug/browser-log from the public internet. The endpoint exists only for local dev; a real client never hits it. R-11 in 03-architecture-review.md also requires JWT, but blocking at the edge is cheaper than authenticating.",
+      "description": "block public access to debug browser-log",
+      "expression": "http.request.uri.path eq \"/api/v1/debug/browser-log\"",
+      "action": "block"
+    },
+    {
+      "_comment": "2. Rate-limit /api/v1/auth/* to 60 req/min/IP. The server already does this via tower_governor; Cloudflare does it before the request crosses the Atlantic.",
+      "description": "rate-limit auth surface",
+      "expression": "starts_with(http.request.uri.path, \"/api/v1/auth/\") or starts_with(http.request.uri.path, \"/api/v1/devices/\")",
+      "action": "block",
+      "ratelimit": {
+        "characteristics": ["ip.src"],
+        "period": 60,
+        "requests_per_period": 60,
+        "mitigation_timeout": 600
+      }
+    },
+    {
+      "_comment": "3. Rate-limit prekey lookups (R-07 / VULN-006 — global-user-deanon path).",
+      "description": "rate-limit prekey enumeration",
+      "expression": "starts_with(http.request.uri.path, \"/api/v1/prekeys/\")",
+      "action": "managed_challenge",
+      "ratelimit": {
+        "characteristics": ["ip.src"],
+        "period": 60,
+        "requests_per_period": 30,
+        "mitigation_timeout": 3600
+      }
+    },
+    {
+      "_comment": "4. Block requests with no User-Agent. Real clients always send one; absence is a strong bot signal.",
+      "description": "block empty user-agent",
+      "expression": "(http.user_agent eq \"\") and not starts_with(http.request.uri.path, \"/.well-known/acme-challenge/\")",
+      "action": "block"
+    },
+    {
+      "_comment": "5. Challenge known bad bot UAs. cf.client.bot covers verified bots (Googlebot etc.); we block the rest.",
+      "description": "challenge bad bots",
+      "expression": "(cf.threat_score gt 30) or (http.user_agent contains \"masscan\") or (http.user_agent contains \"zgrab\") or (http.user_agent contains \"sqlmap\") or (http.user_agent contains \"nikto\")",
+      "action": "managed_challenge"
+    },
+    {
+      "_comment": "6. Block sensitive paths from non-cf.client.bot anonymous proxies. The federation port is on WG, but defense-in-depth at the edge for the public API.",
+      "description": "block tor + open proxies on auth surface",
+      "expression": "(starts_with(http.request.uri.path, \"/api/v1/auth/\")) and (ip.src.country eq \"T1\" or cf.client.bot eq false and cf.threat_score gt 50)",
+      "action": "managed_challenge"
+    },
+    {
+      "_comment": "7. Block request bodies > 60 MiB. The reverse proxy caps at 50 MiB; this is a belt-and-braces at the edge to prevent slow-loris-with-body attacks.",
+      "description": "block oversized request body",
+      "expression": "http.request.body.size gt 62914560",
+      "action": "block"
+    },
+    {
+      "_comment": "8. Drop common scanner paths. dilla-server doesn't serve any of these; let the edge eat the traffic.",
+      "description": "drop scanner paths",
+      "expression": "http.request.uri.path in {\"/.env\" \"/.git/config\" \"/wp-admin\" \"/wp-login.php\" \"/xmlrpc.php\" \"/admin.php\" \"/phpmyadmin\" \"/.aws/credentials\"}",
+      "action": "block"
+    }
+  ]
+}

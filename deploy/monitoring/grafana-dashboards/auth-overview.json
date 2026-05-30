@@ -1,0 +1,178 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Dilla auth surface — login success/failure, refresh, device enrollment, risk score timeline. Pairs with deploy/monitoring/playbooks/auth-brute-force.md and stolen-jwt.md.",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 38,
+  "tags": ["dilla", "security", "auth"],
+  "templating": {
+    "list": [
+      {
+        "name": "ds_loki",
+        "type": "datasource",
+        "query": "loki",
+        "current": { "selected": false, "text": "Loki", "value": "loki-placeholder-uid" },
+        "hide": 0
+      },
+      {
+        "name": "ds_prom",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "selected": false, "text": "Prometheus", "value": "prom-placeholder-uid" },
+        "hide": 0
+      },
+      {
+        "name": "team_id",
+        "type": "query",
+        "datasource": { "type": "loki", "uid": "${ds_loki}" },
+        "query": "label_values({job=\"dilla-audit\"}, team_id)",
+        "includeAll": true,
+        "multi": true,
+        "current": { "selected": false, "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "title": "Dilla — auth overview",
+  "uid": "dilla-auth-overview",
+  "version": 1,
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Login outcomes / min",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "loki", "uid": "${ds_loki}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate({job=\"dilla-audit\", action=\"auth.login\"} | json | __error__ = \"\" [1m])) * 60",
+          "legendFormat": "auth.login"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate({job=\"dilla-audit\", action=\"auth.login_failed\"} | json | __error__ = \"\" [1m])) * 60",
+          "legendFormat": "auth.login_failed"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Token refresh / min (sliding-refresh design)",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "loki", "uid": "${ds_loki}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate({job=\"dilla-audit\", action=\"auth.token_refresh\"} | json | __error__ = \"\" [1m])) * 60",
+          "legendFormat": "refresh"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Login-failure rate (5m)",
+      "gridPos": { "x": 0, "y": 8, "w": 6, "h": 6 },
+      "datasource": { "type": "loki", "uid": "${ds_loki}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate({job=\"dilla-audit\", action=\"auth.login_failed\"} | json | __error__ = \"\" [5m]))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.1 },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Distinct failing IPs (5m)",
+      "gridPos": { "x": 6, "y": 8, "w": 6, "h": 6 },
+      "datasource": { "type": "loki", "uid": "${ds_loki}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count(count by (ip) (count_over_time({job=\"dilla-audit\", action=\"auth.login_failed\"} | json | __error__ = \"\" [5m])))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 10 },
+              { "color": "red", "value": 30 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Device enrollments / hour",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "loki", "uid": "${ds_loki}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (team_id) (rate({job=\"dilla-audit\", action=\"device.enrolled\", team_id=~\"$team_id\"} | json | __error__ = \"\" [5m])) * 3600",
+          "legendFormat": "team={{team_id}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Device risk-event score timeline",
+      "gridPos": { "x": 0, "y": 16, "w": 24, "h": 8 },
+      "datasource": { "type": "loki", "uid": "${ds_loki}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{job=\"dilla-audit\", action=\"device.risk_event\"} | json | __error__ = \"\" | unwrap risk_score",
+          "legendFormat": "user={{user_id}} did={{device_id}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Active devices per user (top 20)",
+      "gridPos": { "x": 0, "y": 24, "w": 24, "h": 8 },
+      "datasource": { "type": "loki", "uid": "${ds_loki}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "topk(20, sum by (user_id) (count by (user_id, device_id) (count_over_time({job=\"dilla-audit\"} | json | __error__ = \"\" [24h]))))"
+        }
+      ]
+    }
+  ]
+}

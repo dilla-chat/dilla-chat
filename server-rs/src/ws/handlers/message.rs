@@ -2,6 +2,128 @@ use crate::db;
 use crate::ws::events::*;
 use crate::ws::hub::Hub;
 
+/// Verify the channel belongs to the user's team AND the user's roles
+/// intersect the channel's access list. Extracted from
+/// `handle_message_send` to keep its cognitive complexity below the
+/// rule threshold.
+async fn check_channel_access(hub: &Hub, channel_id: &str, team_id: &str, user_id: &str) -> bool {
+    let db = hub.db.clone();
+    let cid = channel_id.to_string();
+    let tid = team_id.to_string();
+    let uid = user_id.to_string();
+    tokio::task::spawn_blocking(move || {
+        db.with_conn(|conn| {
+            let channel = db::get_channel_by_id(conn, &cid)?;
+            let belongs = matches!(channel, Some(ref ch) if ch.team_id == tid);
+            if !belongs {
+                return Ok::<bool, rusqlite::Error>(false);
+            }
+            db::user_can_access_channel(conn, &uid, &tid, &cid)
+        })
+    })
+    .await
+    .unwrap_or(Ok(false))
+    .unwrap_or(false)
+}
+
+/// Compute how many seconds the caller must still wait under slow mode,
+/// or `None` when slow mode is off / the caller has bypass permission /
+/// the wait window has already elapsed.
+async fn compute_slow_mode_block(
+    hub: &Hub,
+    channel_id: &str,
+    team_id: &str,
+    user_id: &str,
+) -> Option<i64> {
+    let db_sm = hub.db.clone();
+    let cid_sm = channel_id.to_string();
+    let uid_sm = user_id.to_string();
+    let tid_sm = team_id.to_string();
+    tokio::task::spawn_blocking(move || -> Option<i64> {
+        db_sm.with_read(|conn| {
+            let secs: i32 = conn
+                .query_row(
+                    "SELECT slow_mode_seconds FROM channels WHERE id = ?1",
+                    rusqlite::params![cid_sm],
+                    |row| row.get(0),
+                )
+                .unwrap_or(0);
+            if secs <= 0 { return Ok::<_, rusqlite::Error>(None); }
+            let bypass = db::user_has_permission(conn, &uid_sm, &tid_sm, db::PERM_BYPASS_SLOW_MODE)
+                .unwrap_or(false);
+            if bypass { return Ok::<_, rusqlite::Error>(None); }
+            let last_ts: Option<i64> = conn
+                .query_row(
+                    "SELECT strftime('%s', created_at) FROM messages
+                     WHERE channel_id = ?1 AND author_id = ?2 AND deleted = 0
+                     ORDER BY created_at DESC LIMIT 1",
+                    rusqlite::params![cid_sm, uid_sm],
+                    |row| row.get::<_, Option<String>>(0).map(|s| s.and_then(|x| x.parse::<i64>().ok())),
+                )
+                .unwrap_or(None);
+            let now_ts: i64 = conn
+                .query_row("SELECT strftime('%s','now')", [], |row| {
+                    row.get::<_, String>(0).map(|s| s.parse::<i64>().unwrap_or(0))
+                })
+                .unwrap_or(0);
+            if let Some(last) = last_ts {
+                let remaining = secs as i64 - (now_ts - last);
+                if remaining > 0 { return Ok::<_, rusqlite::Error>(Some(remaining)); }
+            }
+            Ok::<_, rusqlite::Error>(None)
+        })
+        .unwrap_or(None)
+    })
+    .await
+    .unwrap_or(None)
+}
+
+async fn send_slow_mode_rejection(hub: &Hub, user_id: &str, channel_id: &str, remaining: i64) {
+    if let Ok(evt) = Event::new(
+        "message:rejected",
+        serde_json::json!({
+            "channel_id": channel_id,
+            "reason": "slow_mode",
+            "retry_in": remaining,
+        }),
+    ) {
+        if let Ok(bytes) = evt.to_bytes() {
+            hub.send_to_user(user_id, bytes).await;
+        }
+    }
+}
+
+/// Insert the message row and link its uploaded attachments. Returns
+/// false on a DB failure so the caller can bail without continuing the
+/// broadcast pipeline.
+async fn persist_message_and_attachments(
+    hub: &Hub,
+    msg: db::Message,
+    attachment_ids: Vec<String>,
+) -> bool {
+    let db = hub.db.clone();
+    let mid_for_attach = msg.id.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        db.with_conn(|conn| {
+            db::create_message(conn, &msg)?;
+            for att_id in &attachment_ids {
+                conn.execute(
+                    "UPDATE attachments SET message_id = ?1 WHERE id = ?2",
+                    rusqlite::params![mid_for_attach, att_id],
+                )?;
+            }
+            Ok::<(), rusqlite::Error>(())
+        })
+    })
+    .await
+    .unwrap();
+    if let Err(e) = result {
+        tracing::error!("failed to create message: {}", e);
+        return false;
+    }
+    true
+}
+
 pub(in crate::ws) async fn handle_message_send(
     hub: &Hub,
     _client_id: &str,
@@ -18,41 +140,27 @@ pub(in crate::ws) async fn handle_message_send(
         }
     };
 
-    // Verify the channel belongs to the user's team before creating the message.
-    let db = hub.db.clone();
-    let cid = p.channel_id.clone();
-    let tid = team_id.to_string();
-    let channel_ok = tokio::task::spawn_blocking(move || {
-        db.with_conn(|conn| {
-            let channel = db::get_channel_by_id(conn, &cid)?;
-            match channel {
-                Some(ch) if ch.team_id == tid => Ok(true),
-                Some(_) => Ok(false),
-                None => Ok(false),
-            }
-        })
-    })
-    .await
-    .unwrap_or(Ok(false))
-    .unwrap_or(false);
-
-    if !channel_ok {
+    if !check_channel_access(hub, &p.channel_id, team_id, user_id).await {
         tracing::warn!(
             user_id = user_id,
             channel_id = %p.channel_id,
             team_id = team_id,
-            "message:send denied — channel does not belong to user's team"
+            "message:send denied — access denied for channel"
         );
+        return;
+    }
+
+    let slow_mode_block = compute_slow_mode_block(hub, &p.channel_id, team_id, user_id).await;
+
+    if let Some(remaining) = slow_mode_block {
+        tracing::info!(user_id, channel_id = %p.channel_id, "message:send denied — slow mode active");
+        send_slow_mode_rejection(hub, user_id, &p.channel_id, remaining).await;
         return;
     }
 
     let msg_id = db::new_id();
     let now = db::now_str();
-    let msg_type = if p.msg_type.is_empty() {
-        "text".to_string()
-    } else {
-        p.msg_type
-    };
+    let msg_type = if p.msg_type.is_empty() { "text".to_string() } else { p.msg_type };
 
     let msg = db::Message {
         id: msg_id.clone(),
@@ -65,31 +173,11 @@ pub(in crate::ws) async fn handle_message_send(
         edited_at: None,
         deleted: false,
         lamport_ts: 0,
+        reply_to_message_id: p.reply_to_message_id.clone(),
         created_at: now.clone(),
     };
 
-    let db = hub.db.clone();
-    let msg_clone = msg.clone();
-    let attachment_ids = p.attachment_ids.clone();
-    let mid_for_attach = msg_id.clone();
-    if let Err(e) =
-        tokio::task::spawn_blocking(move || {
-            db.with_conn(|conn| {
-                db::create_message(conn, &msg_clone)?;
-                // Link uploaded attachments to this message
-                for att_id in &attachment_ids {
-                    conn.execute(
-                        "UPDATE attachments SET message_id = ?1 WHERE id = ?2",
-                        rusqlite::params![mid_for_attach, att_id],
-                    )?;
-                }
-                Ok::<(), rusqlite::Error>(())
-            })
-        })
-            .await
-            .unwrap()
-    {
-        tracing::error!("failed to create message: {}", e);
+    if !persist_message_and_attachments(hub, msg.clone(), p.attachment_ids.clone()).await {
         return;
     }
 
@@ -124,6 +212,7 @@ pub(in crate::ws) async fn handle_message_send(
             content: p.content,
             msg_type,
             thread_id: p.thread_id.unwrap_or_default(),
+            reply_to_message_id: p.reply_to_message_id.clone(),
             created_at: now,
             attachments: attachment_payloads,
         },
@@ -141,6 +230,43 @@ pub(in crate::ws) async fn handle_message_send(
     });
 }
 
+fn apply_message_edit(
+    conn: &rusqlite::Connection,
+    message_id: &str,
+    new_content: &str,
+    actor_user_id: &str,
+) -> Result<bool, rusqlite::Error> {
+    let Some(msg) = db::get_message_by_id(conn, message_id)? else {
+        return Ok(false);
+    };
+    if msg.author_id != actor_user_id {
+        return Ok(false);
+    }
+    let is_noop = msg.content == new_content;
+    db::update_message_content(conn, message_id, new_content)?;
+    if is_noop {
+        return Ok(true);
+    }
+    // Resolve team via channel to populate the audit row. DM-channel
+    // edits skip the audit log — dm_channels has its own audit story.
+    if let Ok(Some(channel)) = db::get_channel_by_id(conn, &msg.channel_id) {
+        let details = serde_json::json!({
+            "channel_id": msg.channel_id,
+            "edited_at": db::now_str(),
+        });
+        let _ = db::insert_audit_event(
+            conn,
+            &channel.team_id,
+            Some(actor_user_id),
+            "message.edit",
+            Some("message"),
+            Some(message_id),
+            Some(&details),
+        );
+    }
+    Ok(true)
+}
+
 pub(in crate::ws) async fn handle_message_edit(hub: &Hub, user_id: &str, payload: serde_json::Value) {
     let p: MessageEditPayload = match serde_json::from_value(payload) {
         Ok(p) => p,
@@ -155,15 +281,7 @@ pub(in crate::ws) async fn handle_message_edit(hub: &Hub, user_id: &str, payload
     let content = p.content.clone();
     let uid = user_id.to_string();
     let edited = tokio::task::spawn_blocking(move || {
-        db.with_conn(|conn| {
-            if let Ok(Some(msg)) = db::get_message_by_id(conn, &mid) {
-                if msg.author_id == uid {
-                    db::update_message_content(conn, &mid, &content)?;
-                    return Ok(true);
-                }
-            }
-            Ok(false)
-        })
+        db.with_conn(|conn| apply_message_edit(conn, &mid, &content, &uid))
     })
     .await
     .unwrap_or(Ok(false))
@@ -187,6 +305,37 @@ pub(in crate::ws) async fn handle_message_edit(hub: &Hub, user_id: &str, payload
     });
 }
 
+fn apply_message_delete(
+    conn: &rusqlite::Connection,
+    message_id: &str,
+    actor_user_id: &str,
+) -> Result<bool, rusqlite::Error> {
+    let Some(msg) = db::get_message_by_id(conn, message_id)? else {
+        return Ok(false);
+    };
+    // Idempotence — don't double-log a soft-delete. H5 / MSG-AUDIT-1.
+    if msg.deleted || msg.author_id != actor_user_id {
+        return Ok(false);
+    }
+    db::soft_delete_message(conn, message_id)?;
+    if let Ok(Some(channel)) = db::get_channel_by_id(conn, &msg.channel_id) {
+        let details = serde_json::json!({
+            "channel_id": msg.channel_id,
+            "deleted_at": db::now_str(),
+        });
+        let _ = db::insert_audit_event(
+            conn,
+            &channel.team_id,
+            Some(actor_user_id),
+            "message.delete",
+            Some("message"),
+            Some(message_id),
+            Some(&details),
+        );
+    }
+    Ok(true)
+}
+
 pub(in crate::ws) async fn handle_message_delete(hub: &Hub, user_id: &str, payload: serde_json::Value) {
     let p: MessageDeletePayload = match serde_json::from_value(payload) {
         Ok(p) => p,
@@ -200,15 +349,7 @@ pub(in crate::ws) async fn handle_message_delete(hub: &Hub, user_id: &str, paylo
     let mid = p.message_id.clone();
     let uid = user_id.to_string();
     let deleted = tokio::task::spawn_blocking(move || {
-        db.with_conn(|conn| {
-            if let Ok(Some(msg)) = db::get_message_by_id(conn, &mid) {
-                if msg.author_id == uid {
-                    db::soft_delete_message(conn, &mid)?;
-                    return Ok(true);
-                }
-            }
-            Ok(false)
-        })
+        db.with_conn(|conn| apply_message_delete(conn, &mid, &uid))
     })
     .await
     .unwrap_or(Ok(false))
@@ -236,12 +377,27 @@ pub(in crate::ws) async fn handle_typing(
     client_id: &str,
     user_id: &str,
     username: &str,
+    team_id: &str,
     payload: serde_json::Value,
 ) {
     let p: ChannelJoinPayload = match serde_json::from_value(payload) {
         Ok(p) => p,
         Err(_) => return,
     };
+
+    // Same authorization gate as channel:join. Without this, an attacker
+    // with a valid JWT could spray typing indicators into private
+    // channels they can't read, leaking who-is-watching-what.
+    if !crate::ws::client::user_can_subscribe_to_channel(hub, user_id, team_id, &p.channel_id)
+        .await
+    {
+        tracing::debug!(
+            user_id = user_id,
+            channel_id = %p.channel_id,
+            "typing event denied — access check failed"
+        );
+        return;
+    }
 
     let throttle_key = format!("{}:{}", p.channel_id, user_id);
     let now = chrono::Utc::now().timestamp();

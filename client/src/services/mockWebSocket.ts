@@ -1,4 +1,8 @@
-import { MOCK_USERS, RANDOM_MESSAGES, DEMO_CURRENT_USER_ID } from './mockData';
+import {
+  MOCK_USERS, RANDOM_MESSAGES, DEMO_CURRENT_USER_ID, DEMO_TEAM_ID,
+  MOCK_TEAM, MOCK_CHANNELS, MOCK_MEMBERS, MOCK_ROLES, MOCK_GROUPS,
+  MOCK_PRESENCES, MOCK_VOICE_STATES,
+} from './mockData';
 
 type EventHandler = (payload: unknown) => void;
 
@@ -10,23 +14,83 @@ export class MockWebSocketService {
   private readonly handlers: Map<string, Set<EventHandler>> = new Map();
   private timers: ReturnType<typeof setTimeout>[] = [];
   private running = false;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private peerApi: any = null;
 
-  connect(_teamId: string, _url: string, _token: string): void {
+  /** Link to the mockApi so request() can delegate per-action loads
+   *  (messages:list, dms:list, threads:list, etc.) to the same fixture
+   *  store the api serves over REST. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  setPeerApi(api: any): void { this.peerApi = api; }
+
+  connect(teamId: string, _url: string, _token: string): void {
     if (this.running) return;
     this.running = true;
 
     // Emit a connected event
-    setTimeout(() => this.emit('ws:connected', { teamId: 'demo-team' }), 100);
+    setTimeout(() => this.emit('ws:connected', { teamId: teamId || DEMO_TEAM_ID }), 100);
 
     this.scheduleTyping();
     this.scheduleNewMessage();
     this.schedulePresenceChange();
   }
 
+  /** Real ws exposes connectWithParams for ticket-based auth; mock aliases it. */
+  connectWithParams(
+    teamId: string,
+    url: string,
+    authParam: string,
+    _refreshAuth?: () => Promise<string>,
+  ): void {
+    this.connect(teamId, url, authParam);
+  }
+
   disconnect(_teamId?: string): void {
     this.running = false;
     for (const t of this.timers) clearTimeout(t);
     this.timers = [];
+  }
+
+  /** Real ws lets useTeamSync tear down on auth failure / logout. */
+  disconnectAll(): void {
+    this.disconnect();
+  }
+
+  isConnected(_teamId: string): boolean {
+    return this.running;
+  }
+
+  flushPendingMessages(_teamId: string): void { /* noop — mock send is synchronous */ }
+
+  /** Mirrors the real ws.request(): useTeamSync calls ws.request('sync:init')
+   *  to fetch the full team snapshot; ChannelView / DMView / ThreadPanel call
+   *  it for per-channel history. Delegates to the linked mockApi so both
+   *  WS-fast-path and REST-fallback paths return the same fixture. */
+  async request<T = unknown>(teamId: string, action: string, payload: Record<string, unknown> = {}): Promise<T> {
+    if (action === 'sync:init') {
+      return buildSyncInitPayload() as T;
+    }
+    const api = this.peerApi;
+    if (!api) return {} as T;
+    const channelId = payload.channel_id as string;
+    const threadId = payload.thread_id as string;
+    const dmId = payload.dm_id as string;
+    const limit = payload.limit as number | undefined;
+    const before = payload.before as string | undefined;
+    switch (action) {
+      case 'messages:list':
+        return api.getMessages(teamId, channelId, limit, before) as T;
+      case 'threads:list':
+        return api.getChannelThreads(teamId, channelId) as T;
+      case 'threads:messages':
+        return api.getThreadMessages(teamId, threadId) as T;
+      case 'dms:list':
+        return { dm_channels: await api.getDMChannels() } as T;
+      case 'dms:messages':
+        return api.getDMMessages(teamId, dmId) as T;
+      default:
+        return {} as T;
+    }
   }
 
   on(eventType: string, handler: EventHandler): () => void {
@@ -162,4 +226,36 @@ export class MockWebSocketService {
     const t = setTimeout(run, this.randomDelay(15, 25));
     this.timers.push(t);
   }
+}
+
+/** Build the sync:init response that the real server emits, populated from
+ *  the demo fixtures. Channels carry teamId; members are flat-shape (already
+ *  normalized); presences are keyed by user_id; voice_states by channel_id. */
+function buildSyncInitPayload() {
+  return {
+    team: MOCK_TEAM,
+    channels: MOCK_CHANNELS.map((ch) => ({ ...ch, team_id: DEMO_TEAM_ID, group_id: ch.groupId ?? null })),
+    // The real server sends role_ids per member (it doesn't echo full
+    // role objects); the normalizer in useTeamSync reads role_ids and
+    // resolves them against the roles table. The fixtures held a roles
+    // array of objects for ergonomics so normalize them here — without
+    // this, mock alice ended up with zero permissions and admin menu
+    // items were silently hidden for her.
+    members: MOCK_MEMBERS.map((m) => ({
+      ...m,
+      role_ids: m.roles?.map((r: { id: string }) => r.id) ?? [],
+    })),
+    roles: MOCK_ROLES,
+    groups: MOCK_GROUPS.map((g) => ({
+      id: g.id, team_id: g.teamId, name: g.name, position: g.position,
+      access_role_ids: g.accessRoleIds, hidden_if_restricted: g.hiddenIfRestricted,
+    })),
+    presences: MOCK_PRESENCES,
+    voice_states: MOCK_VOICE_STATES,
+    unread_counts: {},
+    // Pins start empty in the demo; the user can pin via the message
+    // context menu and the mock api keeps state in-memory.
+    pins: [] as Array<{ channel_id: string; message_id: string }>,
+    blocked_user_ids: [] as string[],
+  };
 }

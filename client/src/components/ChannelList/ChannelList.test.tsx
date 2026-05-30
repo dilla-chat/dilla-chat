@@ -69,7 +69,8 @@ describe('ChannelList', () => {
 
   it('renders section headers', () => {
     render(<ChannelList />);
-    expect(screen.getByText('CHANNELS')).toBeInTheDocument();
+    // Mesh redesign labels the text-channels group "Kanals" (uppercased via CSS)
+    expect(screen.getByText('Kanals')).toBeInTheDocument();
   });
 
   it('marks active channel', () => {
@@ -99,7 +100,8 @@ describe('ChannelList', () => {
       },
     });
     render(<ChannelList />);
-    expect(screen.getByText('ACTIVE VOICE')).toBeInTheDocument();
+    // Uppercase styling is CSS; DOM text is the en.json string "Active voice".
+    expect(screen.getByText('Active voice')).toBeInTheDocument();
   });
 
   it('renders add button when onCreateChannel is provided', () => {
@@ -187,7 +189,7 @@ describe('ChannelList', () => {
     useUnreadStore.setState({ counts: { 'ch-1': 5 } });
     render(<ChannelList />);
     expect(screen.getByText('UNREAD')).toBeInTheDocument();
-    expect(screen.getByText('CHANNELS')).toBeInTheDocument();
+    expect(screen.getByText('Kanals')).toBeInTheDocument();
     expect(screen.getByText('general')).toBeInTheDocument();
     expect(screen.getByText('voice-lobby')).toBeInTheDocument();
   });

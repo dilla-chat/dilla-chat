@@ -201,6 +201,8 @@ mod tests {
                 is_admin: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_team(conn, &db::Team {
                 id: "t1".into(),
@@ -210,8 +212,11 @@ mod tests {
                 created_by: "u1".into(),
                 max_file_size: 25 * 1024 * 1024,
                 allow_member_invites: true,
+                federated: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_member(conn, &db::Member {
                 id: "m1".into(),
@@ -244,6 +249,8 @@ mod tests {
                 is_admin: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_team(conn, &db::Team {
                 id: "t1".into(),
@@ -253,8 +260,11 @@ mod tests {
                 created_by: "u1".into(),
                 max_file_size: 25 * 1024 * 1024,
                 allow_member_invites: true,
+                federated: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             require_team_member(conn, "u1", "t1")
         });
@@ -280,6 +290,8 @@ mod tests {
                 is_admin: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_team(conn, &db::Team {
                 id: "t1".into(),
@@ -289,8 +301,11 @@ mod tests {
                 created_by: "u1".into(),
                 max_file_size: 25 * 1024 * 1024,
                 allow_member_invites: true,
+                federated: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             require_permission(conn, "u1", "t1", db::PERM_MANAGE_CHANNELS)
         })
@@ -314,6 +329,8 @@ mod tests {
                 is_admin: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_user(conn, &db::User {
                 id: "u2".into(),
@@ -326,6 +343,8 @@ mod tests {
                 is_admin: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_team(conn, &db::Team {
                 id: "t1".into(),
@@ -335,8 +354,11 @@ mod tests {
                 created_by: "u1".into(),
                 max_file_size: 25 * 1024 * 1024,
                 allow_member_invites: true,
+                federated: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_member(conn, &db::Member {
                 id: "m1".into(),

@@ -1,20 +1,8 @@
-.member-list {
-  width: var(--member-sidebar-width);
-  background: var(--bg-secondary);
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  padding: var(--spacing-xl) 0 var(--spacing-sm);
-  box-shadow: -1px 0 0 var(--divider);
-}
 
 .member-list-header {
   padding: 0 var(--spacing-lg) var(--spacing-lg);
 }
 
-.member-role-group {
-  padding-top: var(--spacing-lg);
-}
 
 .member-role-header {
   padding: 0 var(--spacing-sm) var(--spacing-xs) var(--spacing-lg);
@@ -23,66 +11,29 @@
   gap: var(--spacing-xs);
 }
 
-.member-item {
-  background: none;
-  border: none;
-  width: calc(100% - var(--spacing-lg));
-  text-align: left;
-  font-family: inherit;
-  font-size: inherit;
-  color: inherit;
-  display: flex;
-  align-items: center;
-  padding: var(--spacing-xs) var(--spacing-md);
-  margin: var(--spacing-xs) var(--spacing-sm) 0;
-  gap: var(--spacing-md);
-  cursor: pointer;
-  border-radius: var(--radius-md);
-  height: 42px;
-  box-sizing: border-box;
-  outline: none;
-  transition: background-color var(--duration-fast) var(--ease-out);
-}
 
 .member-item:focus-visible {
   background: var(--bg-modifier-hover);
-  box-shadow: inset 0 0 0 1px var(--brand-alpha-25);
+  box-shadow: inset 0 0 0 0.0625rem var(--brand-alpha-25);
 }
 
-.member-item:hover {
-  background: var(--bg-modifier-hover);
-}
 
 .member-item.offline {
   opacity: 0.5;
 }
 
-.member-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-md);
-  background: var(--bg-accent);
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--font-size-base);
-  font-weight: var(--font-weight-medium);
-  flex-shrink: 0;
-  position: relative;
-}
 
 .member-avatar[data-status="online"]::after,
 .member-avatar[data-status="idle"]::after,
 .member-avatar[data-status="dnd"]::after {
   content: '';
   position: absolute;
-  bottom: -2px;
-  right: -2px;
-  width: 12px;
-  height: 12px;
+  bottom: -0.125rem;
+  right: -0.125rem;
+  width: 0.75rem;
+  height: 0.75rem;
   border-radius: var(--radius-full);
-  border: 2px solid var(--bg-secondary);
+  border: 0.125rem solid var(--bg-secondary);
   box-sizing: border-box;
 }
 
@@ -111,7 +62,7 @@
   font-size: 1rem;
   font-weight: 500;
   color: var(--interactive-normal);
-  line-height: 18px;
+  line-height: 1.125rem;
 }
 
 .member-item:hover .member-display-name {
@@ -119,7 +70,7 @@
 }
 
 .member-custom-status {
-  line-height: 13px;
+  line-height: 0.8125rem;
 }
 
 .member-profile-popup {
@@ -127,11 +78,11 @@
   background: var(--glass-bg-floating);
   -webkit-backdrop-filter: blur(var(--glass-blur-heavy));
   backdrop-filter: blur(var(--glass-blur-heavy));
-  border: 1px solid var(--glass-border);
+  border: 0.0625rem solid var(--glass-border);
   box-shadow: var(--glass-shadow-elevated);
   border-radius: var(--radius-lg);
   padding: var(--spacing-lg);
-  width: 340px;
+  width: 21.25rem;
   z-index: 1000;
   color: var(--text-primary);
 }
@@ -144,15 +95,15 @@
 }
 
 .member-profile-avatar {
-  width: 80px;
-  height: 80px;
+  width: 5rem;
+  height: 5rem;
   border-radius: var(--radius-lg);
   background: var(--bg-accent);
   color: white;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 32px;
+  font-size: 2rem;
   font-weight: var(--font-weight-semibold);
   position: relative;
 }
@@ -192,25 +143,128 @@
 }
 
 .role-color-dot {
-  width: 12px;
-  height: 12px;
+  width: 0.75rem;
+  height: 0.75rem;
   border-radius: var(--radius-full);
 }
 
 /* ===== Responsive ===== */
-@media (max-width: 767px) {
+@media (max-width: 47.9375rem) {
   .member-list {
     width: 100%;
     border-left: none;
   }
 
   .member-profile-popup {
-    width: min(340px, calc(100vw - 32px));
+    width: min(21.25rem, calc(100vw - 2rem));
   }
 }
 
-@media (min-width: 768px) and (max-width: 1023px) {
+@media (min-width: 48rem) and (max-width: 63.9375rem) {
   .member-list {
-    width: 200px;
+    width: 12.5rem;
   }
+}
+
+/* ====================================================================
+   Mesh design — relocated from mesh-overrides.css. Single source of
+   truth; theming via tokens.
+   ==================================================================== */
+
+.member-list {
+  background: var(--bg-2);
+  font-family: var(--font-ui);
+  padding: 1rem 0.75rem 1.5rem;
+  box-shadow: none;
+  border-left: 0.0625rem solid var(--hairline);
+}
+
+.member-role-group {
+  padding-top: 0;
+}
+
+.member-list-section-title,
+.member-section-header,
+.member-role-header {
+  font-family: var(--font-mono);
+  font-size: 0.65625rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+  padding: 0.875rem 0.375rem 0.375rem;
+}
+
+.member-role-group:first-child .member-role-header {
+  padding-top: 0;
+}
+
+.member-item {
+  height: auto;
+  padding: 0.375rem;
+  margin: 0;
+  gap: 0.625rem;
+  width: 100%;
+  border-radius: var(--r-sm);
+  transition: background 0.1s;
+}
+
+.member-item:hover {
+  background: var(--surface-hi);
+}
+
+.member-avatar {
+  width: 1.75rem;
+  height: 1.75rem;
+  font-size: 0.6875rem;
+  border-radius: var(--r-md);
+  color: var(--accent-ink);
+  font-family: var(--font-display);
+  /* bg is set inline via usernameColor(member.username); no fallback
+     here so the per-user color shows through instead of a uniform gray. */
+}
+
+.member-row,
+.member-item {
+  font-family: var(--font-ui);
+  color: var(--fg-2);
+  border-radius: var(--r-sm);
+}
+
+.member-row:hover,
+.member-item:hover {
+  background: var(--surface-hi, var(--surface-2));
+  color: var(--fg);
+}
+
+.member-name,
+.member-display-name {
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 0.8125rem;
+  color: var(--fg);
+  letter-spacing: 0;
+  text-transform: none;
+  line-height: 1.2;
+}
+
+.member-status,
+.member-custom-status {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--fg-3);
+}
+
+.member-federated-tag {
+  font-family: var(--font-mono);
+  font-size: 0.5625rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: var(--surface-2);
+  border: 0.0625rem solid var(--warn);
+  color: var(--warn);
+  border-radius: var(--r-sm);
+  padding: 0.0625rem 0.3125rem;
 }

@@ -1,0 +1,140 @@
+# Dilla — Alertmanager routing
+#
+# Consumes alerts emitted by the Loki ruler and Prometheus from
+# `deploy/monitoring/correlation-rules.yaml`.
+#
+# Routing strategy:
+#   - severity=critical | high  → page on-call (PagerDuty / Opsgenie / matrix-bot)
+#   - severity=medium           → email + slack-bot (low-friction inbox)
+#   - severity=low              → log only (Alertmanager keeps history; no page)
+#
+# `group_by: [team_id]` so a multi-tenant operator doesn't get spam from one
+# noisy tenant — pages for team A coalesce, pages for team B coalesce
+# separately.
+#
+# All keys/URLs below are PLACEHOLDERS. Replace before deploying.
+
+global:
+  resolve_timeout: 5m
+  # Set if using SMTP for the medium-severity lane:
+  smtp_smarthost: 'smtp.example.com:587'
+  smtp_from: 'alerts@example.com'
+  smtp_auth_username: 'REPLACE_ME'
+  smtp_auth_password: 'REPLACE_ME'
+  smtp_require_tls: true
+
+# ---------------------------------------------------------------------------
+# Templates
+# ---------------------------------------------------------------------------
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+# ---------------------------------------------------------------------------
+# Routing tree
+# ---------------------------------------------------------------------------
+route:
+  receiver: default-log-only
+  group_by: ['team_id', 'alertname']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+  routes:
+    # ---- Critical ---------------------------------------------------------
+    - matchers:
+        - severity = critical
+      receiver: pager-critical
+      group_wait: 10s
+      repeat_interval: 30m
+      continue: true  # also fan out to slack for visibility
+
+    # ---- High -------------------------------------------------------------
+    - matchers:
+        - severity = high
+      receiver: pager-high
+      group_wait: 30s
+      repeat_interval: 1h
+      continue: true
+
+    # ---- Medium -----------------------------------------------------------
+    - matchers:
+        - severity = medium
+      receiver: medium-inbox
+      group_wait: 1m
+      repeat_interval: 12h
+
+    # ---- Low (default) ----------------------------------------------------
+    - matchers:
+        - severity = low
+      receiver: default-log-only
+
+  # All-severity slack fan-out for cross-team visibility (continue=true above
+  # routes here as well).
+  # The slack channel becomes the audit-trail of "what fired today".
+
+# ---------------------------------------------------------------------------
+# Inhibition (suppress derivative alerts)
+# ---------------------------------------------------------------------------
+inhibit_rules:
+  # If a peer is being flooded (rule 5), the resulting DB-growth alert
+  # (rule 7) is a downstream effect — suppress it for the same team.
+  - source_matchers: [alertname = "FederationPeerFlood"]
+    target_matchers: [alertname = "DBGrowthAnomaly"]
+    equal: ['team_id']
+
+  # If a credential-stuffing alert is firing (rule 2), per-IP brute-force
+  # alerts (rule 1) are noise — they're the same incident.
+  - source_matchers: [alertname = "AuthCredentialStuffing"]
+    target_matchers: [alertname = "AuthBruteForceFromIP"]
+    equal: ['team_id']
+
+# ---------------------------------------------------------------------------
+# Receivers
+# ---------------------------------------------------------------------------
+receivers:
+
+  # --- Critical: page on-call -----------------------------------------------
+  # Pick ONE of pagerduty / opsgenie / matrix-bot below; comment the rest.
+  - name: pager-critical
+    pagerduty_configs:
+      - service_key: 'REPLACE_WITH_PD_INTEGRATION_KEY'
+        severity: 'critical'
+        description: '{{ template "dilla.title" . }}'
+        details:
+          firing: '{{ template "dilla.firing" . }}'
+          runbook: '{{ .CommonAnnotations.runbook_url }}'
+    # opsgenie_configs:
+    #   - api_key: 'REPLACE_WITH_OPSGENIE_KEY'
+    #     priority: 'P1'
+    # webhook_configs:  # matrix-bot pattern
+    #   - url: 'https://matrix-hookshot.example/dilla-alerts'
+    #     send_resolved: true
+
+  # --- High: page on-call (lower priority bucket) --------------------------
+  - name: pager-high
+    pagerduty_configs:
+      - service_key: 'REPLACE_WITH_PD_INTEGRATION_KEY'
+        severity: 'error'
+        description: '{{ template "dilla.title" . }}'
+    slack_configs:
+      - api_url: 'REPLACE_WITH_SLACK_WEBHOOK_URL'
+        channel: '#dilla-alerts'
+        send_resolved: true
+        title: '{{ template "dilla.title" . }}'
+        text: '{{ template "dilla.firing" . }}'
+
+  # --- Medium: email + slack-bot -------------------------------------------
+  - name: medium-inbox
+    email_configs:
+      - to: 'sec-ops@example.com'
+        send_resolved: true
+    slack_configs:
+      - api_url: 'REPLACE_WITH_SLACK_WEBHOOK_URL'
+        channel: '#dilla-alerts-low'
+        send_resolved: false
+
+  # --- Low: history only ----------------------------------------------------
+  - name: default-log-only
+    # No external channel. Alertmanager keeps the alert in its own UI/API
+    # for the weekly review (see RUNBOOK.md).
+    webhook_configs: []

@@ -12,8 +12,15 @@ interface VoiceStore {
   deafened: boolean;
   speaking: boolean;
   screenSharing: boolean;
+  /** The "primary" remote sharer for auto-focus purposes. With
+   *  multiple simultaneous sharers, this holds the latest one. UI
+   *  that lists all sharers should walk `peers` instead. */
   screenSharingUserId: string | null;
-  remoteScreenStream: MediaStream | null;
+  /** Per-user screen-share streams keyed by user_id — symmetric to
+   *  remoteWebcamStreams. Was previously a single MediaStream slot
+   *  which conflated peers and made "A stops sharing"
+   *  accidentally wipe B's stream on A's UI. */
+  remoteScreenStreams: Record<string, MediaStream>;
   localScreenStream: MediaStream | null;
   webcamSharing: boolean;
   localWebcamStream: MediaStream | null;
@@ -28,6 +35,20 @@ interface VoiceStore {
   peerConnection: RTCPeerConnection | null;
   localStream: MediaStream | null;
 
+  /** Rolling window of recent round-trip latencies (ms) to the SFU,
+   *  sampled by WebRTCService.startStatsPoller() every ~600ms. Cap
+   *  matches the sparkline bar count so the UI can render the
+   *  whole window directly. */
+  latencySamples: number[];
+  /** Rolling window of recent outbound audio bitrate (kbps), same
+   *  cadence and cap as latencySamples — drives the matching
+   *  voice-dock sparkline. */
+  bitrateSamples: number[];
+  /** Per-peer most-recent RTT in ms. Each peer publishes its own
+   *  measurement via the voice:latency WS event; this map is the
+   *  fan-out cache so any card can read latency for any user. */
+  peerLatencies: Record<string, number>;
+
   setE2eVoice(enabled: boolean): void;
   joinChannel(teamId: string, channelId: string): Promise<void>;
   leaveChannel(): void;
@@ -38,7 +59,7 @@ interface VoiceStore {
   setSpeaking(speaking: boolean): void;
   setScreenSharing(sharing: boolean): void;
   setScreenSharingUserId(userId: string | null): void;
-  setRemoteScreenStream(stream: MediaStream | null): void;
+  setRemoteScreenStream(userId: string, stream: MediaStream | null): void;
   setLocalScreenStream(stream: MediaStream | null): void;
   setWebcamSharing(sharing: boolean): void;
   setLocalWebcamStream(stream: MediaStream | null): void;
@@ -55,7 +76,63 @@ interface VoiceStore {
   addVoiceOccupant(channelId: string, peer: VoicePeer): void;
   removeVoiceOccupant(channelId: string, userId: string): void;
   updateVoiceOccupant(channelId: string, userId: string, patch: Partial<VoicePeer>): void;
+  pushLatencySample(ms: number): void;
+  pushBitrateSample(kbps: number): void;
+  setPeerLatency(userId: string, ms: number): void;
+  resetStatsWindow(): void;
   cleanup(): void;
+}
+
+const LATENCY_WINDOW_SIZE = 28;
+
+type VoiceSet = (
+  partial: VoiceStore | Partial<VoiceStore> | ((state: VoiceStore) => VoiceStore | Partial<VoiceStore>),
+  replace?: false,
+) => void;
+
+/** Tear down the channel the caller is currently in (or trying to join)
+ *  so joinChannel can switch cleanly. Pulls self out of the prev
+ *  channel's voiceOccupants and resets all per-session voice state. */
+async function tearDownCurrentVoiceChannel(state: VoiceStore, set: VoiceSet): Promise<void> {
+  set({ connecting: true });
+  try {
+    const { webrtcService } = await import('../services/webrtc');
+    await webrtcService.disconnect();
+  } catch {
+    // ignore disconnect errors
+  }
+  // Pull self out of voiceOccupants[oldChannel] locally — mirrors what
+  // leaveChannel does for the explicit leave path.
+  const prevChannelId = state.currentChannelId;
+  const myId = state.currentTeamId
+    ? useAuthStore.getState().teams.get(state.currentTeamId)?.user?.id
+    : null;
+  let cleanedOccupants = state.voiceOccupants;
+  if (prevChannelId && myId) {
+    cleanedOccupants = { ...state.voiceOccupants };
+    const filtered = (cleanedOccupants[prevChannelId] ?? []).filter((p) => p.user_id !== myId);
+    if (filtered.length === 0) delete cleanedOccupants[prevChannelId];
+    else cleanedOccupants[prevChannelId] = filtered;
+  }
+  set({
+    currentChannelId: null,
+    currentTeamId: null,
+    connected: false,
+    muted: false,
+    deafened: false,
+    speaking: false,
+    screenSharing: false,
+    screenSharingUserId: null,
+    remoteScreenStreams: {},
+    localScreenStream: null,
+    voiceOccupants: cleanedOccupants,
+    webcamSharing: false,
+    localWebcamStream: null,
+    remoteWebcamStreams: {},
+    peers: {},
+    peerConnection: null,
+    localStream: null,
+  });
 }
 
 export const useVoiceStore = create<VoiceStore>((set, get) => ({
@@ -68,7 +145,7 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
   speaking: false,
   screenSharing: false,
   screenSharingUserId: null,
-  remoteScreenStream: null,
+  remoteScreenStreams: {},
   localScreenStream: null,
   webcamSharing: false,
   localWebcamStream: null,
@@ -78,42 +155,19 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
   e2eVoice: false,
   peerConnection: null,
   localStream: null,
+  latencySamples: [],
+  bitrateSamples: [],
+  peerLatencies: {},
 
   setE2eVoice: (enabled: boolean) => set({ e2eVoice: enabled }),
 
   joinChannel: async (teamId: string, channelId: string) => {
     const state = get();
     if (state.connecting) return;
-    // Already connected to this channel
     if (state.connected && state.currentChannelId === channelId) return;
 
-    // Leave current channel first if connected elsewhere — AWAIT to avoid race
     if (state.connected || state.currentChannelId) {
-      set({ connecting: true });
-      try {
-        const { webrtcService } = await import('../services/webrtc');
-        await webrtcService.disconnect();
-      } catch {
-        // ignore disconnect errors
-      }
-      set({
-        currentChannelId: null,
-        currentTeamId: null,
-        connected: false,
-        muted: false,
-        deafened: false,
-        speaking: false,
-        screenSharing: false,
-        screenSharingUserId: null,
-        remoteScreenStream: null,
-        localScreenStream: null,
-        webcamSharing: false,
-        localWebcamStream: null,
-        remoteWebcamStreams: {},
-        peers: {},
-        peerConnection: null,
-        localStream: null,
-      });
+      await tearDownCurrentVoiceChannel(state, set);
     }
 
     set({ connecting: true, currentTeamId: teamId, currentChannelId: channelId });
@@ -124,7 +178,12 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
       await webrtcService.connect(channelId, teamId);
       playJoinSound();
 
-      // Immediately add self as a peer so the user sees themselves right away.
+      // Optimistic UI: render self in the participants list immediately
+      // so the sidebar reacts to the click. We deliberately stay in
+      // `connecting: true` here — the actual `connected: true` flip
+      // happens only when the server's voice:state arrives confirming
+      // we're in the room (see WebRTCService voice:state handler).
+      // voice:join-denied or a handshake timeout tears it down.
       const authEntry = useAuthStore.getState().teams.get(teamId);
       const user = authEntry?.user ?? null;
       if (user?.id) {
@@ -137,14 +196,33 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
           voiceLevel: 0,
         };
         set((s) => ({
-          connected: true,
-          connecting: false,
           peers: { [user.id]: selfPeer, ...s.peers },
+          voiceOccupants: {
+            ...s.voiceOccupants,
+            [channelId]: [
+              selfPeer,
+              ...(s.voiceOccupants[channelId] ?? []).filter((p) => p.user_id !== user.id),
+            ],
+          },
         }));
       } else {
         console.warn('[Voice] joinChannel: NO user.id, falling back');
-        set({ connected: true, connecting: false });
       }
+
+      // Safety net: if the server never confirms our join (voice:state
+      // never arrives with us in the peer list, no voice:join-denied
+      // either), tear down so the UI doesn't sit forever in
+      // `connecting`.
+      setTimeout(() => {
+        const s = get();
+        if (s.connecting && s.currentChannelId === channelId) {
+          console.warn('[Voice] join handshake timed out — tearing down');
+          globalThis.dispatchEvent(new CustomEvent('dilla:notify', { detail: {
+            channel: '', author: 'system', text: 'Voice join timed out — try again.', duration: 4000,
+          }}));
+          s.leaveChannel();
+        }
+      }, 8000);
     } catch (err) {
       console.error('[Voice] Join failed:', err);
       set({ connecting: false, currentChannelId: null, currentTeamId: null });
@@ -158,6 +236,20 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
 
     import('../services/sounds').then(({ playLeaveSound }) => playLeaveSound());
 
+    // Pull self out of voiceOccupants for the channel we just left so the
+    // sidebar's 'Active voice' group hides immediately, even when the
+    // server's voice:user-left broadcast doesn't (SFU may be off).
+    const myId = state.currentTeamId
+      ? useAuthStore.getState().teams.get(state.currentTeamId)?.user?.id
+      : null;
+    const leftChannelId = state.currentChannelId;
+    const nextOccupants = { ...state.voiceOccupants };
+    if (leftChannelId && myId) {
+      const filtered = (nextOccupants[leftChannelId] ?? []).filter((p) => p.user_id !== myId);
+      if (filtered.length === 0) delete nextOccupants[leftChannelId];
+      else nextOccupants[leftChannelId] = filtered;
+    }
+
     // Set state immediately so UI updates, then disconnect in background.
     set({
       currentChannelId: null,
@@ -169,7 +261,7 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
       speaking: false,
       screenSharing: false,
       screenSharingUserId: null,
-      remoteScreenStream: null,
+      remoteScreenStreams: {},
       localScreenStream: null,
       webcamSharing: false,
       localWebcamStream: null,
@@ -177,6 +269,7 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
       peers: {},
       peerConnection: null,
       localStream: null,
+      voiceOccupants: nextOccupants,
     });
 
     // Disconnect WebRTC in background
@@ -204,19 +297,38 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
   setSpeaking: (speaking: boolean) => set({ speaking }),
   setScreenSharing: (sharing: boolean) => set({ screenSharing: sharing }),
   setScreenSharingUserId: (userId: string | null) => set({ screenSharingUserId: userId }),
-  setRemoteScreenStream: (stream: MediaStream | null) => set({ remoteScreenStream: stream }),
+  setRemoteScreenStream: (userId: string, stream: MediaStream | null) => {
+    if (stream === null) {
+      console.log('[Voice/diag] setRemoteScreenStream(null) for', userId, 'stack:', new Error().stack);
+    } else {
+      console.log('[Voice/diag] setRemoteScreenStream(', stream.id, ') for', userId);
+    }
+    set((state) => {
+      const streams = { ...state.remoteScreenStreams };
+      if (stream === null) delete streams[userId];
+      else streams[userId] = stream;
+      return { remoteScreenStreams: streams };
+    });
+  },
   setLocalScreenStream: (stream: MediaStream | null) => set({ localScreenStream: stream }),
   setWebcamSharing: (sharing: boolean) => set({ webcamSharing: sharing }),
   setLocalWebcamStream: (stream: MediaStream | null) => set({ localWebcamStream: stream }),
-  setRemoteWebcamStream: (userId: string, stream: MediaStream | null) => set((state) => {
-    const streams = { ...state.remoteWebcamStreams };
-    if (stream) {
-      streams[userId] = stream;
+  setRemoteWebcamStream: (userId: string, stream: MediaStream | null) => {
+    if (stream === null) {
+      console.log('[Voice/diag] setRemoteWebcamStream(null) for', userId, 'stack:', new Error().stack);
     } else {
-      delete streams[userId];
+      console.log('[Voice/diag] setRemoteWebcamStream(', stream.id, ') for', userId);
     }
-    return { remoteWebcamStreams: streams };
-  }),
+    set((state) => {
+      const streams = { ...state.remoteWebcamStreams };
+      if (stream) {
+        streams[userId] = stream;
+      } else {
+        delete streams[userId];
+      }
+      return { remoteWebcamStreams: streams };
+    });
+  },
 
   setPeers: (peers: VoicePeer[]) => {
     const map: Record<string, VoicePeer> = {};
@@ -241,6 +353,9 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
   },
 
   updatePeer: (userId: string, updates: Partial<VoicePeer>) => {
+    if ('screen_sharing' in updates || 'webcam_sharing' in updates) {
+      console.log('[Voice/diag] updatePeer', userId, updates, 'stack:', new Error().stack);
+    }
     set((state) => {
       const existing = state.peers[userId];
       if (!existing) return state;
@@ -301,6 +416,30 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
     });
   },
 
+  pushLatencySample: (ms: number) => {
+    set((s) => {
+      const next = s.latencySamples.length >= LATENCY_WINDOW_SIZE
+        ? [...s.latencySamples.slice(s.latencySamples.length - LATENCY_WINDOW_SIZE + 1), ms]
+        : [...s.latencySamples, ms];
+      return { latencySamples: next };
+    });
+  },
+
+  pushBitrateSample: (kbps: number) => {
+    set((s) => {
+      const next = s.bitrateSamples.length >= LATENCY_WINDOW_SIZE
+        ? [...s.bitrateSamples.slice(s.bitrateSamples.length - LATENCY_WINDOW_SIZE + 1), kbps]
+        : [...s.bitrateSamples, kbps];
+      return { bitrateSamples: next };
+    });
+  },
+
+  setPeerLatency: (userId: string, ms: number) => {
+    set((s) => ({ peerLatencies: { ...s.peerLatencies, [userId]: ms } }));
+  },
+
+  resetStatsWindow: () => set({ latencySamples: [], bitrateSamples: [], peerLatencies: {} }),
+
   cleanup: () => {
     const state = get();
     if (state.localStream) {
@@ -319,7 +458,7 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
       speaking: false,
       screenSharing: false,
       screenSharingUserId: null,
-      remoteScreenStream: null,
+      remoteScreenStreams: {},
       localScreenStream: null,
       webcamSharing: false,
       localWebcamStream: null,
@@ -327,6 +466,9 @@ export const useVoiceStore = create<VoiceStore>((set, get) => ({
       peers: {},
       peerConnection: null,
       localStream: null,
+      latencySamples: [],
+      bitrateSamples: [],
+      peerLatencies: {},
     });
   },
 }));

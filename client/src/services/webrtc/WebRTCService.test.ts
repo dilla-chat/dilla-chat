@@ -67,6 +67,14 @@ vi.mock('../crypto', () => ({
     encryptDM: vi.fn().mockResolvedValue('ZW5jcnlwdGVkLXZvaWNlLWtleQ=='),
     decryptDM: vi.fn().mockResolvedValue(btoa(String.fromCharCode(...new Array(32).fill(0)))),
     ensurePeerSession: vi.fn().mockResolvedValue(undefined),
+    // Voice-key wrap path: voiceEncryption uses static-static ECDH
+    // via wrapForPeer / unwrapFromPeer (not the Signal session
+    // pairwise encryptDM) so it doesn't depend on a prior X3DH
+    // handshake. Mocks return predictable base64.
+    wrapForPeer: vi.fn().mockResolvedValue('d3JhcHBlZC12b2ljZS1rZXk='),
+    unwrapFromPeer: vi
+      .fn()
+      .mockResolvedValue(new Uint8Array(32)),
   },
 }));
 
@@ -75,15 +83,37 @@ vi.mock('../crypto', () => ({
 let mockPc: Record<string, unknown>;
 
 function createFreshMockPc() {
-  return {
+  // The real RTCPeerConnection mutates `signalingState` as descriptions
+  // are applied. WebRTCService gates its offer-handling on this state
+  // ('have-remote-offer' after setRemoteDescription(offer), back to
+  // 'stable' after setLocalDescription(answer)), so the mock has to
+  // simulate that transition or the gated branches early-return and
+  // none of the asserted side effects (addIceCandidate / createAnswer
+  // / setLocalDescription / voiceAnswer) ever happen.
+  const pc: Record<string, unknown> = {
     createOffer: vi.fn().mockResolvedValue({ type: 'offer', sdp: 'mock-sdp' }),
     createAnswer: vi.fn().mockResolvedValue({ type: 'answer', sdp: 'mock-answer-sdp' }),
-    setLocalDescription: vi.fn().mockResolvedValue(undefined),
-    setRemoteDescription: vi.fn().mockResolvedValue(undefined),
+    setLocalDescription: vi.fn().mockImplementation(async () => {
+      // Hold non-stable for a tick so waitForSignalingStable can
+      // observe the renegotiation transition before we settle back
+      // to stable. The real PC takes microseconds-to-milliseconds
+      // here; without a wait the mock returns synchronously and the
+      // poll loop never sees 'have-remote-offer'.
+      await new Promise((r) => setTimeout(r, 40));
+      pc.signalingState = 'stable';
+    }),
+    setRemoteDescription: vi.fn().mockImplementation(async (desc: { type?: string } | undefined) => {
+      if (desc?.type === 'offer') pc.signalingState = 'have-remote-offer';
+      else if (desc?.type === 'answer') pc.signalingState = 'stable';
+    }),
     addIceCandidate: vi.fn().mockResolvedValue(undefined),
     addTrack: vi.fn(() => ({ track: null, transform: null })),
     removeTrack: vi.fn(),
     getSenders: vi.fn(() => []),
+    // WebRTCService now iterates transceivers for SFrame transform
+    // injection on every (re)negotiate. Return an empty list so the
+    // forEach loop is a no-op.
+    getTransceivers: vi.fn(() => []),
     close: vi.fn(),
     onicecandidate: null as ((e: unknown) => void) | null,
     ontrack: null as ((e: unknown) => void) | null,
@@ -93,6 +123,7 @@ function createFreshMockPc() {
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
   };
+  return pc;
 }
 
 class MockRTCSessionDescription {
@@ -123,11 +154,28 @@ class MockRTCIceCandidate {
 let mockStreamCounter = 0;
 
 function createMockAudioTrack(enabled = true) {
-  return { kind: 'audio', enabled, stop: vi.fn(), onended: null };
+  return {
+    kind: 'audio',
+    enabled,
+    stop: vi.fn(),
+    onended: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  };
 }
 
 function createMockVideoTrack(enabled = true) {
-  return { kind: 'video', enabled, stop: vi.fn(), onended: null };
+  // addEventListener / removeEventListener mirror the real MediaStreamTrack
+  // surface — production code wires an 'ended' listener for the
+  // auto-stop-on-browser-stop flow.
+  return {
+    kind: 'video',
+    enabled,
+    stop: vi.fn(),
+    onended: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  };
 }
 
 function createMockMediaStream(
@@ -334,6 +382,45 @@ describe('WebRTCService', () => {
       await webrtcService.connect('ch-1', 'team-1');
       // Should still connect (uses STUN fallback)
       expect(useVoiceStore.getState().peerConnection).not.toBeNull();
+    });
+
+    it('cleans up stale screen + webcam streams from voiceStore (L99-107)', async () => {
+      // Capture originals so we can restore after the spy-injection.
+      const orig = useVoiceStore.getState();
+      const origSetLocalScreenStream = orig.setLocalScreenStream;
+      const origSetLocalWebcamStream = orig.setLocalWebcamStream;
+      const origSetScreenSharing = orig.setScreenSharing;
+      const origSetWebcamSharing = orig.setWebcamSharing;
+      try {
+        const stopFn = vi.fn();
+        const fakeStream = { getTracks: () => [{ stop: stopFn }] } as unknown as MediaStream;
+        const setLocalScreenStream = vi.fn();
+        const setLocalWebcamStream = vi.fn();
+        const setScreenSharing = vi.fn();
+        const setWebcamSharing = vi.fn();
+        useVoiceStore.setState({
+          localScreenStream: fakeStream,
+          localWebcamStream: fakeStream,
+          setLocalScreenStream,
+          setLocalWebcamStream,
+          setScreenSharing,
+          setWebcamSharing,
+        } as never);
+        await webrtcService.connect('ch-1', 'team-1');
+        expect(stopFn).toHaveBeenCalled();
+        expect(setLocalScreenStream).toHaveBeenCalledWith(null);
+        expect(setScreenSharing).toHaveBeenCalledWith(false);
+        expect(setLocalWebcamStream).toHaveBeenCalledWith(null);
+        expect(setWebcamSharing).toHaveBeenCalledWith(false);
+      } finally {
+        // Restore the real zustand actions so subsequent tests work.
+        useVoiceStore.setState({
+          setLocalScreenStream: origSetLocalScreenStream,
+          setLocalWebcamStream: origSetLocalWebcamStream,
+          setScreenSharing: origSetScreenSharing,
+          setWebcamSharing: origSetWebcamSharing,
+        } as never);
+      }
     });
 
     it('registers WS listeners', async () => {
@@ -1003,8 +1090,11 @@ describe('WebRTCService', () => {
         receiver: { transform: null },
       });
 
-      // Remote screen stream should be set
-      expect(useVoiceStore.getState().remoteScreenStream).not.toBeNull();
+      // Store now keys remote screen streams by userId so multi-
+      // sharer channels render correctly. At least one entry should
+      // exist after ontrack fires.
+      expect(Object.keys(useVoiceStore.getState().remoteScreenStreams).length)
+        .toBeGreaterThan(0);
     });
 
     it('handles video track for webcam share', async () => {
@@ -1556,7 +1646,14 @@ describe('WebRTCService', () => {
       vi.mocked(supportsE2EVoice).mockReturnValue(false);
     });
 
-    it('distributeVoiceKey warns when derivedKey is missing', async () => {
+    it('distributeVoiceKey skips peers whose wrap fails', async () => {
+      // Distribution no longer gates on `derivedKey` — voice keys use
+      // static-static ECDH (cryptoService.wrapForPeer), which only
+      // needs each peer's published identity-DH key. A missing
+      // derivedKey is no longer a blocker. What CAN block is wrap
+      // failure (no prekey bundle, decode error, etc.) — when EVERY
+      // peer's wrap fails the result is an empty encryptedKeys map
+      // and the WS distribute is skipped.
       const { supportsE2EVoice } = await import('../voiceCrypto');
       vi.mocked(supportsE2EVoice).mockReturnValue(true);
       setupE2EMocks();
@@ -1573,8 +1670,8 @@ describe('WebRTCService', () => {
         },
       });
 
-      // No derivedKey set — should warn and not distribute
-      useAuthStore.setState({ derivedKey: null } as never);
+      const { cryptoService } = await import('../crypto');
+      vi.mocked(cryptoService.wrapForPeer).mockRejectedValue(new Error('no prekey'));
       mockWs.voiceKeyDistribute.mockClear();
 
       emitWS('voice:user-joined', { user_id: 'peer-3', username: 'new-user' });
@@ -1582,10 +1679,16 @@ describe('WebRTCService', () => {
 
       expect(mockWs.voiceKeyDistribute).not.toHaveBeenCalled();
 
+      vi.mocked(cryptoService.wrapForPeer).mockResolvedValue('d3JhcHBlZC12b2ljZS1rZXk=');
       vi.mocked(supportsE2EVoice).mockReturnValue(false);
     });
 
-    it('handleReceivedVoiceKey decrypts via Signal Protocol when derivedKey is set', async () => {
+    it('handleReceivedVoiceKey unwraps via static-static ECDH when derivedKey is set', async () => {
+      // Voice keys are wrapped per-peer with static-static ECDH
+      // (cryptoService.wrapForPeer / unwrapFromPeer) — NOT through
+      // the Signal Protocol DM pairwise session. The static path
+      // doesn't depend on a prior X3DH handshake, which matters
+      // when a peer joins voice before exchanging text messages.
       const { supportsE2EVoice } = await import('../voiceCrypto');
       vi.mocked(supportsE2EVoice).mockReturnValue(true);
       setupE2EMocks();
@@ -1603,12 +1706,16 @@ describe('WebRTCService', () => {
 
       await new Promise((r) => setTimeout(r, 50));
 
-      expect(cryptoService.decryptDM).toHaveBeenCalledWith('team-1', 'peer-1', 'encrypted-payload', 'ch-1', 'test-key');
+      expect(cryptoService.unwrapFromPeer).toHaveBeenCalledWith(
+        'team-1',
+        'peer-1',
+        'encrypted-payload',
+      );
 
       vi.mocked(supportsE2EVoice).mockReturnValue(false);
     });
 
-    it('handleReceivedVoiceKey falls back on decrypt failure', async () => {
+    it('handleReceivedVoiceKey falls back on unwrap failure', async () => {
       const { supportsE2EVoice } = await import('../voiceCrypto');
       vi.mocked(supportsE2EVoice).mockReturnValue(true);
       setupE2EMocks();
@@ -1617,9 +1724,10 @@ describe('WebRTCService', () => {
       useAuthStore.setState({ derivedKey: 'test-key' } as never);
 
       const { cryptoService } = await import('../crypto');
-      vi.mocked(cryptoService.decryptDM).mockRejectedValueOnce(new Error('decrypt failed'));
+      vi.mocked(cryptoService.unwrapFromPeer).mockRejectedValueOnce(
+        new Error('unwrap failed'),
+      );
 
-      // Send a valid base64 key directly (fallback should use it as-is)
       const validKeyB64 = btoa(String.fromCharCode(...new Array(32).fill(0)));
       emitWS('voice:key-distribute', {
         sender_id: 'peer-1',
@@ -1629,8 +1737,10 @@ describe('WebRTCService', () => {
 
       await new Promise((r) => setTimeout(r, 50));
 
-      // Should still work — fallback to unencrypted
-      expect(cryptoService.decryptDM).toHaveBeenCalled();
+      // Unwrap was attempted; the fallback path swallows the error
+      // and leaves the peer key unset — the test only asserts that
+      // unwrap was called (the failure didn't crash the dispatch).
+      expect(cryptoService.unwrapFromPeer).toHaveBeenCalled();
 
       vi.mocked(supportsE2EVoice).mockReturnValue(false);
     });

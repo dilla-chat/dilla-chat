@@ -35,11 +35,12 @@ describe('AppLayout responsive', () => {
     await setViewport(DESKTOP);
   });
 
-  test('mobile: left-panels hidden, mobile controls visible', async () => {
+  test('grid shell visible on desktop, mobile controls hidden; flipped on mobile', async () => {
     const screen = await render(
       <div className="app-layout-main mobile">
-        <div className="left-panels" data-testid="left-panels">
-          <div className="left-panels-top">sidebar</div>
+        <div className="app-grid-shell" data-testid="grid-shell">
+          <div className="app-grid-rail">rail</div>
+          <div className="app-grid-sidebar">sidebar</div>
         </div>
         <div className="mobile-tab-content" data-testid="mobile-tab-content">
           tab content
@@ -53,8 +54,8 @@ describe('AppLayout responsive', () => {
       </div>,
     );
 
-    // Desktop: left-panels visible, mobile controls hidden
-    await expect.element(screen.getByTestId('left-panels')).toHaveStyle({ display: 'flex' });
+    // Desktop: grid shell uses CSS Grid, mobile controls hidden
+    await expect.element(screen.getByTestId('grid-shell')).toHaveStyle({ display: 'grid' });
     await expect.element(screen.getByTestId('mobile-bottom-controls')).toHaveStyle({
       display: 'none',
     });
@@ -62,7 +63,7 @@ describe('AppLayout responsive', () => {
       display: 'none',
     });
 
-    // Switch to mobile
+    // Switch to mobile — bottom controls + tab content visible
     await setViewport(MOBILE);
 
     await expect.element(screen.getByTestId('mobile-bottom-controls')).toHaveStyle({
@@ -230,9 +231,9 @@ describe('TeamSidebar responsive', () => {
 
     const el = screen.getByTestId('team-sidebar');
 
-    // Desktop: column layout, 72px width
+    // Desktop: column layout, rail width (60px via --rail-w token)
     await setViewport(DESKTOP);
-    await expect.element(el).toHaveStyle({ flexDirection: 'column', width: '72px' });
+    await expect.element(el).toHaveStyle({ flexDirection: 'column', width: '60px' });
 
     // Mobile: row layout, full width
     await setViewport(MOBILE);

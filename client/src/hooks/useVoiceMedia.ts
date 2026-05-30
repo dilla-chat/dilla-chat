@@ -7,7 +7,7 @@ export function useVoiceMedia() {
       screenSharing: s.screenSharing,
       webcamSharing: s.webcamSharing,
       localScreenStream: s.localScreenStream,
-      remoteScreenStream: s.remoteScreenStream,
+      remoteScreenStreams: s.remoteScreenStreams,
       localWebcamStream: s.localWebcamStream,
       remoteWebcamStreams: s.remoteWebcamStreams,
       setScreenSharing: s.setScreenSharing,

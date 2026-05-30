@@ -1,5 +1,5 @@
 use super::models::*;
-use super::{nullable, now_str, row_to_message};
+use super::{now_str, row_to_message};
 use rusqlite::{params, Connection, OptionalExtension};
 
 pub fn create_thread(conn: &Connection, thread: &Thread) -> Result<(), rusqlite::Error> {
@@ -112,7 +112,7 @@ pub fn get_thread_messages(
 ) -> Result<Vec<Message>, rusqlite::Error> {
     let mut messages = if before.is_empty() {
         let mut stmt = conn.prepare(
-            "SELECT id, channel_id, dm_channel_id, author_id, content, type, thread_id, edited_at, deleted, lamport_ts, created_at
+            "SELECT id, channel_id, dm_channel_id, author_id, content, type, thread_id, edited_at, deleted, lamport_ts, created_at, reply_to_message_id
              FROM messages WHERE thread_id = ?1
              ORDER BY created_at DESC LIMIT ?2",
         )?;
@@ -120,7 +120,7 @@ pub fn get_thread_messages(
         rows.collect::<Result<Vec<_>, _>>()?
     } else {
         let mut stmt = conn.prepare(
-            "SELECT id, channel_id, dm_channel_id, author_id, content, type, thread_id, edited_at, deleted, lamport_ts, created_at
+            "SELECT id, channel_id, dm_channel_id, author_id, content, type, thread_id, edited_at, deleted, lamport_ts, created_at, reply_to_message_id
              FROM messages WHERE thread_id = ?1 AND created_at < ?2
              ORDER BY created_at DESC LIMIT ?3",
         )?;
@@ -169,13 +169,17 @@ mod tests {
             public_key: vec![1u8; 32], avatar_url: String::new(), status_text: String::new(),
             status_type: "online".into(), is_admin: false,
             created_at: now.clone(), updated_at: now.clone(),
+        
+            ..Default::default()
         };
         db.with_conn(|c| crate::db::create_user(c, &user)).unwrap();
 
         let team = Team {
             id: "t1".into(), name: "Team".into(), description: String::new(),
             icon_url: String::new(), created_by: "u1".into(), max_file_size: 1024,
-            allow_member_invites: true, created_at: now.clone(), updated_at: now.clone(),
+            allow_member_invites: true, federated: false, created_at: now.clone(), updated_at: now.clone(),
+        
+            ..Default::default()
         };
         db.with_conn(|c| crate::db::create_team(c, &team)).unwrap();
 
@@ -184,6 +188,8 @@ mod tests {
             topic: String::new(), channel_type: "text".into(), position: 0,
             category: String::new(), created_by: "u1".into(),
             created_at: now.clone(), updated_at: now.clone(),
+        
+            ..Default::default()
         };
         db.with_conn(|c| crate::db::create_channel(c, &channel)).unwrap();
 
@@ -193,6 +199,8 @@ mod tests {
             author_id: "u1".into(), content: "parent".into(), msg_type: "text".into(),
             thread_id: String::new(), edited_at: None, deleted: false,
             lamport_ts: 0, created_at: now,
+        
+            ..Default::default()
         };
         db.with_conn(|c| crate::db::create_message(c, &msg)).unwrap();
     }
@@ -243,6 +251,8 @@ mod tests {
             author_id: "u1".into(), content: "parent2".into(), msg_type: "text".into(),
             thread_id: String::new(), edited_at: None, deleted: false,
             lamport_ts: 1, created_at: now.clone(),
+        
+            ..Default::default()
         };
         db.with_conn(|c| crate::db::create_message(c, &msg2)).unwrap();
 
@@ -303,6 +313,8 @@ mod tests {
             author_id: "u1".into(), content: "reply".into(), msg_type: "text".into(),
             thread_id: "thr1".into(), edited_at: None, deleted: false,
             lamport_ts: 1, created_at: crate::db::now_str(),
+        
+            ..Default::default()
         };
         db.with_conn(|c| create_thread_message(c, &reply)).unwrap();
 
@@ -329,6 +341,8 @@ mod tests {
                 author_id: "u1".into(), content: format!("reply {}", i), msg_type: "text".into(),
                 thread_id: "thr1".into(), edited_at: None, deleted: false,
                 lamport_ts: i as i64, created_at: format!("2024-01-01 00:00:0{}", i),
+            
+                ..Default::default()
             };
             db.with_conn(|c| create_thread_message(c, &reply)).unwrap();
         }
@@ -337,6 +351,38 @@ mod tests {
         assert_eq!(messages.len(), 3);
         assert_eq!(messages[0].content, "reply 0");
         assert_eq!(messages[2].content, "reply 2");
+    }
+
+    #[test]
+    fn test_get_thread_messages_with_before_pagination() {
+        let db = test_db();
+        setup_for_threads(&db);
+
+        let thread = Thread {
+            id: "thr-pg".into(), channel_id: "ch1".into(), parent_message_id: "pm1".into(),
+            team_id: "t1".into(), creator_id: "u1".into(), title: "Pg".into(),
+            message_count: 0, last_message_at: None, created_at: crate::db::now_str(),
+        };
+        db.with_conn(|c| create_thread(c, &thread)).unwrap();
+
+        for i in 0..5 {
+            let reply = Message {
+                id: format!("rp{}", i), channel_id: "ch1".into(), dm_channel_id: String::new(),
+                author_id: "u1".into(), content: format!("body {}", i), msg_type: "text".into(),
+                thread_id: "thr-pg".into(), edited_at: None, deleted: false,
+                lamport_ts: i as i64, created_at: format!("2024-02-01 00:00:0{}", i),
+                ..Default::default()
+            };
+            db.with_conn(|c| create_thread_message(c, &reply)).unwrap();
+        }
+
+        // before="2024-02-01 00:00:03" → only earlier rows, max 2.
+        let page = db.with_conn(|c| {
+            get_thread_messages(c, "thr-pg", "2024-02-01 00:00:03", 2)
+        }).unwrap();
+        assert_eq!(page.len(), 2);
+        // The most-recent-earlier two messages, in chronological (reverse-of-desc) order.
+        assert!(page[0].created_at < "2024-02-01 00:00:03".to_string());
     }
 
     #[test]
@@ -356,6 +402,8 @@ mod tests {
             author_id: "u1".into(), content: "reply".into(), msg_type: "text".into(),
             thread_id: "thr1".into(), edited_at: None, deleted: false,
             lamport_ts: 1, created_at: crate::db::now_str(),
+        
+            ..Default::default()
         };
         db.with_conn(|c| create_thread_message(c, &reply)).unwrap();
 

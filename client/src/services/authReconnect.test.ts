@@ -10,6 +10,10 @@ vi.mock('./api', () => ({
     verifyChallenge: vi.fn().mockResolvedValue({ token: 'jwt-new', user: { id: 'u1' } }),
     listTeams: vi.fn().mockResolvedValue([{ id: 'team-discovered', name: 'Found' }]),
   },
+  // H-13d: cross-origin in this test (page is on jsdom http://localhost,
+  // baseUrl is https://server.com), so the bearer header is still
+  // attached. Returning false matches that runtime branch.
+  isSameOriginAsApi: vi.fn(() => false),
 }));
 
 vi.mock('./crypto', () => ({

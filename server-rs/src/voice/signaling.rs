@@ -13,13 +13,41 @@ use webrtc::rtp_transceiver::rtp_codec::{
     RTCRtpCodecCapability, RTCRtpCodecParameters, RTPCodecType,
 };
 use webrtc::rtp_transceiver::rtp_transceiver_direction::RTCRtpTransceiverDirection;
-use webrtc::rtp_transceiver::RTCRtpTransceiverInit;
+use webrtc::rtp_transceiver::{RTCPFeedback, RTCRtpTransceiverInit};
+
+/// Standard RTCP feedback set for video tracks — gives the browser encoder
+/// bandwidth/loss feedback so it doesn't permanently downgrade resolution.
+fn video_rtcp_feedback() -> Vec<RTCPFeedback> {
+    vec![
+        RTCPFeedback {
+            typ: "goog-remb".to_owned(),
+            parameter: String::new(),
+        },
+        RTCPFeedback {
+            typ: "transport-cc".to_owned(),
+            parameter: String::new(),
+        },
+        RTCPFeedback {
+            typ: "ccm".to_owned(),
+            parameter: "fir".to_owned(),
+        },
+        RTCPFeedback {
+            typ: "nack".to_owned(),
+            parameter: String::new(),
+        },
+        RTCPFeedback {
+            typ: "nack".to_owned(),
+            parameter: "pli".to_owned(),
+        },
+    ]
+}
 use webrtc::track::track_local::track_local_static_rtp::TrackLocalStaticRTP;
 use webrtc::track::track_local::TrackLocal;
 
 use super::sfu_bridge::parse_ice_servers;
 use super::sfu_helpers::{
     add_existing_tracks_to_new_peer, add_track_to_peer, handle_leave_internal,
+    spawn_keyframe_burst, spawn_keyframe_burst_for_publisher,
     renegotiate_all_except_internal, renegotiate_all_internal, renegotiate_internal,
     remove_track_from_other_peers, setup_connection_state_handler, setup_ice_candidate_handler,
     setup_on_track_handler,
@@ -43,6 +71,15 @@ pub enum SFUEvent {
         user_id: String,
         offer: Box<RTCSessionDescription>,
     },
+    /// SFU autonomously dropped this user's peer connection (ICE
+    /// failure, peer reload without explicit voice:leave, etc.).
+    /// The bridge layer should remove them from any auxiliary room
+    /// state (RoomManager) and broadcast voice:user-left so other
+    /// clients update their sidebars.
+    PeerDropped {
+        channel_id: String,
+        user_id: String,
+    },
 }
 
 /// Per-user WebRTC state within a voice channel.
@@ -51,6 +88,15 @@ pub(crate) struct PeerState {
     pub(crate) local_track: Arc<TrackLocalStaticRTP>,
     pub(crate) screen_track: Option<Arc<TrackLocalStaticRTP>>,
     pub(crate) webcam_track: Option<Arc<TrackLocalStaticRTP>>,
+    /// The recvonly transceiver we added on the publisher's PC for cam/screen.
+    /// We compare these by Arc::ptr_eq to the transceiver the on_track callback
+    /// fires with so we can route incoming RTP correctly when a publisher has
+    /// BOTH cam and screen active. Chrome's outgoing track ids are opaque
+    /// UUIDs, so id-prefix matching can't distinguish them — without this,
+    /// both publisher tracks fall through to ps.screen_track in
+    /// resolve_target_track and the cam content pipes into the screen output.
+    pub(crate) screen_recv_tx: Option<Arc<webrtc::rtp_transceiver::RTCRtpTransceiver>>,
+    pub(crate) webcam_recv_tx: Option<Arc<webrtc::rtp_transceiver::RTCRtpTransceiver>>,
 }
 
 /// The SFU (Selective Forwarding Unit) manages WebRTC peer connections for voice channels.
@@ -95,7 +141,7 @@ impl SFU {
                     clock_rate: 90000,
                     channels: 0,
                     sdp_fmtp_line: String::new(),
-                    rtcp_feedback: vec![],
+                    rtcp_feedback: video_rtcp_feedback(),
                 },
                 payload_type: 96,
                 ..Default::default()
@@ -186,6 +232,9 @@ impl SFU {
         let pc = Arc::new(pc);
 
         // Create a local audio track for this peer so others can receive their audio.
+        // Track ID is unique per session so rejoins create fresh transceivers rather than
+        // trying to replace_track on a stopped sender (which fails with envelope errors).
+        let session = uuid::Uuid::new_v4();
         let local_track = Arc::new(TrackLocalStaticRTP::new(
             RTCRtpCodecCapability {
                 mime_type: MIME_TYPE_OPUS.to_owned(),
@@ -194,7 +243,7 @@ impl SFU {
                 sdp_fmtp_line: "minptime=10;useinbandfec=1".to_owned(),
                 rtcp_feedback: vec![],
             },
-            format!("audio-{}", user_id),
+            format!("audio-{}-{}", user_id, session),
             format!("stream-{}", user_id),
         ));
 
@@ -203,6 +252,8 @@ impl SFU {
             local_track: Arc::clone(&local_track),
             screen_track: None,
             webcam_track: None,
+            screen_recv_tx: None,
+            webcam_recv_tx: None,
         };
 
         // Insert peer into room and wire tracks with existing peers.
@@ -276,15 +327,26 @@ impl SFU {
         local_track: &Arc<TrackLocalStaticRTP>,
         ps: PeerState,
     ) {
+        // Extract any pre-existing peer state for this user (rejoin) under a
+        // short write lock, then close the old PC OUTSIDE the lock — pc.close()
+        // awaits the connection-state-change handler which takes a read lock,
+        // which would deadlock if held under the write lock.
+        let old_pc = {
+            let mut rooms = self.rooms.write().await;
+            let room = rooms
+                .entry(channel_id.to_string())
+                .or_insert_with(HashMap::new);
+            room.remove(user_id).map(|old| old.pc)
+        };
+
+        if let Some(old) = old_pc {
+            let _ = old.close().await;
+        }
+
         let mut rooms = self.rooms.write().await;
         let room = rooms
             .entry(channel_id.to_string())
             .or_insert_with(HashMap::new);
-
-        // Close existing connection if any (rejoin).
-        if let Some(old) = room.remove(user_id) {
-            let _ = old.pc.close().await;
-        }
 
         // Wire tracks between existing peers and the new peer.
         for (other_uid, other_ps) in room.iter() {
@@ -296,6 +358,15 @@ impl SFU {
         }
 
         room.insert(user_id.to_string(), ps);
+        drop(rooms);
+
+        // Nudge existing video publishers for a fresh keyframe so the
+        // joining peer doesn't have to wait for the next periodic one.
+        spawn_keyframe_burst(
+            Arc::clone(&self.rooms),
+            channel_id.to_string(),
+            user_id.to_string(),
+        );
     }
 
     /// Handle an SDP answer from a client.
@@ -365,6 +436,18 @@ impl SFU {
             .get_mut(user_id)
             .ok_or_else(|| format!("no peer state for user {}", user_id))?;
 
+        // If the user is already sharing screen, tear down the
+        // previous track on every subscriber first — otherwise
+        // restarting screen-share leaves orphan tracks on peers'
+        // PCs and they stall trying to decode the dead stream.
+        if let Some(prev) = ps.screen_track.take() {
+            let prev_id = prev.id().to_string();
+            remove_track_from_other_peers(room, user_id, &prev_id, "stale screen").await;
+        }
+        let ps = room
+            .get_mut(user_id)
+            .ok_or_else(|| format!("no peer state for user {}", user_id))?;
+
         // Create a VP8 video track for screen sharing.
         let screen_track = Arc::new(TrackLocalStaticRTP::new(
             RTCRtpCodecCapability {
@@ -372,15 +455,18 @@ impl SFU {
                 clock_rate: 90000,
                 channels: 0,
                 sdp_fmtp_line: String::new(),
-                rtcp_feedback: vec![],
+                rtcp_feedback: video_rtcp_feedback(),
             },
-            format!("screen-{}", user_id),
+            format!("screen-{}-{}", user_id, uuid::Uuid::new_v4()),
             format!("screen-stream-{}", user_id),
         ));
         ps.screen_track = Some(Arc::clone(&screen_track));
 
-        // Add a recv-only video transceiver to the sharer's PC so we receive their screen.
-        if let Err(e) = ps
+        // Add a recv-only video transceiver to the sharer's PC so we receive
+        // their screen. Hold onto the transceiver Arc so we can identify
+        // incoming RTP for THIS slot in on_track — Chrome's outgoing track
+        // ids are opaque UUIDs so we can't use them to tell cam from screen.
+        match ps
             .pc
             .add_transceiver_from_kind(
                 RTPCodecType::Video,
@@ -391,7 +477,12 @@ impl SFU {
             )
             .await
         {
-            tracing::error!("voice: failed to add screen recv transceiver: {}", e);
+            Ok(tx) => {
+                ps.screen_recv_tx = Some(tx);
+            }
+            Err(e) => {
+                tracing::error!("voice: failed to add screen recv transceiver: {}", e);
+            }
         }
 
         // Add the screen track to all OTHER peers so they can see the screen.
@@ -412,6 +503,16 @@ impl SFU {
             }
         }
 
+        drop(rooms);
+        // Nudge the publisher for an immediate keyframe so the new
+        // subscribers can start decoding instead of accumulating
+        // undecodable P-frames for several seconds.
+        spawn_keyframe_burst_for_publisher(
+            Arc::clone(&self.rooms),
+            channel_id.to_string(),
+            user_id.to_string(),
+        );
+
         Ok(())
     }
 
@@ -430,6 +531,10 @@ impl SFU {
             let ps = room
                 .get_mut(user_id)
                 .ok_or_else(|| format!("no peer state for user {}", user_id))?;
+            // Drop the recv-transceiver tag so a future re-start can register
+            // a fresh one. The transceiver itself stays alive inside Pion
+            // until renegotiation marks it stopped/inactive.
+            ps.screen_recv_tx = None;
             match ps.screen_track.take() {
                 Some(st) => st.id().to_string(),
                 None => return Ok(()),
@@ -454,21 +559,40 @@ impl SFU {
             .get_mut(user_id)
             .ok_or_else(|| format!("no peer state for user {}", user_id))?;
 
+        // If the user is already publishing webcam (e.g. they
+        // toggled off then on again), tear down the previous track
+        // on every subscriber's PC FIRST. Without this, each
+        // start_webcam adds a fresh track without removing the dead
+        // one — receivers see multiple "webcam-stream-<uid>" tracks,
+        // can't tell which one carries live frames, and stall on
+        // the orphans. Same pattern as remove_webcam_track.
+        if let Some(prev) = ps.webcam_track.take() {
+            let prev_id = prev.id().to_string();
+            remove_track_from_other_peers(room, user_id, &prev_id, "stale webcam").await;
+            // re-acquire the mutable ref after the helper since it
+            // borrowed the room immutably.
+        }
+        let ps = room
+            .get_mut(user_id)
+            .ok_or_else(|| format!("no peer state for user {}", user_id))?;
+
         let webcam_track = Arc::new(TrackLocalStaticRTP::new(
             RTCRtpCodecCapability {
                 mime_type: MIME_TYPE_VP8.to_owned(),
                 clock_rate: 90000,
                 channels: 0,
                 sdp_fmtp_line: String::new(),
-                rtcp_feedback: vec![],
+                rtcp_feedback: video_rtcp_feedback(),
             },
-            format!("webcam-{}", user_id),
+            format!("webcam-{}-{}", user_id, uuid::Uuid::new_v4()),
             format!("webcam-stream-{}", user_id),
         ));
         ps.webcam_track = Some(Arc::clone(&webcam_track));
 
         // Add a recv-only video transceiver so we receive the webcam feed.
-        if let Err(e) = ps
+        // Hold onto the transceiver Arc so we can identify incoming RTP for
+        // THIS slot in on_track — see PeerState::webcam_recv_tx docs for why.
+        match ps
             .pc
             .add_transceiver_from_kind(
                 RTPCodecType::Video,
@@ -479,7 +603,12 @@ impl SFU {
             )
             .await
         {
-            tracing::error!("voice: failed to add webcam recv transceiver: {}", e);
+            Ok(tx) => {
+                ps.webcam_recv_tx = Some(tx);
+            }
+            Err(e) => {
+                tracing::error!("voice: failed to add webcam recv transceiver: {}", e);
+            }
         }
 
         // Add the webcam track to all OTHER peers.
@@ -500,6 +629,13 @@ impl SFU {
             }
         }
 
+        drop(rooms);
+        spawn_keyframe_burst_for_publisher(
+            Arc::clone(&self.rooms),
+            channel_id.to_string(),
+            user_id.to_string(),
+        );
+
         Ok(())
     }
 
@@ -518,6 +654,8 @@ impl SFU {
             let ps = room
                 .get_mut(user_id)
                 .ok_or_else(|| format!("no peer state for user {}", user_id))?;
+            // Drop the recv-transceiver tag — see remove_screen_track for why.
+            ps.webcam_recv_tx = None;
             match ps.webcam_track.take() {
                 Some(wt) => wt.id().to_string(),
                 None => return Ok(()),

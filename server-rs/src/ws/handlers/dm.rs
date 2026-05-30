@@ -76,7 +76,7 @@ pub(in crate::ws) async fn handle_dm_message_send(
             thread_id: String::new(),
             edited_at: None,
             deleted: false,
-            lamport_ts: 0,
+            lamport_ts: 0, reply_to_message_id: None,
             created_at: db::now_str(),
         };
         db::create_message(conn, &msg)?;

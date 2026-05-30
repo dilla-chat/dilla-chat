@@ -37,7 +37,7 @@ export default function PublicShell({ children, steps }: Readonly<PublicShellPro
             <div className="public-steps">
               {Array.from({ length: steps[1] }, (_, i) => (
                 <div
-                  key={i}
+                  key={`step-${i + 1}`}
                   className={`public-step-dot${i + 1 === steps[0] ? ' active' : ''}${i + 1 < steps[0] ? ' completed' : ''}`}
                 />
               ))}

@@ -18,8 +18,18 @@ mod thread_queries;
 mod reaction_queries;
 mod attachment_queries;
 mod read_queries;
+mod audit_queries;
+mod poll_queries;
+mod channel_access_queries;
+mod channel_group_queries;
+mod channel_mute_queries;
+mod pin_queries;
+mod block_queries;
+mod jwt_revocation_queries;
+mod device_queries;
 
 use rusqlite::Connection;
+use secrecy::{ExposeSecret, SecretString};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -42,6 +52,15 @@ pub use thread_queries::*;
 pub use reaction_queries::*;
 pub use attachment_queries::*;
 pub use read_queries::*;
+pub use audit_queries::*;
+pub use poll_queries::*;
+pub use channel_access_queries::*;
+pub use channel_group_queries::*;
+pub use channel_mute_queries::*;
+pub use pin_queries::*;
+pub use block_queries::*;
+pub use jwt_revocation_queries::*;
+pub use device_queries::*;
 
 const MIGRATIONS: &[(&str, &str)] = &[
     ("001_initial.sql", include_str!("../../migrations/001_initial.sql")),
@@ -52,6 +71,30 @@ const MIGRATIONS: &[(&str, &str)] = &[
     ("006_federation_sync.sql", include_str!("../../migrations/006_federation_sync.sql")),
     ("007_nullable_fks.sql", include_str!("../../migrations/007_nullable_fks.sql")),
     ("008_channel_reads.sql", include_str!("../../migrations/008_channel_reads.sql")),
+    ("009_team_federated.sql", include_str!("../../migrations/009_team_federated.sql")),
+    ("010_channel_reads_dm_support.sql", include_str!("../../migrations/010_channel_reads_dm_support.sql")),
+    ("011_prekey_identity_dh_key.sql", include_str!("../../migrations/011_prekey_identity_dh_key.sql")),
+    ("012_channel_locked.sql", include_str!("../../migrations/012_channel_locked.sql")),
+    ("013_audit_events.sql", include_str!("../../migrations/013_audit_events.sql")),
+    ("014_polls.sql", include_str!("../../migrations/014_polls.sql")),
+    ("015_channel_access.sql", include_str!("../../migrations/015_channel_access.sql")),
+    ("016_channel_hidden_if_restricted.sql", include_str!("../../migrations/016_channel_hidden_if_restricted.sql")),
+    ("017_channel_slow_mode.sql", include_str!("../../migrations/017_channel_slow_mode.sql")),
+    ("018_channel_mutes.sql", include_str!("../../migrations/018_channel_mutes.sql")),
+    ("019_channel_name_unique.sql", include_str!("../../migrations/019_channel_name_unique.sql")),
+    ("020_channel_groups.sql", include_str!("../../migrations/020_channel_groups.sql")),
+    ("021_channel_groups_hidden.sql", include_str!("../../migrations/021_channel_groups_hidden.sql")),
+    ("022_pinned_messages.sql", include_str!("../../migrations/022_pinned_messages.sql")),
+    ("023_user_quiet_hours.sql", include_str!("../../migrations/023_user_quiet_hours.sql")),
+    ("024_user_blocks.sql", include_str!("../../migrations/024_user_blocks.sql")),
+    ("025_message_reply_to.sql", include_str!("../../migrations/025_message_reply_to.sql")),
+    ("026_bootstrap_token_expiry.sql", include_str!("../../migrations/026_bootstrap_token_expiry.sql")),
+    ("027_jwt_revocations.sql", include_str!("../../migrations/027_jwt_revocations.sql")),
+    ("028_team_upload_quota.sql", include_str!("../../migrations/028_team_upload_quota.sql")),
+    ("029_user_devices.sql", include_str!("../../migrations/029_user_devices.sql")),
+    ("030_federation_identity.sql", include_str!("../../migrations/030_federation_identity.sql")),
+    ("031_team_turn_relay.sql", include_str!("../../migrations/031_team_turn_relay.sql")),
+    ("032_attachments_uploader_id.sql", include_str!("../../migrations/032_attachments_uploader_id.sql")),
 ];
 
 /// Default number of read connections in the pool.
@@ -70,11 +113,18 @@ pub struct Database {
 }
 
 /// Open a SQLite connection with SQLCipher passphrase and WAL mode.
-fn open_connection(db_path: &Path, passphrase: &str) -> Result<Connection, rusqlite::Error> {
+///
+/// DB-MEM-1 / H9: the passphrase travels as a `&SecretString` so it
+/// cannot accidentally land in a `Debug` log line. We only `expose_secret`
+/// inside this function at the `PRAGMA key` call site. SecretString
+/// zeroizes its internal buffer on drop, so the cleartext doesn't
+/// linger in heap memory after open_connection returns.
+fn open_connection(db_path: &Path, passphrase: &SecretString) -> Result<Connection, rusqlite::Error> {
     let conn = Connection::open(db_path)?;
-    if !passphrase.is_empty() {
+    let key = passphrase.expose_secret();
+    if !key.is_empty() {
         // Use pragma_update for safe parameter binding instead of string formatting.
-        conn.pragma_update(None, "key", passphrase)?;
+        conn.pragma_update(None, "key", key)?;
     }
     conn.execute_batch("PRAGMA journal_mode = WAL;")?;
     conn.execute_batch("PRAGMA busy_timeout = 5000;")?;
@@ -87,14 +137,20 @@ impl Database {
     pub fn open(data_dir: &str, passphrase: &str) -> Result<Self, rusqlite::Error> {
         let db_path = Path::new(data_dir).join("dilla.db");
 
+        // Wrap the passphrase in SecretString immediately. Any callers
+        // that handed us a &str had to materialize it for the function
+        // call but we don't keep a long-lived copy of it.
+        let secret = SecretString::from(passphrase.to_string());
+
         // Open the write connection.
-        let write_conn = open_connection(&db_path, passphrase)?;
+        let write_conn = open_connection(&db_path, &secret)?;
 
         // Open read connections.
         let mut readers = Vec::with_capacity(DEFAULT_READ_POOL_SIZE);
         for _ in 0..DEFAULT_READ_POOL_SIZE {
-            readers.push(Mutex::new(open_connection(&db_path, passphrase)?));
+            readers.push(Mutex::new(open_connection(&db_path, &secret)?));
         }
+        // `secret` drops here; SecretString::Drop zeroizes the buffer.
 
         tracing::info!(
             path = %db_path.display(),
@@ -194,7 +250,8 @@ impl Database {
 /// Map a database row to a Message struct.
 /// Shared by message_queries, dm_queries, and thread_queries.
 /// Expects columns: id, channel_id, dm_channel_id, author_id, content, type,
-///                   thread_id, edited_at, deleted, lamport_ts, created_at
+///                   thread_id, edited_at, deleted, lamport_ts, created_at,
+///                   reply_to_message_id
 pub(crate) fn row_to_message(row: &rusqlite::Row) -> Result<Message, rusqlite::Error> {
     Ok(Message {
         id: row.get(0)?,
@@ -208,6 +265,10 @@ pub(crate) fn row_to_message(row: &rusqlite::Row) -> Result<Message, rusqlite::E
         deleted: row.get::<_, i32>(8)? != 0,
         lamport_ts: row.get(9)?,
         created_at: row.get(10)?,
+        // Column may not exist on older rows still in the cache; the
+        // try_get fallback lets older test rows compile without the
+        // column present. SELECTs in queries.rs explicitly include it.
+        reply_to_message_id: row.get::<_, Option<String>>(11).ok().flatten(),
     })
 }
 

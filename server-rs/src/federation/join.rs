@@ -1,14 +1,47 @@
 use std::sync::Arc;
 
+use hkdf::Hkdf;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sha2::Sha256;
 
 use crate::db::{self, Database};
 
 use super::transport::Transport;
 use super::{FederationEvent, FED_EVENT_MEMBER_JOINED, FED_EVENT_STATE_SYNC_REQ};
+
+/// HKDF info string for deriving the federation-join HMAC key from the
+/// operator-supplied join_secret. Bumping this string invalidates every
+/// outstanding join JWT, which is the desired semantics if we ever
+/// change the derivation.
+const JOIN_SECRET_HKDF_INFO: &[u8] = b"dilla-federation-join-v1";
+
+/// Minimum raw byte length of `join_secret` we'll accept without a
+/// warning when federation peers are configured. Anything shorter is
+/// brute-forceable offline against a captured join JWT — VULN-005.
+const JOIN_SECRET_MIN_BYTES: usize = 32;
+
+/// Derive the join-token signing key from the operator-supplied
+/// `join_secret` using HKDF-SHA256. Matches the pattern auth.rs uses to
+/// derive the JWT signing secret from the DB passphrase.
+///
+/// If `join_secret` is empty we fall back to an ephemeral random 32
+/// bytes — callers should panic before reaching this when they have
+/// peers configured and DILLA_INSECURE=false (see `JoinManager::new`).
+fn derive_join_secret(join_secret: &str) -> Vec<u8> {
+    if join_secret.is_empty() {
+        let mut bytes = vec![0u8; 32];
+        rand::rng().fill_bytes(&mut bytes);
+        return bytes;
+    }
+    let hk = Hkdf::<Sha256>::new(None, join_secret.as_bytes());
+    let mut out = vec![0u8; 32];
+    hk.expand(JOIN_SECRET_HKDF_INFO, &mut out)
+        .expect("HKDF-SHA256 expand for 32 bytes must succeed");
+    out
+}
 
 /// Claims embedded in a federation join token (JWT).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,26 +75,67 @@ pub struct JoinManager {
 
 #[allow(dead_code)]
 impl JoinManager {
+    /// Construct a JoinManager. Callers MUST call
+    /// `enforce_security_policy` before reaching this for the
+    /// production path — that's where we panic on empty-secret /
+    /// short-secret deployments. This constructor itself is
+    /// side-effect-free so tests can use it freely.
     pub fn new(
         db: Database,
         transport: Arc<Transport>,
         node_name: String,
         join_secret: &str,
     ) -> Self {
-        let secret = if join_secret.is_empty() {
-            // Generate a random 32-byte secret.
-            let mut bytes = vec![0u8; 32];
-            rand::rng().fill_bytes(&mut bytes);
-            bytes
-        } else {
-            join_secret.as_bytes().to_vec()
-        };
-
+        let secret = derive_join_secret(join_secret);
         JoinManager {
             secret,
             db,
             transport,
             node_name,
+        }
+    }
+
+    /// Enforce the operator-side security policy for the federation
+    /// join secret at startup.
+    ///
+    /// - With peers configured and `insecure=false`:
+    ///     * empty secret → **panic** (refuse to start; explicit opt-in
+    ///       required via DILLA_INSECURE=true).
+    ///     * secret shorter than `JOIN_SECRET_MIN_BYTES` raw bytes →
+    ///       loud warning.
+    /// - With peers configured and `insecure=true`: warn loudly on
+    ///   empty or short secrets but allow startup.
+    /// - Without peers configured: no-op.
+    ///
+    /// Closes part of VULN-005 / VULN-021.
+    pub fn enforce_security_policy(join_secret: &str, peers_configured: bool, insecure: bool) {
+        if !peers_configured {
+            return;
+        }
+        if join_secret.is_empty() {
+            if !insecure {
+                panic!(
+                    "DILLA_JOIN_SECRET is empty but federation peers are configured. \
+                     Refusing to start — set DILLA_JOIN_SECRET to a >= 32-byte high-entropy \
+                     value, or set DILLA_INSECURE=true to acknowledge that anonymous peers \
+                     will be accepted (VULN-005/-021)."
+                );
+            }
+            tracing::error!(
+                "SECURITY: DILLA_JOIN_SECRET is empty AND federation peers are configured. \
+                 Anyone who can reach the federation socket can claim membership. \
+                 Set DILLA_JOIN_SECRET in production."
+            );
+            return;
+        }
+        if join_secret.len() < JOIN_SECRET_MIN_BYTES {
+            tracing::warn!(
+                "DILLA_JOIN_SECRET is shorter than {} bytes ({} given) — vulnerable to offline \
+                 HMAC brute-force against any captured join JWT (VULN-005). Use at least 32 \
+                 random bytes (e.g. `head -c 64 /dev/urandom | base64`).",
+                JOIN_SECRET_MIN_BYTES,
+                join_secret.len(),
+            );
         }
     }
 
@@ -195,8 +269,11 @@ mod tests {
                 created_by: "user1".into(),
                 max_file_size: 25 * 1024 * 1024,
                 allow_member_invites: true,
+                federated: false,
                 created_at: now.clone(),
                 updated_at: now,
+            
+                ..Default::default()
             })
         })
         .unwrap();
@@ -209,8 +286,15 @@ mod tests {
 
     #[test]
     fn new_with_explicit_secret() {
+        // The raw operator-supplied secret is never stored verbatim;
+        // we HKDF-expand it to a fixed 32-byte key. Same input must
+        // yield the same derived key (deterministic), and the derived
+        // key must NOT be the raw bytes.
         let mgr = test_join_manager("my-secret");
-        assert_eq!(mgr.secret, b"my-secret");
+        assert_eq!(mgr.secret.len(), 32, "derived secret is always 32 bytes");
+        assert_ne!(mgr.secret, b"my-secret", "raw secret must not be stored");
+        let mgr2 = test_join_manager("my-secret");
+        assert_eq!(mgr.secret, mgr2.secret, "derivation must be deterministic");
     }
 
     #[test]
@@ -292,8 +376,11 @@ mod tests {
                 created_by: "user2".into(),
                 max_file_size: 25 * 1024 * 1024,
                 allow_member_invites: true,
+                federated: false,
                 created_at: now.clone(),
                 updated_at: now,
+            
+                ..Default::default()
             })
         })
         .unwrap();
@@ -356,5 +443,43 @@ mod tests {
         assert_eq!(info.team_name, "My Team");
         assert!(info.peers.is_empty());
         assert_eq!(info.expires_at, 9999);
+    }
+
+    // ── enforce_security_policy branches ─────────────────────────────
+
+    #[test]
+    fn enforce_security_policy_no_op_when_no_peers() {
+        // No peers configured → must return cleanly regardless of secret.
+        JoinManager::enforce_security_policy("", false, false);
+        JoinManager::enforce_security_policy("", false, true);
+        JoinManager::enforce_security_policy("secret", false, false);
+    }
+
+    #[test]
+    fn enforce_security_policy_logs_only_with_empty_secret_and_insecure() {
+        // insecure=true, empty secret, peers configured → log+return, no panic.
+        JoinManager::enforce_security_policy("", true, true);
+    }
+
+    #[test]
+    fn enforce_security_policy_warns_on_short_secret() {
+        // Short non-empty secret → tracing::warn; non-panic.
+        JoinManager::enforce_security_policy("short", true, true);
+    }
+
+    #[test]
+    #[should_panic(expected = "DILLA_JOIN_SECRET is empty")]
+    fn enforce_security_policy_panics_when_empty_secret_and_secure_mode() {
+        JoinManager::enforce_security_policy("", true, false);
+    }
+
+    // ── handle_node_join error path (no peer registered) ─────────────
+
+    #[tokio::test]
+    async fn handle_node_join_returns_err_when_transport_cannot_reach_peer() {
+        let mgr = test_join_manager_with_team();
+        let res = mgr.handle_node_join("peer-unreachable").await;
+        // Transport::send fails for an unknown peer → propagates as Err.
+        assert!(res.is_err());
     }
 }

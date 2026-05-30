@@ -2,7 +2,7 @@
   z-index: 10000;
   border-radius: var(--radius-lg);
   overflow: hidden;
-  box-shadow: 0 8px 24px var(--overlay-dark);
+  box-shadow: 0 0.5rem 1.5rem var(--overlay-dark);
 }
 
 /* Override emoji-picker-react theme to match Dilla dark palette */
@@ -16,6 +16,6 @@
   --epr-search-input-placeholder-color: var(--text-muted);
   --epr-category-icon-active-color: var(--accent);
   --epr-highlight-color: var(--accent);
-  border: 1px solid var(--divider);
+  border: 0.0625rem solid var(--divider);
   border-radius: var(--radius-lg);
 }

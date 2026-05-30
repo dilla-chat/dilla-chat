@@ -55,23 +55,51 @@ pub fn get_member_roles(
 
 // ── Permission check ────────────────────────────────────────────────────────
 
+/// Resolve the full permissions bitmask the user holds in this team.
+/// Team owner returns -1 (every bit set) so the caller's "does the
+/// requested perm fit within mine?" check trivially passes. Used by the
+/// privilege-escalation guards in role + member updates so a moderator
+/// can't grant a permission they don't hold themselves.
+pub fn user_permissions_bits(
+    conn: &Connection,
+    user_id: &str,
+    team_id: &str,
+) -> Result<i64, rusqlite::Error> {
+    let is_owner: bool = conn
+        .query_row(
+            "SELECT created_by FROM teams WHERE id = ?1",
+            [team_id],
+            |row| row.get::<_, String>(0),
+        )
+        .map(|owner| owner == user_id)
+        .unwrap_or(false);
+    if is_owner {
+        return Ok(!0);
+    }
+    let member = get_member_by_user_and_team(conn, user_id, team_id)?;
+    let Some(member) = member else { return Ok(0); };
+    let roles = get_member_roles(conn, &member.id)?;
+    let mut bits: i64 = 0;
+    for role in roles {
+        bits |= role.permissions;
+        // PERM_ADMIN implies everything — short-circuit so a non-admin
+        // can't peek at admin-only flags on a different role they hold.
+        if role.permissions & PERM_ADMIN != 0 {
+            return Ok(!0);
+        }
+    }
+    Ok(bits)
+}
+
 pub fn user_has_permission(
     conn: &Connection,
     user_id: &str,
     team_id: &str,
     perm: i64,
 ) -> Result<bool, rusqlite::Error> {
-    // Check if user is admin (admins have all permissions).
-    let is_admin: bool = conn
-        .query_row(
-            "SELECT is_admin FROM users WHERE id = ?1",
-            [user_id],
-            |row| row.get::<_, i32>(0).map(|v| v != 0),
-        )
-        .unwrap_or(false);
-    if is_admin {
-        return Ok(true);
-    }
+    // Global users.is_admin no longer short-circuits team-scoped perms.
+    // All team-level rights derive from team-owner status or assigned roles
+    // — keeps server-operator and team-admin from being conflated.
 
     // Check if user is team owner.
     let is_owner: bool = conn
@@ -216,6 +244,10 @@ mod tests {
 
     #[test]
     fn test_user_has_permission_admin_user() {
+        // Behavior note: users.is_admin no longer short-circuits
+        // team-scoped permissions — it's a server-operator flag, not
+        // a team-admin one. An admin who isn't a member of the team
+        // gets no permission bits on that team's resources.
         let db = test_db();
         let mut user = make_user("u1", "admin", &[1u8; 32]);
         user.is_admin = true;
@@ -227,7 +259,7 @@ mod tests {
         db.with_conn(|c| crate::db::create_team(c, &team)).unwrap();
 
         let has = db.with_conn(|c| user_has_permission(c, "u1", "t1", PERM_MANAGE_CHANNELS)).unwrap();
-        assert!(has);
+        assert!(!has, "global admin must not bypass team-scoped perms");
     }
 
     #[test]
@@ -293,6 +325,57 @@ mod tests {
 
         let has = db.with_conn(|c| user_has_permission(c, "u2", "t1", PERM_MANAGE_TEAM)).unwrap();
         assert!(has);
+    }
+
+    #[test]
+    fn test_user_permissions_bits_for_non_member_returns_zero() {
+        let db = test_db();
+        let owner = make_user("u-owner", "o", &[1u8; 32]);
+        db.with_conn(|c| crate::db::create_user(c, &owner)).unwrap();
+        let team = make_team("t-zero", "T", "u-owner");
+        db.with_conn(|c| crate::db::create_team(c, &team)).unwrap();
+        let bits = db.with_conn(|c| user_permissions_bits(c, "ghost-user", "t-zero")).unwrap();
+        assert_eq!(bits, 0);
+    }
+
+    #[test]
+    fn test_user_permissions_bits_owner_returns_all_bits_set() {
+        let db = test_db();
+        let owner = make_user("u-owner", "o", &[1u8; 32]);
+        db.with_conn(|c| crate::db::create_user(c, &owner)).unwrap();
+        let team = make_team("t-own", "T", "u-owner");
+        db.with_conn(|c| crate::db::create_team(c, &team)).unwrap();
+        let bits = db.with_conn(|c| user_permissions_bits(c, "u-owner", "t-own")).unwrap();
+        assert_eq!(bits, !0);
+    }
+
+    #[test]
+    fn test_user_permissions_bits_admin_role_short_circuits() {
+        let db = test_db();
+        let owner = make_user("u-owner", "o", &[1u8; 32]);
+        let user = make_user("u-mod", "m", &[2u8; 32]);
+        db.with_conn(|c| crate::db::create_user(c, &owner)).unwrap();
+        db.with_conn(|c| crate::db::create_user(c, &user)).unwrap();
+        let team = make_team("t-admin", "T", "u-owner");
+        db.with_conn(|c| crate::db::create_team(c, &team)).unwrap();
+        let member = make_member("m-mod", "t-admin", "u-mod");
+        db.with_conn(|c| crate::db::create_member(c, &member)).unwrap();
+        let now = crate::db::now_str();
+        let role = crate::db::models::Role {
+            id: "r-admin".into(),
+            team_id: "t-admin".into(),
+            name: "Admin".into(),
+            color: String::new(),
+            position: 0,
+            permissions: PERM_ADMIN,
+            is_default: false,
+            created_at: now.clone(),
+            updated_at: now,
+        };
+        db.with_conn(|c| crate::db::create_role(c, &role)).unwrap();
+        db.with_conn(|c| crate::db::assign_role_to_member(c, "m-mod", "r-admin")).unwrap();
+        let bits = db.with_conn(|c| user_permissions_bits(c, "u-mod", "t-admin")).unwrap();
+        assert_eq!(bits, !0);
     }
 
     #[test]

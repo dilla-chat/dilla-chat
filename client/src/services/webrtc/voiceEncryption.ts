@@ -1,6 +1,5 @@
 import { ws } from '../websocket';
 import { useVoiceStore } from '../../stores/voiceStore';
-import { useAuthStore } from '../../stores/authStore';
 import { VoiceKeyManager } from '../voiceCrypto';
 import { cryptoService } from '../crypto';
 
@@ -55,28 +54,26 @@ export class VoiceEncryptionManager {
     const keyId = this.voiceKeyManager.getLocalKeyId();
     if (!rawKey) return;
 
-    const keyBase64 = btoa(String.fromCodePoint(...rawKey));
-    const derivedKey = useAuthStore.getState().derivedKey;
-
-    // Get all peers in the channel
+    // Static-static ECDH wrap (wrapForPeer) so we don't depend on a
+    // Double Ratchet session — voice keys are one-shot exchanges and
+    // both sides already publish their identity DH key in the prekey
+    // bundle, which is all wrapForPeer needs.
     const peers = useVoiceStore.getState().peers;
     const encryptedKeys: Record<string, string> = {};
     for (const userId of Object.keys(peers)) {
       if (userId === localUserId) continue;
       try {
-        if (derivedKey) {
-          // Encrypt the voice key for this specific peer using their Signal Protocol session
-          encryptedKeys[userId] = await cryptoService.encryptDM(teamId, userId, keyBase64, channelId, derivedKey);
-        } else {
-          console.warn('[Voice] No derived key — cannot encrypt voice key for', userId);
-        }
+        encryptedKeys[userId] = await cryptoService.wrapForPeer(teamId, userId, rawKey);
       } catch (err) {
-        console.warn('[Voice] Failed to encrypt voice key for', userId, err);
+        console.warn('[Voice] Failed to wrap voice key for', userId, err);
       }
     }
 
     if (Object.keys(encryptedKeys).length > 0) {
+      console.log('[Voice] distributing voice key to', Object.keys(encryptedKeys));
       ws.voiceKeyDistribute(teamId, channelId, keyId, encryptedKeys);
+    } else {
+      console.warn('[Voice] no recipients for voice key (peers:', Object.keys(peers), ')');
     }
   }
 
@@ -88,29 +85,25 @@ export class VoiceEncryptionManager {
     teamId: string | null,
     channelId: string | null,
   ): Promise<void> {
-    const derivedKey = useAuthStore.getState().derivedKey;
-
-    if (!derivedKey || !teamId || !channelId) {
-      console.warn('[Voice] Missing derivedKey/teamId/channelId — rejecting voice key from', senderId);
+    if (!teamId || !channelId) {
+      console.warn('[Voice] Missing teamId/channelId — rejecting voice key from', senderId);
       return;
     }
 
-    let keyBase64: string;
+    let rawKey: Uint8Array;
     try {
-      // Decrypt the voice key using the sender's Signal Protocol session
-      keyBase64 = await cryptoService.decryptDM(teamId, senderId, encryptedKey, channelId, derivedKey);
+      // unwrapForPeer is static-static ECDH — symmetrical with the
+      // wrap path used in distributeVoiceKey. No Double Ratchet
+      // session state needed, so it works even on a fresh first
+      // contact between two peers in a voice channel.
+      rawKey = await cryptoService.unwrapFromPeer(teamId, senderId, encryptedKey);
     } catch (err) {
-      console.error('[Voice] Failed to decrypt voice key from', senderId, err);
+      console.error('[Voice] Failed to unwrap voice key from', senderId, err);
       return;
     }
-
-    const rawKey = new Uint8Array(
-      atob(keyBase64)
-        .split('')
-        .map((c) => c.codePointAt(0)!),
-    );
 
     await this.voiceKeyManager.setRemoteKey(senderId, rawKey);
+    console.log('[Voice] received + installed voice key from', senderId, 'keyId=', keyId, 'into', this.decryptWorkers.size, 'workers');
 
     // Update all decrypt workers with the new key
     for (const worker of this.decryptWorkers.values()) {

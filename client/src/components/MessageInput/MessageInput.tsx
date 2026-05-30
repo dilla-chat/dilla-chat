@@ -238,7 +238,7 @@ export default function MessageInput({
         {editingMessage && (
           <div className="message-input-editing-banner">
             <span>{t('messages.editingBanner', 'Editing message')}</span>
-            <button className="editing-cancel-btn" onClick={() => { onCancelEdit(); setValue(''); }}>
+            <button className="btn btn--ghost btn--sm" onClick={() => { onCancelEdit(); setValue(''); }}>
               {t('common.cancel', 'Cancel')} (Esc)
             </button>
           </div>
@@ -280,7 +280,7 @@ export default function MessageInput({
             }}
           />
           <button
-            className="toolbar-btn clickable"
+            className="btn btn--ghost btn--icon btn--sm clickable"
             title={t('upload.attachFile', 'Attach File')}
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
@@ -288,11 +288,11 @@ export default function MessageInput({
             {uploading ? <IconHourglass size={18} stroke={1.75} /> : <PlusCircleIcon />}
           </button>
 
-          <div className="toolbar-separator" />
-
-          <FormattingToolbar textareaRef={textareaRef} setValue={setValue} />
-
-          <div className="toolbar-separator" />
+          <div className="message-input-formatting">
+            <div className="toolbar-separator" />
+            <FormattingToolbar textareaRef={textareaRef} setValue={setValue} />
+            <div className="toolbar-separator" />
+          </div>
 
           <div style={{ position: 'relative' }}>
             {showEmojiPicker && (
@@ -302,7 +302,7 @@ export default function MessageInput({
                 anchorRef={emojiBtnRef}
               />
             )}
-            <button ref={emojiBtnRef} className="toolbar-btn clickable" title={t('messages.emoji', 'Emoji')} onClick={() => setShowEmojiPicker(v => !v)} disabled={uploading}>
+            <button ref={emojiBtnRef} className="btn btn--ghost btn--icon btn--sm clickable" title={t('messages.emoji', 'Emoji')} onClick={() => setShowEmojiPicker(v => !v)} disabled={uploading}>
               <IconMoodSmile size={18} stroke={1.75} />
             </button>
           </div>

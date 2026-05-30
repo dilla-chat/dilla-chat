@@ -56,7 +56,7 @@ export default function SettingsLayout({ sections, activeId, onSelect, onClose, 
           {children}
         </div>
         <div className="settings-close-col">
-          <button className="settings-close-btn" onClick={onClose}>
+          <button className="btn btn--ghost btn--icon" onClick={onClose}>
             <IconX size={18} stroke={1.75} />
           </button>
           <span className="settings-close-esc">ESC</span>

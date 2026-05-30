@@ -8,6 +8,7 @@ import { useUnreadStore } from '../../stores/unreadStore';
 import { useAuthStore } from '../../stores/authStore';
 import { api } from '../../services/api';
 import EditChannel from '../EditChannel/EditChannel';
+import { usernameColor } from '../../utils/colors';
 import './ChannelList.css';
 
 interface ContextMenu {
@@ -47,11 +48,15 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
     return peerCount > 0;
   });
 
-  const remainingChannels = teamChannels.filter((ch) => {
-    const isUnread = ch.type !== 'voice' && (unreadCounts[ch.id] ?? 0) > 0;
-    const isActiveVoice =
-      ch.type === 'voice' && activeVoiceChannels.some((v) => v.id === ch.id);
-    return !isUnread && !isActiveVoice;
+  const textChannels = teamChannels.filter((ch) => {
+    if (ch.type === 'voice') return false;
+    const isUnread = (unreadCounts[ch.id] ?? 0) > 0;
+    return !isUnread;
+  });
+
+  const idleVoiceChannels = teamChannels.filter((ch) => {
+    if (ch.type !== 'voice') return false;
+    return !activeVoiceChannels.some((v) => v.id === ch.id);
   });
 
   const handleContextMenu = (e: React.MouseEvent, channel: Channel) => {
@@ -116,9 +121,9 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
             className={`channel-icon ${isVoice && voicePeerList.length > 0 ? 'voice-active' : ''}`}
           >
             {isVoice ? (
-              <IconVolume size={16} stroke={1.75} />
+              <IconVolume size={14} stroke={1.75} />
             ) : (
-              <span className="channel-tilde">~</span>
+              <span className="channel-tilde">#</span>
             )}
           </span>
           <span className={`channel-name truncate${hasUnread ? ' channel-name--unread' : ''}`}>
@@ -127,6 +132,11 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
           {hasUnread && (
             <span className="channel-unread-badge" aria-label={`${unreadCount} unread messages`}>
               {unreadCount > 99 ? '99+' : unreadCount}
+            </span>
+          )}
+          {isVoice && voicePeerList.length > 0 && !hasUnread && (
+            <span className="channel-voice-count" aria-label={`${voicePeerList.length} in voice`}>
+              {voicePeerList.length}
             </span>
           )}
         </button>
@@ -144,7 +154,10 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
                   className={`voice-channel-user ${peer.speaking ? 'speaking' : ''}`}
                   style={{ '--voice-level': peer.voiceLevel ?? 0 } as React.CSSProperties}
                 >
-                  <span className="voice-user-avatar">
+                  <span
+                    className="voice-user-avatar"
+                    style={{ backgroundColor: usernameColor(peer.username) }}
+                  >
                     {peer.username.slice(0, 1).toUpperCase()}
                   </span>
                   <span className="voice-user-name">{peer.username}</span>
@@ -191,16 +204,16 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
 
       {activeVoiceChannels.length > 0 && (
         <>
-          <div className="channel-section-header">
-            {t('channels.activeVoice', 'ACTIVE VOICE')}
+          <div className="channel-section-header active-voice-section">
+            <span>{t('channels.sidebar.activeVoice', 'Active voice')}</span>
+            <span className="channel-section-header-live">● live</span>
           </div>
           {activeVoiceChannels.map(renderChannelItem)}
-          <div className="channel-section-divider" />
         </>
       )}
 
       <div className="channel-section-header">
-        {t('channels.channels', 'CHANNELS')}
+        <span>{t('channels.sidebar.kanals', 'Kanals')}</span>
         {onCreateChannel && (
           <button
             type="button"
@@ -208,11 +221,20 @@ export default function ChannelList({ onCreateChannel }: Readonly<Props>) {
             onClick={() => onCreateChannel()}
             title={t('channels.create')}
           >
-            <IconPlus size={16} stroke={1.75} />
+            <IconPlus size={12} stroke={1.75} />
           </button>
         )}
       </div>
-      {remainingChannels.map(renderChannelItem)}
+      {textChannels.map(renderChannelItem)}
+
+      {idleVoiceChannels.length > 0 && (
+        <>
+          <div className="channel-section-header">
+            <span>{t('channels.sidebar.voice', 'Voice')}</span>
+          </div>
+          {idleVoiceChannels.map(renderChannelItem)}
+        </>
+      )}
 
       {contextMenu && createPortal(
         <div

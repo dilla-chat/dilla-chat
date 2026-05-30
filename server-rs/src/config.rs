@@ -1,7 +1,7 @@
 use std::env;
 use std::fmt;
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 #[allow(dead_code)]
 pub struct Config {
     pub port: u16,
@@ -14,6 +14,24 @@ pub struct Config {
     pub federation_port: u16,
     pub node_name: String,
     pub join_secret: String,
+    /// Phase 3 rolling-upgrade flag. When true, federation peers
+    /// MUST use the v3 signed-event wire format (Ed25519 challenge-
+    /// response handshake + signed `FederationEvent` envelopes per
+    /// `.security-hardening/14-federation-phase3-design.md`). When
+    /// false (default), both v1 and v3 are accepted with audit. The
+    /// flag is scaffolded here in advance; call sites land with H-9
+    /// (transport flip) and H-10 (sync/mod plumbing).
+    pub require_federation_v3: bool,
+    /// Optional path to a newline-delimited file of Tor exit-node IPs.
+    /// When set, the auth-risk scorer flags logins from listed IPs.
+    /// Absent / unset is non-fatal; the file is reloaded once at
+    /// startup. H-8.
+    pub tor_exit_list_path: String,
+    /// Optional path to a MaxMind GeoLite2-Country.mmdb file. When
+    /// set, `derive_country_from_ip` returns the ISO-3166 country
+    /// code instead of the legacy "unknown" placeholder. Absent /
+    /// unreadable / parse-failure is non-fatal. H-8b.
+    pub geoip_db_path: String,
     pub fed_bind_addr: String,
     pub fed_advert_addr: String,
     pub fed_advert_port: u16,
@@ -23,6 +41,19 @@ pub struct Config {
     pub log_format: String,
     pub rate_limit: f64,
     pub rate_burst: u32,
+    /// Per-IP rate limit (requests/second) applied to the protected
+    /// (auth-required) router. Auth routes have a stricter limiter; this
+    /// one covers everything behind `auth_middleware`. VULN-011.
+    pub ratelimit_per_second: u64,
+    pub ratelimit_burst: u32,
+    /// Per-team upload disk-usage quota in gigabytes. Tracked via
+    /// `teams.upload_bytes_used`; uploads past this are rejected with 413.
+    /// UPL-DOS-1.
+    pub upload_quota_per_team_gb: u64,
+    /// Path to a file containing the SQLCipher passphrase. When set,
+    /// takes precedence over `DILLA_DB_PASSPHRASE` so secrets stay out
+    /// of the process environment / `ps`. DB-MEM-1.
+    pub db_passphrase_file: String,
     pub domain: String,
     pub cf_turn_key_id: String,
     pub cf_turn_api_token: String,
@@ -34,6 +65,18 @@ pub struct Config {
     pub trusted_proxies: Vec<String>,
     pub insecure: bool,
     pub theme_file: String,
+    /// When true, the first bootstrap creates a demo team pre-populated
+    /// with channels (#general, #design, #dev, #random, voice-lounge).
+    /// Replaces the legacy client-side /mesh mock data — start the server
+    /// with `DILLA_SEED_DEMO=true` and the first user lands in a populated
+    /// team via the normal auth flow.
+    pub seed_demo: bool,
+
+    /// When true, accepts batched `console.*` POSTs from the client at
+    /// `/api/v1/debug/browser-log` and prints them via tracing (target
+    /// "browser"). Defaults to `insecure` — i.e. dev mode unless
+    /// `DILLA_BROWSER_LOG_FORWARD` is explicitly set.
+    pub browser_log_forward: bool,
 
     // Client telemetry relay
     pub telemetry_adapter: String,
@@ -114,6 +157,9 @@ impl Config {
             federation_port,
             node_name: env_str("DILLA_NODE_NAME", ""),
             join_secret: env_str("DILLA_JOIN_SECRET", ""),
+            require_federation_v3: env_bool("DILLA_FEDERATION_REQUIRE_V3", false),
+            tor_exit_list_path: env_str("DILLA_TOR_EXIT_LIST_PATH", ""),
+            geoip_db_path: env_str("DILLA_GEOIP_DB_PATH", ""),
             fed_bind_addr: env_str("DILLA_FED_BIND_ADDR", "0.0.0.0"),
             fed_advert_addr: env_str("DILLA_FED_ADVERTISE_ADDR", ""),
             fed_advert_port: env_u16("DILLA_FED_ADVERTISE_PORT", 0),
@@ -123,6 +169,10 @@ impl Config {
             log_format: env_str("DILLA_LOG_FORMAT", "text"),
             rate_limit: env_f64("DILLA_RATE_LIMIT", 100.0),
             rate_burst: env_u32("DILLA_RATE_BURST", 200),
+            ratelimit_per_second: env_u64("DILLA_RATELIMIT_PER_SECOND", 30),
+            ratelimit_burst: env_u32("DILLA_RATELIMIT_BURST", 60),
+            upload_quota_per_team_gb: env_u64("DILLA_UPLOAD_QUOTA_PER_TEAM_GB", 10),
+            db_passphrase_file: env_str("DILLA_DB_PASSPHRASE_FILE", ""),
             domain: env_str("DILLA_DOMAIN", ""),
             cf_turn_key_id: env_str("DILLA_CF_TURN_KEY_ID", ""),
             cf_turn_api_token: env_str("DILLA_CF_TURN_API_TOKEN", ""),
@@ -134,6 +184,12 @@ impl Config {
             trusted_proxies,
             insecure: env_bool("DILLA_INSECURE", false),
             theme_file: env_str("DILLA_THEME_FILE", ""),
+            seed_demo: env_bool("DILLA_SEED_DEMO", false),
+            // H8 / VULN-010: default false regardless of DILLA_INSECURE.
+            // The dev pattern (`DILLA_BROWSER_LOG_FORWARD=true`) keeps
+            // working but we no longer enable it implicitly via the
+            // insecure flag.
+            browser_log_forward: env_bool("DILLA_BROWSER_LOG_FORWARD", false),
             telemetry_adapter: env_str("DILLA_TELEMETRY_ADAPTER", "none"),
             sentry_dsn: env_str("DILLA_SENTRY_DSN", ""),
             environment: env_str("DILLA_ENVIRONMENT", "production"),

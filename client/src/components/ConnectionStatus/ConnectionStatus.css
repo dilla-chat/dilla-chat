@@ -1,10 +1,10 @@
 .connection-status {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 10px;
+  gap: 0.375rem;
+  padding: 0.5rem 0.625rem;
   background: var(--bg-secondary);
-  border-top: 1px solid var(--divider);
+  border-top: 0.0625rem solid var(--divider);
   cursor: default;
   position: relative;
   user-select: none;
@@ -15,21 +15,21 @@
 .connection-status__bars {
   display: flex;
   align-items: flex-end;
-  gap: 1.5px;
-  height: 14px;
+  gap: 0.09375rem;
+  height: 0.875rem;
 }
 
 .connection-status__bar {
-  width: 3px;
-  border-radius: 1px;
+  width: 0.1875rem;
+  border-radius: 0.0625rem;
   background: var(--interactive-muted);
   transition: background 0.2s;
 }
 
-.connection-status__bar--1 { height: 4px; }
-.connection-status__bar--2 { height: 7px; }
-.connection-status__bar--3 { height: 10px; }
-.connection-status__bar--4 { height: 14px; }
+.connection-status__bar--1 { height: 0.25rem; }
+.connection-status__bar--2 { height: 0.4375rem; }
+.connection-status__bar--3 { height: 0.625rem; }
+.connection-status__bar--4 { height: 0.875rem; }
 
 .connection-status__bar.active {
   background: currentColor;
@@ -65,14 +65,14 @@
 /* Tooltip */
 .connection-status__tooltip {
   position: absolute;
-  bottom: calc(100% + 8px);
-  left: 8px;
-  width: 220px;
+  bottom: calc(100% + 0.5rem);
+  left: 0.5rem;
+  width: 13.75rem;
   background: var(--glass-bg-floating);
   -webkit-backdrop-filter: blur(var(--glass-blur-heavy));
   backdrop-filter: blur(var(--glass-blur-heavy));
-  border: 1px solid var(--glass-border);
-  border-radius: 8px;
+  border: 0.0625rem solid var(--glass-border);
+  border-radius: 0.5rem;
   padding: var(--spacing-md);
   z-index: 1000;
   pointer-events: none;
@@ -88,7 +88,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 3px 0;
+  padding: 0.1875rem 0;
   font-size: var(--font-size-xs);
   color: var(--text-muted);
 }
@@ -100,8 +100,8 @@
 
 .connection-status__quality-badge {
   font-size: var(--font-size-micro);
-  padding: 1px 6px;
-  border-radius: 4px;
+  padding: 0.0625rem 0.375rem;
+  border-radius: 0.25rem;
   font-weight: var(--font-weight-semibold);
 }
 
@@ -137,19 +137,19 @@
 .connection-status-bar.disconnected {
   background: rgba(239, 68, 68, 0.1);
   color: var(--danger);
-  border-bottom: 1px solid rgba(239, 68, 68, 0.15);
+  border-bottom: 0.0625rem solid rgba(239, 68, 68, 0.15);
 }
 
 .connection-status-bar.reconnecting {
   background: rgba(245, 158, 11, 0.08);
   color: var(--warning);
-  border-bottom: 1px solid rgba(245, 158, 11, 0.1);
+  border-bottom: 0.0625rem solid rgba(245, 158, 11, 0.1);
 }
 
 .connection-status-bar.connected {
   background: rgba(16, 185, 129, 0.06);
   color: var(--success);
-  border-bottom: 1px solid rgba(16, 185, 129, 0.1);
+  border-bottom: 0.0625rem solid rgba(16, 185, 129, 0.1);
 }
 
 .connection-status-dot {

@@ -1,6 +1,43 @@
 import type { User } from '../stores/authStore';
 import { fetchWithTimeout } from './fetchWithTimeout';
 
+/**
+ * H-13d: returns true when `baseUrl`'s origin matches the page's
+ * own origin AND the page is on a real-network protocol (http/https).
+ *
+ * When true, the `__dilla_jwt` cookie set by `/auth/verify` will
+ * travel automatically on subsequent fetches, so we can safely drop
+ * the manual `Authorization: Bearer` header — eliminating the JS-
+ * reachable JWT surface for any XSS that lands in the SPA.
+ *
+ * Returns false for:
+ *   - Cross-origin requests (cross-team flows targeting a different
+ *     baseUrl than the page's origin).
+ *   - Tauri desktop, where the page loads from `tauri://localhost`
+ *     (or platform equivalent) and doesn't share a cookie jar with
+ *     the https:// API origin.
+ *   - Unparseable URLs / SSR contexts (no globalThis.location).
+ */
+export function isSameOriginAsApi(baseUrl: string): boolean {
+  try {
+    const pageOrigin = globalThis.location?.origin ?? '';
+    if (!pageOrigin) return false;
+    // Tauri's custom protocol (tauri:, app:, asset:, http://tauri.localhost
+    // on Windows, etc.) doesn't share a cookie jar with the API's
+    // https:// origin even when baseUrl looks the same.
+    if (pageOrigin.startsWith('tauri:') || pageOrigin.startsWith('app:')) {
+      return false;
+    }
+    // Same-origin relative URL (baseUrl is empty string or starts with /)
+    // → definitely same origin.
+    if (!baseUrl || baseUrl.startsWith('/')) return true;
+    const apiOrigin = new URL(baseUrl).origin;
+    return apiOrigin === pageOrigin;
+  } catch {
+    return false;
+  }
+}
+
 export interface VoicePeer {
   user_id: string;
   username: string;
@@ -91,10 +128,18 @@ class ApiService {
       'Content-Type': 'application/json',
       ...(options.headers as Record<string, string>),
     };
-    if (token) {
+    // H-13d: drop the bearer header when the cookie is guaranteed to
+    // travel (same-origin SPA on the rust-embed-served origin).
+    // Keep the bearer for cross-origin (cross-team requests hitting
+    // a different baseUrl, and Tauri where the page origin is a
+    // custom protocol like tauri://localhost that doesn't share a
+    // cookie jar with the https:// API origin).
+    if (token && !isSameOriginAsApi(baseUrl)) {
       headers['Authorization'] = `Bearer ${token}`;
     }
-    const res = await fetchWithTimeout(`${baseUrl}${path}`, { ...options, headers, timeout: 15000 });
+    // H-13b.1: send the httpOnly __dilla_jwt cookie. Server's
+    // auth_middleware prefers the header when both are present.
+    const res = await fetchWithTimeout(`${baseUrl}${path}`, { ...options, headers, credentials: 'include', timeout: 15000 });
     if (!res.ok) {
       // Only trigger auth error for authenticated requests (bearer token was sent).
       // Public endpoints like /auth/verify return 401 for bad credentials — that's
@@ -213,6 +258,28 @@ class ApiService {
     return result.ticket;
   }
 
+  /**
+   * F5 — Revoke the caller's bearer JWT on the server. Backed by
+   * server-side `POST /api/v1/auth/logout` (added in step 5 H2). The
+   * server inserts the jti into the `jwt_revocations` table so any
+   * stolen copy of the token becomes unusable immediately.
+   *
+   * Calls per server (NOT per team) — a single revocation invalidates
+   * the token for every team on that server. The caller is responsible
+   * for clearing local state afterwards.
+   *
+   * Returns `true` on confirmed server-side revocation, `false` if the
+   * server was unreachable (call site warns the user). Never throws.
+   */
+  async logoutServer(baseUrl: string, token: string): Promise<boolean> {
+    try {
+      await this.request(baseUrl, '/api/v1/auth/logout', { method: 'POST' }, token);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   // User profile
   async getMe(baseUrl: string, token: string): Promise<unknown> {
     const data = await this.request(baseUrl, '/api/v1/users/me', { method: 'GET' }, token);
@@ -222,7 +289,15 @@ class ApiService {
   async updateMe(
     baseUrl: string,
     token: string,
-    updates: { display_name?: string; avatar_url?: string; status_text?: string; status_type?: string },
+    updates: {
+      display_name?: string;
+      avatar_url?: string;
+      status_text?: string;
+      status_type?: string;
+      quiet_hours_enabled?: boolean;
+      quiet_hours_from?: string;
+      quiet_hours_to?: string;
+    },
   ): Promise<unknown> {
     const data = await this.request(
       baseUrl,
@@ -337,6 +412,68 @@ class ApiService {
     );
   }
 
+
+  async setChannelAccess(teamId: string, channelId: string, roleIds: string[]): Promise<{ role_ids: string[] }> {
+    const conn = this.getConnection(teamId);
+    return this.request<{ role_ids: string[] }>(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/channels/${channelId}/access`,
+      { method: 'PUT', body: JSON.stringify({ role_ids: roleIds }) },
+      conn.token,
+    );
+  }
+
+  // Channel groups — first-class entities that own permissions; channels
+  // inherit the group's access list (pure inheritance, see migration 020).
+  async listGroups(teamId: string): Promise<Array<{ id: string; name: string; position: number; access_role_ids: string[] }>> {
+    const conn = this.getConnection(teamId);
+    const data = await this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/groups`,
+      { method: 'GET' },
+      conn.token,
+    );
+    return (Array.isArray(data) ? data : []) as Array<{ id: string; name: string; position: number; access_role_ids: string[] }>;
+  }
+  async createGroup(teamId: string, name: string): Promise<{ id: string; name: string; position: number }> {
+    const conn = this.getConnection(teamId);
+    return this.request<{ id: string; name: string; position: number }>(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/groups`,
+      { method: 'POST', body: JSON.stringify({ name }) },
+      conn.token,
+    );
+  }
+  async updateGroup(teamId: string, groupId: string, body: { name?: string; position?: number }): Promise<{ id: string; name: string; position: number }> {
+    const conn = this.getConnection(teamId);
+    return this.request<{ id: string; name: string; position: number }>(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/groups/${groupId}`,
+      { method: 'PUT', body: JSON.stringify(body) },
+      conn.token,
+    );
+  }
+  async deleteGroup(teamId: string, groupId: string): Promise<void> {
+    const conn = this.getConnection(teamId);
+    await this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/groups/${groupId}`,
+      { method: 'DELETE' },
+      conn.token,
+    );
+  }
+  async setGroupAccess(teamId: string, groupId: string, roleIds: string[], hiddenIfRestricted?: boolean): Promise<{ role_ids: string[]; hidden_if_restricted: boolean }> {
+    const conn = this.getConnection(teamId);
+    const body: Record<string, unknown> = { role_ids: roleIds };
+    if (hiddenIfRestricted !== undefined) body.hidden_if_restricted = hiddenIfRestricted;
+    return this.request<{ role_ids: string[]; hidden_if_restricted: boolean }>(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/groups/${groupId}/access`,
+      { method: 'PUT', body: JSON.stringify(body) },
+      conn.token,
+    );
+  }
+
   async deleteChannel(teamId: string, channelId: string): Promise<void> {
     const conn = this.getConnection(teamId);
     await this.request(
@@ -442,6 +579,258 @@ class ApiService {
     );
   }
 
+  // Polls — server-tracked interactive polls. The /poll slash command
+  // creates one and the kind:'poll' message renderer reads its state.
+  async getPolls(teamId: string, channelId: string): Promise<unknown[]> {
+    const conn = this.getConnection(teamId);
+    const data = await this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/channels/${channelId}/polls`,
+      { method: 'GET' },
+      conn.token,
+    );
+    return this.unwrapArray(data, 'polls');
+  }
+
+  async createPoll(
+    teamId: string,
+    channelId: string,
+    body: { question: string; options: string[] },
+  ): Promise<unknown> {
+    const conn = this.getConnection(teamId);
+    return this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/channels/${channelId}/polls`,
+      { method: 'POST', body: JSON.stringify(body) },
+      conn.token,
+    );
+  }
+
+  async votePoll(teamId: string, pollId: string, optionIndex: number): Promise<unknown> {
+    const conn = this.getConnection(teamId);
+    return this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/polls/${pollId}/votes`,
+      { method: 'POST', body: JSON.stringify({ option_index: optionIndex }) },
+      conn.token,
+    );
+  }
+
+  async unvotePoll(teamId: string, pollId: string): Promise<unknown> {
+    const conn = this.getConnection(teamId);
+    return this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/polls/${pollId}/votes`,
+      { method: 'DELETE' },
+      conn.token,
+    );
+  }
+
+  /** The caller voluntarily leaves the team. Server enforces a sole-admin
+   *  guard and responds with 409 if the user is the only admin. */
+  async leaveTeam(teamId: string): Promise<void> {
+    const conn = this.getConnection(teamId);
+    await this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/leave`,
+      { method: 'POST' },
+      conn.token,
+    );
+  }
+
+  /** Mark a channel as read up to its current head. Server persists
+   *  the read-cursor so the unread count stays at zero across
+   *  reloads + other devices. Best-effort: callers should still
+   *  update the local unread store regardless of the response. */
+  async markChannelRead(teamId: string, channelId: string): Promise<void> {
+    const conn = this.getConnection(teamId);
+    await this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/channels/${channelId}/read`,
+      { method: 'PUT' },
+      conn.token,
+    );
+  }
+
+  /** H-14: list this user's enrolled devices. Each entry carries the
+   *  device label, last-seen risk signals (IP / UA / country),
+   *  creation + revocation timestamps. */
+  async listDevices(teamId: string): Promise<Array<Record<string, unknown>>> {
+    const conn = this.getConnection(teamId);
+    const data = await this.request(
+      conn.baseUrl,
+      `/api/v1/devices`,
+      { method: 'GET' },
+      conn.token,
+    );
+    if (Array.isArray(data)) return data;
+    if (data && typeof data === 'object' && Array.isArray((data as Record<string, unknown>).devices)) {
+      return (data as Record<string, unknown>).devices as Array<Record<string, unknown>>;
+    }
+    return [];
+  }
+
+  /** H-14: revoke a device by id. Server refuses to revoke the
+   *  user's last active device (returns a 400) — UI surfaces that
+   *  to the caller as a thrown error. */
+  async revokeDevice(teamId: string, deviceId: string): Promise<void> {
+    const conn = this.getConnection(teamId);
+    await this.request(
+      conn.baseUrl,
+      `/api/v1/devices/${deviceId}/revoke`,
+      { method: 'POST' },
+      conn.token,
+    );
+  }
+
+  /** User-id list of everyone the caller has blocked. */
+  async listBlocks(teamId: string): Promise<string[]> {
+    const conn = this.getConnection(teamId);
+    const data = await this.request<{ user_ids?: string[] }>(
+      conn.baseUrl,
+      `/api/v1/users/me/blocks`,
+      { method: 'GET' },
+      conn.token,
+    );
+    return Array.isArray(data?.user_ids) ? data.user_ids : [];
+  }
+  async blockUser(teamId: string, blockedId: string): Promise<void> {
+    const conn = this.getConnection(teamId);
+    await this.request(
+      conn.baseUrl,
+      `/api/v1/users/me/blocks/${blockedId}`,
+      { method: 'POST' },
+      conn.token,
+    );
+  }
+  async unblockUser(teamId: string, blockedId: string): Promise<void> {
+    const conn = this.getConnection(teamId);
+    await this.request(
+      conn.baseUrl,
+      `/api/v1/users/me/blocks/${blockedId}`,
+      { method: 'DELETE' },
+      conn.token,
+    );
+  }
+
+  async pinMessage(teamId: string, channelId: string, messageId: string): Promise<void> {
+    const conn = this.getConnection(teamId);
+    await this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/channels/${channelId}/messages/${messageId}/pin`,
+      { method: 'POST' },
+      conn.token,
+    );
+  }
+  async unpinMessage(teamId: string, channelId: string, messageId: string): Promise<void> {
+    const conn = this.getConnection(teamId);
+    await this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/channels/${channelId}/messages/${messageId}/pin`,
+      { method: 'DELETE' },
+      conn.token,
+    );
+  }
+
+  /** Resolve a gif URL via the server-side `/giphy` proxy. The server holds
+   *  the Giphy API key (DILLA_GIPHY_API_KEY) so it never reaches the bundle.
+   *  Returns `{ url, query }` on success. Throws when the key is unset
+   *  (503) or no gif matches (404). */
+  async searchGif(teamId: string, query: string, limit?: number): Promise<{ url: string; query: string; results?: Array<{ url: string; preview: string }> }> {
+    const conn = this.getConnection(teamId);
+    const q = `q=${encodeURIComponent(query)}` + (limit ? `&limit=${limit}` : '');
+    return this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/gif?${q}`,
+      { method: 'GET' },
+      conn.token,
+    ) as Promise<{ url: string; query: string; results?: Array<{ url: string; preview: string }> }>;
+  }
+
+  /** Materialize a picked Giphy URL into a team attachment so the gif
+   *  is served from /attachments instead of media.giphy.com — keeps
+   *  viewer IPs off Giphy and the asset doesn't rot when Giphy
+   *  rotates URLs. Returns the same shape uploadFile returns. */
+  async embedGif(teamId: string, url: string): Promise<Attachment> {
+    const conn = this.getConnection(teamId);
+    return this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/gif/embed`,
+      { method: 'POST', body: JSON.stringify({ url }) },
+      conn.token,
+    ) as Promise<Attachment>;
+  }
+
+  /** Returns whether the team has a Giphy API key on file. The key
+   *  itself never crosses the wire — admins set it via setGiphyApiKey. */
+  async getGiphyIntegration(teamId: string): Promise<{ configured: boolean }> {
+    const conn = this.getConnection(teamId);
+    return this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/integrations/giphy`,
+      { method: 'GET' },
+      conn.token,
+    ) as Promise<{ configured: boolean }>;
+  }
+
+  /** Store (or clear, when apiKey is empty) the team's Giphy API key.
+   *  Requires admin permission server-side. */
+  async setGiphyApiKey(teamId: string, apiKey: string): Promise<{ configured: boolean }> {
+    const conn = this.getConnection(teamId);
+    return this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/integrations/giphy`,
+      { method: 'PUT', body: JSON.stringify({ api_key: apiKey }) },
+      conn.token,
+    ) as Promise<{ configured: boolean }>;
+  }
+
+  /** Mute a channel for the current user. `mutedUntil` is an ISO string;
+   *  omit to mute indefinitely. */
+  async muteChannel(teamId: string, channelId: string, mutedUntil?: string | null): Promise<unknown> {
+    const conn = this.getConnection(teamId);
+    return this.request(
+      conn.baseUrl,
+      `/api/v1/me/muted-channels/${channelId}`,
+      { method: 'PUT', body: JSON.stringify({ muted_until: mutedUntil ?? null }) },
+      conn.token,
+    );
+  }
+
+  async unmuteChannel(teamId: string, channelId: string): Promise<void> {
+    const conn = this.getConnection(teamId);
+    await this.request(
+      conn.baseUrl,
+      `/api/v1/me/muted-channels/${channelId}`,
+      { method: 'DELETE' },
+      conn.token,
+    );
+  }
+
+  async getAuditEvents(teamId: string, limit?: number): Promise<unknown[]> {
+    const conn = this.getConnection(teamId);
+    const qs = limit ? `?limit=${limit}` : '';
+    const data = await this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/audit${qs}`,
+      { method: 'GET' },
+      conn.token,
+    );
+    return this.unwrapArray(data, 'audit_events');
+  }
+
+  /** Reorder roles. Pass role_ids ordered LOW position → HIGH position
+   *  (server assigns `position = index`). */
+  async reorderRoles(teamId: string, roleIds: string[]): Promise<unknown> {
+    const conn = this.getConnection(teamId);
+    return this.request(
+      conn.baseUrl,
+      `/api/v1/teams/${teamId}/roles/reorder`,
+      { method: 'PUT', body: JSON.stringify({ role_ids: roleIds }) },
+      conn.token,
+    );
+  }
+
   // Messages
   async getMessages(
     teamId: string,
@@ -506,7 +895,7 @@ class ApiService {
     return this.request(
       conn.baseUrl,
       `/api/v1/teams/${teamId}/dms`,
-      { method: 'POST', body: JSON.stringify({ member_ids: memberIds }) },
+      { method: 'POST', body: JSON.stringify({ user_ids: memberIds }) },
       conn.token,
     );
   }
@@ -700,7 +1089,8 @@ class ApiService {
     formData.append('file', file);
 
     const headers: Record<string, string> = {};
-    if (conn.token) {
+    // H-13d: drop bearer when same-origin (cookie carries auth).
+    if (conn.token && !isSameOriginAsApi(conn.baseUrl)) {
       headers['Authorization'] = `Bearer ${conn.token}`;
     }
 
@@ -708,6 +1098,8 @@ class ApiService {
       method: 'POST',
       headers,
       body: formData,
+      // H-13b.1: cookie travels in lockstep with any bearer header.
+      credentials: 'include',
     });
     if (!res.ok) {
       const body = await res.text();
@@ -779,7 +1171,9 @@ class ApiService {
       `/api/v1/teams/${teamId}/presence`,
       {
         method: 'PUT',
-        body: JSON.stringify({ status_type: status, custom_status: customStatus ?? '' }),
+        // Server's UpdatePresenceRequest expects { status, custom_status }.
+        // Sending status_type made it 422 every time.
+        body: JSON.stringify({ status: status, custom_status: customStatus ?? '' }),
       },
       conn.token,
     );
@@ -829,32 +1223,67 @@ class ApiService {
     }
   }
 
-  // Prekey bundles (E2E encryption)
+  // Prekey bundles (E2E encryption). `request` takes (baseUrl, path,
+  // …) — passing teamId for baseUrl makes fetch resolve the URL as a
+  // relative path against the Vite dev origin, which returns the dev
+  // server's HTML index. That HTML then fails res.json() with
+  // `SyntaxError: JSON.parse: unexpected character at line 1 column 1`
+  // — the same error that blocked voice E2E key distribution to every
+  // peer. Use conn.baseUrl + conn.token like every other endpoint.
   async uploadPrekeyBundle(
     teamId: string,
     bundle: {
       identity_key: string;
+      // X25519 public DH key. Required by X3DH's DH2 step; without
+      // this the peer's session-init fails with
+      // `Data provided to an operation does not meet requirements`
+      // when WebCrypto rejects an empty/wrong-shape buffer.
+      identity_dh_key: string;
       signed_prekey: string;
       signed_prekey_signature: string;
       one_time_prekeys: string[];
     },
   ): Promise<void> {
-    await this.request(teamId, '/api/v1/prekeys', {
-      method: 'POST',
-      body: JSON.stringify(bundle),
-    });
+    const conn = this.getConnection(teamId);
+    await this.request(
+      conn.baseUrl,
+      '/api/v1/prekeys',
+      {
+        method: 'POST',
+        body: JSON.stringify(bundle),
+      },
+      conn.token,
+    );
   }
 
+  /**
+   * Fetch a user's prekey bundle.
+   *
+   * Pass `initiate: true` only when you're about to actually start an
+   * X3DH session — that's the call site that needs an OTPK. Drive-by
+   * fetches (identity-key lookup, safety-number recomputation) MUST
+   * leave it false so the server doesn't drain the keyspace. VULN-006
+   * server-side gate refuses cross-team lookups regardless.
+   */
   async getPrekeyBundle(
     teamId: string,
     userId: string,
+    options: { initiate?: boolean } = {},
   ): Promise<{
     identity_key: string;
+    identity_dh_key: string;
     signed_prekey: string;
     signed_prekey_signature: string;
     one_time_prekeys: string[];
   }> {
-    return this.request(teamId, `/api/v1/prekeys/${userId}`, { method: 'GET' });
+    const conn = this.getConnection(teamId);
+    const query = options.initiate ? '?initiate=true' : '';
+    return this.request(
+      conn.baseUrl,
+      `/api/v1/prekeys/${userId}${query}`,
+      { method: 'GET' },
+      conn.token,
+    );
   }
 }
 

@@ -5,8 +5,10 @@ bin/
 target/
 **/*.rs.bk
 Cargo.lock
-# Keep Cargo.lock for the Tauri app (binary); uncomment if needed:
-# !client/src-tauri/Cargo.lock
+# F8 / TAU-SUPPLY-1 — keep Cargo.lock for the Tauri client (binary).
+# Locking the resolved tree pins every transitive supply-chain dep so
+# a hostile crates.io publish can't sneak in via the next CI build.
+!client/src-tauri/Cargo.lock
 
 # === Node.js ===
 node_modules/
@@ -63,3 +65,26 @@ server-rs/assets/voice-models/manifest.json
 
 # === ORT Web runtime (copied by client postinstall) ===
 client/public/ort-wasm/
+
+# Playwright + dev screenshots
+.playwright-mcp/
+mesh-*.png
+handoff-*.png
+mine.png
+mine*.png
+handoff.png
+tmp-dev-data/
+
+# Server bootstrap-token files — written to disk on first start when
+# DILLA_SEED_DEMO isn't on. Local-only by definition.
+server-rs/BOOTSTRAP_TOKEN
+**/BOOTSTRAP_TOKEN
+
+# vitest --coverage output. Auto-generated HTML + lcov; checking it
+# in just churned the diff and gave CodeQL hundreds of files of
+# coverage HTML to scan (and it flagged js/xss-through-dom on the
+# istanbul template's `sorter.js`).
+client/coverage/
+client/coverage-browser/
+coverage/
+.claude/scheduled_tasks.lock

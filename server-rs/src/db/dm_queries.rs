@@ -138,7 +138,7 @@ pub fn get_dm_messages(
 ) -> Result<Vec<Message>, rusqlite::Error> {
     let mut messages = if before.is_empty() {
         let mut stmt = conn.prepare(
-            "SELECT id, channel_id, dm_channel_id, author_id, content, type, thread_id, edited_at, deleted, lamport_ts, created_at
+            "SELECT id, channel_id, dm_channel_id, author_id, content, type, thread_id, edited_at, deleted, lamport_ts, created_at, reply_to_message_id
              FROM messages WHERE dm_channel_id = ?1
              ORDER BY created_at DESC LIMIT ?2",
         )?;
@@ -146,7 +146,7 @@ pub fn get_dm_messages(
         rows.collect::<Result<Vec<_>, _>>()?
     } else {
         let mut stmt = conn.prepare(
-            "SELECT id, channel_id, dm_channel_id, author_id, content, type, thread_id, edited_at, deleted, lamport_ts, created_at
+            "SELECT id, channel_id, dm_channel_id, author_id, content, type, thread_id, edited_at, deleted, lamport_ts, created_at, reply_to_message_id
              FROM messages WHERE dm_channel_id = ?1 AND created_at < ?2
              ORDER BY created_at DESC LIMIT ?3",
         )?;
@@ -164,7 +164,7 @@ pub fn get_last_dm_message(
     dm_channel_id: &str,
 ) -> Result<Option<Message>, rusqlite::Error> {
     conn.query_row(
-        "SELECT id, channel_id, dm_channel_id, author_id, content, type, thread_id, edited_at, deleted, lamport_ts, created_at
+        "SELECT id, channel_id, dm_channel_id, author_id, content, type, thread_id, edited_at, deleted, lamport_ts, created_at, reply_to_message_id
          FROM messages WHERE dm_channel_id = ?1 ORDER BY created_at DESC LIMIT 1",
         [dm_channel_id],
         row_to_message,
@@ -203,6 +203,8 @@ mod tests {
             public_key: pk.to_vec(), avatar_url: String::new(), status_text: String::new(),
             status_type: "online".into(), is_admin: false,
             created_at: now.clone(), updated_at: now,
+        
+            ..Default::default()
         }
     }
 
@@ -222,7 +224,9 @@ mod tests {
         let team = Team {
             id: "t1".into(), name: "Team".into(), description: String::new(),
             icon_url: String::new(), created_by: "u1".into(), max_file_size: 1024,
-            allow_member_invites: true, created_at: now.clone(), updated_at: now,
+            allow_member_invites: true, federated: false, created_at: now.clone(), updated_at: now,
+        
+            ..Default::default()
         };
         db.with_conn(|c| crate::db::create_team(c, &team)).unwrap();
     }
@@ -332,6 +336,8 @@ mod tests {
             author_id: "u1".into(), content: "hello dm".into(), msg_type: "text".into(),
             thread_id: String::new(), edited_at: None, deleted: false,
             lamport_ts: 1, created_at: "2024-01-01 00:00:00".into(),
+        
+            ..Default::default()
         };
         db.with_conn(|c| create_dm_message(c, &msg)).unwrap();
 
@@ -358,6 +364,8 @@ mod tests {
                 author_id: "u1".into(), content: format!("msg {}", i), msg_type: "text".into(),
                 thread_id: String::new(), edited_at: None, deleted: false,
                 lamport_ts: i as i64, created_at: format!("2024-01-01 00:00:0{}", i),
+            
+                ..Default::default()
             };
             db.with_conn(|c| create_dm_message(c, &msg)).unwrap();
         }
@@ -380,6 +388,8 @@ mod tests {
                 author_id: "u1".into(), content: format!("msg {}", i), msg_type: "text".into(),
                 thread_id: String::new(), edited_at: None, deleted: false,
                 lamport_ts: i as i64, created_at: format!("2024-01-01 00:00:0{}", i),
+            
+                ..Default::default()
             };
             db.with_conn(|c| create_dm_message(c, &msg)).unwrap();
         }

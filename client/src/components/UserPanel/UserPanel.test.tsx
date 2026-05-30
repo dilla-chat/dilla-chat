@@ -269,9 +269,10 @@ describe('UserPanel', () => {
 
   it('renders with all action buttons', () => {
     render(<UserPanel username="alice" />);
-    // Mute, Deafen, Settings
+    // Mute + Deafen. The Settings cog moved into the in-shell modal
+    // (shell/Settings.tsx) so the UserPanel no longer carries it.
     const buttons = document.querySelectorAll('.user-panel-btn');
-    expect(buttons.length).toBe(3);
+    expect(buttons.length).toBe(2);
   });
 
   it('handleStatusChange updates presence via WS', async () => {

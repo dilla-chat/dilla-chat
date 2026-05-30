@@ -5,10 +5,24 @@ import { generateX25519KeyPair, exportX25519PrivateKey, importX25519PrivateKey, 
 import { kdfRoot, kdfChain } from './hkdf';
 import { aesGcmEncrypt, aesGcmDecrypt } from './aesGcm';
 
+/** X3DH bootstrap info, attached only to the FIRST message of a new
+ *  session so the receiver can run x3dhRespond and derive the same
+ *  initial shared secret as the sender's x3dhInitiate. Without this,
+ *  the receiver has no way to construct a matching Bob-side session
+ *  and decryption silently fails with `OperationError`. */
+export interface X3DHBootstrap {
+  identity_dh_key: number[];
+  ephemeral_key: number[];
+  one_time_prekey_index: number | null;
+}
+
 export interface MessageHeader {
   dh_public_key: number[];
   previous_chain_length: number;
   message_number: number;
+  /** Present on the first message of a fresh Alice-initiated session;
+   *  absent on subsequent messages and on Bob-side sends. */
+  x3dh?: X3DHBootstrap;
 }
 
 export interface RatchetMessage {
@@ -43,6 +57,10 @@ export interface RatchetSessionState {
   receivingMessageNumber: number;
   previousSendingChainLength: number;
   skippedKeys: Map<string, Uint8Array>;
+  /** Set on Alice-side sessions until the first outbound message
+   *  consumes it; attached to that message's header so the receiver
+   *  can run x3dhRespond. Cleared after first encrypt(). */
+  pendingBootstrap: X3DHBootstrap | null;
 }
 
 export const MAX_SKIP = 256;
@@ -54,8 +72,17 @@ export class RatchetSession {
     this.state = state;
   }
 
-  /** Initialize as Alice (initiator) after X3DH */
-  static async initAlice(sharedSecret: Uint8Array, bobSignedPrekey: Uint8Array): Promise<RatchetSession> {
+  /** Initialize as Alice (initiator) after X3DH.
+   *
+   *  `bootstrap` is the X3DH handshake info that must be attached to
+   *  the FIRST outbound message so the receiver can run x3dhRespond
+   *  and derive the same initial shared secret. The session consumes
+   *  it on the first encrypt() and clears it. */
+  static async initAlice(
+    sharedSecret: Uint8Array,
+    bobSignedPrekey: Uint8Array,
+    bootstrap: X3DHBootstrap | null = null,
+  ): Promise<RatchetSession> {
     const dhPair = await generateDhKeypair();
     const dhPriv = await importX25519PrivateKey(dhPair.privatePkcs8);
     const dhOutput = await x25519DH(dhPriv, bobSignedPrekey);
@@ -71,6 +98,7 @@ export class RatchetSession {
       receivingMessageNumber: 0,
       previousSendingChainLength: 0,
       skippedKeys: new Map(),
+      pendingBootstrap: bootstrap,
     });
   }
 
@@ -92,6 +120,7 @@ export class RatchetSession {
       receivingMessageNumber: 0,
       previousSendingChainLength: 0,
       skippedKeys: new Map(),
+      pendingBootstrap: null,
     });
   }
 
@@ -111,6 +140,14 @@ export class RatchetSession {
       previous_chain_length: this.state.previousSendingChainLength,
       message_number: this.state.sendingMessageNumber,
     };
+    // Attach X3DH bootstrap on the first outbound message of an
+    // Alice-initiated session, then clear it. The receiver uses it to
+    // run x3dhRespond + initBob on demand without a pre-existing
+    // session.
+    if (this.state.pendingBootstrap) {
+      header.x3dh = this.state.pendingBootstrap;
+      this.state.pendingBootstrap = null;
+    }
     this.state.sendingMessageNumber++;
 
     const ciphertext = await aesGcmEncrypt(messageKey, plaintext);
@@ -208,6 +245,7 @@ export class RatchetSession {
       skippedKeys: Object.fromEntries(
         [...this.state.skippedKeys.entries()].map(([k, v]) => [k, Array.from(v)]),
       ),
+      pendingBootstrap: this.state.pendingBootstrap,
     };
   }
 
@@ -229,6 +267,7 @@ export class RatchetSession {
       skippedKeys: new Map(
         Object.entries(s.skippedKeys as Record<string, number[]>).map(([k, v]) => [k, new Uint8Array(v)]),
       ),
+      pendingBootstrap: (s.pendingBootstrap as X3DHBootstrap | null | undefined) ?? null,
     });
   }
 }

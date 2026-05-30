@@ -32,6 +32,11 @@ export function resetCrypto(): void {
   initializedSessions.clear();
 }
 
+/** True if `initCrypto` has been called successfully. */
+export function isCryptoInitialized(): boolean {
+  return manager !== null;
+}
+
 export async function initCrypto(keys: IdentityKeys, derivedKey: string): Promise<void> {
   if (manager) {
     console.log('[crypto] Already initialized, skipping duplicate initCrypto');
@@ -89,10 +94,24 @@ export type { PrekeyBundle } from './cryptoCore';
  * All functions accept `derivedKey` — the base64-encoded key used to persist sessions.
  */
 export const cryptoService = {
-  async generatePrekeyBundle(_derivedKey: string): Promise<PrekeyBundle> {
+  async generatePrekeyBundle(derivedKey: string): Promise<PrekeyBundle> {
     const mgr = getManager();
     const bundle = await mgr.generatePrekeyBundle();
+    // Persist the secrets so Bob's X3DH-respond path can find the
+    // matching signed_prekey_private and one_time_prekey_privates
+    // after a reload. Without this, an incoming first-message would
+    // arrive after a fresh page load with no way to derive the
+    // shared secret.
+    await persistSessions(derivedKey);
     return bundle;
+  },
+
+  /** Whether local prekey secrets exist. False right after a
+   *  session-format upgrade (which discards them) — the prekey
+   *  backfill should regenerate + re-upload in that case so the
+   *  server's published bundle matches our local privates. */
+  hasPrekeySecrets(): boolean {
+    return getManager().hasPrekeySecrets();
   },
 
   async encryptMessage(
@@ -175,6 +194,33 @@ export const cryptoService = {
     return dist;
   },
 
+  /** Static-static ECDH wrap a short payload for a peer (used for
+   *  voice SFrame key distribution). Both sender and receiver derive
+   *  the same wrap key from their identity DH keys, so this works
+   *  without a Double Ratchet session — which the current codebase
+   *  can't bootstrap on the receiver side (no x3dhRespond). */
+  async wrapForPeer(teamId: string, peerId: string, plaintext: Uint8Array): Promise<string> {
+    const wire = await api.getPrekeyBundle(teamId, peerId);
+    const peerDh = new Uint8Array(
+      atob(wire.identity_dh_key)
+        .split('')
+        .map((c) => c.codePointAt(0)!),
+    );
+    const mgr = getManager();
+    return mgr.wrapForPeer(peerDh, plaintext);
+  },
+
+  async unwrapFromPeer(teamId: string, peerId: string, ciphertext: string): Promise<Uint8Array> {
+    const wire = await api.getPrekeyBundle(teamId, peerId);
+    const peerDh = new Uint8Array(
+      atob(wire.identity_dh_key)
+        .split('')
+        .map((c) => c.codePointAt(0)!),
+    );
+    const mgr = getManager();
+    return mgr.unwrapFromPeer(peerDh, ciphertext);
+  },
+
   async ensurePeerSession(
     teamId: string,
     peerId: string,
@@ -188,8 +234,27 @@ export const cryptoService = {
 
     const promise = (async () => {
       try {
-        const bundle = await api.getPrekeyBundle(teamId, peerId);
-        const bundleJson = JSON.stringify(bundle);
+        // VULN-006: real X3DH session start — ask the server to pop a
+        // one-time prekey. wrap/unwrap paths above leave initiate
+        // unset because they only need the static identity_dh_key.
+        const wire = await api.getPrekeyBundle(teamId, peerId, { initiate: true });
+        // The wire format is base64 strings; the PrekeyBundle the
+        // crypto layer consumes expects raw byte arrays. Doing
+        // `new Uint8Array(base64String)` (which is what x3dhInitiate
+        // would otherwise hit) doesn't decode — it just iterates char
+        // codes — producing a buffer of the wrong length that
+        // WebCrypto rejects with "Data provided to an operation does
+        // not meet requirements". Decode here once at the boundary.
+        const b64 = (s: string): number[] =>
+          Array.from(atob(s), (c) => c.codePointAt(0)!);
+        const decoded = {
+          identity_key: b64(wire.identity_key),
+          identity_dh_key: b64(wire.identity_dh_key),
+          signed_prekey: b64(wire.signed_prekey),
+          signed_prekey_signature: b64(wire.signed_prekey_signature),
+          one_time_prekeys: wire.one_time_prekeys.map(b64),
+        };
+        const bundleJson = JSON.stringify(decoded);
         await this.initSession(peerId, bundleJson, derivedKey);
         initializedSessions.add(key);
       } finally {

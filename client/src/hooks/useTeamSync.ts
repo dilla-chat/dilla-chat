@@ -5,6 +5,9 @@ import { useAuthStore } from '../stores/authStore';
 import { usePresenceStore, type UserPresence } from '../stores/presenceStore';
 import { useVoiceStore } from '../stores/voiceStore';
 import { useUnreadStore } from '../stores/unreadStore';
+import { useChannelMuteStore } from '../stores/channelMuteStore';
+import { usePinStore } from '../stores/pinStore';
+import { useBlockStore } from '../stores/blockStore';
 import { api, type VoicePeer } from '../services/api';
 import { ws } from '../services/websocket';
 import { telemetryClient } from '../services/telemetryClient';
@@ -18,14 +21,42 @@ function normalizeMembers(data: Record<string, unknown>[]) {
     // Unwrap nested { member, user } format from sync:init
     const mem = (raw.member ?? raw) as Record<string, unknown>;
     const usr = (raw.user ?? raw) as Record<string, unknown>;
+    const roleIds = (raw.role_ids ?? raw.roleIds ?? mem.role_ids ?? mem.roleIds ?? []) as string[];
     return {
       id: (mem.id ?? raw.id) as string,
       userId: (mem.user_id ?? mem.userId ?? usr.id ?? raw.user_id ?? raw.userId) as string,
       username: (usr.username ?? raw.username ?? '') as string,
       displayName: (usr.display_name ?? usr.displayName ?? raw.display_name ?? raw.displayName ?? '') as string,
       nickname: (mem.nickname ?? raw.nickname ?? '') as string,
+      roleIds,
+      // Roles will be populated later once both members and roles are in the
+      // store (see resolveMemberRoles below). Kept here as an empty fallback
+      // to satisfy the existing Member type.
       roles: (mem.roles ?? raw.roles ?? []) as Role[],
       statusType: (usr.status_type ?? usr.statusType ?? raw.status_type ?? raw.statusType ?? '') as string,
+      // isAdmin is now derived from role permissions, not a global flag.
+      isAdmin: false,
+      // Member.publicKeyHex feeds the safety-number panel in user
+      // privacy settings. The server serialises `public_key` as base64
+      // (32 bytes Ed25519); convert it to lowercase hex here so the
+      // store contract stays "hex string". If the field is missing,
+      // fall back to empty so the UI shows the em-dash placeholder
+      // instead of a fake fingerprint.
+      publicKeyHex: ((): string => {
+        const direct = (mem.public_key_hex ?? usr.public_key_hex ?? raw.public_key_hex) as string | undefined;
+        if (direct) return direct;
+        const b64 = (usr.public_key ?? mem.public_key ?? raw.public_key) as string | undefined;
+        if (!b64) return '';
+        try {
+          const bin = atob(b64);
+          let hex = '';
+          for (let i = 0; i < bin.length; i++) hex += (bin.codePointAt(i) ?? 0).toString(16).padStart(2, '0');
+          return hex;
+        } catch {
+          return '';
+        }
+      })(),
+      avatarUrl: (usr.avatar_url ?? usr.avatarUrl ?? raw.avatar_url ?? raw.avatarUrl ?? '') as string,
     };
   });
 }
@@ -63,29 +94,110 @@ function applyPresences(teamId: string, raw: any, setters: SyncStoreSetters) {
   }
 }
 
-/** Apply sync:init data to stores */
+function normalizeSyncChannels(raw: Record<string, unknown>[], teamId: string): Channel[] {
+  return raw.map((ch) => ({
+    ...ch,
+    teamId: ch.teamId ?? ch.team_id ?? teamId,
+    groupId: (ch.group_id ?? ch.groupId ?? null) as string | null,
+    accessRoleIds: (ch.access_role_ids ?? ch.accessRoleIds ?? []) as string[],
+    slowModeSeconds: (ch.slow_mode_seconds ?? ch.slowModeSeconds ?? 0) as number,
+    hiddenIfRestricted: Boolean(ch.hidden_if_restricted ?? ch.hiddenIfRestricted),
+  })) as Channel[];
+}
+
+function normalizeSyncGroups(raw: Record<string, unknown>[], teamId: string) {
+  return raw.map((g) => ({
+    id: g.id as string,
+    teamId: (g.team_id ?? g.teamId ?? teamId) as string,
+    name: (g.name as string) ?? '',
+    position: (g.position as number) ?? 0,
+    accessRoleIds: (g.access_role_ids ?? g.accessRoleIds ?? []) as string[],
+    hiddenIfRestricted: Boolean(g.hidden_if_restricted ?? g.hiddenIfRestricted),
+  }));
+}
+
+function normalizeSyncRoles(raw: Record<string, unknown>[]): Role[] {
+  return raw.map((r) => ({
+    id: r.id as string,
+    name: r.name as string,
+    color: (r.color as string) ?? '',
+    position: (r.position as number) ?? 0,
+    permissions: (r.permissions as number) ?? 0,
+    isDefault: Boolean(r.isDefault ?? r.is_default),
+  })) as Role[];
+}
+
+function resolveMembersWithRoles(
+  members: ReturnType<typeof normalizeMembers>,
+  roles: Role[],
+) {
+  const rolesById = new Map(roles.map((r) => [r.id, r]));
+  const PERM_ADMIN = 1;
+  return members.map((m) => {
+    const memberRoles = (m.roleIds ?? [])
+      .map((id) => rolesById.get(id))
+      .filter((r): r is Role => !!r);
+    const isAdmin = memberRoles.some((r) => (r.permissions & PERM_ADMIN) !== 0);
+    return { ...m, roles: memberRoles, isAdmin };
+  });
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function applySyncData(teamId: string, data: any, setters: SyncStoreSetters) {
-  if (data.channels) {
-    const channels = (data.channels as Record<string, unknown>[]).map((ch) => ({
-      ...ch,
-      teamId: ch.teamId ?? ch.team_id ?? teamId,
-    })) as Channel[];
-    setters.setChannels(teamId, channels);
-  }
-  if (data.team) setters.setTeam(data.team as Team);
-  if (data.members) setters.setMembers(teamId, normalizeMembers(data.members as Record<string, unknown>[]));
-  if (data.roles) setters.setRoles(teamId, data.roles as Role[]);
-  if (data.presences) {
-    applyPresences(teamId, data.presences, setters);
-  }
+function applySecondaryStores(data: any) {
   if (data.voice_states && typeof data.voice_states === 'object') {
     useVoiceStore.getState().setVoiceOccupants(data.voice_states as Record<string, VoicePeer[]>);
   }
   if (data.unread_counts && typeof data.unread_counts === 'object') {
     useUnreadStore.getState().setCounts(data.unread_counts as Record<string, number>);
   }
+  if (Array.isArray(data.muted_channels)) {
+    useChannelMuteStore.getState().setAll(data.muted_channels as Array<{ channel_id: string; muted_until: string | null }>);
+  }
+  if (Array.isArray(data.pins)) {
+    usePinStore.getState().setAll(
+      data.pins as Array<{ channel_id: string; message_id: string }>,
+    );
+  }
+  if (Array.isArray(data.blocked_user_ids)) {
+    useBlockStore.getState().setAll(data.blocked_user_ids as string[]);
+  }
+}
+
+/** Apply sync:init data to stores */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function applySyncData(teamId: string, data: any, setters: SyncStoreSetters) {
+  if (data.channels) {
+    setters.setChannels(teamId, normalizeSyncChannels(data.channels as Record<string, unknown>[], teamId));
+  }
+  if (Array.isArray(data.groups)) {
+    useTeamStore.getState().setGroups(teamId, normalizeSyncGroups(data.groups as Record<string, unknown>[], teamId));
+  }
+  if (data.team) setters.setTeam(data.team as Team);
+  const normalizedMembers = data.members
+    ? normalizeMembers(data.members as Record<string, unknown>[])
+    : null;
+  const normalizedRoles = data.roles
+    ? normalizeSyncRoles(data.roles as Record<string, unknown>[])
+    : null;
+  if (normalizedRoles) setters.setRoles(teamId, normalizedRoles);
+  if (normalizedMembers) {
+    setters.setMembers(teamId, resolveMembersWithRoles(normalizedMembers, normalizedRoles ?? []));
+  }
+  if (data.presences) {
+    applyPresences(teamId, data.presences, setters);
+  }
+  applySecondaryStores(data);
   console.log(`[AppLayout] sync:init applied for team ${teamId}`);
+
+  // sync:init doesn't include the live PresenceManager state; members'
+  // status_type comes from the DB default ('online' at registration) and
+  // never updates. Always fetch the live presence map separately so
+  // disconnected users show as offline immediately after a reload.
+  if (!data.presences) {
+    api.getPresences(teamId)
+      .then((pres) => applyPresences(teamId, pres as Record<string, UserPresence>, setters))
+      .catch((err) => console.warn('[AppLayout] getPresences after sync:init failed', err));
+  }
 
   // Now that sync is complete and channels are known, flush any messages
   // that were queued while the WebSocket was reconnecting.
@@ -99,6 +211,7 @@ function loadDataViaREST(teamId: string, setters: SyncStoreSetters) {
     const channels = (data as Record<string, unknown>[]).map((ch) => ({
       ...ch,
       teamId: ch.teamId ?? ch.team_id ?? teamId,
+      accessRoleIds: (ch.access_role_ids ?? ch.accessRoleIds ?? []) as string[],
     })) as Channel[];
     setters.setChannels(teamId, channels);
   }).catch((err) => console.error('Failed to fetch channels:', err));
@@ -302,9 +415,190 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
       useUnreadStore.getState().markRead(payload.channel_id);
     });
 
+    // Pop deleted channels out of the sidebar without a reload. Server
+    // emits this after DELETE /channels/:cid; broadcasts team-wide so every
+    // connected client patches its store. If the user was sitting on the
+    // deleted channel, send them to the first remaining one so the chat
+    // view doesn't render against a missing record.
+    const unsubChannelDeleted = ws.on('channel:deleted', (payload: { channel_id?: string; team_id?: string }) => {
+      if (!payload?.channel_id || !payload?.team_id) return;
+      const ts = useTeamStore.getState();
+      ts.removeChannel(payload.team_id, payload.channel_id);
+      if (ts.activeChannelId === payload.channel_id) {
+        const list = ts.channels.get(payload.team_id) ?? [];
+        ts.setActiveChannel(list[0]?.id ?? '');
+      }
+    });
+
+    // Refresh sidebar entries when a channel mutates (rename, topic, lock).
+    const unsubChannelUpdated = ws.on('channel:updated', (payload: Record<string, unknown>) => {
+      if (!payload?.id) return;
+      const teamIdFromPayload = (payload.team_id ?? payload.teamId) as string | undefined;
+      if (!teamIdFromPayload) return;
+      const teamStore = useTeamStore.getState();
+      const list = teamStore.channels.get(teamIdFromPayload) ?? [];
+      const idx = list.findIndex((c) => c.id === payload.id);
+      const baseline = idx >= 0 ? list[idx] : ({} as Partial<Channel> as Channel);
+      const updated: Channel = {
+        ...baseline,
+        ...payload,
+        teamId: teamIdFromPayload,
+        accessRoleIds: (payload.access_role_ids ?? payload.accessRoleIds ?? (idx >= 0 ? list[idx].accessRoleIds : [])),
+        // Server emits snake_case fields; normalize to the camelCase
+        // names the rest of the client uses so live edits to slow mode,
+        // the hidden flag, or the channel's group membership actually
+        // take effect.
+        slowModeSeconds: (payload.slow_mode_seconds ?? payload.slowModeSeconds ?? (idx >= 0 ? list[idx].slowModeSeconds : 0)) as number,
+        hiddenIfRestricted: Boolean(payload.hidden_if_restricted ?? payload.hiddenIfRestricted ?? (idx >= 0 ? list[idx].hiddenIfRestricted : false)),
+        groupId: ((payload.group_id ?? payload.groupId ?? (idx >= 0 ? list[idx].groupId : null)) as string | null) ?? null,
+      } as Channel;
+      const next = idx >= 0 ? list.map((c, i) => (i === idx ? updated : c)) : [...list, updated];
+      teamStore.setChannels(teamIdFromPayload, next);
+    });
+
+    // Member role changes: patch the affected member in-place (roleIds +
+    // roles + isAdmin) so the rail / role groups / access gating react
+    // without a re-sync, and toast the affected user if they're the one
+    // being changed.
+    const unsubMemberRoles = ws.on(
+      'member:roles-updated',
+      (payload: { team_id?: string; user_id?: string; actor_user_id?: string; role_ids?: string[] }) => {
+        if (!payload?.team_id || !payload?.user_id || !payload?.role_ids) return;
+        const teamStore = useTeamStore.getState();
+        const list = teamStore.members.get(payload.team_id) ?? [];
+        const rolesById = new Map((teamStore.roles.get(payload.team_id) ?? []).map((r) => [r.id, r]));
+        const PERM_ADMIN = 1;
+        const nextRoles = payload.role_ids
+          .map((id) => rolesById.get(id))
+          .filter((r): r is NonNullable<typeof r> => !!r);
+        const isAdmin = nextRoles.some((r) => (r.permissions & PERM_ADMIN) !== 0);
+        const next = list.map((m) =>
+          m.userId === payload.user_id
+            ? { ...m, roleIds: payload.role_ids!, roles: nextRoles, isAdmin }
+            : m,
+        );
+        teamStore.setMembers(payload.team_id, next);
+
+        // Toast the affected user. Skip when they're the actor (they
+        // triggered the change themselves) or when the event isn't about
+        // the current user at all.
+        const myUserId = (globalThis as { SHELL_DATA?: { currentUserId?: string } }).SHELL_DATA?.currentUserId;
+        if (myUserId && myUserId === payload.user_id && payload.actor_user_id !== myUserId) {
+          const roleNames = nextRoles.map((r) => r.name).join(', ');
+          const actor = list.find((m) => m.userId === payload.actor_user_id);
+          globalThis.dispatchEvent(new CustomEvent('dilla:notify', {
+            detail: {
+              author: actor?.username || 'admin',
+              text: roleNames
+                ? `Your roles were updated: ${roleNames}`
+                : 'Your roles were cleared',
+              duration: 6000,
+              kind: 'mention',
+              mention: true,
+            },
+          }));
+        }
+      },
+    );
+
+    // Pin / unpin a message — broadcast to every channel subscriber so
+    // the pin pop in the channel header updates without a re-fetch.
+    const unsubPin = ws.on('message:pin-update', (payload: { channel_id?: string; message_id?: string; pinned?: boolean }) => {
+      if (!payload?.channel_id || !payload?.message_id) return;
+      const ps = usePinStore.getState();
+      if (payload.pinned) ps.pin(payload.channel_id, payload.message_id);
+      else ps.unpin(payload.channel_id, payload.message_id);
+    });
+
+    // Per-user channel mute updates (multi-device sync) — server sends
+    // this to every device on the same user_id.
+    const unsubMute = ws.on('channel:mute-update', (payload: { channel_id?: string; muted?: boolean; muted_until?: string | null }) => {
+      if (!payload?.channel_id) return;
+      if (payload.muted === false) {
+        useChannelMuteStore.getState().clear(payload.channel_id);
+      } else {
+        useChannelMuteStore.getState().setMuted(payload.channel_id, payload.muted_until ?? null);
+      }
+    });
+
+    // Channel-group mutation events. Groups own access lists; channels in
+    // them inherit. Sidebar restriction state, access modals, and the
+    // hidden_if_restricted recompute all read through the store, so a
+    // local patch here is enough — no re-sync needed.
+    const normalizeGroup = (raw: Record<string, unknown>, tid: string) => ({
+      id: raw.id as string,
+      teamId: (raw.team_id ?? raw.teamId ?? tid) as string,
+      name: (raw.name as string) ?? '',
+      position: (raw.position as number) ?? 0,
+      accessRoleIds: (raw.access_role_ids ?? raw.accessRoleIds ?? []) as string[],
+      hiddenIfRestricted: Boolean(raw.hidden_if_restricted ?? raw.hiddenIfRestricted),
+    });
+    const unsubGroupCreated = ws.on('group:created', (payload: { team_id?: string; group?: Record<string, unknown> }) => {
+      if (!payload?.team_id || !payload?.group) return;
+      useTeamStore.getState().upsertGroup(payload.team_id, normalizeGroup(payload.group, payload.team_id));
+    });
+    const unsubGroupUpdated = ws.on('group:updated', (payload: { team_id?: string; group?: Record<string, unknown> }) => {
+      if (!payload?.team_id || !payload?.group) return;
+      // Preserve the access list — group:updated only mutates name/position;
+      // a separate group:access-update event carries role changes.
+      const next = normalizeGroup(payload.group, payload.team_id);
+      const existing = (useTeamStore.getState().groups.get(payload.team_id) ?? []).find((g) => g.id === next.id);
+      if (existing) next.accessRoleIds = existing.accessRoleIds;
+      useTeamStore.getState().upsertGroup(payload.team_id, next);
+    });
+    const unsubGroupDeleted = ws.on('group:deleted', (payload: { team_id?: string; group?: { id?: string }; channel_ids?: string[] }) => {
+      if (!payload?.team_id || !payload?.group?.id) return;
+      useTeamStore.getState().removeGroup(payload.team_id, payload.group.id);
+      // Affected channels lost their group_id server-side; mirror locally
+      // so the sidebar pops them out of the group section immediately.
+      if (Array.isArray(payload.channel_ids) && payload.channel_ids.length > 0) {
+        const ts = useTeamStore.getState();
+        const list = ts.channels.get(payload.team_id) ?? [];
+        const next = list.map((c) =>
+          payload.channel_ids!.includes(c.id) ? { ...c, groupId: null } : c,
+        );
+        ts.setChannels(payload.team_id, next);
+      }
+    });
+    const unsubGroupAccess = ws.on('group:access-update', (payload: { team_id?: string; group_id?: string; role_ids?: string[]; hidden_if_restricted?: boolean }) => {
+      if (!payload?.team_id || !payload?.group_id) return;
+      const ts = useTeamStore.getState();
+      const existing = (ts.groups.get(payload.team_id) ?? []).find((g) => g.id === payload.group_id);
+      if (!existing) return;
+      ts.upsertGroup(payload.team_id, {
+        ...existing,
+        accessRoleIds: payload.role_ids ?? [],
+        hiddenIfRestricted: payload.hidden_if_restricted ?? existing.hiddenIfRestricted,
+      });
+    });
+
+    // Partial update from PUT /channels/:cid/access — only role_ids changed.
+    const unsubAccess = ws.on('channel:access-update', (payload: { channel_id?: string; role_ids?: string[] }) => {
+      if (!payload?.channel_id) return;
+      const teamStore = useTeamStore.getState();
+      for (const [tid, list] of teamStore.channels.entries()) {
+        const idx = list.findIndex((c) => c.id === payload.channel_id);
+        if (idx < 0) continue;
+        const updated: Channel = { ...list[idx], accessRoleIds: payload.role_ids ?? [] };
+        const next = list.map((c, i) => (i === idx ? updated : c));
+        teamStore.setChannels(tid, next);
+        break;
+      }
+    });
+
     return () => {
       unsubMsgNew();
       unsubChannelRead();
+      unsubChannelUpdated();
+      unsubChannelDeleted();
+      unsubAccess();
+      unsubMute();
+      unsubPin();
+      unsubMemberRoles();
+      unsubGroupCreated();
+      unsubGroupUpdated();
+      unsubGroupDeleted();
+      unsubGroupAccess();
     };
   }, [activeTeamId]);
 
@@ -334,6 +628,42 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
       console.log(`[AppLayout] Rotated channel keys after member ${payload.user_id} left team ${teamId}`);
     });
 
+    return () => { unsub(); };
+  }, [activeTeamId]);
+
+  // member:joined — server broadcasts this when a new user registers via
+  // invite. Append to the local member list so existing sessions don't
+  // need a reload to see the joiner.
+  useEffect(() => {
+    if (!activeTeamId) return;
+    const teamId = activeTeamId;
+    const unsub = ws.on(
+      'member:joined',
+      async (payload: { team_id?: string; user?: Record<string, unknown>; member?: Record<string, unknown> }) => {
+        if (!payload?.team_id || payload.team_id !== teamId) return;
+        const [normalized] = normalizeMembers([
+          { member: payload.member ?? {}, user: payload.user ?? {} },
+        ]);
+        if (normalized?.userId) {
+          useTeamStore.getState().addMember(teamId, normalized);
+        }
+        // Re-distribute our sender key for every text channel so the new
+        // member can decrypt messages we send from here on. Past messages
+        // remain unreadable to them (forward-secret sender keys).
+        const derivedKey = useAuthStore.getState().derivedKey;
+        if (!derivedKey) return;
+        const channels = useTeamStore.getState().channels.get(teamId) ?? [];
+        for (const ch of channels) {
+          if (ch.type !== 'text') continue;
+          try {
+            const dist = await cryptoService.getSenderKeyDistribution(ch.id, derivedKey);
+            ws.distributeChannelKey(teamId, ch.id, dist);
+          } catch (err) {
+            console.warn('[useTeamSync] re-distribute sender key failed', ch.id, err);
+          }
+        }
+      },
+    );
     return () => { unsub(); };
   }, [activeTeamId]);
 

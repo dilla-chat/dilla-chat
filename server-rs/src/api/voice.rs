@@ -86,3 +86,52 @@ pub async fn get_room(
         "participants": [],
     })))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn models_serve_rejects_unlisted_paths_with_404() {
+        let resp = models_serve(Path("../etc/passwd".into())).await;
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn models_serve_rejects_a_real_looking_but_unlisted_path() {
+        // dfn3-v1 is older — not on the allowlist.
+        let resp = models_serve(Path("dfn3-v1/enc.onnx".into())).await;
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn models_serve_rejects_empty_path() {
+        let resp = models_serve(Path("".into())).await;
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn allowed_model_paths_only_contains_dfn3v2_onnx_subgraphs() {
+        // Lock the allowlist content — any expansion is intentional and
+        // requires updating this test.
+        assert_eq!(ALLOWED_MODEL_PATHS.len(), 3);
+        for p in ALLOWED_MODEL_PATHS {
+            assert!(p.starts_with("dfn3-v2/"), "path {p} not under dfn3-v2/");
+            assert!(p.ends_with(".onnx"), "path {p} doesn't end in .onnx");
+        }
+    }
+
+    #[tokio::test]
+    async fn manifest_response_has_correct_status_when_missing() {
+        // assets/voice-models/manifest.json may or may not exist depending
+        // on the build configuration. We test the API contract for both
+        // outcomes.
+        let resp = models_manifest().await;
+        assert!(
+            resp.status() == StatusCode::OK || resp.status() == StatusCode::NOT_FOUND,
+            "unexpected status: {}",
+            resp.status()
+        );
+    }
+
+}

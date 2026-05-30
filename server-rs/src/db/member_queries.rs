@@ -29,7 +29,8 @@ pub fn get_members_by_team(
 ) -> Result<Vec<(Member, User)>, rusqlite::Error> {
     let mut stmt = conn.prepare(
         "SELECT m.id, m.team_id, m.user_id, m.nickname, m.joined_at, m.invited_by, m.updated_at,
-                u.id, u.username, u.display_name, u.public_key, u.avatar_url, u.status_text, u.status_type, u.is_admin, u.created_at, u.updated_at
+                u.id, u.username, u.display_name, u.public_key, u.avatar_url, u.status_text, u.status_type, u.is_admin, u.created_at, u.updated_at,
+                u.quiet_hours_enabled, u.quiet_hours_from, u.quiet_hours_to
          FROM members m
          JOIN users u ON u.id = m.user_id
          WHERE m.team_id = ?1",
@@ -55,9 +56,25 @@ pub fn get_members_by_team(
             is_admin: row.get::<_, i32>(14)? != 0,
             created_at: row.get(15)?,
             updated_at: row.get(16)?,
+            quiet_hours_enabled: row.get::<_, i32>(17).unwrap_or(0) != 0,
+            quiet_hours_from: row.get::<_, Option<String>>(18).unwrap_or_default().unwrap_or_else(|| "22:00".into()),
+            quiet_hours_to: row.get::<_, Option<String>>(19).unwrap_or_default().unwrap_or_else(|| "07:30".into()),
         };
         Ok((member, user))
     })?;
+    rows.collect()
+}
+
+/// Return every team_id where the user has a `members` row. Used by
+/// permission gates that aren't tied to a specific team (e.g. the
+/// federation join-token endpoint — see A3) and by audit-event
+/// emitters that need to scope an event to the caller's team.
+pub fn list_user_teams(
+    conn: &Connection,
+    user_id: &str,
+) -> Result<Vec<String>, rusqlite::Error> {
+    let mut stmt = conn.prepare("SELECT team_id FROM members WHERE user_id = ?1")?;
+    let rows = stmt.query_map([user_id], |row| row.get::<_, String>(0))?;
     rows.collect()
 }
 
@@ -102,6 +119,39 @@ pub fn delete_member(
         params![user_id, team_id],
     )?;
     Ok(())
+}
+
+/// Return true when `caller` and `target` are both members of at least
+/// one shared team.
+///
+/// Used as the gate for cross-user lookups that should only be
+/// available to people who already legitimately know about each other
+/// (prekey bundle fetch — see VULN-006). The query is index-backed via
+/// the `members(team_id, user_id)` covering index established in
+/// 001_initial.sql so an attacker can't turn it into a fanout DoS.
+pub fn users_share_team(
+    conn: &Connection,
+    caller: &str,
+    target: &str,
+) -> Result<bool, rusqlite::Error> {
+    if caller == target {
+        // A user always "shares" with themself for the purposes of
+        // looking up their own keys — keeps the call sites simple.
+        return Ok(true);
+    }
+    let exists: bool = conn
+        .query_row(
+            "SELECT 1
+             FROM members ma
+             JOIN members mb ON mb.team_id = ma.team_id
+             WHERE ma.user_id = ?1 AND mb.user_id = ?2
+             LIMIT 1",
+            params![caller, target],
+            |_| Ok(true),
+        )
+        .optional()?
+        .unwrap_or(false);
+    Ok(exists)
 }
 
 #[cfg(test)]

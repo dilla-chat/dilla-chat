@@ -47,6 +47,20 @@ export class WebSocketService {
     authParam: string,
     refreshAuth?: () => Promise<string>,
   ): void {
+    // If there's already a live socket to the same URL, reuse it. In
+    // production this rarely matters; in dev React StrictMode double-
+    // invokes useEffect so the second pass would otherwise disconnect
+    // a perfectly good socket and pay the reconnect-backoff cost. The
+    // ticket auth has already been consumed for the live socket — the
+    // new authParam (a fresh ticket) just gets cached for any future
+    // reconnect.
+    const existing = this.connections.get(teamId);
+    const sameUrl = this.connectionParams.get(teamId)?.url === url;
+    if (existing && sameUrl && existing.readyState <= 1) {
+      this.connectionParams.set(teamId, { url, token: authParam });
+      if (refreshAuth) this.authRefreshers.set(teamId, refreshAuth);
+      return;
+    }
     this.disconnect(teamId);
     this.connectionParams.set(teamId, { url, token: authParam });
     if (refreshAuth) {
@@ -203,6 +217,14 @@ export class WebSocketService {
     });
   }
 
+  /** Synthesize a local event for subscribers without a network round trip.
+   *  Used by eager-load / cache restore to feed historic state through the
+   *  same `ws.on(...)` handlers that live updates use, keeping one merge
+   *  path on the consumer side. */
+  publishLocal(eventType: string, payload: unknown): void {
+    this.emit(eventType, payload);
+  }
+
   send(teamId: string, event: WSEvent): void {
     const socket = this.connections.get(teamId);
     if (socket?.readyState === WebSocket.OPEN) {
@@ -303,6 +325,7 @@ export class WebSocketService {
     type: string = 'text',
     threadId?: string,
     attachmentIds?: string[],
+    replyToMessageId?: string | null,
   ): void {
     this.send(teamId, {
       type: 'message:send',
@@ -312,6 +335,7 @@ export class WebSocketService {
         type,
         thread_id: threadId ?? null,
         attachment_ids: attachmentIds ?? [],
+        reply_to_message_id: replyToMessageId ?? null,
       },
     });
   }
@@ -458,6 +482,37 @@ export class WebSocketService {
     });
   }
 
+  /** Server-side force-mute of another participant. Requires the
+   *  PERM_MUTE_VOICE permission on the team — the server enforces and
+   *  audit-logs; this client just submits intent. There's intentionally
+   *  no inverse (force-unmute): lifting a server-mute is a decision the
+   *  target makes for themselves by un-muting locally. */
+  voiceForceMute(teamId: string, channelId: string, targetUserId: string): void {
+    this.send(teamId, {
+      type: 'voice:force-mute',
+      payload: { channel_id: channelId, target_user_id: targetUserId },
+    });
+  }
+
+  /** Boot another participant out of the voice channel. Same permission
+   *  gate as voiceForceMute (PERM_MUTE_VOICE covers all voice moderation). */
+  voiceForceDisconnect(teamId: string, channelId: string, targetUserId: string): void {
+    this.send(teamId, {
+      type: 'voice:force-disconnect',
+      payload: { channel_id: channelId, target_user_id: targetUserId },
+    });
+  }
+
+  /** Publish own SFU RTT so other peers can render real per-user
+   *  latency on their voice cards. No permission gate — server just
+   *  echoes it back keyed by sender. */
+  voiceLatency(teamId: string, channelId: string, latencyMs: number): void {
+    this.send(teamId, {
+      type: 'voice:latency',
+      payload: { channel_id: channelId, latency_ms: latencyMs },
+    });
+  }
+
   voiceScreenStart(teamId: string, channelId: string): void {
     this.send(teamId, {
       type: 'voice:screen-start',
@@ -495,6 +550,15 @@ export class WebSocketService {
     this.send(teamId, {
       type: 'voice:key-distribute',
       payload: { channel_id: channelId, key_id: keyId, encrypted_keys: encryptedKeys },
+    });
+  }
+
+  // Ring a specific user with a voice-call invite. The server forwards a
+  // voice:incoming-call event to the target's WS connection (if connected).
+  sendVoiceInvite(teamId: string, targetUserId: string, channelId: string): void {
+    this.send(teamId, {
+      type: 'voice:invite',
+      payload: { target_user_id: targetUserId, channel_id: channelId },
     });
   }
 

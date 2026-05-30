@@ -15,6 +15,13 @@ interface AudioSettingsStore {
   vadThreshold: number;
   vadGracePeriodMs: number;
   retroactiveGraceMs: number;
+  /** Video device id used by WebRTC camera tracks. 'default' means
+   *  whatever the OS gives us; otherwise an exact deviceId from
+   *  navigator.mediaDevices.enumerateDevices(). */
+  videoDeviceId: string;
+  /** Whether to mirror the local preview tile so the user sees a
+   *  mirror image of themselves (matches macOS / Slack default). */
+  mirrorPreview: boolean;
 
   setEchoCancellation: (v: boolean) => void;
   setNoiseSuppression: (v: boolean) => void;
@@ -26,6 +33,8 @@ interface AudioSettingsStore {
   setVadThreshold: (v: number) => void;
   setVadGracePeriodMs: (v: number) => void;
   setRetroactiveGraceMs: (v: number) => void;
+  setVideoDeviceId: (v: string) => void;
+  setMirrorPreview: (v: boolean) => void;
 
   /** Build MediaTrackConstraints for getUserMedia audio */
   getAudioConstraints: (deviceId?: string) => MediaTrackConstraints | boolean;
@@ -44,6 +53,8 @@ export const useAudioSettingsStore = create<AudioSettingsStore>()(
       vadThreshold: 0.5,
       vadGracePeriodMs: 200,
       retroactiveGraceMs: 20,
+      videoDeviceId: 'default',
+      mirrorPreview: true,
 
       setEchoCancellation: (v) => set({ echoCancellation: v }),
       setNoiseSuppression: (v) => set({ noiseSuppression: v }),
@@ -85,6 +96,8 @@ export const useAudioSettingsStore = create<AudioSettingsStore>()(
       setVadThreshold: (v) => set({ vadThreshold: v }),
       setVadGracePeriodMs: (v) => set({ vadGracePeriodMs: v }),
       setRetroactiveGraceMs: (v) => set({ retroactiveGraceMs: v }),
+      setVideoDeviceId: (v) => set({ videoDeviceId: v }),
+      setMirrorPreview: (v) => set({ mirrorPreview: v }),
 
       getAudioConstraints: (deviceId?: string) => {
         const { echoCancellation, noiseSuppression, autoGainControl } = get();

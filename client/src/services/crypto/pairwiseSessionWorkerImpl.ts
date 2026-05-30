@@ -1,0 +1,183 @@
+// H-12c.2: worker-scope encrypt/decrypt for 1:1 Double Ratchet
+// sessions. Mirrors the group-session impl from H-12b — load state
+// from the worker IDB, mutate via RatchetSession, persist.
+//
+// What stays on the main thread for now (deferred to H-12d):
+//   - X3DH initiate (uses identity DH private key + peer prekey
+//     bundle). Main thread creates the RatchetSession, then calls
+//     `pairwiseSessionSaveInWorker(peerId, session.toJSON())` to
+//     ship it here.
+//   - X3DH respond (Bob bootstrap from an incoming message's
+//     bootstrap header). Same pattern — main thread runs it, ships
+//     the new session to the worker.
+//
+// Once H-12d ships, X3DH itself will run in the worker and identity
+// DH + prekey secrets will live exclusively here.
+
+import { RatchetSession } from './ratchet';
+import type { RatchetMessage, X3DHBootstrap } from './ratchet';
+import {
+  savePairwiseSession,
+  loadPairwiseSession,
+} from './pairwiseSessionStoreWorkerImpl';
+import { fromBase64, toBase64 } from './helpers';
+import { x3dhInitiate, x3dhRespond } from './x3dh';
+import { importX25519PrivateKey } from './x25519';
+import type { PrekeyBundle } from './prekeys';
+
+const cache = new Map<string, RatchetSession>();
+
+async function getCached(peerId: string): Promise<RatchetSession | null> {
+  const hit = cache.get(peerId);
+  if (hit) return hit;
+  const stored = await loadPairwiseSession(peerId);
+  if (!stored) return null;
+  try {
+    const session = RatchetSession.fromJSON(stored);
+    cache.set(peerId, session);
+    return session;
+  } catch {
+    return null;
+  }
+}
+
+async function persist(peerId: string, session: RatchetSession): Promise<void> {
+  cache.set(peerId, session);
+  await savePairwiseSession(peerId, session.toJSON()).catch(() => {});
+}
+
+/** Encrypt a base64-encoded plaintext for `peerId`. Returns base64
+ *  of the JSON-serialized RatchetMessage — matches the legacy
+ *  `cryptoManager.encryptDM` wire shape. Throws when no session
+ *  exists yet; main thread must initiate before the first encrypt. */
+export async function opPairwiseEncrypt(
+  peerId: string,
+  plaintextB64: string,
+): Promise<string> {
+  const session = await getCached(peerId);
+  if (!session) {
+    throw new Error(`No pairwise session for peer ${peerId}`);
+  }
+  const plaintext = fromBase64(plaintextB64);
+  const msg = await session.encrypt(plaintext);
+  await persist(peerId, session);
+  return toBase64(new TextEncoder().encode(JSON.stringify(msg)));
+}
+
+/** Decrypt a base64-encoded RatchetMessage wire payload. Returns
+ *  base64 of the plaintext. Throws when no session exists and the
+ *  message carries no X3DH bootstrap header (main thread retries
+ *  the bootstrap path then).
+ *
+ *  Note on the X3DH-bootstrap fallback: the legacy code on the main
+ *  thread calls `bootstrapBobSession` when the existing session
+ *  fails and the message has an x3dh header. In worker mode the
+ *  worker has no access to prekey secrets, so it just signals back
+ *  and the main thread does the bootstrap + ships the new session
+ *  via pairwiseSessionSaveInWorker before retrying decrypt. */
+export async function opPairwiseDecrypt(
+  peerId: string,
+  ciphertextB64: string,
+): Promise<{ ok: true; plaintextB64: string } | { ok: false; needsBootstrap: boolean }> {
+  const session = await getCached(peerId);
+  const wire = new TextDecoder().decode(fromBase64(ciphertextB64));
+  const msg: RatchetMessage = JSON.parse(wire);
+
+  if (session) {
+    try {
+      const plaintext = await session.decrypt(msg);
+      await persist(peerId, session);
+      return { ok: true, plaintextB64: toBase64(plaintext) };
+    } catch (err) {
+      // Same fall-through rule as the main-thread path: if the
+      // header carries an X3DH bootstrap, signal the caller to
+      // re-bootstrap. Otherwise re-throw.
+      if (!msg.header.x3dh) throw err;
+      return { ok: false, needsBootstrap: true };
+    }
+  }
+
+  // No existing session — caller must bootstrap before retrying.
+  if (msg.header.x3dh) {
+    return { ok: false, needsBootstrap: true };
+  }
+  throw new Error(`No session for peer ${peerId} and message has no X3DH bootstrap`);
+}
+
+/** H-12d.2: run X3DH initiate inside the worker using the cached
+ *  identity DH private key. The shared secret never crosses
+ *  postMessage; RatchetSession.initAlice consumes it locally, the
+ *  resulting session is persisted to the worker IDB. Returns the
+ *  X3DHBootstrap payload that the first outbound message must
+ *  carry to the recipient. */
+export async function opPairwiseBootstrapAlice(
+  peerId: string,
+  peerBundle: PrekeyBundle,
+): Promise<X3DHBootstrap> {
+  const { hasIdentityDhPrivateKey, getIdentityDhPrivateKey, getIdentityDhPublicKeyBytes } =
+    await import('./identityWorkerImpl');
+  if (!hasIdentityDhPrivateKey() || !getIdentityDhPublicKeyBytes()) {
+    throw new Error('worker identity DH key not initialised');
+  }
+  const identityDhPriv = getIdentityDhPrivateKey()!;
+  const identityDhPubBytes = getIdentityDhPublicKeyBytes()!;
+  const { sharedSecret, ephemeralPublicKey, oneTimePreKeyIndex } = await x3dhInitiate(
+    identityDhPriv,
+    peerBundle,
+  );
+  const bootstrap: X3DHBootstrap = {
+    identity_dh_key: Array.from(identityDhPubBytes),
+    ephemeral_key: Array.from(ephemeralPublicKey),
+    one_time_prekey_index: oneTimePreKeyIndex,
+  };
+  const session = await RatchetSession.initAlice(
+    sharedSecret,
+    new Uint8Array(peerBundle.signed_prekey),
+    bootstrap,
+  );
+  await persist(peerId, session);
+  return bootstrap;
+}
+
+/** H-12d.2: run X3DH respond + RatchetSession.initBob inside the
+ *  worker. Pulls prekey secrets from the worker-side vault — the
+ *  signed-prekey-private + one-time-prekey-private (if any) never
+ *  enter the main heap. Persists the resulting session. */
+export async function opPairwiseBootstrapBob(
+  peerId: string,
+  bootstrap: X3DHBootstrap,
+): Promise<void> {
+  const { hasIdentityDhPrivateKey, getIdentityDhPrivateKey } =
+    await import('./identityWorkerImpl');
+  if (!hasIdentityDhPrivateKey()) {
+    throw new Error('worker identity DH key not initialised');
+  }
+  const identityDhPriv = getIdentityDhPrivateKey()!;
+  const { getPrekeySecrets } = await import('./prekeyVaultWorkerImpl');
+  const secrets = await getPrekeySecrets();
+  if (!secrets) {
+    throw new Error('prekey vault empty — main thread must seed it before X3DH respond');
+  }
+  const signedPrekeyPriv = await importX25519PrivateKey(secrets.signed_prekey_private);
+  let otpkPriv: CryptoKey | null = null;
+  if (bootstrap.one_time_prekey_index !== null) {
+    const otpkBytes = secrets.one_time_prekey_privates[bootstrap.one_time_prekey_index];
+    if (otpkBytes) {
+      otpkPriv = await importX25519PrivateKey(otpkBytes);
+    }
+  }
+  const sharedSecret = await x3dhRespond(
+    identityDhPriv,
+    signedPrekeyPriv,
+    new Uint8Array(bootstrap.identity_dh_key),
+    new Uint8Array(bootstrap.ephemeral_key),
+    otpkPriv,
+  );
+  const session = await RatchetSession.initBob(sharedSecret, secrets.signed_prekey_private);
+  await persist(peerId, session);
+}
+
+/** Test-only: drop the in-worker pairwise session cache. */
+export function resetPairwiseSessionCache(): void {
+  cache.clear();
+}

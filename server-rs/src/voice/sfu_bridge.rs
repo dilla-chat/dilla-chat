@@ -8,7 +8,13 @@ use super::signaling::SFU;
 impl crate::ws::hub::VoiceSFU for SFU {
     async fn handle_join(&self, channel_id: &str, user_id: &str) -> Result<String, String> {
         let offer = self.handle_join(channel_id, user_id).await?;
-        serde_json::to_string(&offer).map_err(|e| format!("serialize offer: {e}"))
+        // Return just the raw SDP string. The client's voice:offer
+        // handler builds the RTCSessionDescription with type='offer'
+        // and uses this as the sdp field directly — sending the full
+        // JSON-serialized RTCSessionDescription stuffs `{"type":..,
+        // "sdp":".."}` into the sdp field and the browser rejects it
+        // with "SDP Parse Error on line 1".
+        Ok(offer.sdp)
     }
 
     async fn handle_leave(&self, channel_id: &str, user_id: &str) {
@@ -305,7 +311,9 @@ mod tests {
         assert!(result.is_ok());
         let sdp_str = result.unwrap();
         assert!(!sdp_str.is_empty());
-        // Should be valid JSON.
-        let _: serde_json::Value = serde_json::from_str(&sdp_str).unwrap();
+        // The trait returns the raw SDP body (no JSON envelope) — the
+        // client wraps it in `RTCSessionDescription` on the receiving
+        // side. SDP always starts with `v=0`.
+        assert!(sdp_str.starts_with("v=0"), "expected raw SDP, got: {}", sdp_str);
     }
 }

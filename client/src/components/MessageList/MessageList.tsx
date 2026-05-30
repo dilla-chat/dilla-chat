@@ -2,7 +2,7 @@ import { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { IconMoodSmile, IconPlus, IconArrowBackUp, IconMessages, IconEdit, IconTrash, IconMessage, IconArrowDown } from '@tabler/icons-react';
+import { IconMoodSmile, IconPlus, IconArrowBackUp, IconArrowForwardUp, IconMessages, IconEdit, IconTrash, IconMessage, IconArrowDown } from '@tabler/icons-react';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import { useMessageStore, type Message } from '../../stores/messageStore';
 import { useTeamStore, type Member } from '../../stores/teamStore';
@@ -95,10 +95,10 @@ export default function MessageList({
     const GAP = 12;
     let x = rect.right + GAP;
     // If it would overflow viewport, place it to the left instead
-    if (x + POPUP_WIDTH > window.innerWidth - 16) {
+    if (x + POPUP_WIDTH > globalThis.innerWidth - 16) {
       x = Math.max(16, rect.left - POPUP_WIDTH - GAP);
     }
-    const y = Math.min(rect.top, window.innerHeight - 360);
+    const y = Math.min(rect.top, globalThis.innerHeight - 360);
     setProfilePopup({ member, x, y });
   };
 
@@ -133,7 +133,7 @@ export default function MessageList({
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: reset scroll pill state when switching channels
     setNewMessageCount(0);
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: reset scroll pill state when switching channels
+     
     setAtBottom(true);
   }, [channelId]);
 
@@ -142,7 +142,7 @@ export default function MessageList({
     if (virtuosoRef.current) {
       virtuosoRef.current.scrollToIndex({ index: START_INDEX - 1, align: 'end', behavior: 'auto' });
     }
-  }, [channelId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [channelId]);  
 
   // Track new messages when scrolled up; scroll to bottom automatically when at bottom
   const prevMsgCount = useRef(channelMessages.length);
@@ -327,6 +327,31 @@ export default function MessageList({
                           <IconMessages size={20} stroke={1.75} />
                         </button>
                       )}
+                      <button
+                        className="message-action-btn clickable"
+                        onClick={() =>
+                          globalThis.dispatchEvent(
+                            new CustomEvent('mesh:open-forward', {
+                              detail: {
+                                messageId: msg.id,
+                                channelId: msg.channelId,
+                                author: msg.username,
+                                timestamp: new Date(
+                                  msg.createdAt,
+                                ).toLocaleTimeString([], {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                  hour12: false,
+                                }),
+                                body: msg.content,
+                              },
+                            }),
+                          )
+                        }
+                        title={t('messages.forward', 'Forward')}
+                      >
+                        <IconArrowForwardUp size={20} stroke={1.75} />
+                      </button>
                       {msg.authorId === currentUserId && onEdit && (
                         <button
                           className="message-action-btn clickable"

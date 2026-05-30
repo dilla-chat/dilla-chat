@@ -45,9 +45,15 @@ export function formatTime(iso: string): string {
   yesterday.setDate(yesterday.getDate() - 1);
   const isYesterday = date.toDateString() === yesterday.toDateString();
 
-  const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  // 24h, no AM/PM. Mesh chat shows time-only for today's messages and
+  // prepends a day word for older ones, matching the handoff prototype.
+  const time = date.toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
 
-  if (isToday) return `Today at ${time}`;
-  if (isYesterday) return `Yesterday at ${time}`;
+  if (isToday) return time;
+  if (isYesterday) return `Yesterday ${time}`;
   return `${date.toLocaleDateString()} ${time}`;
 }

@@ -161,7 +161,7 @@ export default function ConnectionStatus() {
       <div className="connection-status__bars">
         {[1, 2, 3, 4].map(i => (
           <div
-            key={i}
+            key={`bar-${i}`}
             className={`connection-status__bar connection-status__bar--${i} ${i <= bars ? 'active' : ''}`}
           />
         ))}

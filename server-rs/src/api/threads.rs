@@ -5,7 +5,9 @@ use axum::{
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::api::helpers::{json_ok, json_ok_true, map_not_found, require_permission, require_team_member, spawn_db};
+use crate::api::helpers::{json_ok, json_ok_true, map_not_found, spawn_db};
+// A6 migration tail: route authz through policy::*.
+use crate::policy::{require_permission, require_team_member};
 use crate::api::AppState;
 use crate::auth::UserId;
 use crate::db;
@@ -220,7 +222,7 @@ pub async fn create_message(
             thread_id: thread_id.clone(),
             edited_at: None,
             deleted: false,
-            lamport_ts: 0,
+            lamport_ts: 0, reply_to_message_id: None,
             created_at: now,
         };
         db::create_thread_message(conn, &msg)?;
@@ -248,7 +250,8 @@ pub async fn list_messages(
     Path((team_id, thread_id)): Path<(String, String)>,
     Query(query): Query<ListMessagesQuery>,
 ) -> Result<Json<Value>, AppError> {
-    let limit = query.limit.clamp(1, 100);
+    // MSG-DOS-1 / H6: server-side cap on thread page size.
+    let limit = query.limit.clamp(1, crate::api::messages::MAX_PAGE_LIMIT);
 
     let messages = spawn_db(state.db.clone(), move |conn| {
         require_team_member(conn, &user_id, &team_id)?;
@@ -263,4 +266,513 @@ pub async fn list_messages(
     .map_err(map_not_found("thread"))?;
 
     json_ok(messages)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_thread_request_title_defaults_empty() {
+        let r: CreateThreadRequest =
+            serde_json::from_str(r#"{"parent_message_id":"m1"}"#).unwrap();
+        assert_eq!(r.parent_message_id, "m1");
+        assert_eq!(r.title, "");
+    }
+
+    #[test]
+    fn update_thread_request_only_field_is_optional_title() {
+        let r: UpdateThreadRequest = serde_json::from_str("{}").unwrap();
+        assert!(r.title.is_none());
+        let r: UpdateThreadRequest = serde_json::from_str(r#"{"title":"x"}"#).unwrap();
+        assert_eq!(r.title.as_deref(), Some("x"));
+    }
+
+    #[test]
+    fn create_message_request_default_msg_type_is_text() {
+        let r: CreateMessageRequest = serde_json::from_str(r#"{"content":"hi"}"#).unwrap();
+        assert_eq!(r.msg_type, "text");
+    }
+
+    #[test]
+    fn create_message_request_renames_type_to_msg_type() {
+        let r: CreateMessageRequest =
+            serde_json::from_str(r#"{"content":"x","type":"system"}"#).unwrap();
+        assert_eq!(r.msg_type, "system");
+    }
+
+    #[test]
+    fn list_messages_query_defaults_match_messages_handler() {
+        // Threads list endpoint mirrors the channel list endpoint
+        // defaults — keep them in sync.
+        let q: ListMessagesQuery = serde_json::from_str("{}").unwrap();
+        assert_eq!(q.before, "");
+        assert_eq!(q.limit, 50);
+    }
+
+    // ── axum integration tests ──────────────────────────────────────
+
+    use crate::auth::{AuthService, UserId};
+    use crate::config::Config;
+    use crate::db::Database;
+    use crate::presence::PresenceManager;
+    use crate::ws::Hub;
+    use axum::body::Body;
+    use axum::http::Request;
+    use axum::routing::{get, post, patch, delete as axum_delete};
+    use axum::Router;
+    use std::sync::Arc;
+    use tower::ServiceExt;
+
+    fn make_state() -> (AppState, tempfile::TempDir) {
+        let tmp = tempfile::tempdir().unwrap();
+        let database = Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        database.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;")).unwrap();
+        database.run_migrations().unwrap();
+        let auth = Arc::new(AuthService::new(database.clone(), ""));
+        let hub = Arc::new(Hub::new(database.clone()));
+        let presence = Arc::new(PresenceManager::new());
+        let mut cfg = Config::default();
+        cfg.port = 8080;
+        cfg.data_dir = tmp.path().to_str().unwrap().to_string();
+        let state = AppState {
+            db: database,
+            auth,
+            hub,
+            presence,
+            config: Arc::new(cfg),
+            mesh: None,
+            custom_theme_css: None,
+        };
+        (state, tmp)
+    }
+
+    fn router(state: AppState, user_id: &'static str) -> Router {
+        Router::new()
+            .route("/teams/{team_id}/channels/{channel_id}/threads", get(list).post(create))
+            .route("/teams/{team_id}/threads/{thread_id}", get(get_thread).patch(update).delete(axum_delete(delete_thread)))
+            .route("/teams/{team_id}/threads/{thread_id}/messages", get(list_messages).post(create_message))
+            .layer(axum::Extension(UserId(user_id.to_string())))
+            .with_state(state)
+    }
+
+    #[tokio::test]
+    async fn create_thread_rejects_empty_parent_message_id() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/channels/ch1/threads")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"parent_message_id":""}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
+
+    #[tokio::test]
+    async fn get_thread_404s_for_unknown_id() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(Request::get("/teams/t1/threads/missing").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn list_threads_404s_for_non_member() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "ghost");
+        let resp = app
+            .oneshot(Request::get("/teams/t1/channels/ch1/threads").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn create_thread_message_rejects_empty_content() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/threads/th1/messages")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"content":""}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn update_thread_4xx_for_unknown_id() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/teams/t1/threads/missing")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"title":"renamed"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn delete_thread_4xx_for_unknown_id() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/threads/missing")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn list_thread_messages_4xx_for_unknown_thread() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::get("/teams/t1/threads/missing/messages").body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    fn seed_team_with_message(state: &AppState) {
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_user(conn, &db::User {
+                id: "alice".into(),
+                username: "alice".into(),
+                display_name: "Alice".into(),
+                public_key: vec![1u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_team(conn, &db::Team {
+                id: "t1".into(),
+                name: "T".into(),
+                created_by: "alice".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_member(conn, &db::Member {
+                id: "m1".into(),
+                team_id: "t1".into(),
+                user_id: "alice".into(),
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now.clone(),
+            })?;
+            db::create_channel(conn, &db::Channel {
+                id: "ch1".into(),
+                team_id: "t1".into(),
+                name: "general".into(),
+                channel_type: "text".into(),
+                topic: String::new(),
+                created_by: "alice".into(),
+                position: 0,
+                locked: false,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_message(conn, &db::Message {
+                id: "msg-parent".into(),
+                channel_id: "ch1".into(),
+                dm_channel_id: String::new(),
+                author_id: "alice".into(),
+                content: "parent".into(),
+                msg_type: "text".into(),
+                thread_id: String::new(),
+                edited_at: None,
+                deleted: false,
+                lamport_ts: 0,
+                reply_to_message_id: None,
+                created_at: now,
+            })
+        }).unwrap();
+    }
+
+    #[tokio::test]
+    async fn create_thread_404_for_unknown_parent_message() {
+        let (state, _tmp) = make_state();
+        seed_team_with_message(&state);
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/channels/ch1/threads")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"parent_message_id":"no-such-message","title":""}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn create_thread_happy_path_creates_thread() {
+        let (state, _tmp) = make_state();
+        seed_team_with_message(&state);
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/channels/ch1/threads")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"parent_message_id":"msg-parent","title":"side discussion"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn update_thread_happy_path_as_creator() {
+        let (state, _tmp) = make_state();
+        seed_team_with_message(&state);
+        // Seed a thread owned by alice.
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_thread(conn, &db::Thread {
+                id: "th1".into(),
+                channel_id: "ch1".into(),
+                parent_message_id: "msg-parent".into(),
+                team_id: "t1".into(),
+                creator_id: "alice".into(),
+                title: "original".into(),
+                message_count: 0,
+                last_message_at: None,
+                created_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/teams/t1/threads/th1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"title":"renamed"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn delete_thread_happy_path_as_creator() {
+        let (state, _tmp) = make_state();
+        seed_team_with_message(&state);
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_thread(conn, &db::Thread {
+                id: "th-del".into(),
+                channel_id: "ch1".into(),
+                parent_message_id: "msg-parent".into(),
+                team_id: "t1".into(),
+                creator_id: "alice".into(),
+                title: "deleteme".into(),
+                message_count: 0,
+                last_message_at: None,
+                created_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/threads/th-del")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn list_thread_messages_happy_path_empty() {
+        let (state, _tmp) = make_state();
+        seed_team_with_message(&state);
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_thread(conn, &db::Thread {
+                id: "th-list".into(),
+                channel_id: "ch1".into(),
+                parent_message_id: "msg-parent".into(),
+                team_id: "t1".into(),
+                creator_id: "alice".into(),
+                title: "list".into(),
+                message_count: 0,
+                last_message_at: None,
+                created_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::get("/teams/t1/threads/th-list/messages?limit=10")
+                    .body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn get_thread_rejects_thread_from_other_team() {
+        let (state, _tmp) = make_state();
+        seed_team_with_message(&state);
+        // Seed a second team + thread that lives there.
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_team(conn, &db::Team {
+                id: "t-other".into(),
+                name: "Other".into(),
+                created_by: "alice".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_member(conn, &db::Member {
+                id: "m-alice-other".into(),
+                team_id: "t-other".into(),
+                user_id: "alice".into(),
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now.clone(),
+            })?;
+            db::create_thread(conn, &db::Thread {
+                id: "th-other".into(),
+                channel_id: "ch1".into(),
+                parent_message_id: "msg-parent".into(),
+                team_id: "t-other".into(),
+                creator_id: "alice".into(),
+                title: "in other team".into(),
+                message_count: 0,
+                last_message_at: None,
+                created_at: now,
+            })
+        }).unwrap();
+        // Request via t1, but thread belongs to t-other → 4xx.
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(Request::get("/teams/t1/threads/th-other").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn delete_thread_rejects_non_creator_without_admin() {
+        let (state, _tmp) = make_state();
+        seed_team_with_message(&state);
+        // Bob is a plain member, alice owns the thread.
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_user(conn, &db::User {
+                id: "bob".into(),
+                username: "bob".into(),
+                display_name: "Bob".into(),
+                public_key: vec![2u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_member(conn, &db::Member {
+                id: "m-bob-t1".into(),
+                team_id: "t1".into(),
+                user_id: "bob".into(),
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now.clone(),
+            })?;
+            db::create_thread(conn, &db::Thread {
+                id: "th-by-alice".into(),
+                channel_id: "ch1".into(),
+                parent_message_id: "msg-parent".into(),
+                team_id: "t1".into(),
+                creator_id: "alice".into(),
+                title: String::new(),
+                message_count: 0,
+                last_message_at: None,
+                created_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "bob");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/threads/th-by-alice")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn create_thread_idempotent_returns_existing_for_same_parent() {
+        let (state, _tmp) = make_state();
+        seed_team_with_message(&state);
+        let app1 = router(state.clone(), "alice");
+        let r1 = app1
+            .oneshot(
+                Request::post("/teams/t1/channels/ch1/threads")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"parent_message_id":"msg-parent","title":"first"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(r1.status(), 200);
+        let app2 = router(state, "alice");
+        let r2 = app2
+            .oneshot(
+                Request::post("/teams/t1/channels/ch1/threads")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"parent_message_id":"msg-parent","title":"second"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(r2.status(), 200);
+    }
 }

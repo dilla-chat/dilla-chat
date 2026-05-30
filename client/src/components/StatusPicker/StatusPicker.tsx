@@ -84,11 +84,11 @@ export default function StatusPicker({
         />
         <div className="status-picker-custom-actions">
           {customStatus && (
-            <button className="status-picker-btn clear" onClick={handleClearCustom}>
+            <button className="btn" onClick={handleClearCustom}>
               {t('presence.clearStatus')}
             </button>
           )}
-          <button className="status-picker-btn save" onClick={handleSaveCustom}>
+          <button className="btn btn--primary" onClick={handleSaveCustom}>
             {t('presence.saveStatus')}
           </button>
         </div>

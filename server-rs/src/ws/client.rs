@@ -13,6 +13,12 @@ const PONG_WAIT: Duration = Duration::from_secs(60);
 const PING_PERIOD: Duration = Duration::from_secs(54);
 const MAX_MESSAGE_SIZE: usize = 16 * 1024; // 16KB
 
+/// VULN-023 / WS-AMP-1 / H4: maximum number of channels a single WS
+/// connection may subscribe to. Beyond this, channel:join is silently
+/// rejected. Sized to comfortably accommodate a power user across
+/// multiple teams without giving an attacker free amplification.
+const MAX_SUBSCRIPTIONS_PER_CLIENT: usize = 200;
+
 pub async fn handle_ws_connection(
     socket: WebSocket,
     hub: Arc<Hub>,
@@ -32,6 +38,33 @@ pub async fn handle_ws_connection(
     };
 
     hub.register(client).await;
+
+    // Push a voice:rooms-snapshot to the freshly-registered client so
+    // they see who is already in voice on their team — without this,
+    // a new login / reload only learns voice state from incremental
+    // voice:user-joined / voice:user-left deltas going forward and
+    // misses everyone who joined before they connected.
+    if let Some(room_mgr) = &hub.voice_room_manager {
+        let rooms = room_mgr.get_rooms_by_team(&team_id).await;
+        let mut by_channel = serde_json::Map::new();
+        for r in rooms {
+            if let Ok(peers) = serde_json::to_value(&r.peers) {
+                by_channel.insert(r.channel_id.clone(), peers);
+            }
+        }
+        let payload = serde_json::json!({
+            "team_id": team_id,
+            "rooms": serde_json::Value::Object(by_channel),
+        });
+        if let Ok(evt) = crate::ws::events::Event::new(
+            crate::ws::events::EVENT_VOICE_ROOMS_SNAPSHOT,
+            payload,
+        ) {
+            if let Ok(bytes) = evt.to_bytes() {
+                hub.send_to_user(&user_id, bytes).await;
+            }
+        }
+    }
 
     let (mut ws_sender, mut ws_receiver) = socket.split();
 
@@ -65,29 +98,51 @@ pub async fn handle_ws_connection(
     let read_task = tokio::spawn(async move {
         let mut last_pong = Instant::now();
 
-        while let Some(msg) = ws_receiver.next().await {
-            match msg {
-                Ok(Message::Text(text)) => {
-                    if text.len() > MAX_MESSAGE_SIZE {
-                        continue;
+        // H4 / VULN-023: idle-pong enforcement. The previous loop only
+        // checked PONG_WAIT after a frame arrived, so a peer that simply
+        // stopped sending bytes (half-open TCP) could linger forever
+        // and tie up resources. Use a sleep-until branch in `select!`
+        // so the loop wakes up when PONG_WAIT elapses and reaps the
+        // connection.
+        loop {
+            let pong_deadline = last_pong + PONG_WAIT;
+            tokio::select! {
+                msg = ws_receiver.next() => {
+                    let Some(msg) = msg else { break };
+                    match msg {
+                        Ok(Message::Text(text)) => {
+                            if text.len() > MAX_MESSAGE_SIZE {
+                                continue;
+                            }
+
+                            // Notify activity.
+                            hub_read.emit_event(super::hub::HubEvent::ClientActivity { user_id: uid.clone() });
+
+                            if let Ok(event) = serde_json::from_str::<Event>(&text) {
+                                handle_event(&hub_read, &cid_read, &uid, &uname, &tid, event).await;
+                            }
+                        }
+                        Ok(Message::Pong(_)) => {
+                            last_pong = Instant::now();
+                        }
+                        Ok(Message::Close(_)) | Err(_) => break,
+                        _ => {}
                     }
 
-                    // Notify activity.
-                    hub_read.emit_event(super::hub::HubEvent::ClientActivity { user_id: uid.clone() });
-
-                    if let Ok(event) = serde_json::from_str::<Event>(&text) {
-                        handle_event(&hub_read, &cid_read, &uid, &uname, &tid, event).await;
+                    if last_pong.elapsed() > PONG_WAIT {
+                        break;
                     }
                 }
-                Ok(Message::Pong(_)) => {
-                    last_pong = Instant::now();
+                _ = tokio::time::sleep_until(pong_deadline) => {
+                    // No pong within PONG_WAIT — reap the ghost.
+                    tracing::debug!(
+                        client_id = %cid_read,
+                        user_id = %uid,
+                        "ws: closing idle connection — no pong within {:?}",
+                        PONG_WAIT,
+                    );
+                    break;
                 }
-                Ok(Message::Close(_)) | Err(_) => break,
-                _ => {}
-            }
-
-            if last_pong.elapsed() > PONG_WAIT {
-                break;
             }
         }
     });
@@ -111,7 +166,7 @@ pub(crate) async fn handle_event(
 ) {
     match event.event_type.as_str() {
         EVENT_CHANNEL_JOIN | EVENT_CHANNEL_LEAVE => {
-            handle_channel_event(hub, client_id, &event.event_type, event.payload).await;
+            handle_channel_event(hub, client_id, user_id, team_id, &event.event_type, event.payload).await;
         }
         EVENT_MESSAGE_SEND => {
             handle_message_send(hub, client_id, user_id, username, team_id, event.payload).await;
@@ -123,7 +178,7 @@ pub(crate) async fn handle_event(
             handle_message_delete(hub, user_id, event.payload).await;
         }
         EVENT_TYPING_START | EVENT_TYPING_STOP => {
-            handle_typing(hub, client_id, user_id, username, event.payload).await;
+            handle_typing(hub, client_id, user_id, username, team_id, event.payload).await;
         }
         EVENT_PRESENCE_UPDATE => {
             handle_presence_update(hub, user_id, event.payload);
@@ -147,9 +202,11 @@ pub(crate) async fn handle_event(
         }
         EVENT_VOICE_JOIN | EVENT_VOICE_LEAVE | EVENT_VOICE_ANSWER
         | EVENT_VOICE_ICE_CANDIDATE | EVENT_VOICE_MUTE | EVENT_VOICE_DEAFEN
+        | EVENT_VOICE_FORCE_MUTE | EVENT_VOICE_FORCE_DISCONNECT
+        | EVENT_VOICE_LATENCY
         | EVENT_VOICE_SCREEN_START | EVENT_VOICE_SCREEN_STOP
         | EVENT_VOICE_WEBCAM_START | EVENT_VOICE_WEBCAM_STOP
-        | EVENT_VOICE_KEY_DISTRIBUTE => {
+        | EVENT_VOICE_KEY_DISTRIBUTE | EVENT_VOICE_INVITE => {
             handle_voice_event(hub, client_id, user_id, username, team_id, &event.event_type, event.payload).await;
         }
         ACTION_CHANNEL_READ => {
@@ -189,16 +246,117 @@ pub(crate) async fn handle_event(
     }
 }
 
-pub(crate) async fn handle_channel_event(hub: &Hub, client_id: &str, event_type: &str, payload: serde_json::Value) {
-    match serde_json::from_value::<ChannelJoinPayload>(payload) {
-        Ok(p) => {
-            if event_type == EVENT_CHANNEL_JOIN {
-                hub.subscribe(client_id, &p.channel_id).await;
-            } else {
-                hub.unsubscribe(client_id, &p.channel_id).await;
-            }
+pub(crate) async fn handle_channel_event(
+    hub: &Hub,
+    client_id: &str,
+    user_id: &str,
+    team_id: &str,
+    event_type: &str,
+    payload: serde_json::Value,
+) {
+    let p = match serde_json::from_value::<ChannelJoinPayload>(payload) {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!(error = %e, event = event_type, "failed to parse payload");
+            return;
         }
-        Err(e) => tracing::warn!(error = %e, event = event_type, "failed to parse payload"),
+    };
+
+    // Unsubscribe is always permitted — it only removes the caller from
+    // an existing subscription. The expensive part is the access check
+    // on subscribe, where we have to confirm the channel actually
+    // belongs to the user's team AND the caller can read it (text
+    // channels + DM channels are mixed in the same subscriber map).
+    if event_type != EVENT_CHANNEL_JOIN {
+        hub.unsubscribe(client_id, &p.channel_id).await;
+        return;
+    }
+
+    if !user_can_subscribe_to_channel(hub, user_id, team_id, &p.channel_id).await {
+        tracing::debug!(
+            user_id = user_id,
+            channel_id = %p.channel_id,
+            team_id = team_id,
+            "channel:join denied — access check failed"
+        );
+        return;
+    }
+
+    // H4 / VULN-023 / WS-AMP-1: cap the number of channel subscriptions
+    // per WS connection. Beyond the cap, silently drop the request —
+    // the client should not have asked for this many channels.
+    let current = hub.client_subscription_count(client_id).await;
+    if current >= MAX_SUBSCRIPTIONS_PER_CLIENT {
+        tracing::warn!(
+            user_id = user_id,
+            client_id = client_id,
+            channel_id = %p.channel_id,
+            current = current,
+            cap = MAX_SUBSCRIPTIONS_PER_CLIENT,
+            "channel:join denied — per-client subscription cap reached"
+        );
+        return;
+    }
+
+    hub.subscribe(client_id, &p.channel_id).await;
+}
+
+/// Authorize a WebSocket subscriber for a channel ID.
+///
+/// The hub uses a single namespaced subscriber map for text channels,
+/// thread IDs, DM channels and a few federation IDs. We don't trust the
+/// client to tell us the channel type — instead, look the ID up in
+/// every table that might own it and apply the matching ACL:
+///
+/// 1. If a row exists in `channels` and `channel.team_id == team_id`,
+///    fall through to `user_can_access_channel`.
+/// 2. If a row exists in `dm_members` for this channel, require the
+///    caller to be in the member list.
+/// 3. Otherwise — unknown channel — deny.
+pub(crate) async fn user_can_subscribe_to_channel(
+    hub: &Hub,
+    user_id: &str,
+    team_id: &str,
+    channel_id: &str,
+) -> bool {
+    let db = hub.db.clone();
+    let cid = channel_id.to_string();
+    let uid = user_id.to_string();
+    let tid = team_id.to_string();
+    let uid_for_log = user_id.to_string();
+    let cid_for_log = channel_id.to_string();
+    let decision = tokio::task::spawn_blocking(move || {
+        // H10 / R-21: route the decision through the policy module so
+        // future audit + telemetry only need one hook point.
+        db.with_conn(|conn| {
+            Ok::<crate::policy::Decision, rusqlite::Error>(
+                crate::policy::can_subscribe_channel(conn, &uid, &tid, &cid),
+            )
+        })
+    })
+    .await;
+
+    match decision {
+        Ok(Ok(d)) => {
+            crate::policy::log_decision(
+                &d,
+                &crate::policy::DecisionContext {
+                    user_id: &uid_for_log,
+                    target_kind: "channel",
+                    target_id: &cid_for_log,
+                    reason: "ws.channel.subscribe",
+                },
+            );
+            d.is_allowed()
+        }
+        Ok(Err(e)) => {
+            tracing::warn!(error = %e, channel_id = channel_id, "channel access check failed");
+            false
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "channel access check task join failed");
+            false
+        }
     }
 }
 
@@ -268,12 +426,32 @@ pub(crate) async fn handle_voice_event(
         EVENT_VOICE_ANSWER | EVENT_VOICE_ICE_CANDIDATE | EVENT_VOICE_MUTE | EVENT_VOICE_DEAFEN => {
             handle_voice_signaling(hub, user_id, event_type, payload).await;
         }
+        EVENT_VOICE_FORCE_MUTE => {
+            if let Ok(p) = serde_json::from_value::<VoiceForceMutePayload>(payload) {
+                handle_voice_force_mute(hub, user_id, team_id, p).await;
+            }
+        }
+        EVENT_VOICE_FORCE_DISCONNECT => {
+            if let Ok(p) = serde_json::from_value::<VoiceForceDisconnectPayload>(payload) {
+                handle_voice_force_disconnect(hub, user_id, team_id, p).await;
+            }
+        }
+        EVENT_VOICE_LATENCY => {
+            if let Ok(p) = serde_json::from_value::<VoiceLatencyPayload>(payload) {
+                handle_voice_latency(hub, user_id, p).await;
+            }
+        }
         EVENT_VOICE_SCREEN_START | EVENT_VOICE_SCREEN_STOP |
         EVENT_VOICE_WEBCAM_START | EVENT_VOICE_WEBCAM_STOP => {
             handle_voice_media(hub, user_id, event_type, payload).await;
         }
         EVENT_VOICE_KEY_DISTRIBUTE => {
             handle_voice_key_distribute(hub, client_id, user_id, payload).await;
+        }
+        EVENT_VOICE_INVITE => {
+            if let Ok(p) = serde_json::from_value::<VoiceInvitePayload>(payload) {
+                handle_voice_invite(hub, user_id, username, team_id, p).await;
+            }
         }
         _ => {}
     }
@@ -283,11 +461,29 @@ pub(crate) async fn handle_voice_join_leave(
     hub: &Hub, client_id: &str, user_id: &str, username: &str, team_id: &str,
     event_type: &str, payload: serde_json::Value,
 ) {
-    if let Ok(p) = serde_json::from_value::<VoiceJoinPayload>(payload) {
-        if event_type == EVENT_VOICE_JOIN {
-            handle_voice_join(hub, client_id, user_id, username, team_id, p).await;
-        } else {
-            handle_voice_leave(hub, client_id, user_id, p).await;
+    tracing::info!(
+        "voice dispatch: {} from user={} client={} team={} payload={}",
+        event_type,
+        user_id,
+        client_id,
+        team_id,
+        payload
+    );
+    match serde_json::from_value::<VoiceJoinPayload>(payload.clone()) {
+        Ok(p) => {
+            if event_type == EVENT_VOICE_JOIN {
+                handle_voice_join(hub, client_id, user_id, username, team_id, p).await;
+            } else {
+                handle_voice_leave(hub, client_id, user_id, p).await;
+            }
+        }
+        Err(e) => {
+            tracing::warn!(
+                "voice dispatch: failed to parse {} payload: {} (raw={})",
+                event_type,
+                e,
+                payload
+            );
         }
     }
 }
@@ -315,14 +511,29 @@ pub(crate) async fn handle_voice_media(hub: &Hub, user_id: &str, event_type: &st
 }
 
 pub(crate) async fn handle_voice_key_distribute(hub: &Hub, client_id: &str, user_id: &str, payload: serde_json::Value) {
-    if let Ok(mut p) = serde_json::from_value::<VoiceKeyDistributePayload>(payload) {
-        p.sender_id = user_id.to_string();
-        let evt = Event::new(EVENT_VOICE_KEY_DISTRIBUTE, &p);
-        if let Ok(evt) = evt {
-            if let Ok(data) = evt.to_bytes() {
-                hub.broadcast_to_channel(&p.channel_id, data, Some(client_id.to_string()))
-                    .await;
+    match serde_json::from_value::<VoiceKeyDistributePayload>(payload.clone()) {
+        Ok(mut p) => {
+            p.sender_id = user_id.to_string();
+            let recipients: Vec<&str> = p.encrypted_keys.keys().map(|s| s.as_str()).collect();
+            tracing::info!(
+                target: "dilla_server::voice",
+                "voice:key-distribute from user={user_id} client={client_id} channel={} key_id={} recipients={:?}",
+                p.channel_id, p.key_id, recipients,
+            );
+            let evt = Event::new(EVENT_VOICE_KEY_DISTRIBUTE, &p);
+            if let Ok(evt) = evt {
+                if let Ok(data) = evt.to_bytes() {
+                    hub.broadcast_to_channel(&p.channel_id, data, Some(client_id.to_string()))
+                        .await;
+                }
             }
+        }
+        Err(err) => {
+            tracing::warn!(
+                target: "dilla_server::voice",
+                "voice:key-distribute parse failed: {err} payload={}",
+                payload,
+            );
         }
     }
 }
@@ -402,5 +613,233 @@ pub(crate) async fn handle_dm_typing(hub: &Hub, user_id: &str, username: &str, p
                 hub.send_to_user(&member.user_id, data.clone()).await;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::Database;
+    use crate::ws::hub::Hub;
+
+    fn test_hub() -> Hub {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        db.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;"))
+            .unwrap();
+        db.run_migrations().unwrap();
+        // Leak the tempdir so the DB stays around for the test.
+        std::mem::forget(tmp);
+        Hub::new(db)
+    }
+
+    fn now() -> String {
+        db::now_str()
+    }
+
+    fn seed_team_with_default_role(
+        db: &Database,
+        team_id: &str,
+        owner_id: &str,
+    ) -> String {
+        let role_id = db::new_id();
+        // Per-owner public_key so multiple seed calls in the same test
+        // don't trip the users.public_key UNIQUE index.
+        let mut pk = [0u8; 32];
+        for (i, b) in owner_id.as_bytes().iter().enumerate().take(32) {
+            pk[i] = *b;
+        }
+        let pk = pk.to_vec();
+        db.with_conn(|conn| {
+            db::create_user(conn, &db::User {
+                id: owner_id.into(),
+                username: format!("user-{}", owner_id),
+                display_name: owner_id.into(),
+                public_key: pk,
+                avatar_url: String::new(),
+                status_text: String::new(),
+                status_type: "online".into(),
+                is_admin: false,
+                created_at: now(),
+                updated_at: now(),
+                quiet_hours_enabled: false,
+                quiet_hours_from: String::new(),
+                quiet_hours_to: String::new(),
+            })?;
+            db::create_team(conn, &db::Team {
+                id: team_id.into(),
+                name: team_id.into(),
+                description: String::new(),
+                icon_url: String::new(),
+                created_by: owner_id.into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                federated: false,
+                created_at: now(),
+                updated_at: now(),
+            
+                ..Default::default()
+            })?;
+            db::create_member(conn, &db::Member {
+                id: db::new_id(),
+                team_id: team_id.into(),
+                user_id: owner_id.into(),
+                nickname: String::new(),
+                joined_at: now(),
+                invited_by: String::new(),
+                updated_at: String::new(),
+            })?;
+            conn.execute(
+                "INSERT INTO roles (id, team_id, name, color, position, permissions, is_default, created_at, updated_at) VALUES (?1, ?2, 'everyone', '#ccc', 0, 0, 1, ?3, ?3)",
+                rusqlite::params![role_id, team_id, now()],
+            )?;
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+        role_id
+    }
+
+    #[tokio::test]
+    async fn channel_join_denied_when_user_not_a_team_member() {
+        let hub = test_hub();
+        let db = hub.db.clone();
+        let _everyone = seed_team_with_default_role(&db, "team1", "owner1");
+
+        // Create a non-default role and put it on a private channel.
+        // user_can_access_channel returns true when access_roles is empty,
+        // so we need a private gated channel to make the access check
+        // meaningful.
+        let private_role = db::new_id();
+        let channel_id = "channel1".to_string();
+        db.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO roles (id, team_id, name, color, position, permissions, is_default, created_at, updated_at) VALUES (?1, ?2, 'mods', '#f00', 1, 0, 0, ?3, ?3)",
+                rusqlite::params![private_role, "team1", now()],
+            )?;
+            db::create_channel(conn, &db::Channel {
+                id: channel_id.clone(),
+                team_id: "team1".into(),
+                name: "private".into(),
+                topic: String::new(),
+                channel_type: "text".into(),
+                position: 0,
+                category: String::new(),
+                created_by: "owner1".into(),
+                created_at: now(),
+                updated_at: now(),
+                locked: false,
+                hidden_if_restricted: false,
+                slow_mode_seconds: 0,
+                group_id: None,
+            })?;
+            conn.execute(
+                "INSERT INTO channel_role_access (channel_id, role_id) VALUES (?1, ?2)",
+                rusqlite::params![channel_id, private_role],
+            )?;
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+
+        // outsider — has a valid JWT, but no team membership at all.
+        let allowed = user_can_subscribe_to_channel(&hub, "outsider", "team1", &channel_id).await;
+        assert!(!allowed, "outsider must not be allowed to subscribe to a private channel");
+    }
+
+    #[tokio::test]
+    async fn channel_join_denied_when_channel_belongs_to_another_team() {
+        let hub = test_hub();
+        let db = hub.db.clone();
+        let _everyone = seed_team_with_default_role(&db, "team1", "owner1");
+        let _everyone2 = seed_team_with_default_role(&db, "team2", "owner2");
+
+        db.with_conn(|conn| {
+            db::create_channel(conn, &db::Channel {
+                id: "ch-in-t2".into(),
+                team_id: "team2".into(),
+                name: "general".into(),
+                topic: String::new(),
+                channel_type: "text".into(),
+                position: 0,
+                category: String::new(),
+                created_by: "owner2".into(),
+                created_at: now(),
+                updated_at: now(),
+                locked: false,
+                hidden_if_restricted: false,
+                slow_mode_seconds: 0,
+                group_id: None,
+            })
+        })
+        .unwrap();
+
+        // owner1 is the team owner of team1 — would normally bypass
+        // every channel check — but the channel belongs to team2, so
+        // the cross-team boundary must reject the subscribe.
+        let allowed = user_can_subscribe_to_channel(&hub, "owner1", "team1", "ch-in-t2").await;
+        assert!(!allowed, "must not subscribe to a channel that doesn't belong to caller's team");
+    }
+
+    #[tokio::test]
+    async fn dm_subscribe_requires_dm_membership() {
+        let hub = test_hub();
+        let db = hub.db.clone();
+        let _everyone = seed_team_with_default_role(&db, "team1", "owner1");
+
+        db.with_conn(|conn| {
+            db::create_user(conn, &db::User {
+                id: "alice".into(),
+                username: "alice".into(),
+                display_name: "Alice".into(),
+                public_key: vec![1u8; 32],
+                avatar_url: String::new(),
+                status_text: String::new(),
+                status_type: "online".into(),
+                is_admin: false,
+                created_at: now(),
+                updated_at: now(),
+                quiet_hours_enabled: false,
+                quiet_hours_from: String::new(),
+                quiet_hours_to: String::new(),
+            })?;
+            db::create_user(conn, &db::User {
+                id: "eve".into(),
+                username: "eve".into(),
+                display_name: "Eve".into(),
+                public_key: vec![2u8; 32],
+                avatar_url: String::new(),
+                status_text: String::new(),
+                status_type: "online".into(),
+                is_admin: false,
+                created_at: now(),
+                updated_at: now(),
+                quiet_hours_enabled: false,
+                quiet_hours_from: String::new(),
+                quiet_hours_to: String::new(),
+            })?;
+            conn.execute(
+                "INSERT INTO dm_channels (id, team_id, type, name, created_at) VALUES (?1, ?2, 'dm', '', ?3)",
+                rusqlite::params!["dm-alice-owner1", "team1", now()],
+            )?;
+            db::add_dm_members(conn, "dm-alice-owner1", &["alice".into(), "owner1".into()])?;
+            Ok::<(), rusqlite::Error>(())
+        })
+        .unwrap();
+
+        // Alice and owner1 are members — both must be allowed.
+        assert!(user_can_subscribe_to_channel(&hub, "alice", "team1", "dm-alice-owner1").await);
+        assert!(user_can_subscribe_to_channel(&hub, "owner1", "team1", "dm-alice-owner1").await);
+        // Eve is in the team but not in the DM — must be denied.
+        assert!(!user_can_subscribe_to_channel(&hub, "eve", "team1", "dm-alice-owner1").await);
+    }
+
+    #[tokio::test]
+    async fn channel_join_denied_for_unknown_channel_id() {
+        let hub = test_hub();
+        let db = hub.db.clone();
+        let _everyone = seed_team_with_default_role(&db, "team1", "owner1");
+
+        // Channel ID that doesn't exist in channels OR dm_members → deny.
+        let allowed = user_can_subscribe_to_channel(&hub, "owner1", "team1", "bogus-id").await;
+        assert!(!allowed);
     }
 }

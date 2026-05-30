@@ -5,7 +5,9 @@ use axum::{
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::api::helpers::{json_ok, json_ok_true, require_permission, require_team_member, spawn_db};
+use crate::api::helpers::{json_ok, json_ok_true, spawn_db};
+// A6 migration tail: route authz through policy::*.
+use crate::policy::{require_permission, require_team_member};
 use crate::api::AppState;
 use crate::auth::UserId;
 use crate::db;
@@ -64,6 +66,17 @@ pub async fn create(
     let role = spawn_db(state.db.clone(), move |conn| {
         require_permission(conn, &user_id, &team_id, db::PERM_MANAGE_ROLES)?;
 
+        // Privilege-escalation guard: a non-admin moderator with
+        // manage_roles must not be able to mint a role that holds bits
+        // they don't hold themselves (and especially not PERM_ADMIN).
+        // Team owner has bits == !0 so this is a no-op for them.
+        let my_bits = db::user_permissions_bits(conn, &user_id, &team_id)?;
+        if body.permissions & !my_bits != 0 {
+            return Err(rusqlite::Error::InvalidParameterName(
+                "escalation".into(),
+            ));
+        }
+
         // Get current max position.
         let roles = db::get_roles_by_team(conn, &team_id)?;
         let max_pos = roles.iter().map(|r| r.position).max().unwrap_or(0);
@@ -80,9 +93,24 @@ pub async fn create(
             updated_at: String::new(),
         };
         db::create_role(conn, &role)?;
+        let _ = db::insert_audit_event(
+            conn,
+            &team_id,
+            Some(&user_id),
+            "role.create",
+            Some("role"),
+            Some(&role.id),
+            Some(&serde_json::json!({ "name": role.name, "permissions": role.permissions })),
+        );
         Ok(role)
     })
-    .await?;
+    .await
+    .map_err(|e| match e {
+        AppError::Forbidden(msg) if msg == "escalation" => AppError::Forbidden(
+            "you can't grant a permission you don't hold yourself".into(),
+        ),
+        other => other,
+    })?;
 
     json_ok(role)
 }
@@ -97,13 +125,39 @@ pub async fn update(
         require_permission(conn, &user_id, &team_id, db::PERM_MANAGE_ROLES)?;
 
         let mut role = get_role_for_team(conn, &role_id, &team_id)?;
+        let prev_perms = role.permissions;
         apply_role_updates(&mut role, &body);
+        // Reject any new bits the caller doesn't hold themselves —
+        // including PERM_ADMIN. Bits being CLEARED are fine (you can
+        // demote anyone you currently outrank). Only newly-added bits
+        // are checked against the caller's own permissions.
+        let added = role.permissions & !prev_perms;
+        if added != 0 {
+            let my_bits = db::user_permissions_bits(conn, &user_id, &team_id)?;
+            if added & !my_bits != 0 {
+                return Err(rusqlite::Error::InvalidParameterName(
+                    "escalation".into(),
+                ));
+            }
+        }
         db::update_role(conn, &role)?;
+        let _ = db::insert_audit_event(
+            conn,
+            &team_id,
+            Some(&user_id),
+            "role.update",
+            Some("role"),
+            Some(&role.id),
+            Some(&serde_json::json!({ "name": role.name, "permissions": role.permissions, "color": role.color })),
+        );
         Ok(role)
     })
     .await
     .map_err(|e| match e {
         AppError::NotFound(_) => AppError::NotFound("role not found".into()),
+        AppError::Forbidden(msg) if msg == "escalation" => AppError::Forbidden(
+            "you can't grant a permission you don't hold yourself".into(),
+        ),
         other => other,
     })?;
 
@@ -134,6 +188,15 @@ pub async fn delete_role(
         }
 
         db::delete_role(conn, &role_id)?;
+        let _ = db::insert_audit_event(
+            conn,
+            &team_id,
+            Some(&user_id),
+            "role.delete",
+            Some("role"),
+            Some(&role_id),
+            Some(&serde_json::json!({ "name": role.name })),
+        );
         Ok(())
     })
     .await
@@ -166,6 +229,16 @@ pub async fn reorder(
                 }
             }
         }
+
+        let _ = db::insert_audit_event(
+            conn,
+            &team_id,
+            Some(&user_id),
+            "role.reorder",
+            None,
+            None,
+            Some(&serde_json::json!({ "role_ids": body.role_ids })),
+        );
 
         db::get_roles_by_team(conn, &team_id)
     })
@@ -248,6 +321,8 @@ mod tests {
                 is_admin: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_team(conn, &db::Team {
                 id: "t1".into(),
@@ -257,8 +332,11 @@ mod tests {
                 created_by: "u1".into(),
                 max_file_size: 25 * 1024 * 1024,
                 allow_member_invites: true,
+                federated: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_role(conn, &make_role("r1", "t1"))
         })
@@ -437,8 +515,11 @@ mod tests {
                 created_by: "u1".into(),
                 max_file_size: 25 * 1024 * 1024,
                 allow_member_invites: true,
+                federated: false,
                 created_at: now.clone(),
                 updated_at: now,
+            
+                ..Default::default()
             })
         })
         .unwrap();
@@ -451,5 +532,327 @@ mod tests {
     #[test]
     fn default_color_is_grey() {
         assert_eq!(default_color(), "#99AAB5");
+    }
+
+    // ── axum integration tests ──────────────────────────────────────
+
+    use crate::auth::{AuthService, UserId};
+    use crate::config::Config;
+    use crate::presence::PresenceManager;
+    use crate::ws::Hub;
+    use axum::body::Body;
+    use axum::http::Request;
+    use axum::routing::{get, post, patch, delete as axum_delete, put};
+    use axum::Router;
+    use std::sync::Arc;
+    use tower::ServiceExt;
+
+    fn make_state() -> (AppState, tempfile::TempDir) {
+        let (db, tmp) = test_db();
+        let auth = Arc::new(AuthService::new(db.clone(), ""));
+        let hub = Arc::new(Hub::new(db.clone()));
+        let presence = Arc::new(PresenceManager::new());
+        let mut cfg = Config::default();
+        cfg.port = 8080;
+        cfg.data_dir = tmp.path().to_str().unwrap().to_string();
+        let state = AppState {
+            db,
+            auth,
+            hub,
+            presence,
+            config: Arc::new(cfg),
+            mesh: None,
+            custom_theme_css: None,
+        };
+        (state, tmp)
+    }
+
+    fn router(state: AppState, user_id: &'static str) -> Router {
+        Router::new()
+            .route("/teams/{team_id}/roles", get(list).post(create))
+            .route("/teams/{team_id}/roles/{role_id}", patch(update).delete(axum_delete(delete_role)))
+            .route("/teams/{team_id}/roles/reorder", put(reorder))
+            .layer(axum::Extension(UserId(user_id.to_string())))
+            .with_state(state)
+    }
+
+    #[tokio::test]
+    async fn list_roles_404s_for_non_member() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "ghost");
+        let resp = app
+            .oneshot(Request::get("/teams/t1/roles").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn create_role_rejects_empty_name() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/roles")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"name":""}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn delete_role_404s_for_unknown_id() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/roles/missing")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn update_role_4xx_for_unknown_id() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/teams/t1/roles/missing")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"name":"renamed"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn reorder_roles_4xx_for_non_admin() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "ghost");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/teams/t1/roles/reorder")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"role_ids":["r1","r2"]}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    fn seed_owner(state: &AppState) {
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_user(conn, &db::User {
+                id: "alice".into(),
+                username: "alice".into(),
+                display_name: "Alice".into(),
+                public_key: vec![1u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_team(conn, &db::Team {
+                id: "t1".into(),
+                name: "T".into(),
+                created_by: "alice".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now,
+                ..Default::default()
+            })
+        }).unwrap();
+    }
+
+    #[tokio::test]
+    async fn create_role_happy_path_as_owner() {
+        let (state, _tmp) = make_state();
+        seed_owner(&state);
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/roles")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r##"{"name":"Mod","color":"#abc","permissions":0}"##))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn update_role_happy_path_as_owner() {
+        let (state, _tmp) = make_state();
+        seed_owner(&state);
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_role(conn, &db::Role {
+                id: "r-up".into(),
+                team_id: "t1".into(),
+                name: "OldName".into(),
+                color: String::new(),
+                position: 1,
+                permissions: 0,
+                is_default: false,
+                created_at: now.clone(),
+                updated_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/teams/t1/roles/r-up")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r##"{"name":"NewName","color":"#fff"}"##))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn delete_role_happy_path_as_owner() {
+        let (state, _tmp) = make_state();
+        seed_owner(&state);
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_role(conn, &db::Role {
+                id: "r-del".into(),
+                team_id: "t1".into(),
+                name: "Trash".into(),
+                color: String::new(),
+                position: 1,
+                permissions: 0,
+                is_default: false,
+                created_at: now.clone(),
+                updated_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/roles/r-del")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn delete_role_rejects_default_role() {
+        let (state, _tmp) = make_state();
+        seed_owner(&state);
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_role(conn, &db::Role {
+                id: "r-default".into(),
+                team_id: "t1".into(),
+                name: "Default".into(),
+                color: String::new(),
+                position: 0,
+                permissions: 0,
+                is_default: true,
+                created_at: now.clone(),
+                updated_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/roles/r-default")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn delete_role_rejects_cross_team_role() {
+        let (state, _tmp) = make_state();
+        seed_owner(&state);
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_team(conn, &db::Team {
+                id: "t-other".into(),
+                name: "Other".into(),
+                created_by: "alice".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_role(conn, &db::Role {
+                id: "r-foreign".into(),
+                team_id: "t-other".into(),
+                name: "Foreign".into(),
+                color: String::new(),
+                position: 1,
+                permissions: 0,
+                is_default: false,
+                created_at: now.clone(),
+                updated_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/roles/r-foreign")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn create_role_rejects_oversized_name() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let oversized = "n".repeat(101);
+        let body = format!(r#"{{"name":"{}"}}"#, oversized);
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/roles")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
     }
 }

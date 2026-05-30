@@ -299,9 +299,10 @@ describe('ThreadPanel', () => {
   });
 
   it.each([
-    { scenario: 'yesterday', dateFactory: () => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString(); }, pattern: /Yesterday at/ },
+    // Mesh redesign uses 24h time, drops "Today at" / "at" prefix.
+    { scenario: 'yesterday', dateFactory: () => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString(); }, pattern: /Yesterday \d{2}:\d{2}/ },
     { scenario: 'old date', dateFactory: () => '2020-06-15T10:00:00Z', pattern: /2020/ },
-    { scenario: 'today', dateFactory: () => new Date().toISOString(), pattern: /Today at/ },
+    { scenario: 'today', dateFactory: () => new Date().toISOString(), pattern: /^\d{2}:\d{2}$/ },
   ])('renders $scenario timestamp', ({ dateFactory, pattern }) => {
     useThreadStore.setState({
       threadMessages: {

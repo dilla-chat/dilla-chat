@@ -1,0 +1,142 @@
+/* MessageMarkdown — chat-bubble markdown styling. Stays inside .mm-root
+   so we don't bleed styles onto the surrounding chrome. */
+
+.mm-root {
+  /* Inherits font-size + colour from the surrounding `.body` /
+     `.pin-text` containers; only reset spacing on the elements that
+     react-markdown introduces. */
+}
+
+.mm-root > * {
+  margin-block: 0;
+}
+
+.mm-root > * + * {
+  margin-block-start: 0.375rem;
+}
+
+.mm-root p {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Lists — keep indentation tight so a 3-item list doesn't push the
+   bubble's vertical rhythm out of whack. */
+.mm-root ul,
+.mm-root ol {
+  margin: 0;
+  padding-inline-start: 1.25rem;
+}
+
+.mm-root li {
+  margin: 0;
+}
+
+.mm-root li + li {
+  margin-top: 0.125rem;
+}
+
+/* GFM task list items render with input[type=checkbox] disabled. */
+.mm-root li.task-list-item {
+  list-style: none;
+  position: relative;
+  padding-inline-start: 0.125rem;
+}
+.mm-root li.task-list-item > input[type='checkbox'] {
+  margin-right: 0.375rem;
+  vertical-align: middle;
+}
+
+/* Blockquote: thin accent line. */
+.mm-root blockquote {
+  margin: 0;
+  padding: 0.125rem 0 0.125rem 0.625rem;
+  border-inline-start: 0.1875rem solid color-mix(in oklab, var(--accent) 65%, transparent);
+  color: var(--fg-2);
+}
+
+/* Inline emphasis — strong / em / del / sub-sup all inherit. We only set
+   strikethrough's colour so it doesn't blend into the background. */
+.mm-root del {
+  color: var(--fg-3);
+}
+
+/* Inline code chip uses the existing `code` styling from chat.css; only
+   set the typography here in case the host doesn't define one. */
+.mm-root code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  padding: 0.0625rem 0.25rem;
+  border-radius: 0.1875rem;
+  background: color-mix(in oklab, var(--fg) 10%, transparent);
+}
+
+/* Code block: react-markdown wraps `<code class=language-X>` in a `<pre>`
+   which we already class as `.code-block`. The chip layout (lang badge)
+   uses the same `.cb-lang` class from chat.css so we don't restyle it
+   here. Just make sure `<pre>` inside doesn't add an extra background. */
+.mm-root pre.code-block {
+  margin: 0;
+  position: relative;
+}
+.mm-root pre.code-block > code {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  display: block;
+  overflow-x: auto;
+}
+
+/* rehype-highlight emits <code class="hljs language-X">. Atom-One-Dark's
+   bundled `pre code.hljs` rule sets a hard background which would
+   override our bubble surface — neutralise it so the bubble's own
+   `.code-block` background shows through. Token colours stay. */
+.mm-root pre.code-block > code.hljs {
+  background: transparent;
+  padding: 0;
+}
+
+/* Tables — fit chat bubble, allow horizontal scroll for wide ones. */
+.mm-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+}
+
+.mm-root table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.875em;
+}
+
+.mm-root th,
+.mm-root td {
+  text-align: left;
+  padding: 0.3125rem 0.625rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.mm-root tr:last-child td {
+  border-bottom: 0;
+}
+
+.mm-root th {
+  background: color-mix(in oklab, var(--fg) 6%, transparent);
+  font-weight: 600;
+}
+
+/* Horizontal rule — subtle separator. */
+.mm-root hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 0.375rem 0;
+}
+
+.mm-inline-image {
+  display: block;
+  max-width: 22.5rem;
+  max-height: 17.5rem;
+  border-radius: 0.25rem;
+  margin-top: 0.25rem;
+}

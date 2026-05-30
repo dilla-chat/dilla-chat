@@ -46,24 +46,33 @@ export const MOCK_ROLES: Role[] = [
 
 // ─── Channels ────────────────────────────────────────────────────────────────
 
+// First-class channel groups for the demo team. Channels reference these
+// by groupId; access lists default to empty (open). Matches the real
+// schema in migration 020 so /mesh exercises the same code paths as /app.
+export const MOCK_GROUPS = [
+  { id: 'grp-general', teamId: DEMO_TEAM_ID, name: 'General', position: 0, accessRoleIds: [] as string[], hiddenIfRestricted: false },
+  { id: 'grp-development', teamId: DEMO_TEAM_ID, name: 'Development', position: 1, accessRoleIds: [] as string[], hiddenIfRestricted: false },
+  { id: 'grp-offtopic', teamId: DEMO_TEAM_ID, name: 'Off-Topic', position: 2, accessRoleIds: [] as string[], hiddenIfRestricted: false },
+];
+
 export const MOCK_CHANNELS: Channel[] = [
-  { id: 'ch-1', teamId: DEMO_TEAM_ID, name: 'welcome', topic: 'Welcome to Dilla!', type: 'text', position: 0, category: 'General' },
-  { id: 'ch-2', teamId: DEMO_TEAM_ID, name: 'general', topic: 'General discussion', type: 'text', position: 1, category: 'General' },
-  { id: 'ch-3', teamId: DEMO_TEAM_ID, name: 'Voice Lounge', topic: '', type: 'voice', position: 2, category: 'General' },
-  { id: 'ch-4', teamId: DEMO_TEAM_ID, name: 'backend', topic: 'Go server development', type: 'text', position: 3, category: 'Development' },
-  { id: 'ch-5', teamId: DEMO_TEAM_ID, name: 'frontend', topic: 'Tauri client work', type: 'text', position: 4, category: 'Development' },
-  { id: 'ch-6', teamId: DEMO_TEAM_ID, name: 'Standup', topic: '', type: 'voice', position: 5, category: 'Development' },
-  { id: 'ch-7', teamId: DEMO_TEAM_ID, name: 'random', topic: 'Anything goes', type: 'text', position: 6, category: 'Off-Topic' },
+  { id: 'ch-1', teamId: DEMO_TEAM_ID, name: 'welcome', topic: 'Welcome to Dilla!', type: 'text', position: 0, category: 'General', groupId: 'grp-general' },
+  { id: 'ch-2', teamId: DEMO_TEAM_ID, name: 'general', topic: 'General discussion', type: 'text', position: 1, category: 'General', groupId: 'grp-general' },
+  { id: 'ch-3', teamId: DEMO_TEAM_ID, name: 'voice-lounge', topic: '', type: 'voice', position: 2, category: 'General', groupId: 'grp-general' },
+  { id: 'ch-4', teamId: DEMO_TEAM_ID, name: 'backend', topic: 'Go server development', type: 'text', position: 3, category: 'Development', groupId: 'grp-development' },
+  { id: 'ch-5', teamId: DEMO_TEAM_ID, name: 'frontend', topic: 'Tauri client work', type: 'text', position: 4, category: 'Development', groupId: 'grp-development' },
+  { id: 'ch-6', teamId: DEMO_TEAM_ID, name: 'standup', topic: '', type: 'voice', position: 5, category: 'Development', groupId: 'grp-development' },
+  { id: 'ch-7', teamId: DEMO_TEAM_ID, name: 'random', topic: 'Anything goes', type: 'text', position: 6, category: 'Off-Topic', groupId: 'grp-offtopic' },
 ];
 
 // ─── Members ─────────────────────────────────────────────────────────────────
 
 export const MOCK_MEMBERS: Member[] = [
-  { id: 'member-1', userId: 'user-1', username: 'alice', displayName: 'Alice', nickname: '', roles: [MOCK_ROLES[0], MOCK_ROLES[2]], statusType: 'online' },
-  { id: 'member-2', userId: 'user-2', username: 'bob', displayName: 'Bob', nickname: '', roles: [MOCK_ROLES[1], MOCK_ROLES[2]], statusType: 'idle' },
-  { id: 'member-3', userId: 'user-3', username: 'charlie', displayName: 'Charlie', nickname: '', roles: [MOCK_ROLES[2]], statusType: 'online' },
-  { id: 'member-4', userId: 'user-4', username: 'diana', displayName: 'Diana', nickname: '', roles: [MOCK_ROLES[2]], statusType: 'dnd' },
-  { id: 'member-5', userId: 'user-5', username: 'eve', displayName: 'Eve', nickname: '', roles: [MOCK_ROLES[2]], statusType: 'offline' },
+  { id: 'member-1', userId: 'user-1', username: 'alice', displayName: 'Alice', nickname: '', roles: [MOCK_ROLES[0], MOCK_ROLES[2]], statusType: 'online', isAdmin: true, publicKeyHex: '', avatarUrl: '' },
+  { id: 'member-2', userId: 'user-2', username: 'bob', displayName: 'Bob', nickname: '', roles: [MOCK_ROLES[1], MOCK_ROLES[2]], statusType: 'idle', isAdmin: false, publicKeyHex: '', avatarUrl: '' },
+  { id: 'member-3', userId: 'user-3', username: 'charlie', displayName: 'Charlie', nickname: '', roles: [MOCK_ROLES[2]], statusType: 'online', isAdmin: false, publicKeyHex: '', avatarUrl: '' },
+  { id: 'member-4', userId: 'user-4', username: 'diana', displayName: 'Diana', nickname: '', roles: [MOCK_ROLES[2]], statusType: 'dnd', isAdmin: false, publicKeyHex: '', avatarUrl: '' },
+  { id: 'member-5', userId: 'user-5', username: 'eve', displayName: 'Eve', nickname: '', roles: [MOCK_ROLES[2]], statusType: 'offline', isAdmin: false, publicKeyHex: '', avatarUrl: '' },
 ];
 
 // ─── Helper: timestamps spread over the last hour ────────────────────────────
@@ -308,11 +317,20 @@ export const MOCK_THREAD_MESSAGES: Record<string, Message[]> = {
 // ─── Presences ───────────────────────────────────────────────────────────────
 
 export const MOCK_PRESENCES: Record<string, UserPresence> = {
-  'user-1': { user_id: 'user-1', status: 'online', custom_status: '', last_active: ts(0) },
-  'user-2': { user_id: 'user-2', status: 'idle', custom_status: '', last_active: ts(5) },
+  'user-1': { user_id: 'user-1', status: 'online', custom_status: 'pushing pixels', last_active: ts(0) },
+  'user-2': { user_id: 'user-2', status: 'idle', custom_status: 'lunch', last_active: ts(5) },
   'user-3': { user_id: 'user-3', status: 'online', custom_status: '', last_active: ts(0) },
   'user-4': { user_id: 'user-4', status: 'dnd', custom_status: 'In a meeting', last_active: ts(0) },
   'user-5': { user_id: 'user-5', status: 'offline', custom_status: '', last_active: ts(60) },
+};
+
+// Voice channel occupants — populated for the "Voice Lounge" so the
+// Active voice section renders in the sidebar.
+export const MOCK_VOICE_STATES = {
+  'ch-3': [
+    { user_id: 'user-3', username: 'charlie', muted: false, deafened: false, speaking: true, voiceLevel: 0.6 },
+    { user_id: 'user-2', username: 'bob', muted: true, deafened: false, speaking: false, voiceLevel: 0 },
+  ],
 };
 
 // ─── Random message content for simulated new messages ───────────────────────

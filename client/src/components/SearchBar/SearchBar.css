@@ -7,10 +7,10 @@
   display: flex;
   align-items: center;
   background-color: var(--input-bg);
-  border: 1px solid transparent;
+  border: 0.0625rem solid transparent;
   border-radius: var(--radius-lg);
   padding: 0 var(--spacing-sm);
-  height: 28px;
+  height: 1.75rem;
   flex: 1;
   min-width: 0;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
@@ -19,7 +19,7 @@
 
 .header-search-input-wrapper.focused {
   border-color: var(--brand-500);
-  box-shadow: 0 0 0 2px var(--brand-alpha-12);
+  box-shadow: 0 0 0 0.125rem var(--brand-alpha-12);
 }
 
 .header-search-icon {
@@ -27,17 +27,6 @@
   flex-shrink: 0;
 }
 
-.header-search-input {
-  flex: 1;
-  background: none;
-  border: none;
-  color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  font-family: inherit;
-  outline: none;
-  padding: 0 6px;
-  min-width: 0;
-}
 
 .header-search-input::placeholder {
   color: var(--text-muted);
@@ -49,8 +38,8 @@
   color: var(--interactive-normal);
   cursor: pointer;
   padding: 0;
-  width: 20px;
-  height: 20px;
+  width: 1.25rem;
+  height: 1.25rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -66,15 +55,15 @@
 /* Dropdown results panel */
 .header-search-dropdown {
   position: absolute;
-  top: calc(100% + 6px);
+  top: calc(100% + 0.375rem);
   right: 0;
-  width: 420px;
+  width: 26.25rem;
   max-height: 60vh;
   overflow-y: auto;
   background: var(--glass-bg-floating);
   -webkit-backdrop-filter: blur(var(--glass-blur-heavy));
   backdrop-filter: blur(var(--glass-blur-heavy));
-  border: 1px solid var(--glass-border);
+  border: 0.0625rem solid var(--glass-border);
   box-shadow: var(--glass-shadow-elevated);
   border-radius: var(--radius-lg);
   z-index: 200;
@@ -101,10 +90,10 @@
   font-family: inherit;
   font-size: inherit;
   color: inherit;
-  padding: 10px 12px;
+  padding: 0.625rem 0.75rem;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  margin-bottom: 2px;
+  margin-bottom: 0.125rem;
   transition: background-color 0.15s ease;
 }
 
@@ -116,7 +105,7 @@
   display: flex;
   align-items: baseline;
   gap: var(--spacing-sm);
-  margin-bottom: 2px;
+  margin-bottom: 0.125rem;
 }
 
 .search-result-author {
@@ -145,30 +134,49 @@
 .search-result-highlight {
   background: var(--accent-alpha-25);
   color: var(--header-primary);
-  border-radius: 2px;
-  padding: 0 2px;
+  border-radius: 0.125rem;
+  padding: 0 0.125rem;
   font-weight: var(--font-weight-medium);
 }
 
 /* ===== Responsive ===== */
-@media (max-width: 767px) {
+@media (max-width: 47.9375rem) {
   .header-search-input-wrapper {
-    width: 140px;
+    width: 8.75rem;
   }
 
   .header-search-input-wrapper.focused {
-    width: 200px;
+    width: 12.5rem;
   }
 
   .header-search-dropdown {
-    width: calc(100vw - 16px);
-    max-width: 420px;
-    right: -8px;
+    width: calc(100vw - 1rem);
+    max-width: 26.25rem;
+    right: -0.5rem;
   }
 }
 
-@media (min-width: 768px) and (max-width: 1023px) {
+@media (min-width: 48rem) and (max-width: 63.9375rem) {
   .header-search-dropdown {
-    width: min(420px, calc(100vw - 340px));
+    width: min(26.25rem, calc(100vw - 21.25rem));
   }
+}
+
+/* ====================================================================
+   Mesh design — relocated from mesh-overrides.css. Single source of
+   truth; theming via tokens.
+   ==================================================================== */
+
+.search-bar,
+.header-search {
+  background: var(--surface-2);
+  border: 0.0625rem solid var(--hairline);
+  border-radius: var(--r-md);
+  font-family: var(--font-mono);
+}
+
+.header-search-input {
+  font-family: var(--font-mono);
+  color: var(--fg);
+  background: transparent;
 }

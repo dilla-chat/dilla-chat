@@ -1,0 +1,176 @@
+.incoming-call-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  background: rgba(7, 8, 9, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-ui);
+  animation: incoming-call-overlay-in 0.18s ease-out;
+}
+
+@keyframes incoming-call-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.incoming-call-card {
+  width: 22.5rem;
+  background: var(--surface, var(--bg-floating));
+  border: 0.0625rem solid var(--accent, var(--brand-500));
+  border-radius: var(--r-md, 0.125rem);
+  box-shadow: var(--shadow-2, 0 0.75rem 1.875rem rgba(0, 0, 0, 0.6));
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  animation: incoming-call-card-in 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes incoming-call-card-in {
+  from { transform: scale(0.88); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.incoming-call-pulse {
+  position: relative;
+  width: 6rem;
+  height: 6rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.incoming-call-pulse::before,
+.incoming-call-pulse::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 0.125rem solid var(--accent, var(--brand-500));
+  animation: incoming-call-pulse 1.8s ease-out infinite;
+}
+
+.incoming-call-pulse::after {
+  animation-delay: 0.9s;
+}
+
+@keyframes incoming-call-pulse {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+.incoming-call-avatar {
+  position: relative;
+  z-index: 1;
+  width: 4.5rem;
+  height: 4.5rem;
+  border-radius: 50%;
+  background: var(--surface-2, var(--bg-modifier-hover));
+  color: var(--accent-ink, var(--text-primary));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 1.75rem;
+  font-weight: var(--fw-display, 700);
+}
+
+.incoming-call-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.incoming-call-status {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent, var(--brand-500));
+}
+
+.incoming-call-name {
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  font-weight: var(--fw-display, 700);
+  color: var(--fg, var(--text-primary));
+}
+
+.incoming-call-channel {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-3, var(--text-muted));
+}
+
+.incoming-call-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.25rem;
+}
+
+.incoming-call-btn {
+  width: 4rem;
+  height: 4rem;
+  border-radius: 50%;
+  border: 0.0625rem solid var(--hairline, var(--border-color));
+  background: var(--surface-2, var(--bg-modifier-hover));
+  color: var(--fg, var(--text-primary));
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.125rem;
+  font-family: var(--font-mono);
+  font-size: 0.5625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  transition: background 0.12s ease-out, border-color 0.12s ease-out;
+  position: relative;
+}
+
+.incoming-call-btn > span:first-child {
+  font-size: 1.375rem;
+  line-height: 1;
+}
+
+.incoming-call-btn-label {
+  font-size: 0.5625rem;
+}
+
+.incoming-call-btn kbd {
+  position: absolute;
+  bottom: -1.375rem;
+  font-family: var(--font-mono);
+  font-size: 0.5625rem;
+  background: transparent;
+  border: 0.0625rem solid var(--hairline, var(--border-color));
+  border-radius: var(--r-sm, 0);
+  padding: 0.0625rem 0.25rem;
+  color: var(--fg-3, var(--text-muted));
+}
+
+.incoming-call-btn.accept {
+  border-color: var(--accent, var(--brand-500));
+  color: var(--accent, var(--brand-500));
+}
+
+.incoming-call-btn.accept:hover {
+  background: var(--accent-soft, rgba(124, 255, 142, 0.16));
+}
+
+.incoming-call-btn.decline {
+  border-color: var(--danger, var(--text-danger));
+  color: var(--danger, var(--text-danger));
+}
+
+.incoming-call-btn.decline:hover {
+  background: rgba(255, 110, 110, 0.16);
+}

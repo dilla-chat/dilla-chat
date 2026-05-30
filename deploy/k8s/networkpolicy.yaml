@@ -1,0 +1,124 @@
+# Dilla — NetworkPolicy reference.
+#
+# Egress posture is deny-all-then-allow. Rationale: dilla-server makes a SMALL,
+# KNOWN set of outbound calls — Cloudflare TURN credentials, OTel collector,
+# Giphy (optional), federation peers. Everything else is a smell. Restricting
+# egress closes the SSRF / data-exfil class even if the app-layer egress guard
+# (R-19) is bypassed.
+#
+# Pre-req: a CNI that enforces NetworkPolicies (Cilium, Calico, Antrea — NOT
+# kindnet, NOT Flannel-without-Calico-overlay).
+#
+# Tested-with: Kubernetes 1.30, Cilium 1.15.
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: dilla-server
+  namespace: dilla
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: dilla-server
+  policyTypes:
+    - Ingress
+    - Egress
+
+  ingress:
+    # ----- 1. Reverse proxy (ingress-nginx in ingress-nginx ns) -----------
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - port: 8080
+          protocol: TCP
+
+    # ----- 2. Federation peers (over WireGuard CIDR — see I7) -------------
+    # Update the CIDR to your mesh range.
+    - from:
+        - ipBlock:
+            cidr: 10.42.0.0/24
+      ports:
+        - port: 9443
+          protocol: TCP
+
+    # ----- 3. Prometheus scrape (cluster-internal) ------------------------
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - port: 9090     # metrics port (TODO: confirm exposed by dilla-server)
+          protocol: TCP
+
+  egress:
+    # ----- 1. DNS (kube-dns / coredns) -----------------------------------
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+
+    # ----- 2. Cloudflare TURN API (api.cloudflare.com) -------------------
+    # Cloudflare's stable v4 anycast range. Refresh quarterly from:
+    #   https://www.cloudflare.com/ips/
+    - to:
+        - ipBlock:
+            cidr: 104.16.0.0/13
+        - ipBlock:
+            cidr: 162.158.0.0/15
+        - ipBlock:
+            cidr: 172.64.0.0/13
+      ports:
+        - port: 443
+          protocol: TCP
+
+    # ----- 3. OTel collector (cluster-internal) --------------------------
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opentelemetry-collector
+      ports:
+        - port: 4317        # OTLP gRPC
+          protocol: TCP
+        - port: 4318        # OTLP HTTP
+          protocol: TCP
+
+    # ----- 4. Federation peers (WireGuard mesh) --------------------------
+    - to:
+        - ipBlock:
+            cidr: 10.42.0.0/24
+      ports:
+        - port: 9443
+          protocol: TCP
+
+    # ----- 5. Giphy (optional — remove if you don't enable embeds) -------
+    # Resolves to anycast Fastly ranges. Pinned at the app layer (R-19);
+    # this is just the network-tier echo.
+    - to:
+        - ipBlock:
+            cidr: 151.101.0.0/16
+      ports:
+        - port: 443
+          protocol: TCP
+
+    # ----- 6. NTP via kube-system clock provider (if used) ---------------
+    # Most clusters don't need this — the node syncs NTP, pods inherit.
+    # Uncomment only if you've disabled host-NTP-passthrough.
+    # - ports:
+    #     - port: 123
+    #       protocol: UDP

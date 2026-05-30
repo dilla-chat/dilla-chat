@@ -52,11 +52,27 @@ describe('TeamSidebar', () => {
     expect(useTeamStore.getState().activeTeamId).toBe('team-2');
   });
 
-  it('navigates to /join when add button is clicked', () => {
+  it('opens NewServerModal when add button is clicked', () => {
     render(<TeamSidebar />);
     const addBtn = screen.getByTestId('Plus').closest('button')!;
     fireEvent.click(addBtn);
-    expect(mockNavigate).toHaveBeenCalledWith('/join');
+    // Modal is mounted via portal; look in document.body
+    expect(document.querySelector('.new-server-modal')).toBeInTheDocument();
+  });
+
+  it('submitting Join in modal navigates to /join with params', () => {
+    render(<TeamSidebar />);
+    const addBtn = screen.getByTestId('Plus').closest('button')!;
+    fireEvent.click(addBtn);
+    // Modal defaults to Join mode
+    const urlInput = screen.getByLabelText(/server url/i);
+    const inviteInput = screen.getByLabelText(/invite token/i);
+    fireEvent.change(urlInput, { target: { value: 'https://x.example' } });
+    fireEvent.change(inviteInput, { target: { value: 'tok123' } });
+    fireEvent.click(screen.getByText(/join →/i));
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.stringMatching(/^\/join\?.*invite=tok123/),
+    );
   });
 
   it('renders add team button', () => {
@@ -131,5 +147,39 @@ describe('TeamSidebar', () => {
     useAuthStore.setState({ teams: new Map(), servers: new Map() });
     const { container } = render(<TeamSidebar />);
     expect(container.querySelectorAll('.team-icon').length).toBe(0);
+  });
+
+  it('opens context menu on right-click with all 5 items', () => {
+    render(<TeamSidebar />);
+    const icon = screen.getByText('A').closest('.team-icon-wrapper')!;
+    fireEvent.contextMenu(icon);
+    expect(screen.getByText(/settings/i)).toBeInTheDocument();
+    expect(screen.getByText(/invites/i)).toBeInTheDocument();
+    expect(screen.getByText(/federation/i)).toBeInTheDocument();
+    expect(screen.getByText(/mark all read/i)).toBeInTheDocument();
+    expect(screen.getByText(/leave/i)).toBeInTheDocument();
+  });
+
+  it('shows federation amber dot when team is federated', () => {
+    const teams = new Map([
+      ['team-fed', { token: 't', user: null, teamInfo: { name: 'Fed', federated: true }, baseUrl: 'https://x.example.com' }],
+    ]);
+    useAuthStore.setState({ teams, servers: new Map() });
+    useTeamStore.setState({ activeTeamId: 'team-fed', teams: new Map() });
+    const { container } = render(<TeamSidebar />);
+    expect(container.querySelector('.team-federated-dot')).toBeInTheDocument();
+  });
+
+  it('drag from team-1 to team-2 reorders via setTeamOrder', () => {
+    render(<TeamSidebar />);
+    const a = screen.getByText('A').closest('.team-icon-wrapper')!;
+    const b = screen.getByText('B').closest('.team-icon-wrapper')!;
+    fireEvent.dragStart(a);
+    fireEvent.dragOver(b);
+    fireEvent.drop(b);
+    expect(Array.from(useAuthStore.getState().teams.keys())).toEqual([
+      'team-2',
+      'team-1',
+    ]);
   });
 });

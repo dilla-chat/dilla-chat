@@ -1,0 +1,77 @@
+.first-run-splash {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-toast);
+  background: var(--bg, var(--bg-primary));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  font-family: var(--font-mono);
+  color: var(--fg, var(--text-primary));
+  animation: first-run-splash-in 0.3s ease-out;
+  transition: opacity 0.3s ease-out;
+}
+
+.first-run-splash.fading {
+  opacity: 0;
+}
+
+@keyframes first-run-splash-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.first-run-splash-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.first-run-splash-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  background: var(--accent, var(--brand-500));
+  color: var(--accent-ink, var(--bg-primary));
+  font-family: var(--font-mono);
+  font-size: 2rem;
+  font-weight: 800;
+}
+
+.first-run-splash-word {
+  font-family: var(--font-mono);
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--fg, var(--text-primary));
+}
+
+.first-run-splash-caret {
+  font-size: 2rem;
+  color: var(--accent, var(--brand-500));
+  animation: mesh-caret-blink 1s steps(2) infinite;
+}
+
+.first-run-splash-log {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  color: var(--accent, var(--success));
+  text-align: left;
+  min-width: 16.25rem;
+  min-height: 6.25rem;
+}
+
+.first-run-splash-log-line {
+  margin: 0.125rem 0;
+  animation: first-run-line-in 0.18s ease-out;
+}
+
+@keyframes first-run-line-in {
+  from { opacity: 0; transform: translateY(0.125rem); }
+  to { opacity: 1; transform: translateY(0); }
+}

@@ -1,0 +1,52 @@
+# Dilla — Traefik v3 static configuration (entrypoints + ACME).
+#
+# Mode A from .security-hardening/03-architecture-review.md §9. Pair this file
+# with traefik.dynamic.yml (routers/middlewares). dilla-server itself runs with
+# DILLA_INSECURE=true on 127.0.0.1:8080 — Traefik terminates TLS.
+#
+# Required Traefik version: v3.0+ (entrypoint.http3 + native h2c upstream).
+# Replace ${ADMIN_EMAIL} before deploying.
+
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+  websecure:
+    address: ":443"
+    http3: {}            # HTTP/3 over QUIC on UDP/443
+    http:
+      tls:
+        certResolver: letsencrypt
+        # Mozilla "intermediate" cipher suite is the default in Traefik v3.
+
+providers:
+  file:
+    filename: /etc/traefik/traefik.dynamic.yml
+    watch: true
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: ${ADMIN_EMAIL}
+      storage: /letsencrypt/acme.json
+      httpChallenge:
+        entryPoint: web
+
+# Access logs default to stdout (JSON) so the platform log aggregator can pick
+# them up. Switch to file output if you ingest into Loki/Promtail.
+log:
+  level: INFO
+accessLog: {}
+api:
+  dashboard: false       # never expose the dashboard in production.
+
+# tested-with: Traefik v3.0.4, Apr 2026.

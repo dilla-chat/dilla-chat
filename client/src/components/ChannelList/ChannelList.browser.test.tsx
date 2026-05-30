@@ -14,7 +14,7 @@ describe('ChannelList hover-reveal', () => {
       <div className="channel-item" data-testid="channel-item">
         <span className="channel-name">general</span>
         <div className="channel-actions" data-testid="channel-actions">
-          <button className="channel-action-btn">+</button>
+          <button className="btn btn--ghost btn--icon btn--sm">+</button>
         </div>
       </div>,
     );
@@ -27,7 +27,7 @@ describe('ChannelList hover-reveal', () => {
       <div className="channel-item" data-testid="channel-item">
         <span className="channel-name">general</span>
         <div className="channel-actions" data-testid="channel-actions">
-          <button className="channel-action-btn">+</button>
+          <button className="btn btn--ghost btn--icon btn--sm">+</button>
         </div>
       </div>,
     );

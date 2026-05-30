@@ -1,16 +1,101 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::sync::RwLock;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
 use webrtc::peer_connection::RTCPeerConnection;
+use webrtc::rtcp::payload_feedbacks::picture_loss_indication::PictureLossIndication;
 use webrtc::rtp_transceiver::rtp_codec::RTPCodecType;
 use webrtc::track::track_local::track_local_static_rtp::TrackLocalStaticRTP;
 use webrtc::track::track_local::{TrackLocal, TrackLocalWriter};
 use webrtc::track::track_remote::TrackRemote;
 
 use super::signaling::{PeerState, SFUEvent, SfuEventCallback};
+
+/// Send RTCP PictureLossIndication to all incoming video tracks on a peer
+/// connection. Used when a new subscriber joins so the publisher resends a
+/// keyframe immediately instead of waiting for the next periodic one.
+#[cfg(not(tarpaulin_include))]
+pub(crate) async fn request_video_keyframes(pc: &Arc<RTCPeerConnection>) {
+    let receivers = pc.get_receivers().await;
+    for receiver in &receivers {
+        for track in receiver.tracks().await {
+            if track.kind() != RTPCodecType::Video {
+                continue;
+            }
+            let pli = PictureLossIndication {
+                sender_ssrc: 0,
+                media_ssrc: track.ssrc(),
+            };
+            let _ = pc.write_rtcp(&[Box::new(pli)]).await;
+        }
+    }
+}
+
+/// Nudge a SPECIFIC publisher (the user who just started a cam or
+/// screen track) for a fresh keyframe so existing subscribers in
+/// the room start decoding immediately. Without this, when peer A
+/// starts a track that gets added to peer B mid-call, B receives
+/// only P-frames after the last A-side keyframe — bytes pile up
+/// but the decoder produces zero frames until the next periodic
+/// keyframe arrives (multi-second wait, sometimes never if the
+/// stream is steady).
+#[cfg(not(tarpaulin_include))]
+pub(crate) fn spawn_keyframe_burst_for_publisher(
+    rooms: Arc<RwLock<HashMap<String, HashMap<String, PeerState>>>>,
+    channel_id: String,
+    publisher_user_id: String,
+) {
+    tokio::spawn(async move {
+        for delay_ms in [150u64, 500, 1200, 2500] {
+            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+            let pc: Option<Arc<RTCPeerConnection>> = {
+                let rooms_guard = rooms.read().await;
+                rooms_guard
+                    .get(&channel_id)
+                    .and_then(|room| room.get(&publisher_user_id))
+                    .map(|ps| Arc::clone(&ps.pc))
+            };
+            if let Some(pc) = pc {
+                request_video_keyframes(&pc).await;
+            }
+        }
+    });
+}
+
+/// Spawn a task that nudges existing video publishers in the room for fresh
+/// keyframes after a new peer joins, so the new subscriber sees video without
+/// the multi-second wait for the next periodic keyframe.
+#[cfg(not(tarpaulin_include))]
+pub(crate) fn spawn_keyframe_burst(
+    rooms: Arc<RwLock<HashMap<String, HashMap<String, PeerState>>>>,
+    channel_id: String,
+    joining_user_id: String,
+) {
+    tokio::spawn(async move {
+        // Repeat a few times because the first PLI may arrive before the
+        // joining peer's ICE/DTLS is fully established, and we want to cover
+        // the window during which the subscriber is actually ready.
+        for delay_ms in [150u64, 500, 1200, 2500] {
+            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+            let pcs: Vec<Arc<RTCPeerConnection>> = {
+                let rooms_guard = rooms.read().await;
+                let Some(room) = rooms_guard.get(&channel_id) else {
+                    return;
+                };
+                room.iter()
+                    .filter(|(uid, _)| uid.as_str() != joining_user_id)
+                    .map(|(_, ps)| Arc::clone(&ps.pc))
+                    .collect()
+            };
+            for pc in pcs {
+                request_video_keyframes(&pc).await;
+            }
+        }
+    });
+}
 
 /// Create a new offer for an existing peer and emit a Renegotiate event.
 pub(crate) async fn renegotiate_internal(
@@ -41,6 +126,28 @@ pub(crate) async fn renegotiate_internal(
     pc.set_local_description(offer.clone())
         .await
         .map_err(|e| format!("set local description: {e}"))?;
+
+    let mline_summary: String = offer
+        .sdp
+        .lines()
+        .filter(|l| {
+            l.starts_with("m=")
+                || l.starts_with("a=mid")
+                || l.starts_with("a=sendrecv")
+                || l.starts_with("a=sendonly")
+                || l.starts_with("a=recvonly")
+                || l.starts_with("a=inactive")
+                || l.starts_with("a=msid")
+        })
+        .collect::<Vec<_>>()
+        .join(" | ");
+    tracing::info!(
+        target: "voice_sdp",
+        "renegotiate offer channel={} user={} sdp_mlines={}",
+        channel_id,
+        user_id,
+        mline_summary
+    );
 
     let handler = on_event.read().await;
     if let Some(ref f) = *handler {
@@ -80,6 +187,32 @@ pub(crate) async fn renegotiate_all_internal(
             );
         }
     }
+
+    // Every renegotiation can stall existing subscribers' decoders —
+    // when A toggles cam (while still sharing screen), B's screen
+    // receiver gets a new SDP version but no fresh I-frame, so the
+    // decoder shows `framesDecoded:0` until the next periodic
+    // keyframe (multi-second wait, sometimes never). Burst PLIs at
+    // EVERY active video publisher so all subscribers immediately
+    // pick up a keyframe on every stream they're already receiving.
+    let publishers: Vec<String> = {
+        let rooms_guard = rooms.read().await;
+        match rooms_guard.get(channel_id) {
+            Some(room) => room
+                .iter()
+                .filter(|(_, ps)| ps.webcam_track.is_some() || ps.screen_track.is_some())
+                .map(|(uid, _)| uid.clone())
+                .collect(),
+            None => return,
+        }
+    };
+    for publisher_uid in publishers {
+        spawn_keyframe_burst_for_publisher(
+            Arc::clone(rooms),
+            channel_id.to_string(),
+            publisher_uid,
+        );
+    }
 }
 
 pub(crate) async fn renegotiate_all_except_internal(
@@ -118,7 +251,11 @@ pub(crate) async fn handle_leave_internal(
     channel_id: &str,
     user_id: &str,
 ) {
-    let is_empty = {
+    // Remove the peer from the rooms map and capture its state, then drop the
+    // write lock BEFORE closing the PC. pc.close() awaits the
+    // on_peer_connection_state_change handler, which acquires a read lock via
+    // is_active_connection — holding the write lock here would deadlock.
+    let (ps, is_empty) = {
         let mut rooms_guard = rooms.write().await;
         let room = match rooms_guard.get_mut(channel_id) {
             Some(room) => room,
@@ -130,15 +267,39 @@ pub(crate) async fn handle_leave_internal(
             None => return,
         };
 
-        let _ = ps.pc.close().await;
-        remove_peer_tracks_from_room(room, &ps).await;
-
         let empty = room.is_empty();
         if empty {
             rooms_guard.remove(channel_id);
         }
-        empty
+        (ps, empty)
     };
+
+    let _ = ps.pc.close().await;
+
+    if !is_empty {
+        let rooms_guard = rooms.read().await;
+        if let Some(room) = rooms_guard.get(channel_id) {
+            remove_peer_tracks_from_room(room, &ps).await;
+        }
+    }
+
+    // Notify the WS bridge that this peer dropped — used by the
+    // setup_connection_state_handler ICE-failed path so RoomManager
+    // and other clients learn the user is no longer in the room.
+    // (Explicit voice:leave goes through handle_voice_leave which
+    // does its own broadcast; this is the autonomous-drop path.)
+    {
+        let handler = on_event.read().await;
+        if let Some(ref f) = *handler {
+            f(
+                channel_id.to_string(),
+                SFUEvent::PeerDropped {
+                    channel_id: channel_id.to_string(),
+                    user_id: user_id.to_string(),
+                },
+            );
+        }
+    }
 
     if !is_empty {
         renegotiate_all_internal(rooms, on_event, channel_id).await;
@@ -228,23 +389,38 @@ pub(crate) async fn remove_track_from_peer(
     track_id: &str,
     kind: &str,
 ) {
-    let senders = peer.pc.get_senders().await;
-    for sender in &senders {
+    // We need to STOP the transceiver, not just remove its track. Pion's
+    // `pc.remove_track(sender)` deactivates the sender but leaves the
+    // transceiver alive in the SDP with the original msid still embedded —
+    // and because `add_track` for the next round only reuses a slot when
+    // `initial_track_id` matches (and our restart uses a fresh UUID), every
+    // restart appends a NEW m-line while the old one lingers as a recvonly
+    // ghost with stale msid. After a handful of cam toggles the SDP
+    // contains 10+ orphan m-lines all keyed to `webcam-stream-X` /
+    // `screen-stream-X`, which is what wedges Chrome's decoder on the
+    // current m-line.
+    //
+    // Stopping the transceiver makes Pion emit `m=video 0` (port 0) for
+    // that slot, which Chrome treats as permanently rejected — no msid,
+    // no receiver allocated, no decoder confusion.
+    let transceivers = peer.pc.get_transceivers().await;
+    for tx in &transceivers {
+        let sender = tx.sender().await;
         let Some(track) = sender.track().await else {
             continue;
         };
         if track.id() != track_id {
             continue;
         }
-        if let Err(e) = peer.pc.remove_track(sender).await {
+        if let Err(e) = tx.stop().await {
             tracing::error!(
-                "voice: failed to remove {} track from peer: {} (other={})",
+                "voice: failed to stop {} transceiver on peer: {} (other={})",
                 kind,
                 e,
                 peer_uid
             );
         }
-        break;
+        return;
     }
 }
 
@@ -256,7 +432,7 @@ pub(crate) fn setup_on_track_handler(
     channel_id: String,
     user_id: String,
 ) {
-    pc.on_track(Box::new(move |remote_track, _receiver, _transceiver| {
+    pc.on_track(Box::new(move |remote_track, _receiver, transceiver| {
         let rooms_ref = Arc::clone(&rooms_ref);
         let ch_id = channel_id.clone();
         let u_id = user_id.clone();
@@ -275,19 +451,27 @@ pub(crate) fn setup_on_track_handler(
                 track_id
             );
 
-            let target =
-                match resolve_target_track(&rooms_ref, &ch_id, &u_id, &track_id, kind).await {
-                    Some(t) => t,
-                    None => {
-                        tracing::warn!(
-                            "voice: no local track for incoming track kind={:?} id={} user={}",
-                            kind,
-                            track_id,
-                            u_id
-                        );
-                        return;
-                    }
-                };
+            let target = match resolve_target_track(
+                &rooms_ref,
+                &ch_id,
+                &u_id,
+                &track_id,
+                kind,
+                Some(&transceiver),
+            )
+            .await
+            {
+                Some(t) => t,
+                None => {
+                    tracing::warn!(
+                        "voice: no local track for incoming track kind={:?} id={} user={}",
+                        kind,
+                        track_id,
+                        u_id
+                    );
+                    return;
+                }
+            };
 
             spawn_rtp_forwarder(remote_track, target, u_id);
         })
@@ -295,6 +479,14 @@ pub(crate) fn setup_on_track_handler(
 }
 
 /// Resolve which local track should receive forwarded RTP for a given remote track.
+///
+/// For video, the only reliable identifier is the transceiver itself —
+/// Chrome's outgoing track ids are opaque UUIDs that don't carry any "webcam"
+/// or "screen" hint, and Pion's track-id prefix matching only worked for
+/// older server-created tracks. We tag each recvonly transceiver with its
+/// kind when we add it (see add_screen_track / add_webcam_track), then
+/// compare by Arc::ptr_eq here. Falls back to the legacy id-prefix path for
+/// any transceiver we don't recognise.
 #[cfg(not(tarpaulin_include))]
 async fn resolve_target_track(
     rooms_ref: &Arc<RwLock<HashMap<String, HashMap<String, PeerState>>>>,
@@ -302,10 +494,28 @@ async fn resolve_target_track(
     user_id: &str,
     track_id: &str,
     kind: RTPCodecType,
+    transceiver: Option<&Arc<webrtc::rtp_transceiver::RTCRtpTransceiver>>,
 ) -> Option<Arc<TrackLocalStaticRTP>> {
     let rooms = rooms_ref.read().await;
     let ps = rooms.get(channel_id).and_then(|room| room.get(user_id))?;
 
+    // Primary path: identify by the transceiver we registered for this slot.
+    if let Some(tx) = transceiver {
+        if let Some(screen_tx) = ps.screen_recv_tx.as_ref() {
+            if Arc::ptr_eq(screen_tx, tx) {
+                return ps.screen_track.clone();
+            }
+        }
+        if let Some(cam_tx) = ps.webcam_recv_tx.as_ref() {
+            if Arc::ptr_eq(cam_tx, tx) {
+                return ps.webcam_track.clone();
+            }
+        }
+    }
+
+    // Legacy fallback for server-side tracks whose id we control (audio
+    // forwarders re-using the local_track also fall through to the
+    // local_track branch below).
     if track_id.starts_with("webcam-") {
         return ps.webcam_track.clone();
     }
@@ -313,6 +523,14 @@ async fn resolve_target_track(
         return ps.screen_track.clone();
     }
     if kind == RTPCodecType::Video {
+        // Should not be reached now that the transceiver path covers both
+        // publisher slots — but if it is, log loudly and prefer whichever
+        // local track we have so audio still functions.
+        tracing::warn!(
+            "voice: video track resolution fell through to fallback for user={} track_id={} — transceiver path missed",
+            user_id,
+            track_id
+        );
         return ps
             .screen_track
             .clone()

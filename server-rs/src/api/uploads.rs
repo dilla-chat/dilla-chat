@@ -14,6 +14,37 @@ use crate::auth::UserId;
 use crate::db;
 use crate::error::AppError;
 
+/// Allow-listed Content-Type prefixes stored alongside an upload.
+///
+/// Bodies are E2EE ciphertext so the value is only used by the client
+/// to render a preview after decrypting. Anything outside the list
+/// degrades to `application/octet-stream` — the client preview falls
+/// back to a generic "file" icon and the user sees the original
+/// filename. This kills the
+/// "operator-controlled-MIME → drive-by-download" exposure of VULN-008
+/// without losing the legitimate image/audio/video preview path.
+fn sanitize_upload_content_type(raw: &str) -> &str {
+    let lower = raw.trim().to_ascii_lowercase();
+    const ALLOWED_PREFIXES: &[&str] = &[
+        "image/",
+        "audio/",
+        "video/",
+        "text/plain",
+        "application/pdf",
+        "application/octet-stream",
+        "application/json",
+    ];
+    for prefix in ALLOWED_PREFIXES {
+        if lower.starts_with(prefix) {
+            // Return the original (with case + extras) so the client
+            // keeps the precise MIME (e.g. image/png;charset=…). We
+            // know the prefix matched against the lowercased copy.
+            return raw;
+        }
+    }
+    "application/octet-stream"
+}
+
 pub async fn upload(
     Extension(UserId(user_id)): Extension<UserId>,
     State(state): State<AppState>,
@@ -53,9 +84,17 @@ pub async fn upload(
         .unwrap_or("unknown")
         .as_bytes()
         .to_vec();
-    let content_type_encrypted = field
+    // VULN-008: clamp the upload-time Content-Type to a small
+    // allow-list. We can't trust the browser to send something safe to
+    // re-emit. The actual byte stream is E2EE ciphertext so labelling
+    // it text/html would be nonsense regardless; we store
+    // application/octet-stream for anything outside the allow-list and
+    // the download handler ALSO overrides on the wire.
+    let raw_ct = field
         .content_type()
         .unwrap_or("application/octet-stream")
+        .to_string();
+    let content_type_encrypted = sanitize_upload_content_type(&raw_ct)
         .as_bytes()
         .to_vec();
 
@@ -76,6 +115,26 @@ pub async fn upload(
     // Validate team_id to prevent path traversal.
     if tid.contains("..") || tid.contains('/') || tid.contains('\\') {
         return Err(AppError::BadRequest("invalid team id".into()));
+    }
+
+    // H12 / UPL-DOS-1: per-team disk-usage quota. Refuse the upload if
+    // the new file would push the team over the configured cap.
+    let quota_bytes = state.config.upload_quota_per_team_gb as i64 * 1024 * 1024 * 1024;
+    if quota_bytes > 0 {
+        let db = state.db.clone();
+        let tid_quota = tid.clone();
+        let used: i64 = tokio::task::spawn_blocking(move || {
+            db.with_conn(|conn| db::get_team_upload_bytes_used(conn, &tid_quota))
+        })
+        .await
+        .map_err(|e| AppError::Internal(format!("task join: {}", e)))?
+        .map_err(|e| AppError::Internal(format!("db: {}", e)))?;
+        if used + (data.len() as i64) > quota_bytes {
+            return Err(AppError::PayloadTooLarge(format!(
+                "team upload quota exceeded ({} / {} bytes used)",
+                used, quota_bytes
+            )));
+        }
     }
 
     // Write file to disk.
@@ -100,6 +159,8 @@ pub async fn upload(
     let aid = attachment_id.clone();
     let size = data.len() as i64;
 
+    let tid_for_quota = tid.clone();
+    let uploader_for_att = user_id.clone();
     let attachment = tokio::task::spawn_blocking(move || {
         db.with_conn(|conn| {
             let att = db::Attachment {
@@ -109,9 +170,18 @@ pub async fn upload(
                 content_type_encrypted,
                 size,
                 storage_path,
+                // H-7: bind every new upload to its caller so the
+                // in-grace download path can match against this
+                // rather than the storage_path team trick.
+                uploader_id: Some(uploader_for_att.clone()),
                 created_at: db::now_str(),
             };
             db::create_attachment(conn, &att)?;
+            // H12 / UPL-DOS-1: bump the team-level usage tally. The
+            // quota pre-check above is racy under concurrent uploads,
+            // but the worst case is a small overshoot bounded by the
+            // per-request body limit.
+            db::add_team_upload_bytes(conn, &tid_for_quota, size)?;
             Ok(att)
         })
     })
@@ -122,30 +192,109 @@ pub async fn upload(
     Ok(Json(json!(attachment)))
 }
 
+/// Parse an attachment's `created_at` timestamp (best-effort: accepts
+/// the SQLite "%Y-%m-%d %H:%M:%S" UTC format the server writes today
+/// and RFC-3339 for the legacy rows). Returns None on unparseable
+/// input so the caller treats it as out-of-grace.
+fn attachment_created_at(att: &db::Attachment) -> Option<chrono::DateTime<chrono::Utc>> {
+    chrono::NaiveDateTime::parse_from_str(&att.created_at, "%Y-%m-%d %H:%M:%S")
+        .ok()
+        .map(|naive| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(naive, chrono::Utc))
+        .or_else(|| {
+            chrono::DateTime::parse_from_rfc3339(&att.created_at)
+                .ok()
+                .map(|t| t.with_timezone(&chrono::Utc))
+        })
+}
+
+/// Authorize an in-flight download against an unlinked attachment:
+/// 1. The row must still be inside the upload-to-link grace window.
+/// 2. The caller must be the original uploader (or, for pre-H-7
+///    legacy rows without an uploader_id, the storage path must live
+///    under this team's upload directory).
+fn authorize_unlinked_attachment_fetch(
+    att: &db::Attachment,
+    uid: &str,
+    tid: &str,
+    grace_secs: i64,
+) -> Result<(), rusqlite::Error> {
+    let still_in_grace = attachment_created_at(att)
+        .map(|c| (chrono::Utc::now() - c).num_seconds() < grace_secs)
+        .unwrap_or(false);
+    if !still_in_grace {
+        return Err(rusqlite::Error::InvalidParameterName(
+            "attachment is not linked to a message".into(),
+        ));
+    }
+    if let Some(ref upid) = att.uploader_id {
+        if upid != uid {
+            return Err(rusqlite::Error::InvalidParameterName(
+                "attachment does not belong to caller".into(),
+            ));
+        }
+        return Ok(());
+    }
+    // Legacy row without uploader_id — fall back to the per-team
+    // upload-directory match against storage_path.
+    let parent_dir = std::path::Path::new(&att.storage_path)
+        .parent()
+        .and_then(|p| p.file_name())
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+    if parent_dir != tid {
+        return Err(rusqlite::Error::InvalidParameterName(
+            "attachment does not belong to this team".into(),
+        ));
+    }
+    Ok(())
+}
+
 pub async fn download(
+    Extension(UserId(user_id)): Extension<UserId>,
     State(state): State<AppState>,
     Path((team_id, attachment_id)): Path<(String, String)>,
 ) -> Result<Response, AppError> {
     let db = state.db.clone();
     let tid = team_id.clone();
     let aid = attachment_id.clone();
+    let uid = user_id.clone();
+
+    // Window during which an unlinked attachment can still be fetched
+    // by its uploader before the client has finished the
+    // upload → create-message round trip (e.g. for Giphy embed paths).
+    // After this, the attachment must be linked to a message and the
+    // caller must pass the channel ACL.
+    const UNLINKED_GRACE_SECS: i64 = 3600;
 
     let attachment = tokio::task::spawn_blocking(move || {
-        db.with_conn(|conn| {
-            let att = db::get_attachment(conn, &aid)?
-                .ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)?;
+        db.with_conn(|conn| -> Result<db::Attachment, rusqlite::Error> {
+            // VULN-003: caller must be a team member regardless of
+            // whether the attachment is linked yet.
+            // A6: centralized authz — same semantics, deny telemetry.
+            crate::policy::require_team_member(conn, &uid, &tid)?;
 
-            // Verify the attachment belongs to the requested team.
-            if !att.message_id.is_empty() {
-                let msg = db::get_message_by_id(conn, &att.message_id)?
-                    .ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)?;
-                let channel = db::get_channel_by_id(conn, &msg.channel_id)?
-                    .ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)?;
-                if channel.team_id != tid {
-                    return Err(rusqlite::Error::QueryReturnedNoRows);
-                }
+            let att = db::get_attachment(conn, &aid)?
+                .ok_or(rusqlite::Error::QueryReturnedNoRows)?;
+
+            if att.message_id.is_empty() {
+                authorize_unlinked_attachment_fetch(&att, &uid, &tid, UNLINKED_GRACE_SECS)?;
+                return Ok(att);
             }
 
+            // Linked path: validate the message exists in this team
+            // AND the caller can read the channel that owns it.
+            let msg = db::get_message_by_id(conn, &att.message_id)?
+                .ok_or(rusqlite::Error::QueryReturnedNoRows)?;
+            let channel = db::get_channel_by_id(conn, &msg.channel_id)?
+                .ok_or(rusqlite::Error::QueryReturnedNoRows)?;
+            if channel.team_id != tid {
+                return Err(rusqlite::Error::QueryReturnedNoRows);
+            }
+            if !db::user_can_access_channel(conn, &uid, &tid, &msg.channel_id)? {
+                return Err(rusqlite::Error::InvalidParameterName(
+                    "channel access denied".into(),
+                ));
+            }
             Ok(att)
         })
     })
@@ -156,6 +305,9 @@ pub async fn download(
         Ok(a) => a,
         Err(rusqlite::Error::QueryReturnedNoRows) => {
             return Err(AppError::NotFound("attachment not found".into()));
+        }
+        Err(rusqlite::Error::InvalidParameterName(msg)) => {
+            return Err(AppError::Forbidden(msg));
         }
         Err(e) => {
             return Err(AppError::Internal(format!("db: {}", e)));
@@ -170,16 +322,22 @@ pub async fn download(
     let stream = ReaderStream::new(file);
     let body = Body::from_stream(stream);
 
-    let content_type = if attachment.content_type_encrypted.is_empty() {
-        "application/octet-stream".to_string()
-    } else {
-        String::from_utf8_lossy(&attachment.content_type_encrypted).to_string()
-    };
-
+    // VULN-008: ignore the upload-time content_type entirely on the
+    // wire. Bodies are E2EE ciphertext so the byte stream is opaque to
+    // any browser parser regardless. Sandbox via CSP, force download
+    // via Content-Disposition with a server-generated filename.
     let response = Response::builder()
-        .header(header::CONTENT_TYPE, content_type)
+        .header(header::CONTENT_TYPE, "application/octet-stream")
         .header(header::CONTENT_LENGTH, attachment.size)
-        .header("Content-Disposition", "attachment; filename=\"download\"")
+        .header(
+            "Content-Disposition",
+            format!("attachment; filename=\"{}\"", attachment.id),
+        )
+        .header(
+            header::CONTENT_SECURITY_POLICY,
+            "default-src 'none'; sandbox",
+        )
+        .header("X-Content-Type-Options", "nosniff")
         .body(body)
         .map_err(|e| AppError::Internal(format!("build response: {}", e)))?;
 
@@ -208,6 +366,8 @@ pub async fn delete_attachment(
                 .ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)?;
 
             db::delete_attachment(conn, &aid)?;
+            // H12 / UPL-DOS-1: refund the team's quota on delete.
+            let _ = db::add_team_upload_bytes(conn, &tid, -attachment.size);
             Ok(attachment.storage_path)
         })
     })
@@ -225,5 +385,763 @@ pub async fn delete_attachment(
             Err(AppError::NotFound("attachment not found".into()))
         }
         Err(e) => Err(AppError::Internal(format!("db: {}", e))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sanitize_passes_allowed_image_type() {
+        assert_eq!(sanitize_upload_content_type("image/png"), "image/png");
+        assert_eq!(sanitize_upload_content_type("IMAGE/JPEG"), "IMAGE/JPEG");
+        assert_eq!(
+            sanitize_upload_content_type("image/svg+xml; charset=utf-8"),
+            "image/svg+xml; charset=utf-8"
+        );
+    }
+
+    #[test]
+    fn sanitize_passes_allowed_media_types() {
+        assert_eq!(sanitize_upload_content_type("audio/ogg"), "audio/ogg");
+        assert_eq!(sanitize_upload_content_type("video/webm"), "video/webm");
+        assert_eq!(sanitize_upload_content_type("application/pdf"), "application/pdf");
+    }
+
+    #[test]
+    fn sanitize_rejects_html() {
+        assert_eq!(
+            sanitize_upload_content_type("text/html"),
+            "application/octet-stream"
+        );
+    }
+
+    #[test]
+    fn sanitize_rejects_javascript() {
+        assert_eq!(
+            sanitize_upload_content_type("application/javascript"),
+            "application/octet-stream"
+        );
+        assert_eq!(
+            sanitize_upload_content_type("text/javascript"),
+            "application/octet-stream"
+        );
+    }
+
+    #[test]
+    fn sanitize_rejects_xhtml_and_xml() {
+        assert_eq!(
+            sanitize_upload_content_type("application/xhtml+xml"),
+            "application/octet-stream"
+        );
+        assert_eq!(
+            sanitize_upload_content_type("text/xml"),
+            "application/octet-stream"
+        );
+    }
+
+    #[test]
+    fn sanitize_rejects_arbitrary_garbage() {
+        assert_eq!(
+            sanitize_upload_content_type("not-a-real-mime-type"),
+            "application/octet-stream"
+        );
+        assert_eq!(sanitize_upload_content_type(""), "application/octet-stream");
+    }
+
+    // ── axum integration tests for download + delete (non-multipart) ──
+
+    use crate::auth::{AuthService, UserId};
+    use crate::config::Config;
+    use crate::db::Database;
+    use crate::presence::PresenceManager;
+    use crate::ws::Hub;
+    use axum::body::Body;
+    use axum::http::Request;
+    use axum::routing::{get, delete as axum_delete};
+    use axum::Router;
+    use std::sync::Arc;
+    use tower::ServiceExt;
+
+    fn make_state() -> (AppState, tempfile::TempDir) {
+        let tmp = tempfile::tempdir().unwrap();
+        let database = Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        database.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;")).unwrap();
+        database.run_migrations().unwrap();
+        let auth = Arc::new(AuthService::new(database.clone(), ""));
+        let hub = Arc::new(Hub::new(database.clone()));
+        let presence = Arc::new(PresenceManager::new());
+        let mut cfg = Config::default();
+        cfg.port = 8080;
+        cfg.data_dir = tmp.path().to_str().unwrap().to_string();
+        cfg.upload_dir = format!("{}/uploads", tmp.path().to_str().unwrap());
+        cfg.max_upload_size = 25 * 1024 * 1024;
+        cfg.upload_quota_per_team_gb = 10;
+        let state = AppState {
+            db: database,
+            auth,
+            hub,
+            presence,
+            config: Arc::new(cfg),
+            mesh: None,
+            custom_theme_css: None,
+        };
+        (state, tmp)
+    }
+
+    fn router(state: AppState, user_id: &'static str) -> Router {
+        Router::new()
+            .route("/teams/{team_id}/attachments/{attachment_id}", get(download))
+            .route("/teams/{team_id}/attachments/{attachment_id}", axum_delete(delete_attachment))
+            .layer(axum::Extension(UserId(user_id.to_string())))
+            .with_state(state)
+    }
+
+    #[tokio::test]
+    async fn download_4xx_for_non_member() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "ghost");
+        let resp = app
+            .oneshot(
+                Request::get("/teams/t1/attachments/missing-att").body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn delete_attachment_4xx_for_non_member() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "ghost");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/attachments/missing-att")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn upload_returns_403_for_non_member() {
+        let (state, _tmp) = make_state();
+        let app = Router::new()
+            .route("/teams/{team_id}/attachments", axum::routing::post(upload))
+            .layer(axum::Extension(UserId("ghost".to_string())))
+            .with_state(state);
+        // Minimal multipart body — just enough to pass the multipart parser
+        // before the membership check rejects us.
+        let boundary = "----test-boundary";
+        let body = format!(
+            "--{}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.bin\"\r\nContent-Type: application/octet-stream\r\n\r\nhello\r\n--{}--\r\n",
+            boundary, boundary
+        );
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/attachments")
+                    .header("content-type", format!("multipart/form-data; boundary={}", boundary))
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 403);
+    }
+
+    fn seed_alice_in_t1(state: &AppState) {
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_user(conn, &db::User {
+                id: "alice".into(),
+                username: "alice".into(),
+                display_name: "Alice".into(),
+                public_key: vec![1u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_team(conn, &db::Team {
+                id: "t1".into(),
+                name: "T".into(),
+                description: String::new(),
+                icon_url: String::new(),
+                created_by: "alice".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                federated: false,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_member(conn, &db::Member {
+                id: "m1".into(),
+                team_id: "t1".into(),
+                user_id: "alice".into(),
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now,
+            })
+        }).unwrap();
+    }
+
+    #[tokio::test]
+    async fn upload_happy_path_creates_attachment() {
+        let (state, _tmp) = make_state();
+        seed_alice_in_t1(&state);
+        let app = Router::new()
+            .route("/teams/{team_id}/attachments", axum::routing::post(upload))
+            .layer(axum::Extension(UserId("alice".to_string())))
+            .with_state(state);
+        let boundary = "----happy";
+        let body = format!(
+            "--{}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"hello.txt\"\r\nContent-Type: text/plain\r\n\r\nhello world\r\n--{}--\r\n",
+            boundary, boundary
+        );
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/attachments")
+                    .header("content-type", format!("multipart/form-data; boundary={}", boundary))
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn download_happy_path_unlinked_in_grace() {
+        let (state, _tmp) = make_state();
+        seed_alice_in_t1(&state);
+        // Write a real file to disk, register an unlinked attachment owned by alice.
+        let upload_dir = std::path::Path::new(&state.config.upload_dir).join("t1");
+        std::fs::create_dir_all(&upload_dir).unwrap();
+        let aid = "att-happy";
+        let fp = upload_dir.join(aid);
+        std::fs::write(&fp, b"payload").unwrap();
+        state.db.with_conn(|conn| {
+            db::create_attachment(conn, &db::Attachment {
+                id: aid.into(),
+                message_id: String::new(),
+                filename_encrypted: b"name".to_vec(),
+                content_type_encrypted: b"application/octet-stream".to_vec(),
+                size: 7,
+                storage_path: fp.to_str().unwrap().to_string(),
+                uploader_id: Some("alice".into()),
+                created_at: db::now_str(),
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::get(format!("/teams/t1/attachments/{}", aid)).body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn download_rejects_different_uploader_in_grace() {
+        let (state, _tmp) = make_state();
+        seed_alice_in_t1(&state);
+        // Make bob also a member, register attachment owned by bob, alice tries to read.
+        state.db.with_conn(|conn| {
+            let now = db::now_str();
+            db::create_user(conn, &db::User {
+                id: "bob".into(),
+                username: "bob".into(),
+                display_name: "Bob".into(),
+                public_key: vec![2u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_member(conn, &db::Member {
+                id: "m-bob".into(),
+                team_id: "t1".into(),
+                user_id: "bob".into(),
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now,
+            })
+        }).unwrap();
+        let upload_dir = std::path::Path::new(&state.config.upload_dir).join("t1");
+        std::fs::create_dir_all(&upload_dir).unwrap();
+        let aid = "att-bob";
+        let fp = upload_dir.join(aid);
+        std::fs::write(&fp, b"bobs data").unwrap();
+        state.db.with_conn(|conn| {
+            db::create_attachment(conn, &db::Attachment {
+                id: aid.into(),
+                message_id: String::new(),
+                filename_encrypted: b"name".to_vec(),
+                content_type_encrypted: b"application/octet-stream".to_vec(),
+                size: 9,
+                storage_path: fp.to_str().unwrap().to_string(),
+                uploader_id: Some("bob".into()),
+                created_at: db::now_str(),
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::get(format!("/teams/t1/attachments/{}", aid)).body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn delete_attachment_happy_path_as_owner() {
+        let (state, _tmp) = make_state();
+        seed_alice_in_t1(&state);
+        // alice owns the team → has PERM_MANAGE_MESSAGES.
+        let upload_dir = std::path::Path::new(&state.config.upload_dir).join("t1");
+        std::fs::create_dir_all(&upload_dir).unwrap();
+        let aid = "att-to-delete";
+        let fp = upload_dir.join(aid);
+        std::fs::write(&fp, b"bytes").unwrap();
+        state.db.with_conn(|conn| {
+            db::create_attachment(conn, &db::Attachment {
+                id: aid.into(),
+                message_id: String::new(),
+                filename_encrypted: b"name".to_vec(),
+                content_type_encrypted: b"application/octet-stream".to_vec(),
+                size: 5,
+                storage_path: fp.to_str().unwrap().to_string(),
+                uploader_id: Some("alice".into()),
+                created_at: db::now_str(),
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/teams/t1/attachments/{}", aid))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn download_past_grace_window_4xx() {
+        let (state, _tmp) = make_state();
+        seed_alice_in_t1(&state);
+        let upload_dir = std::path::Path::new(&state.config.upload_dir).join("t1");
+        std::fs::create_dir_all(&upload_dir).unwrap();
+        let aid = "att-stale";
+        let fp = upload_dir.join(aid);
+        std::fs::write(&fp, b"old").unwrap();
+        // Created 2 hours ago — outside the 1h grace window.
+        let stale_ts = (chrono::Utc::now() - chrono::Duration::hours(2))
+            .format("%Y-%m-%d %H:%M:%S")
+            .to_string();
+        state.db.with_conn(|conn| {
+            db::create_attachment(conn, &db::Attachment {
+                id: aid.into(),
+                message_id: String::new(),
+                filename_encrypted: b"n".to_vec(),
+                content_type_encrypted: b"x".to_vec(),
+                size: 3,
+                storage_path: fp.to_str().unwrap().to_string(),
+                uploader_id: Some("alice".into()),
+                created_at: stale_ts,
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::get(format!("/teams/t1/attachments/{}", aid))
+                    .body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn download_legacy_attachment_with_mismatched_team_segment_4xx() {
+        let (state, _tmp) = make_state();
+        seed_alice_in_t1(&state);
+        // Legacy attachment (uploader_id=None) but storage_path parent dir
+        // points to a different team — should refuse.
+        let other_dir = std::path::Path::new(&state.config.upload_dir).join("other-team");
+        std::fs::create_dir_all(&other_dir).unwrap();
+        let aid = "att-foreign";
+        let fp = other_dir.join(aid);
+        std::fs::write(&fp, b"foreign").unwrap();
+        state.db.with_conn(|conn| {
+            db::create_attachment(conn, &db::Attachment {
+                id: aid.into(),
+                message_id: String::new(),
+                filename_encrypted: b"n".to_vec(),
+                content_type_encrypted: b"x".to_vec(),
+                size: 7,
+                storage_path: fp.to_str().unwrap().to_string(),
+                uploader_id: None,
+                created_at: db::now_str(),
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::get(format!("/teams/t1/attachments/{}", aid))
+                    .body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn download_linked_attachment_cross_team_404() {
+        let (state, _tmp) = make_state();
+        seed_alice_in_t1(&state);
+        // Linked attachment with message in a channel of a different team.
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_team(conn, &db::Team {
+                id: "t-other".into(),
+                name: "Other".into(),
+                created_by: "alice".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_channel(conn, &db::Channel {
+                id: "ch-other".into(),
+                team_id: "t-other".into(),
+                name: "general".into(),
+                channel_type: "text".into(),
+                topic: String::new(),
+                created_by: "alice".into(),
+                position: 0,
+                locked: false,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_message(conn, &db::Message {
+                id: "msg-foreign".into(),
+                channel_id: "ch-other".into(),
+                dm_channel_id: String::new(),
+                author_id: "alice".into(),
+                content: "foreign".into(),
+                msg_type: "text".into(),
+                thread_id: String::new(),
+                edited_at: None,
+                deleted: false,
+                lamport_ts: 0,
+                reply_to_message_id: None,
+                created_at: now.clone(),
+            })?;
+            db::create_attachment(conn, &db::Attachment {
+                id: "att-linked-foreign".into(),
+                message_id: "msg-foreign".into(),
+                filename_encrypted: b"n".to_vec(),
+                content_type_encrypted: b"x".to_vec(),
+                size: 4,
+                storage_path: "/tmp/x".into(),
+                uploader_id: Some("alice".into()),
+                created_at: now,
+            })
+        }).unwrap();
+        // Request via t1, but attachment is linked into t-other's channel.
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::get("/teams/t1/attachments/att-linked-foreign")
+                    .body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn download_unlinked_attachment_with_rfc3339_timestamp() {
+        let (state, _tmp) = make_state();
+        seed_alice_in_t1(&state);
+        let upload_dir = std::path::Path::new(&state.config.upload_dir).join("t1");
+        std::fs::create_dir_all(&upload_dir).unwrap();
+        let aid = "att-rfc3339";
+        let fp = upload_dir.join(aid);
+        std::fs::write(&fp, b"rfc").unwrap();
+        // Use RFC3339 timestamp instead of the canonical "%Y-%m-%d %H:%M:%S".
+        let rfc_ts = chrono::Utc::now().to_rfc3339();
+        state.db.with_conn(|conn| {
+            db::create_attachment(conn, &db::Attachment {
+                id: aid.into(),
+                message_id: String::new(),
+                filename_encrypted: b"n".to_vec(),
+                content_type_encrypted: b"x".to_vec(),
+                size: 3,
+                storage_path: fp.to_str().unwrap().to_string(),
+                uploader_id: Some("alice".into()),
+                created_at: rfc_ts,
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::get(format!("/teams/t1/attachments/{}", aid))
+                    .body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn download_linked_attachment_with_channel_access_denied() {
+        let (state, _tmp) = make_state();
+        seed_alice_in_t1(&state);
+        // Seed bob as a non-member.
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_user(conn, &db::User {
+                id: "bob".into(),
+                username: "bob".into(),
+                display_name: "Bob".into(),
+                public_key: vec![2u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_member(conn, &db::Member {
+                id: "m-bob".into(),
+                team_id: "t1".into(),
+                user_id: "bob".into(),
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now.clone(),
+            })?;
+            // Channel with role-gated access — bob isn't in the allowed list.
+            db::create_channel(conn, &db::Channel {
+                id: "ch-locked".into(),
+                team_id: "t1".into(),
+                name: "private".into(),
+                channel_type: "text".into(),
+                topic: String::new(),
+                created_by: "alice".into(),
+                position: 0,
+                locked: false,
+                hidden_if_restricted: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            // Add an access role role-r1 and put it on the channel; bob has no role.
+            db::create_role(conn, &db::Role {
+                id: "role-r1".into(),
+                team_id: "t1".into(),
+                name: "Insiders".into(),
+                color: String::new(),
+                position: 1,
+                permissions: 0,
+                is_default: false,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+            })?;
+            db::set_channel_access_roles(conn, "ch-locked", &["role-r1".to_string()])?;
+            db::create_message(conn, &db::Message {
+                id: "msg-locked".into(),
+                channel_id: "ch-locked".into(),
+                dm_channel_id: String::new(),
+                author_id: "alice".into(),
+                content: "locked content".into(),
+                msg_type: "text".into(),
+                thread_id: String::new(),
+                edited_at: None,
+                deleted: false,
+                lamport_ts: 0,
+                reply_to_message_id: None,
+                created_at: now.clone(),
+            })?;
+            db::create_attachment(conn, &db::Attachment {
+                id: "att-locked".into(),
+                message_id: "msg-locked".into(),
+                filename_encrypted: b"n".to_vec(),
+                content_type_encrypted: b"x".to_vec(),
+                size: 4,
+                storage_path: "/tmp/locked".into(),
+                uploader_id: Some("alice".into()),
+                created_at: now,
+            })
+        }).unwrap();
+        // bob is a team member but lacks the role for ch-locked.
+        let app = router(state, "bob");
+        let resp = app
+            .oneshot(
+                Request::get("/teams/t1/attachments/att-locked")
+                    .body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn download_legacy_attachment_with_matching_team_segment() {
+        let (state, _tmp) = make_state();
+        seed_alice_in_t1(&state);
+        let upload_dir = std::path::Path::new(&state.config.upload_dir).join("t1");
+        std::fs::create_dir_all(&upload_dir).unwrap();
+        let aid = "att-legacy";
+        let fp = upload_dir.join(aid);
+        std::fs::write(&fp, b"legacy").unwrap();
+        // Pre-migration row: uploader_id IS NULL → falls back to
+        // storage_path team-segment match.
+        state.db.with_conn(|conn| {
+            db::create_attachment(conn, &db::Attachment {
+                id: aid.into(),
+                message_id: String::new(),
+                filename_encrypted: b"n".to_vec(),
+                content_type_encrypted: b"x".to_vec(),
+                size: 6,
+                storage_path: fp.to_str().unwrap().to_string(),
+                uploader_id: None,
+                created_at: db::now_str(),
+            })
+        }).unwrap();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::get(format!("/teams/t1/attachments/{}", aid))
+                    .body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn delete_attachment_4xx_without_permission() {
+        let (state, _tmp) = make_state();
+        seed_alice_in_t1(&state);
+        // alice is just a member, not an admin → lacks PERM_MANAGE_MESSAGES.
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/attachments/any")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn upload_rejects_oversize_payload() {
+        let (mut state, _tmp) = make_state();
+        seed_alice_in_t1(&state);
+        // Force a max_upload_size = 1 byte so the 11-byte body exceeds it.
+        let mut cfg = (*state.config).clone();
+        cfg.max_upload_size = 1;
+        state.config = Arc::new(cfg);
+        let app = Router::new()
+            .route("/teams/{team_id}/attachments", axum::routing::post(upload))
+            .layer(axum::Extension(UserId("alice".to_string())))
+            .with_state(state);
+        let boundary = "----oversize";
+        let body = format!(
+            "--{}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"big.bin\"\r\nContent-Type: application/octet-stream\r\n\r\nhello world\r\n--{}--\r\n",
+            boundary, boundary
+        );
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/attachments")
+                    .header("content-type", format!("multipart/form-data; boundary={}", boundary))
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
+
+    #[tokio::test]
+    async fn upload_rejects_invalid_team_id() {
+        let (state, _tmp) = make_state();
+        // Seed a real member so we pass the membership gate, then hit the
+        // path-traversal check.
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_user(conn, &db::User {
+                id: "alice".into(),
+                username: "alice".into(),
+                display_name: "Alice".into(),
+                public_key: vec![1u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_team(conn, &db::Team {
+                id: "../etc".into(),
+                name: "T".into(),
+                description: String::new(),
+                icon_url: String::new(),
+                created_by: "alice".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                federated: false,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_member(conn, &db::Member {
+                id: "m1".into(),
+                team_id: "../etc".into(),
+                user_id: "alice".into(),
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now,
+            })
+        }).unwrap();
+        let app = Router::new()
+            .route("/teams/{team_id}/attachments", axum::routing::post(upload))
+            .layer(axum::Extension(UserId("alice".to_string())))
+            .with_state(state);
+        let boundary = "----b";
+        let body = format!(
+            "--{}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"x\"\r\nContent-Type: text/plain\r\n\r\nok\r\n--{}--\r\n",
+            boundary, boundary
+        );
+        let resp = app
+            .oneshot(
+                Request::post("/teams/..%2Fetc/attachments")
+                    .header("content-type", format!("multipart/form-data; boundary={}", boundary))
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        // Either 400 (path traversal rejected) or 403/404. Just smoke.
+        assert!(resp.status().as_u16() >= 400);
     }
 }

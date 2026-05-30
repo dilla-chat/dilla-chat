@@ -5,7 +5,9 @@ use axum::{
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::api::helpers::{json_ok, json_ok_true, require_permission, require_team_member, spawn_db};
+use crate::api::helpers::{json_ok, json_ok_true, spawn_db};
+// A6 migration tail: route authz through policy::*.
+use crate::policy::{require_permission, require_team_member};
 use crate::api::AppState;
 use crate::auth::UserId;
 use crate::db;
@@ -64,6 +66,15 @@ pub async fn create(
             created_at: now,
         };
         db::create_invite(conn, &invite)?;
+        let _ = db::insert_audit_event(
+            conn,
+            &team_id,
+            Some(&user_id),
+            "invite.create",
+            Some("invite"),
+            Some(&invite.id),
+            Some(&serde_json::json!({ "max_uses": invite.max_uses, "expires_at": invite.expires_at })),
+        );
         Ok(invite)
     })
     .await?;
@@ -89,6 +100,15 @@ pub async fn revoke(
         }
 
         db::revoke_invite(conn, &invite_id)?;
+        let _ = db::insert_audit_event(
+            conn,
+            &team_id,
+            Some(&user_id),
+            "invite.revoke",
+            Some("invite"),
+            Some(&invite_id),
+            None,
+        );
         Ok(())
     })
     .await
@@ -176,6 +196,8 @@ mod tests {
                 is_admin: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_team(conn, &db::Team {
                 id: "t1".into(),
@@ -185,8 +207,11 @@ mod tests {
                 created_by: "u1".into(),
                 max_file_size: 25 * 1024 * 1024,
                 allow_member_invites: true,
+                federated: false,
                 created_at: now.clone(),
                 updated_at: now,
+            
+                ..Default::default()
             })
         })
         .unwrap();
@@ -472,5 +497,233 @@ mod tests {
             Ok(())
         })
         .unwrap();
+    }
+
+    // ── axum integration tests ──────────────────────────────────────
+
+    use crate::api::AppState;
+    use crate::auth::{AuthService, UserId};
+    use crate::config::Config;
+    use crate::presence::PresenceManager;
+    use crate::ws::Hub;
+    use axum::body::Body;
+    use axum::http::Request;
+    use axum::routing::{get, post, delete as axum_delete};
+    use axum::Router;
+    use std::sync::Arc;
+    use tower::ServiceExt;
+
+    fn make_state() -> (AppState, tempfile::TempDir) {
+        let (db, tmp) = test_db();
+        let auth = Arc::new(AuthService::new(db.clone(), ""));
+        let hub = Arc::new(Hub::new(db.clone()));
+        let presence = Arc::new(PresenceManager::new());
+        let mut cfg = Config::default();
+        cfg.port = 8080;
+        cfg.data_dir = tmp.path().to_str().unwrap().to_string();
+        let state = AppState {
+            db,
+            auth,
+            hub,
+            presence,
+            config: Arc::new(cfg),
+            mesh: None,
+            custom_theme_css: None,
+        };
+        (state, tmp)
+    }
+
+    fn router(state: AppState, user_id: &'static str) -> Router {
+        Router::new()
+            .route("/teams/{team_id}/invites", get(list).post(create))
+            .route("/teams/{team_id}/invites/{invite_id}", axum_delete(revoke))
+            .route("/invites/{token}", get(get_invite_info))
+            .layer(axum::Extension(UserId(user_id.to_string())))
+            .with_state(state)
+    }
+
+    #[tokio::test]
+    async fn list_invites_requires_team_membership() {
+        let (state, _tmp) = make_state();
+        seed_team(&state.db);
+        let app = router(state, "ghost");
+        let resp = app
+            .oneshot(
+                Request::get("/teams/t1/invites").body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        // Non-member should get a 403/404, never 200.
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn create_invite_rejects_non_admin_user() {
+        let (state, _tmp) = make_state();
+        seed_team(&state.db);
+        // 'u1' is the team owner, but the create handler requires
+        // PERM_CREATE_INVITES — owner by default has all perms.
+        // We test the negative case: a non-member should be denied.
+        let app = router(state, "ghost");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/invites")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn get_invite_info_returns_404_for_unknown_token() {
+        let (state, _tmp) = make_state();
+        seed_team(&state.db);
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::get("/invites/unknown-token").body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 404);
+    }
+
+    #[tokio::test]
+    async fn revoke_invite_returns_404_for_unknown_id() {
+        let (state, _tmp) = make_state();
+        seed_team(&state.db);
+        let app = router(state, "u1");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/invites/ghost-invite-id")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 404);
+    }
+
+    #[tokio::test]
+    async fn create_invite_happy_path_as_owner() {
+        let (state, _tmp) = make_state();
+        seed_team(&state.db);
+        let app = router(state, "u1");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/invites")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"max_uses":5}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn list_invites_returns_array_for_member() {
+        let (state, _tmp) = make_state();
+        seed_team(&state.db);
+        // Add u1 as a member so the team-member check passes.
+        let now = db::now_str();
+        state.db.with_conn(|c| {
+            db::create_member(c, &db::Member {
+                id: "m-u1".into(),
+                team_id: "t1".into(),
+                user_id: "u1".into(),
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "u1");
+        let resp = app
+            .oneshot(Request::get("/teams/t1/invites").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn revoke_invite_happy_path() {
+        let (state, _tmp) = make_state();
+        seed_team(&state.db);
+        // Seed an invite directly so we have something to revoke.
+        let now = db::now_str();
+        state.db.with_conn(|c| {
+            db::create_invite(c, &db::Invite {
+                id: "inv-1".into(),
+                team_id: "t1".into(),
+                token: "token-1".into(),
+                created_by: "u1".into(),
+                max_uses: None,
+                uses: 0,
+                expires_at: None,
+                revoked: false,
+                created_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "u1");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/invites/inv-1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn revoke_invite_rejects_team_mismatch() {
+        let (state, _tmp) = make_state();
+        seed_team(&state.db);
+        // Seed an invite belonging to team t-other but routed under t1.
+        let now = db::now_str();
+        state.db.with_conn(|c| {
+            db::create_team(c, &db::Team {
+                id: "t-other".into(),
+                name: "Other".into(),
+                created_by: "u1".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_invite(c, &db::Invite {
+                id: "inv-other".into(),
+                team_id: "t-other".into(),
+                token: "tok-other".into(),
+                created_by: "u1".into(),
+                max_uses: None,
+                uses: 0,
+                expires_at: None,
+                revoked: false,
+                created_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "u1");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/invites/inv-other")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
     }
 }

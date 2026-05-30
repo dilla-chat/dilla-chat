@@ -4,8 +4,8 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 pub fn create_channel(conn: &Connection, ch: &Channel) -> Result<(), rusqlite::Error> {
     conn.execute(
-        "INSERT INTO channels (id, team_id, name, topic, type, position, category, created_by, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        "INSERT INTO channels (id, team_id, name, topic, type, position, category, created_by, created_at, updated_at, locked, hidden_if_restricted, slow_mode_seconds, group_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         params![
             ch.id,
             ch.team_id,
@@ -17,19 +17,26 @@ pub fn create_channel(conn: &Connection, ch: &Channel) -> Result<(), rusqlite::E
             ch.created_by,
             ch.created_at,
             ch.updated_at,
+            ch.locked as i32,
+            ch.hidden_if_restricted as i32,
+            ch.slow_mode_seconds,
+            ch.group_id,
         ],
     )?;
     Ok(())
 }
 
+const CHANNEL_COLS: &str = "id, team_id, name, topic, type, position, category, created_by, created_at, updated_at, locked, hidden_if_restricted, slow_mode_seconds, group_id";
+
 pub fn get_channels_by_team(
     conn: &Connection,
     team_id: &str,
 ) -> Result<Vec<Channel>, rusqlite::Error> {
-    let mut stmt = conn.prepare(
-        "SELECT id, team_id, name, topic, type, position, category, created_by, created_at, updated_at
-         FROM channels WHERE team_id = ?1 ORDER BY position ASC, created_at ASC",
-    )?;
+    let sql = format!(
+        "SELECT {} FROM channels WHERE team_id = ?1 ORDER BY position ASC, created_at ASC",
+        CHANNEL_COLS,
+    );
+    let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map([team_id], row_to_channel)?;
     rows.collect()
 }
@@ -38,18 +45,14 @@ pub fn get_channel_by_id(
     conn: &Connection,
     id: &str,
 ) -> Result<Option<Channel>, rusqlite::Error> {
-    conn.query_row(
-        "SELECT id, team_id, name, topic, type, position, category, created_by, created_at, updated_at FROM channels WHERE id = ?1",
-        [id],
-        row_to_channel,
-    )
-    .optional()
+    let sql = format!("SELECT {} FROM channels WHERE id = ?1", CHANNEL_COLS);
+    conn.query_row(&sql, [id], row_to_channel).optional()
 }
 
 pub fn update_channel(conn: &Connection, ch: &Channel) -> Result<(), rusqlite::Error> {
     conn.execute(
-        "UPDATE channels SET name = ?1, topic = ?2, position = ?3, category = ?4, updated_at = ?5 WHERE id = ?6",
-        params![ch.name, ch.topic, ch.position, ch.category, now_str(), ch.id],
+        "UPDATE channels SET name = ?1, topic = ?2, position = ?3, category = ?4, locked = ?5, hidden_if_restricted = ?6, slow_mode_seconds = ?7, group_id = ?8, updated_at = ?9 WHERE id = ?10",
+        params![ch.name, ch.topic, ch.position, ch.category, ch.locked as i32, ch.hidden_if_restricted as i32, ch.slow_mode_seconds, ch.group_id, now_str(), ch.id],
     )?;
     Ok(())
 }
@@ -71,6 +74,10 @@ fn row_to_channel(row: &rusqlite::Row) -> Result<Channel, rusqlite::Error> {
         created_by: row.get::<_, Option<String>>(7)?.unwrap_or_default(),
         created_at: row.get(8)?,
         updated_at: row.get(9)?,
+        locked: row.get::<_, i32>(10).unwrap_or(0) != 0,
+        hidden_if_restricted: row.get::<_, i32>(11).unwrap_or(0) != 0,
+        slow_mode_seconds: row.get::<_, i32>(12).unwrap_or(0),
+        group_id: row.get::<_, Option<String>>(13).unwrap_or(None),
     })
 }
 

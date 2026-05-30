@@ -1,0 +1,152 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Dilla voice SFU quality — concurrent rooms, forward latency, PLI rate, ICE-gathering failures. Pairs with deploy/turn/README.md.",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 38,
+  "tags": ["dilla", "voice", "sfu"],
+  "templating": {
+    "list": [
+      {
+        "name": "ds_prom",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "selected": false, "text": "Prometheus", "value": "prom-placeholder-uid" }
+      },
+      {
+        "name": "ds_loki",
+        "type": "datasource",
+        "query": "loki",
+        "current": { "selected": false, "text": "Loki", "value": "loki-placeholder-uid" }
+      }
+    ]
+  },
+  "time": { "from": "now-3h", "to": "now" },
+  "title": "Dilla — voice quality",
+  "uid": "dilla-voice-quality",
+  "version": 1,
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Concurrent voice rooms",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(dilla_voice_rooms_active)"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Connected participants",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(dilla_voice_participants_active)"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Voice room duration p50 / p99 (s)",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(dilla_voice_room_duration_seconds_bucket[10m])))",
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(dilla_voice_room_duration_seconds_bucket[10m])))",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "SFU forward latency p50 / p95 / p99 (ms)",
+      "gridPos": { "x": 0, "y": 6, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(dilla_voice_forward_latency_seconds_bucket[5m]))) * 1000",
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(dilla_voice_forward_latency_seconds_bucket[5m]))) * 1000",
+          "legendFormat": "p95"
+        },
+        {
+          "refId": "C",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(dilla_voice_forward_latency_seconds_bucket[5m]))) * 1000",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "PLI requests / min (per room)",
+      "gridPos": { "x": 12, "y": 6, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (room_id) (rate(dilla_voice_pli_requests_total[1m])) * 60",
+          "legendFormat": "{{room_id}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "ICE candidate-gathering failures / 5m",
+      "gridPos": { "x": 0, "y": 14, "w": 12, "h": 8 },
+      "datasource": { "type": "loki", "uid": "${ds_loki}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate({job=\"dilla-server\"} |~ \"ice_gathering_failed\" | json | __error__ = \"\" [5m]))",
+          "legendFormat": "ice fails"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Cloudflare TURN credential mints / min",
+      "gridPos": { "x": 12, "y": 14, "w": 12, "h": 8 },
+      "datasource": { "type": "loki", "uid": "${ds_loki}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate({job=\"dilla-server\"} |~ \"turn.credential.minted\" | json | __error__ = \"\" [1m])) * 60"
+        }
+      ]
+    }
+  ]
+}

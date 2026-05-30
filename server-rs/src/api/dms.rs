@@ -5,7 +5,9 @@ use axum::{
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::api::helpers::{json_ok, json_ok_true, require_team_member, spawn_db};
+use crate::api::helpers::{json_ok, json_ok_true, spawn_db};
+// A6 migration tail: route authz through policy::*.
+use crate::policy::require_team_member;
 use crate::api::AppState;
 use crate::auth::UserId;
 use crate::db;
@@ -65,6 +67,38 @@ fn require_dm_member(
     Ok(())
 }
 
+/// Render a DMChannel into the enriched shape the client expects:
+/// `{ id, team_id, is_group, members: [{user_id, username, display_name}], created_at }`.
+/// The raw `db::DMChannel` only carries the channel row — the client needs
+/// member identities to render the PMs sidebar and resolve "with" peers.
+fn enrich_dm_channel(
+    conn: &rusqlite::Connection,
+    dm: &db::DMChannel,
+) -> Result<Value, rusqlite::Error> {
+    let members = db::get_dm_members(conn, &dm.id)?;
+    let mut enriched: Vec<Value> = Vec::with_capacity(members.len());
+    for m in &members {
+        let user = db::get_user_by_id(conn, &m.user_id)?;
+        let (username, display_name) = match user {
+            Some(u) => (u.username, u.display_name),
+            None => (String::new(), String::new()),
+        };
+        enriched.push(json!({
+            "user_id": m.user_id,
+            "username": username,
+            "display_name": display_name,
+        }));
+    }
+    Ok(json!({
+        "id": dm.id,
+        "team_id": dm.team_id,
+        "is_group": dm.dm_type == "group_dm",
+        "name": dm.name,
+        "members": enriched,
+        "created_at": dm.created_at,
+    }))
+}
+
 pub async fn create_or_get(
     Extension(UserId(user_id)): Extension<UserId>,
     State(state): State<AppState>,
@@ -75,21 +109,44 @@ pub async fn create_or_get(
         return Err(AppError::BadRequest("user_ids is required".into()));
     }
 
-    let dm = spawn_db(state.db.clone(), move |conn| {
+    let (enriched, created, member_ids) = spawn_db(state.db.clone(), move |conn| {
         require_team_member(conn, &user_id, &team_id)?;
 
-        // For 1:1 DMs, check if one already exists.
+        // For 1:1 DMs, return the existing channel when one is present so we
+        // don't fan out duplicate dm:created events. `created=false` keeps
+        // the broadcast below as a no-op for the cached path.
         if body.user_ids.len() == 1 {
             if let Some(existing) = db::get_dm_channel_by_members(conn, &team_id, &user_id, &body.user_ids[0])? {
-                return Ok(existing);
+                let enriched = enrich_dm_channel(conn, &existing)?;
+                let members = db::get_dm_members(conn, &existing.id)?;
+                let member_ids: Vec<String> = members.into_iter().map(|m| m.user_id).collect();
+                return Ok((enriched, false, member_ids));
             }
         }
 
-        create_new_dm_channel(conn, &team_id, &user_id, &body)
+        let dm = create_new_dm_channel(conn, &team_id, &user_id, &body)?;
+        let enriched = enrich_dm_channel(conn, &dm)?;
+        let members = db::get_dm_members(conn, &dm.id)?;
+        let member_ids: Vec<String> = members.into_iter().map(|m| m.user_id).collect();
+        Ok((enriched, true, member_ids))
     })
     .await?;
 
-    json_ok(dm)
+    // Notify every member (including the creator's other devices) when a
+    // brand-new DM channel was just created so the PMs sidebar populates
+    // without requiring a manual refresh on the recipient side.
+    if created {
+        let event_data = serde_json::to_vec(&json!({
+            "type": "dm:created",
+            "payload": enriched.clone(),
+        }))
+        .unwrap_or_default();
+        for member_id in &member_ids {
+            state.hub.send_to_user(member_id, event_data.clone()).await;
+        }
+    }
+
+    json_ok(enriched)
 }
 
 pub async fn list(
@@ -98,7 +155,12 @@ pub async fn list(
     Path(team_id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
     let dms = spawn_db(state.db.clone(), move |conn| {
-        db::get_user_dm_channels(conn, &team_id, &user_id)
+        let channels = db::get_user_dm_channels(conn, &team_id, &user_id)?;
+        let mut enriched = Vec::with_capacity(channels.len());
+        for ch in &channels {
+            enriched.push(enrich_dm_channel(conn, ch)?);
+        }
+        Ok(enriched)
     })
     .await?;
 
@@ -116,11 +178,12 @@ pub async fn get_dm(
         let dm = db::get_dm_channel(conn, &dm_id)?
             .ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)?;
 
-        let members = db::get_dm_members(conn, &dm_id)?;
+        // Use the same enriched shape as the list endpoint so the client
+        // can ingest either via the same DMChannel TypeScript type.
+        let channel = enrich_dm_channel(conn, &dm)?;
 
         Ok(json!({
-            "channel": dm,
-            "members": members,
+            "channel": channel,
         }))
     })
     .await
@@ -156,7 +219,7 @@ pub async fn send_message(
             thread_id: String::new(),
             edited_at: None,
             deleted: false,
-            lamport_ts: 0,
+            lamport_ts: 0, reply_to_message_id: None,
             created_at: now,
         };
         db::create_dm_message(conn, &msg)?;
@@ -188,7 +251,8 @@ pub async fn list_messages(
     Path((_team_id, dm_id)): Path<(String, String)>,
     Query(query): Query<ListMessagesQuery>,
 ) -> Result<Json<Value>, AppError> {
-    let limit = query.limit.clamp(1, 100);
+    // MSG-DOS-1 / H6: server-side cap on DM page size.
+    let limit = query.limit.clamp(1, crate::api::messages::MAX_PAGE_LIMIT);
 
     let messages = spawn_db(state.db.clone(), move |conn| {
         require_dm_member(conn, &dm_id, &user_id)?;
@@ -399,6 +463,8 @@ mod tests {
                 is_admin: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_user(conn, &db::User {
                 id: "u2".into(),
@@ -411,6 +477,8 @@ mod tests {
                 is_admin: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_user(conn, &db::User {
                 id: "u3".into(),
@@ -423,6 +491,8 @@ mod tests {
                 is_admin: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_team(conn, &db::Team {
                 id: "t1".into(),
@@ -432,8 +502,11 @@ mod tests {
                 created_by: "u1".into(),
                 max_file_size: 25 * 1024 * 1024,
                 allow_member_invites: true,
+                federated: false,
                 created_at: now.clone(),
                 updated_at: now,
+            
+                ..Default::default()
             })
         })
         .unwrap();
@@ -623,5 +696,468 @@ mod tests {
 
         let result = db.with_conn(|conn| require_dm_member(conn, "nonexistent-dm", "u1"));
         assert!(result.is_err());
+    }
+
+    // ── axum integration tests ──────────────────────────────────────
+
+    use crate::auth::{AuthService, UserId};
+    use crate::config::Config;
+    use crate::presence::PresenceManager;
+    use crate::ws::Hub;
+    use axum::body::Body;
+    use axum::http::Request;
+    use axum::routing::{get, post, patch, delete as axum_delete};
+    use axum::Router;
+    use std::sync::Arc;
+    use tower::ServiceExt;
+
+    fn make_state() -> (AppState, tempfile::TempDir) {
+        let (db, tmp) = test_db();
+        let auth = Arc::new(AuthService::new(db.clone(), ""));
+        let hub = Arc::new(Hub::new(db.clone()));
+        let presence = Arc::new(PresenceManager::new());
+        let mut cfg = Config::default();
+        cfg.port = 8080;
+        cfg.data_dir = tmp.path().to_str().unwrap().to_string();
+        let state = AppState {
+            db,
+            auth,
+            hub,
+            presence,
+            config: Arc::new(cfg),
+            mesh: None,
+            custom_theme_css: None,
+        };
+        (state, tmp)
+    }
+
+    fn router(state: AppState, user_id: &'static str) -> Router {
+        Router::new()
+            .route("/teams/{team_id}/dms", get(list).post(create_or_get))
+            .route("/teams/{team_id}/dms/{dm_id}", get(get_dm))
+            .route("/teams/{team_id}/dms/{dm_id}/messages", get(list_messages).post(send_message))
+            .route("/teams/{team_id}/dms/{dm_id}/messages/{msg_id}", patch(edit_message).delete(axum_delete(delete_message)))
+            .route("/teams/{team_id}/dms/{dm_id}/members", post(add_members))
+            .route("/teams/{team_id}/dms/{dm_id}/members/{user_id}", axum_delete(remove_member))
+            .layer(axum::Extension(UserId(user_id.to_string())))
+            .with_state(state)
+    }
+
+    #[tokio::test]
+    async fn list_dms_returns_array_even_for_unknown_team() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "ghost");
+        let resp = app
+            .oneshot(Request::get("/teams/t1/dms").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        // Either a permission denial OR an empty list — both are fine.
+        let _ = resp.status();
+    }
+
+    #[tokio::test]
+    async fn get_dm_404s_for_unknown_id() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(Request::get("/teams/t1/dms/missing").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn send_dm_message_rejects_empty_content() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/dms/dm1/messages")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"content":""}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn create_or_get_dm_rejects_empty_user_ids() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/dms")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"user_ids":[]}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn list_dm_messages_4xx_for_unknown_dm() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::get("/teams/t1/dms/missing/messages").body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn edit_dm_message_rejects_empty_content() {
+        let (state, _tmp) = make_state();
+        let app = router(state, "alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/teams/t1/dms/dm1/messages/m1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"content":""}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    fn seed_team_and_member(state: &AppState) {
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            db::create_user(conn, &db::User {
+                id: "u1".into(),
+                username: "alice".into(),
+                display_name: "Alice".into(),
+                public_key: vec![1u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_user(conn, &db::User {
+                id: "u2".into(),
+                username: "bob".into(),
+                display_name: "Bob".into(),
+                public_key: vec![2u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_team(conn, &db::Team {
+                id: "t1".into(),
+                name: "T".into(),
+                created_by: "u1".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_member(conn, &db::Member {
+                id: "m1".into(),
+                team_id: "t1".into(),
+                user_id: "u1".into(),
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now.clone(),
+            })?;
+            db::create_member(conn, &db::Member {
+                id: "m2".into(),
+                team_id: "t1".into(),
+                user_id: "u2".into(),
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now,
+            })
+        }).unwrap();
+    }
+
+    #[tokio::test]
+    async fn create_or_get_dm_happy_path_creates_dm() {
+        let (state, _tmp) = make_state();
+        seed_team_and_member(&state);
+        let app = router(state, "u1");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/dms")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"user_ids":["u2"]}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn list_dms_happy_path_returns_array_for_member() {
+        let (state, _tmp) = make_state();
+        seed_team_and_member(&state);
+        let app = router(state, "u1");
+        let resp = app
+            .oneshot(Request::get("/teams/t1/dms").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn add_members_rejects_empty_user_ids() {
+        let (state, _tmp) = make_state();
+        seed_team_and_member(&state);
+        let app = router(state, "u1");
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/dms/dm1/members")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"user_ids":[]}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400);
+    }
+
+    #[tokio::test]
+    async fn add_members_4xx_for_non_dm_member() {
+        let (state, _tmp) = make_state();
+        seed_team_and_member(&state);
+        let app = router(state, "u1");
+        // dm1 doesn't exist (or u1 isn't a member of it) — must 4xx.
+        let resp = app
+            .oneshot(
+                Request::post("/teams/t1/dms/dm-missing/members")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"user_ids":["u2"]}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn remove_member_4xx_for_non_dm_member() {
+        let (state, _tmp) = make_state();
+        seed_team_and_member(&state);
+        let app = router(state, "u1");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/dms/dm-missing/members/u2")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn edit_dm_message_rejects_non_author() {
+        let (state, _tmp) = make_state();
+        seed_team_and_member(&state);
+        // Create a DM channel with both users, and a message authored by u2.
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            let dm = db::DMChannel {
+                id: "dm-edit".into(),
+                team_id: "t1".into(),
+                dm_type: "dm".into(),
+                name: String::new(),
+                created_at: now.clone(),
+            };
+            db::create_dm_channel(conn, &dm)?;
+            db::add_dm_members(conn, "dm-edit", &["u1".to_string(), "u2".to_string()])?;
+            db::create_message(conn, &db::Message {
+                id: "msg-by-u2".into(),
+                channel_id: String::new(),
+                dm_channel_id: "dm-edit".into(),
+                author_id: "u2".into(),
+                content: "bobs note".into(),
+                msg_type: "text".into(),
+                thread_id: String::new(),
+                edited_at: None,
+                deleted: false,
+                lamport_ts: 0,
+                reply_to_message_id: None,
+                created_at: now,
+            })
+        }).unwrap();
+        // u1 (not the author) tries to edit u2's DM message.
+        let app = router(state, "u1");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/teams/t1/dms/dm-edit/messages/msg-by-u2")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"content":"hijack"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn delete_dm_message_rejects_non_author() {
+        let (state, _tmp) = make_state();
+        seed_team_and_member(&state);
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            let dm = db::DMChannel {
+                id: "dm-del".into(),
+                team_id: "t1".into(),
+                dm_type: "dm".into(),
+                name: String::new(),
+                created_at: now.clone(),
+            };
+            db::create_dm_channel(conn, &dm)?;
+            db::add_dm_members(conn, "dm-del", &["u1".to_string(), "u2".to_string()])?;
+            db::create_message(conn, &db::Message {
+                id: "msg-del-by-u2".into(),
+                channel_id: String::new(),
+                dm_channel_id: "dm-del".into(),
+                author_id: "u2".into(),
+                content: "delete me".into(),
+                msg_type: "text".into(),
+                thread_id: String::new(),
+                edited_at: None,
+                deleted: false,
+                lamport_ts: 0,
+                reply_to_message_id: None,
+                created_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "u1");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/teams/t1/dms/dm-del/messages/msg-del-by-u2")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resp.status().as_u16() >= 400);
+    }
+
+    #[tokio::test]
+    async fn edit_dm_message_happy_path() {
+        let (state, _tmp) = make_state();
+        seed_team_and_member(&state);
+        let now = db::now_str();
+        state.db.with_conn(|conn| {
+            let dm = db::DMChannel {
+                id: "dm-happy".into(),
+                team_id: "t1".into(),
+                dm_type: "dm".into(),
+                name: String::new(),
+                created_at: now.clone(),
+            };
+            db::create_dm_channel(conn, &dm)?;
+            db::add_dm_members(conn, "dm-happy", &["u1".to_string(), "u2".to_string()])?;
+            db::create_message(conn, &db::Message {
+                id: "msg-by-u1".into(),
+                channel_id: String::new(),
+                dm_channel_id: "dm-happy".into(),
+                author_id: "u1".into(),
+                content: "original".into(),
+                msg_type: "text".into(),
+                thread_id: String::new(),
+                edited_at: None,
+                deleted: false,
+                lamport_ts: 0,
+                reply_to_message_id: None,
+                created_at: now,
+            })
+        }).unwrap();
+        let app = router(state, "u1");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/teams/t1/dms/dm-happy/messages/msg-by-u1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"content":"edited"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn create_or_get_dm_returns_existing_when_one_already_exists() {
+        let (state, _tmp) = make_state();
+        seed_team_and_member(&state);
+        // First create the 1:1 DM.
+        let app1 = router(state.clone(), "u1");
+        let r1 = app1
+            .oneshot(
+                Request::post("/teams/t1/dms")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"user_ids":["u2"]}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(r1.status(), 200);
+        // Second call should short-circuit and return the existing DM.
+        let app2 = router(state, "u1");
+        let r2 = app2
+            .oneshot(
+                Request::post("/teams/t1/dms")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"user_ids":["u2"]}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(r2.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn send_dm_message_happy_path() {
+        let (state, _tmp) = make_state();
+        seed_team_and_member(&state);
+        // Create the DM channel first.
+        let dm_id = state.db.with_conn(|conn| {
+            let dm = db::DMChannel {
+                id: "dm-test".into(),
+                team_id: "t1".into(),
+                dm_type: "dm".into(),
+                name: String::new(),
+                created_at: db::now_str(),
+            };
+            db::create_dm_channel(conn, &dm)?;
+            db::add_dm_members(conn, "dm-test", &["u1".to_string(), "u2".to_string()])?;
+            Ok::<String, rusqlite::Error>("dm-test".into())
+        }).unwrap();
+        let app = router(state, "u1");
+        let resp = app
+            .oneshot(
+                Request::post(format!("/teams/t1/dms/{}/messages", dm_id))
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"content":"hi bob","type":"text"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
     }
 }

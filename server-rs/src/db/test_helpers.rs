@@ -26,6 +26,8 @@ pub fn make_user(id: &str, username: &str, public_key: &[u8]) -> User {
         is_admin: false,
         created_at: now.clone(),
         updated_at: now,
+    
+        ..Default::default()
     }
 }
 
@@ -39,8 +41,11 @@ pub fn make_team(id: &str, name: &str, created_by: &str) -> Team {
         created_by: created_by.to_string(),
         max_file_size: 10485760,
         allow_member_invites: true,
+        federated: false,
         created_at: now.clone(),
         updated_at: now,
+    
+        ..Default::default()
     }
 }
 
@@ -57,6 +62,8 @@ pub fn make_channel(id: &str, team_id: &str, name: &str, created_by: &str) -> Ch
         created_by: created_by.to_string(),
         created_at: now.clone(),
         updated_at: now,
+    
+        ..Default::default()
     }
 }
 
@@ -74,6 +81,8 @@ pub fn make_message(id: &str, channel_id: &str, author_id: &str, content: &str) 
         deleted: false,
         lamport_ts: 0,
         created_at: now,
+    
+        ..Default::default()
     }
 }
 

@@ -52,6 +52,10 @@ vi.mock('../stores/authStore', () => ({
     derivedKey: null,
   }),
   restoreDerivedKey: vi.fn().mockResolvedValue(null),
+  // H-13d cookie-based session restore: AppLayout now re-hydrates the
+  // auth store from the encrypted store on mount. The hook is a no-op
+  // in tests but the named export must exist or vi.mock throws.
+  restoreEncryptedAuthDataIntoStore: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../stores/teamStore', () => ({
@@ -167,6 +171,50 @@ vi.mock('./ChannelView', () => ({
   default: () => <div data-testid="channel-view">ChannelView</div>,
 }));
 
+// Mesh redesign brought in new chrome + modal mounts; stub them all so the
+// AppLayout renders without needing their full store wiring.
+vi.mock('../components/MeshChrome/MeshTopBar', () => ({ default: () => null }));
+vi.mock('../components/MeshChrome/MeshBottomBar', () => ({ default: () => null }));
+vi.mock('../components/CommandPalette/CommandPalette', () => ({ default: () => null }));
+vi.mock('../components/SearchPalette/SearchPalette', () => ({ default: () => null }));
+vi.mock('../components/ConnectionBanner/ConnectionBanner', () => ({ default: () => null }));
+vi.mock('../components/AddPeerWizard/AddPeerWizard', () => ({ default: () => null }));
+vi.mock('../components/SafetyCompare/SafetyCompare', () => ({ default: () => null }));
+vi.mock('../components/ForwardModal/ForwardModal', () => ({ default: () => null }));
+vi.mock('../components/IncomingCall/IncomingCall', () => ({ default: () => null }));
+vi.mock('../components/QuickSwitcher/QuickSwitcher', () => ({ default: () => null }));
+vi.mock('../components/MobileTabBar/MobileTabBar', () => ({
+  default: ({ onTabChange }: { onTabChange: (tab: string) => void }) => (
+    <nav aria-label="Main navigation">
+      <button onClick={() => onTabChange('chat')}>Chat</button>
+      <button onClick={() => onTabChange('channels')}>Channels</button>
+      <button onClick={() => onTabChange('teams')}>Teams</button>
+      <button onClick={() => onTabChange('members')}>Members</button>
+    </nav>
+  ),
+}));
+vi.mock('../components/DMView/DMView', () => ({ default: () => null }));
+vi.mock('../components/ErrorBoundary/ContentErrorBoundary', () => ({
+  default: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+vi.mock('@tabler/icons-react', () => ({
+  default: () => null,
+  IconHash: () => null,
+  IconMessage: () => null,
+  IconUsers: () => null,
+  IconVolume: () => null,
+  IconLock: () => null,
+  IconSettings: () => null,
+  IconShield: () => null,
+  IconSearch: () => null,
+  IconHome: () => null,
+  IconX: () => null,
+  IconPlus: () => null,
+  IconMessageCircle: () => null,
+  IconBookmark: () => null,
+  IconPin: () => null,
+}));
+
 import AppLayout from './AppLayout';
 
 function setMobile(isMobile: boolean) {
@@ -187,9 +235,11 @@ describe('AppLayout responsive', () => {
     setMobile(false);
   });
 
-  it('renders left-panels and resize-handle on desktop', async () => {
-    render(<AppLayout />);
-    expect(await screen.findByTestId('resize-handle')).toBeInTheDocument();
+  it('renders grid shell and resize-handle on desktop', async () => {
+    const { container } = render(<AppLayout />);
+    const handles = await screen.findAllByTestId('resize-handle');
+    expect(handles.length).toBeGreaterThanOrEqual(1);
+    expect(container.querySelector('.app-grid-shell')).toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Main navigation' })).not.toBeInTheDocument();
   });
 

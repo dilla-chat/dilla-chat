@@ -12,6 +12,11 @@ pub enum AppError {
     Forbidden(String),
     BadRequest(String),
     Conflict(String),
+    /// HTTP 413. Used for size-cap rejections (identity_blob, upload
+    /// disk quota, etc.). VULN-013 / H6, UPL-DOS-1 / H12.
+    PayloadTooLarge(String),
+    ServiceUnavailable(String),
+    BadGateway(String),
     Internal(String),
 }
 
@@ -23,6 +28,9 @@ impl std::fmt::Display for AppError {
             AppError::Forbidden(msg) => write!(f, "forbidden: {}", msg),
             AppError::BadRequest(msg) => write!(f, "bad request: {}", msg),
             AppError::Conflict(msg) => write!(f, "conflict: {}", msg),
+            AppError::PayloadTooLarge(msg) => write!(f, "payload too large: {}", msg),
+            AppError::ServiceUnavailable(msg) => write!(f, "service unavailable: {}", msg),
+            AppError::BadGateway(msg) => write!(f, "bad gateway: {}", msg),
             AppError::Internal(msg) => write!(f, "internal error: {}", msg),
         }
     }
@@ -36,6 +44,9 @@ impl IntoResponse for AppError {
             AppError::Forbidden(msg) => (StatusCode::FORBIDDEN, msg),
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
             AppError::Conflict(msg) => (StatusCode::CONFLICT, msg),
+            AppError::PayloadTooLarge(msg) => (StatusCode::PAYLOAD_TOO_LARGE, msg),
+            AppError::ServiceUnavailable(msg) => (StatusCode::SERVICE_UNAVAILABLE, msg),
+            AppError::BadGateway(msg) => (StatusCode::BAD_GATEWAY, msg),
             AppError::Internal(msg) => {
                 tracing::error!("internal error: {}", msg);
                 (StatusCode::INTERNAL_SERVER_ERROR, "internal server error".to_string())
@@ -169,5 +180,56 @@ mod tests {
         let e = AppError::Internal("db crash".into());
         let debug = format!("{:?}", e);
         assert!(debug.contains("db crash"));
+    }
+
+    #[test]
+    fn display_payload_too_large() {
+        let e = AppError::PayloadTooLarge("blob".into());
+        assert_eq!(format!("{}", e), "payload too large: blob");
+    }
+
+    #[test]
+    fn display_service_unavailable() {
+        let e = AppError::ServiceUnavailable("maintenance".into());
+        assert_eq!(format!("{}", e), "service unavailable: maintenance");
+    }
+
+    #[test]
+    fn display_bad_gateway() {
+        let e = AppError::BadGateway("peer down".into());
+        assert_eq!(format!("{}", e), "bad gateway: peer down");
+    }
+
+    #[test]
+    fn payload_too_large_returns_413() {
+        let resp = AppError::PayloadTooLarge("x".into()).into_response();
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    #[test]
+    fn service_unavailable_returns_503() {
+        let resp = AppError::ServiceUnavailable("x".into()).into_response();
+        assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[test]
+    fn bad_gateway_returns_502() {
+        let resp = AppError::BadGateway("x".into()).into_response();
+        assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
+    }
+
+    #[test]
+    fn from_rusqlite_error_is_internal() {
+        let e = rusqlite::Error::InvalidQuery;
+        let app_err: AppError = e.into();
+        assert!(matches!(app_err, AppError::Internal(_)));
+    }
+
+    #[test]
+    fn from_jwt_error_is_unauthorized() {
+        // jsonwebtoken's public error type can be constructed from a kind.
+        let e = jsonwebtoken::errors::Error::from(jsonwebtoken::errors::ErrorKind::InvalidToken);
+        let app_err: AppError = e.into();
+        assert!(matches!(app_err, AppError::Unauthorized(_)));
     }
 }

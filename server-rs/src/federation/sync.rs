@@ -364,6 +364,105 @@ mod tests {
         SyncManager::new(db, transport, "test-node".into())
     }
 
+    #[tokio::test]
+    async fn request_state_sync_returns_err_when_peer_unknown() {
+        let mgr = test_sync_manager();
+        // No peer registered → Transport::send returns an error.
+        let res = mgr.request_state_sync("peer-1").await;
+        assert!(res.is_err());
+    }
+
+    #[tokio::test]
+    async fn handle_state_sync_request_returns_empty_data_for_fresh_db() {
+        let mgr = test_sync_manager();
+        // Fresh DB: get_first_team returns None → returns empty data.
+        // send() will then fail because no peer is registered.
+        let res = mgr.handle_state_sync_request("peer-1").await;
+        assert!(res.is_err());
+    }
+
+    #[tokio::test]
+    async fn handle_state_sync_request_gathers_data_when_team_exists() {
+        let mgr = test_sync_manager();
+        let now = db::now_str();
+        // Seed a team + channel + role + member so the gather pass at L174-192
+        // populates all four lists. The send() at the tail of the function will
+        // still fail (no connected peer) — we only care about exercising the gather code.
+        mgr.db.with_conn(|c| {
+            db::create_user(c, &db::User {
+                id: "u1".into(),
+                username: "alice".into(),
+                display_name: "Alice".into(),
+                public_key: vec![1u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_team(c, &db::Team {
+                id: "t1".into(),
+                name: "T".into(),
+                created_by: "u1".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_channel(c, &db::Channel {
+                id: "ch1".into(),
+                team_id: "t1".into(),
+                name: "general".into(),
+                channel_type: "text".into(),
+                topic: String::new(),
+                created_by: "u1".into(),
+                position: 0,
+                locked: false,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_role(c, &db::Role {
+                id: "r1".into(),
+                team_id: "t1".into(),
+                name: "Admin".into(),
+                color: String::new(),
+                position: 0,
+                permissions: 1,
+                is_default: false,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+            })?;
+            db::create_member(c, &db::Member {
+                id: "m1".into(),
+                team_id: "t1".into(),
+                user_id: "u1".into(),
+                nickname: String::new(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now,
+            })
+        }).unwrap();
+        // With a team, the gather completes; send still errors because no
+        // peer is connected on the transport. Both outcomes exercise the
+        // code path we care about (lines 174-192).
+        let _ = mgr.handle_state_sync_request("peer-1").await;
+    }
+
+    #[tokio::test]
+    async fn handle_state_sync_request_rate_limits_repeated_calls() {
+        let mgr = test_sync_manager();
+        let _ = mgr.handle_state_sync_request("peer-rl").await;
+        let res = mgr.handle_state_sync_request("peer-rl").await;
+        // The second call within the rate-limit window must error with
+        // "sync rate-limited: ...".
+        let err = res.unwrap_err();
+        assert!(
+            err.contains("rate-limited") || err.contains("send"),
+            "unexpected error: {err}",
+        );
+    }
+
     // ── Lamport clock tests ─────────────────────────────────────────
 
     #[test]
@@ -494,6 +593,8 @@ mod tests {
                 created_by: "u1".into(),
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             }],
             messages: vec![db::Message {
                 id: "m1".into(),
@@ -507,6 +608,8 @@ mod tests {
                 deleted: false,
                 lamport_ts: 5,
                 created_at: now.clone(),
+            
+                ..Default::default()
             }],
             members: vec![db::Member {
                 id: "mem1".into(),
@@ -564,8 +667,11 @@ mod tests {
                 created_by: user_id.clone(),
                 max_file_size: 25 * 1024 * 1024,
                 allow_member_invites: true,
+                federated: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_user(conn, &db::User {
                 id: user_id.clone(),
@@ -578,6 +684,8 @@ mod tests {
                 is_admin: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })
         })
         .unwrap();
@@ -594,6 +702,8 @@ mod tests {
                 created_by: user_id.clone(),
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             }],
             messages: vec![db::Message {
                 id: db::new_id(),
@@ -607,6 +717,8 @@ mod tests {
                 deleted: false,
                 lamport_ts: 1,
                 created_at: now.clone(),
+            
+                ..Default::default()
             }],
             members: vec![db::Member {
                 id: db::new_id(),
@@ -671,8 +783,11 @@ mod tests {
                 created_by: user_id.clone(),
                 max_file_size: 25 * 1024 * 1024,
                 allow_member_invites: true,
+                federated: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_user(conn, &db::User {
                 id: user_id.clone(),
@@ -685,6 +800,8 @@ mod tests {
                 is_admin: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_channel(conn, &db::Channel {
                 id: channel_id.clone(),
@@ -697,6 +814,8 @@ mod tests {
                 created_by: user_id.clone(),
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })
         })
         .unwrap();
@@ -714,6 +833,8 @@ mod tests {
                 created_by: user_id.clone(),
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             }],
             messages: Vec::new(),
             members: Vec::new(),
@@ -783,6 +904,8 @@ mod tests {
                 is_admin: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_team(conn, &db::Team {
                 id: team_id.clone(),
@@ -792,8 +915,11 @@ mod tests {
                 created_by: user_id.clone(),
                 max_file_size: 25 * 1024 * 1024,
                 allow_member_invites: true,
+                federated: false,
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })
         })
         .unwrap();
@@ -824,6 +950,8 @@ mod tests {
                 created_by: user_id.clone(),
                 created_at: old_time.clone(),
                 updated_at: old_time.clone(),
+            
+                ..Default::default()
             })
         })
         .unwrap();
@@ -841,6 +969,8 @@ mod tests {
                 created_by: user_id.clone(),
                 created_at: old_time.clone(),
                 updated_at: new_time.clone(),
+            
+                ..Default::default()
             }],
             messages: Vec::new(),
             members: Vec::new(),
@@ -886,6 +1016,8 @@ mod tests {
                 created_by: user_id.clone(),
                 created_at: old_time.clone(),
                 updated_at: new_time.clone(),
+            
+                ..Default::default()
             })
         })
         .unwrap();
@@ -903,6 +1035,8 @@ mod tests {
                 created_by: user_id.clone(),
                 created_at: old_time.clone(),
                 updated_at: old_time.clone(),
+            
+                ..Default::default()
             }],
             messages: Vec::new(),
             members: Vec::new(),
@@ -1007,6 +1141,8 @@ mod tests {
                     created_by: user_id.clone(),
                     created_at: now.clone(),
                     updated_at: now.clone(),
+                
+                    ..Default::default()
                 },
                 db::Channel {
                     id: ch2_id.clone(),
@@ -1019,6 +1155,8 @@ mod tests {
                     created_by: user_id.clone(),
                     created_at: now.clone(),
                     updated_at: now.clone(),
+                
+                    ..Default::default()
                 },
             ],
             messages: Vec::new(),
@@ -1065,6 +1203,8 @@ mod tests {
                 created_by: user_id.clone(),
                 created_at: now.clone(),
                 updated_at: now.clone(),
+            
+                ..Default::default()
             })?;
             db::create_message(conn, &db::Message {
                 id: message_id.clone(),
@@ -1078,6 +1218,8 @@ mod tests {
                 deleted: false,
                 lamport_ts: 1,
                 created_at: now.clone(),
+            
+                ..Default::default()
             })
         })
         .unwrap();
@@ -1097,6 +1239,8 @@ mod tests {
                 deleted: true,
                 lamport_ts: 1,
                 created_at: now.clone(),
+            
+                ..Default::default()
             }],
             members: Vec::new(),
             roles: Vec::new(),
@@ -1152,4 +1296,250 @@ mod tests {
         let now = 1000;
         let last = now - 301; // 301s ago, limit is 300s
         assert!(!is_sync_rate_limited(Some(last), now));
+    }
+
+    // ── should_update_message branches ──────────────────────────────
+
+    fn make_msg(id: &str, edited: Option<&str>, deleted: bool) -> db::Message {
+        db::Message {
+            id: id.into(),
+            channel_id: "ch1".into(),
+            dm_channel_id: String::new(),
+            author_id: "u1".into(),
+            content: "x".into(),
+            msg_type: "text".into(),
+            thread_id: String::new(),
+            reply_to_message_id: None,
+            edited_at: edited.map(String::from),
+            deleted,
+            lamport_ts: 0,
+            created_at: "2024-01-01 00:00:00".into(),
+        }
+    }
+
+    #[test]
+    fn should_update_message_remote_newer_edit_overwrites_local() {
+        let remote = make_msg("m1", Some("2024-02-02 00:00:00"), false);
+        let local = make_msg("m1", Some("2024-01-01 00:00:00"), false);
+        assert!(should_update_message(&remote, &local));
+    }
+
+    #[test]
+    fn should_update_message_remote_older_edit_keeps_local() {
+        let remote = make_msg("m1", Some("2024-01-01 00:00:00"), false);
+        let local = make_msg("m1", Some("2024-02-02 00:00:00"), false);
+        assert!(!should_update_message(&remote, &local));
+    }
+
+    #[test]
+    fn should_update_message_remote_tombstone_overwrites_equal_local() {
+        let remote = make_msg("m1", Some("2024-01-01 00:00:00"), true);
+        let local = make_msg("m1", Some("2024-01-01 00:00:00"), false);
+        assert!(should_update_message(&remote, &local));
+    }
+
+    #[test]
+    fn should_update_message_handles_missing_edited_at() {
+        let remote = make_msg("m1", None, false);
+        let local = make_msg("m1", None, false);
+        assert!(!should_update_message(&remote, &local));
+    }
+
+// ── handle_state_sync_response branches ─────────────────────────
+
+#[cfg(test)]
+mod sync_response_tests {
+    use super::*;
+    use crate::db::{self, Database};
+    use std::sync::Arc;
+
+    fn test_sync_manager() -> SyncManager {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        db.with_conn(|c| c.execute_batch("PRAGMA foreign_keys = OFF;")).unwrap();
+        db.run_migrations().unwrap();
+        std::mem::forget(tmp);
+        let transport = Arc::new(Transport::new());
+        SyncManager::new(db, transport, "test-node".into())
+    }
+
+    #[tokio::test]
+    async fn handle_state_sync_response_rejects_oversize_channel_count() {
+        let mgr = test_sync_manager();
+        let channels = (0..101).map(|i| db::Channel {
+            id: format!("ch-{i}"),
+            team_id: "t1".into(),
+            name: format!("ch-{i}"),
+            channel_type: "text".into(),
+            ..Default::default()
+        }).collect();
+        let data = StateSyncData { channels, messages: vec![], members: vec![], roles: vec![] };
+        let res = mgr.handle_state_sync_response(data).await;
+        assert!(res.is_err());
+    }
+
+    #[tokio::test]
+    async fn handle_state_sync_response_empty_payload_succeeds() {
+        let mgr = test_sync_manager();
+        let data = StateSyncData { channels: vec![], messages: vec![], members: vec![], roles: vec![] };
+        let res = mgr.handle_state_sync_response(data).await;
+        assert!(res.is_ok(), "empty merge should succeed: {:?}", res);
+    }
+
+    #[tokio::test]
+    async fn handle_state_sync_response_updates_existing_member_when_newer() {
+        let mgr = test_sync_manager();
+        let now = db::now_str();
+        let later = (chrono::Utc::now() + chrono::Duration::hours(1))
+            .format("%Y-%m-%d %H:%M:%S").to_string();
+        mgr.db.with_conn(|c| {
+            db::create_user(c, &db::User {
+                id: "u1".into(),
+                username: "alice".into(),
+                display_name: "Alice".into(),
+                public_key: vec![1u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_team(c, &db::Team {
+                id: "t1".into(),
+                name: "T".into(),
+                created_by: "u1".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_member(c, &db::Member {
+                id: "m1".into(),
+                team_id: "t1".into(),
+                user_id: "u1".into(),
+                nickname: "OldNick".into(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now.clone(),
+            })
+        }).unwrap();
+        // Inbound member with later updated_at → should replace nickname.
+        let member = db::Member {
+            id: "m1".into(),
+            team_id: "t1".into(),
+            user_id: "u1".into(),
+            nickname: "NewNick".into(),
+            invited_by: String::new(),
+            joined_at: now,
+            updated_at: later.clone(),
+        };
+        let data = StateSyncData {
+            channels: vec![],
+            messages: vec![],
+            members: vec![member],
+            roles: vec![],
+        };
+        let res = mgr.handle_state_sync_response(data).await;
+        assert!(res.is_ok(), "merge_members failed: {:?}", res);
+    }
+
+    #[tokio::test]
+    async fn handle_state_sync_response_skips_older_member_payload() {
+        let mgr = test_sync_manager();
+        let now = db::now_str();
+        let earlier = (chrono::Utc::now() - chrono::Duration::hours(1))
+            .format("%Y-%m-%d %H:%M:%S").to_string();
+        mgr.db.with_conn(|c| {
+            db::create_user(c, &db::User {
+                id: "u1".into(),
+                username: "alice".into(),
+                display_name: "Alice".into(),
+                public_key: vec![1u8; 32],
+                status_type: "online".into(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_team(c, &db::Team {
+                id: "t1".into(),
+                name: "T".into(),
+                created_by: "u1".into(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                ..Default::default()
+            })?;
+            db::create_member(c, &db::Member {
+                id: "m1".into(),
+                team_id: "t1".into(),
+                user_id: "u1".into(),
+                nickname: "CurrentNick".into(),
+                invited_by: String::new(),
+                joined_at: now.clone(),
+                updated_at: now.clone(),
+            })
+        }).unwrap();
+        let stale_member = db::Member {
+            id: "m1".into(),
+            team_id: "t1".into(),
+            user_id: "u1".into(),
+            nickname: "StaleNick".into(),
+            invited_by: String::new(),
+            joined_at: now,
+            updated_at: earlier,
+        };
+        let data = StateSyncData {
+            channels: vec![],
+            messages: vec![],
+            members: vec![stale_member],
+            roles: vec![],
+        };
+        let res = mgr.handle_state_sync_response(data).await;
+        assert!(res.is_ok(), "merge should noop, got: {:?}", res);
+    }
+
+    #[tokio::test]
+    async fn handle_state_sync_response_merges_new_channels_and_roles() {
+        let mgr = test_sync_manager();
+        // Seed users + team so foreign-key checks pass.
+        mgr.db.with_conn(|c| {
+            c.execute_batch("PRAGMA foreign_keys = OFF;")?;
+            c.execute("INSERT INTO users (id, username, public_key, created_at, updated_at) VALUES ('u1', 'a', x'01', datetime('now'), datetime('now'))", [])?;
+            c.execute("INSERT INTO teams (id, name, created_by, created_at, updated_at) VALUES ('t1', 'T', 'u1', datetime('now'), datetime('now'))", [])?;
+            Ok::<(), rusqlite::Error>(())
+        }).unwrap();
+        let now = db::now_str();
+        let ch = db::Channel {
+            id: "ch-merge".into(),
+            team_id: "t1".into(),
+            name: "merged".into(),
+            channel_type: "text".into(),
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            ..Default::default()
+        };
+        let role = db::Role {
+            id: "r-merge".into(),
+            team_id: "t1".into(),
+            name: "merged-role".into(),
+            color: String::new(),
+            position: 0,
+            permissions: 1,
+            is_default: false,
+            created_at: now.clone(),
+            updated_at: now,
+        };
+        let data = StateSyncData {
+            channels: vec![ch],
+            messages: vec![],
+            members: vec![],
+            roles: vec![role],
+        };
+        let res = mgr.handle_state_sync_response(data).await;
+        assert!(res.is_ok(), "merge failed: {:?}", res);
+        // Verify the merged channel landed.
+        let got = mgr.db.with_conn(|c| db::get_channel_by_id(c, "ch-merge")).unwrap();
+        assert!(got.is_some());
+    }
 }

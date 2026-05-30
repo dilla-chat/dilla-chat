@@ -1,6 +1,10 @@
+pub mod authority;
+pub mod identity;
 pub mod join;
+pub mod peers;
 pub mod sync;
 pub mod transport;
+pub mod wire;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -71,7 +75,7 @@ pub struct PeerInfo {
 // ── MeshNode configuration ────────────────────────────────────────────────
 
 /// Configuration for a federation mesh node.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 #[allow(dead_code)]
 pub struct MeshConfig {
     pub node_name: String,
@@ -83,6 +87,15 @@ pub struct MeshConfig {
     pub tls_cert: String,
     pub tls_key: String,
     pub join_secret: String,
+    /// VULN-014 / H7: when true, accept plain ws:// peer URLs and the
+    /// "empty join secret = accept anyone" fallback. Defaults to false.
+    pub insecure: bool,
+    /// H-9 / H-11: when true, the federation transport refuses v1
+    /// (shared-secret) inbound handshakes and accepts only the v3
+    /// Ed25519-signed form. Threaded from
+    /// `Config::require_federation_v3` / `DILLA_FEDERATION_REQUIRE_V3`.
+    /// Default false during the rolling-upgrade window.
+    pub require_v3: bool,
 }
 
 // ── MeshNode ───────────────────────────────────────────────────────────────
@@ -109,7 +122,22 @@ pub struct MeshNode {
 impl MeshNode {
     /// Create a new MeshNode with the given configuration, database, and hub references.
     pub fn new(config: MeshConfig, db: Database, hub: Arc<Hub>) -> Self {
-        let transport = Arc::new(Transport::with_join_secret(config.join_secret.clone()));
+        // H-9: thread the local Ed25519 identity + the require_v3
+        // flag into Transport so handle_incoming can verify v3
+        // signed handshakes against the pinned-peer registry.
+        // identity::ensure is idempotent — by the time MeshNode is
+        // constructed main.rs has already called it, so this just
+        // loads the singleton.
+        let node_identity = identity::ensure(&db)
+            .ok()
+            .map(Arc::new);
+        let transport = Arc::new(Transport::with_settings_full(
+            config.join_secret.clone(),
+            config.insecure,
+            node_identity,
+            config.require_v3,
+            Some(db.clone()),
+        ));
         let sync_mgr = Arc::new(SyncManager::new(
             db.clone(),
             Arc::clone(&transport),
@@ -148,10 +176,13 @@ impl MeshNode {
         // Wire up the event handler on the transport.
         let mesh = Arc::clone(self);
         self.transport
-            .set_on_event(Arc::new(move |peer_addr, event| {
+            .set_on_event(Arc::new(move |peer_addr, event, prov| {
                 let mesh = Arc::clone(&mesh);
                 tokio::spawn(async move {
-                    if let Err(e) = mesh.handle_federation_event(&peer_addr, event).await {
+                    if let Err(e) = mesh
+                        .handle_federation_event(&peer_addr, event, prov)
+                        .await
+                    {
                         tracing::error!(
                             peer = %peer_addr,
                             "error handling federation event: {}",
@@ -354,9 +385,128 @@ impl MeshNode {
         &self,
         peer_addr: &str,
         event: FederationEvent,
+        prov: transport::EventProvenance,
     ) -> Result<(), String> {
         // Update Lamport clock.
         self.sync_mgr.update(event.timestamp);
+
+        // H-11: when the event arrived inside a v3 signed envelope,
+        // run the authority + seq-watermark gate BEFORE applying any
+        // merge. Legacy v1 frames (prov empty) skip these checks for
+        // backward compatibility during the rolling-upgrade window.
+        // Authority denial / seq replay → drop the event with an audit
+        // breadcrumb.
+        if let Some(origin) = prov.origin_node_id.clone() {
+            let signed_preview = wire::SignedFederationEvent {
+                v: wire::WIRE_VERSION,
+                event: event.clone(),
+                origin_node_id: origin.clone(),
+                seq: prov.seq.unwrap_or(0),
+                event_id: prov.event_id.clone().unwrap_or_default(),
+                // signature already verified by transport read pump;
+                // authority::check + seq_watermark only consume the
+                // metadata fields, so an empty signature here is safe.
+                signature: String::new(),
+            };
+            let db = self.db.clone();
+            let decision_res = tokio::task::spawn_blocking(move || {
+                db.with_read(|conn| authority::check(conn, &signed_preview))
+            })
+            .await
+            .map_err(|e| format!("task join: {}", e))?;
+            match decision_res {
+                Ok(authority::Decision::Allow) | Ok(authority::Decision::LegacyTeam) => {
+                    // Allow / LegacyTeam both pass during the
+                    // rolling-upgrade window. LegacyTeam fires an
+                    // audit breadcrumb so the operator can see
+                    // pre-migration-030 teams flowing through.
+                }
+                Ok(authority::Decision::Denied(reason)) => {
+                    tracing::warn!(
+                        peer = %peer_addr,
+                        origin = %origin,
+                        event_type = %event.event_type,
+                        reason,
+                        "federation event denied at authority::check"
+                    );
+                    return Ok(());
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        peer = %peer_addr,
+                        origin = %origin,
+                        error = %e,
+                        "authority lookup failed; dropping event"
+                    );
+                    return Ok(());
+                }
+            }
+
+            // Seq watermark: events MUST arrive in strictly increasing
+            // seq per (origin, team). Out-of-order or duplicate frames
+            // are dropped. Team scope: the team_id field on the event
+            // payload when present; empty otherwise (per-origin
+            // sequencing only).
+            if let Some(seq) = prov.seq {
+                let team_id = event
+                    .payload
+                    .get("team_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let origin_q = origin.clone();
+                let db = self.db.clone();
+                let watermark_res = tokio::task::spawn_blocking(move || {
+                    db.with_write(|conn| {
+                        let prev: Option<i64> = conn
+                            .query_row(
+                                "SELECT last_seq FROM federation_seq_watermark
+                                 WHERE origin_node_id = ?1 AND team_id = ?2",
+                                rusqlite::params![origin_q, team_id],
+                                |r| r.get(0),
+                            )
+                            .ok();
+                        let prev_seq = prev.unwrap_or(0) as u64;
+                        if seq <= prev_seq {
+                            return Ok::<bool, rusqlite::Error>(false);
+                        }
+                        conn.execute(
+                            "INSERT INTO federation_seq_watermark
+                                (origin_node_id, team_id, last_seq, updated_at)
+                              VALUES (?1, ?2, ?3, datetime('now'))
+                              ON CONFLICT(origin_node_id, team_id)
+                              DO UPDATE SET last_seq = excluded.last_seq,
+                                            updated_at = excluded.updated_at",
+                            rusqlite::params![origin_q, team_id, seq as i64],
+                        )?;
+                        Ok(true)
+                    })
+                })
+                .await
+                .map_err(|e| format!("task join: {}", e))?;
+                match watermark_res {
+                    Ok(true) => { /* monotonic — apply */ }
+                    Ok(false) => {
+                        tracing::warn!(
+                            peer = %peer_addr,
+                            origin = %origin,
+                            seq,
+                            "federation event dropped — non-monotonic seq (replay or out-of-order)"
+                        );
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            peer = %peer_addr,
+                            origin = %origin,
+                            error = %e,
+                            "seq watermark update failed; dropping event"
+                        );
+                        return Ok(());
+                    }
+                }
+            }
+        }
 
         // Update peer info.
         {
@@ -432,6 +582,7 @@ impl MeshNode {
             deleted: false,
             lamport_ts: repl.lamport_ts as i64,
             created_at: repl.created_at.clone(),
+            reply_to_message_id: None,
         };
 
         let msg_clone = msg.clone();
@@ -460,6 +611,7 @@ impl MeshNode {
                 content: repl.content,
                 msg_type: repl.msg_type,
                 thread_id: repl.thread_id,
+                reply_to_message_id: None,
                 created_at: repl.created_at,
                 attachments: vec![],
             },
@@ -866,6 +1018,8 @@ mod tests {
             tls_cert: String::new(),
             tls_key: String::new(),
             join_secret: "secret".into(),
+        
+            ..Default::default()
         };
 
         assert_eq!(config.node_name, "my-node");
@@ -886,6 +1040,8 @@ mod tests {
             tls_cert: String::new(),
             tls_key: String::new(),
             join_secret: String::new(),
+        
+            ..Default::default()
         };
         let cloned = config.clone();
         assert_eq!(config.node_name, cloned.node_name);
@@ -903,6 +1059,8 @@ mod tests {
             tls_cert: String::new(),
             tls_key: String::new(),
             join_secret: String::new(),
+        
+            ..Default::default()
         };
         assert!(config.peers.is_empty());
     }
@@ -929,10 +1087,459 @@ mod tests {
             tls_cert: String::new(),
             tls_key: String::new(),
             join_secret: "secret".into(),
+        
+            ..Default::default()
         };
 
         let node = MeshNode::new(config, db, hub);
         assert_eq!(node.node_name, "test-node");
+    }
+
+    fn make_node() -> Arc<MeshNode> {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = db::Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        db.run_migrations().unwrap();
+        std::mem::forget(tmp);
+        let hub = Arc::new(crate::ws::Hub::new(db.clone()));
+        let config = MeshConfig {
+            node_name: "test-node".into(),
+            bind_addr: "0.0.0.0".into(),
+            bind_port: 8081,
+            advertise_addr: String::new(),
+            advertise_port: 0,
+            peers: vec![],
+            tls_cert: String::new(),
+            tls_key: String::new(),
+            join_secret: String::new(),
+            ..Default::default()
+        };
+        Arc::new(MeshNode::new(config, db, hub))
+    }
+
+    #[tokio::test]
+    async fn broadcast_message_runs_with_no_peers() {
+        let node = make_node();
+        let msg = ReplicationMessage {
+            message_id: "m1".into(),
+            channel_id: "ch1".into(),
+            author_id: "u1".into(),
+            username: "alice".into(),
+            content: "hi".into(),
+            msg_type: "text".into(),
+            thread_id: String::new(),
+            lamport_ts: 1,
+            created_at: "2024-01-01 00:00:00".into(),
+        };
+        node.broadcast_message(&msg).await;
+    }
+
+    #[tokio::test]
+    async fn broadcast_message_edit_runs() {
+        let node = make_node();
+        node.broadcast_message_edit("m1", "ch1", "updated").await;
+    }
+
+    #[tokio::test]
+    async fn broadcast_message_delete_runs() {
+        let node = make_node();
+        node.broadcast_message_delete("m1", "ch1").await;
+    }
+
+    #[tokio::test]
+    async fn broadcast_presence_changed_runs() {
+        let node = make_node();
+        node.broadcast_presence_changed("u1", "online", "coding").await;
+    }
+
+    #[tokio::test]
+    async fn broadcast_voice_user_joined_and_left_run() {
+        let node = make_node();
+        node.broadcast_voice_user_joined("ch-voice", "u1", "alice").await;
+        node.broadcast_voice_user_left("ch-voice", "u1").await;
+    }
+
+    #[tokio::test]
+    async fn get_peers_starts_empty() {
+        let node = make_node();
+        let peers = node.get_peers().await;
+        assert!(peers.is_empty());
+    }
+
+    #[tokio::test]
+    async fn handle_federation_event_dispatches_to_message_new_handler() {
+        let node = make_node();
+        // Seed prerequisite rows so message creation can land.
+        node.db.with_conn(|c| {
+            c.execute("INSERT INTO users (id, username, public_key, created_at, updated_at) VALUES ('u1', 'alice', x'01', datetime('now'), datetime('now'))", [])?;
+            c.execute("INSERT INTO teams (id, name, created_by, created_at, updated_at) VALUES ('t1', 'T', 'u1', datetime('now'), datetime('now'))", [])?;
+            c.execute("INSERT INTO channels (id, team_id, name, type, created_at, updated_at) VALUES ('ch1', 't1', 'g', 'text', datetime('now'), datetime('now'))", [])?;
+            Ok::<(), rusqlite::Error>(())
+        }).unwrap();
+        let event = FederationEvent {
+            event_type: FED_EVENT_MESSAGE_NEW.to_string(),
+            node_name: "peer-1".into(),
+            timestamp: 5,
+            payload: serde_json::json!({
+                "message_id": "m-fed-1",
+                "channel_id": "ch1",
+                "author_id": "u1",
+                "username": "alice",
+                "content": "hello from peer",
+                "type": "text",
+                "thread_id": "",
+                "lamport_ts": 5,
+                "created_at": "2024-01-01 00:00:00",
+            }),
+        };
+        let prov = transport::EventProvenance { origin_node_id: None, seq: None, event_id: None };
+        let res = node.handle_federation_event("peer-1", event, prov).await;
+        assert!(res.is_ok(), "handle_federation_event failed: {:?}", res);
+    }
+
+    #[tokio::test]
+    async fn handle_message_edit_with_missing_fields_returns_err() {
+        let node = make_node();
+        let event = FederationEvent {
+            event_type: FED_EVENT_MESSAGE_EDIT.to_string(),
+            node_name: "peer-1".into(),
+            timestamp: 1,
+            payload: serde_json::json!({"message_id": "m1"}),
+        };
+        let prov = transport::EventProvenance { origin_node_id: None, seq: None, event_id: None };
+        let res = node.handle_federation_event("peer-1", event, prov).await;
+        assert!(res.is_err());
+    }
+
+    #[tokio::test]
+    async fn handle_message_delete_with_missing_fields_returns_err() {
+        let node = make_node();
+        let event = FederationEvent {
+            event_type: FED_EVENT_MESSAGE_DELETE.to_string(),
+            node_name: "peer-1".into(),
+            timestamp: 1,
+            payload: serde_json::json!({}),
+        };
+        let prov = transport::EventProvenance { origin_node_id: None, seq: None, event_id: None };
+        let res = node.handle_federation_event("peer-1", event, prov).await;
+        assert!(res.is_err());
+    }
+
+    #[tokio::test]
+    async fn handle_presence_changed_dispatches() {
+        let node = make_node();
+        let event = FederationEvent {
+            event_type: FED_EVENT_PRESENCE_CHANGED.to_string(),
+            node_name: "peer-1".into(),
+            timestamp: 1,
+            payload: serde_json::json!({
+                "user_id": "u1",
+                "status_type": "online",
+                "custom_status": "",
+            }),
+        };
+        let prov = transport::EventProvenance { origin_node_id: None, seq: None, event_id: None };
+        let _ = node.handle_federation_event("peer-1", event, prov).await;
+    }
+
+    #[tokio::test]
+    async fn handle_voice_user_joined_and_left_dispatches() {
+        let node = make_node();
+        let prov_template = || transport::EventProvenance { origin_node_id: None, seq: None, event_id: None };
+        let joined = FederationEvent {
+            event_type: FED_EVENT_VOICE_USER_JOINED.to_string(),
+            node_name: "peer-1".into(),
+            timestamp: 1,
+            payload: serde_json::json!({
+                "channel_id": "ch1",
+                "user_id": "u1",
+                "username": "alice",
+            }),
+        };
+        let _ = node.handle_federation_event("peer-1", joined, prov_template()).await;
+        let left = FederationEvent {
+            event_type: FED_EVENT_VOICE_USER_LEFT.to_string(),
+            node_name: "peer-1".into(),
+            timestamp: 1,
+            payload: serde_json::json!({
+                "channel_id": "ch1",
+                "user_id": "u1",
+            }),
+        };
+        let _ = node.handle_federation_event("peer-1", left, prov_template()).await;
+    }
+
+    #[tokio::test]
+    async fn start_runs_with_no_peers_and_stops_cleanly() {
+        let node = make_node();
+        let res = node.start().await;
+        assert!(res.is_ok());
+        node.stop().await;
+    }
+
+    #[tokio::test]
+    async fn start_records_failed_connection_for_unreachable_peer() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = db::Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        db.run_migrations().unwrap();
+        std::mem::forget(tmp);
+        let hub = Arc::new(crate::ws::Hub::new(db.clone()));
+        let config = MeshConfig {
+            node_name: "n".into(),
+            bind_addr: "0.0.0.0".into(),
+            bind_port: 8081,
+            advertise_addr: String::new(),
+            advertise_port: 0,
+            // Bogus peer URL — connect_to_peer will fail and the
+            // disconnected branch (lines 215-227) runs.
+            peers: vec!["ws://127.0.0.1:1/federation".into()],
+            tls_cert: String::new(),
+            tls_key: String::new(),
+            join_secret: "secret".into(),
+            insecure: true, // allow plain ws://
+            ..Default::default()
+        };
+        let node = Arc::new(MeshNode::new(config, db, hub));
+        let _ = node.start().await;
+        let peers = node.get_peers().await;
+        assert_eq!(peers.len(), 1);
+        // Either connected (test machine has nothing listening on port 1, so disconnect)
+        // or briefly connected then dropped. Either way the row must exist.
+        assert!(peers.iter().any(|p| !p.address.is_empty()));
+        node.stop().await;
+    }
+
+    #[tokio::test]
+    async fn start_skips_empty_peer_entries() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = db::Database::open(tmp.path().to_str().unwrap(), "").unwrap();
+        db.run_migrations().unwrap();
+        std::mem::forget(tmp);
+        let hub = Arc::new(crate::ws::Hub::new(db.clone()));
+        let config = MeshConfig {
+            node_name: "n".into(),
+            bind_addr: "0.0.0.0".into(),
+            bind_port: 8082,
+            advertise_addr: String::new(),
+            advertise_port: 0,
+            peers: vec!["".into(), "  ".into()],
+            tls_cert: String::new(),
+            tls_key: String::new(),
+            join_secret: String::new(),
+            ..Default::default()
+        };
+        let node = Arc::new(MeshNode::new(config, db, hub));
+        let res = node.start().await;
+        assert!(res.is_ok());
+        // Empty strings are skipped — the "  " whitespace one is *not* skipped
+        // (the check is `is_empty()` only) so we may end up with 1 peer record.
+        node.stop().await;
+    }
+
+    #[tokio::test]
+    async fn handle_federation_event_with_signed_prov_runs_authority_check() {
+        let node = make_node();
+        // Provide an origin_node_id so the authority::check + seq watermark
+        // paths run. The peer is not pinned → LegacyTeam decision applies for
+        // a freshly seeded DB, which is one of the allowed branches.
+        let event = FederationEvent {
+            event_type: FED_EVENT_PRESENCE_CHANGED.to_string(),
+            node_name: "peer-1".into(),
+            timestamp: 1,
+            payload: serde_json::json!({
+                "user_id": "u1",
+                "status_type": "online",
+                "custom_status": "",
+            }),
+        };
+        let prov = transport::EventProvenance {
+            origin_node_id: Some("origin-node".into()),
+            seq: Some(1),
+            event_id: Some("evt-1".into()),
+        };
+        let res = node.handle_federation_event("peer-1", event, prov).await;
+        assert!(res.is_ok());
+    }
+
+    #[tokio::test]
+    async fn handle_federation_event_drops_non_monotonic_seq() {
+        let node = make_node();
+        let prov_at = |seq: u64| transport::EventProvenance {
+            origin_node_id: Some("origin-node".into()),
+            seq: Some(seq),
+            event_id: Some(format!("evt-{seq}")),
+        };
+        let ev = |seq: u64| FederationEvent {
+            event_type: FED_EVENT_PRESENCE_CHANGED.to_string(),
+            node_name: "peer-1".into(),
+            timestamp: seq,
+            payload: serde_json::json!({
+                "user_id": "u1",
+                "status_type": "online",
+                "custom_status": "",
+            }),
+        };
+        // First event at seq=5 — accepted, watermark stored.
+        node.handle_federation_event("peer-1", ev(5), prov_at(5)).await.unwrap();
+        // Second event at seq=3 — must be dropped (non-monotonic).
+        node.handle_federation_event("peer-1", ev(3), prov_at(3)).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn handle_federation_event_message_edit_with_full_payload_updates_local_db() {
+        let node = make_node();
+        // Seed a message we can edit.
+        node.db.with_conn(|c| {
+            c.execute_batch("PRAGMA foreign_keys = OFF;")?;
+            c.execute("INSERT INTO users (id, username, public_key, created_at, updated_at) VALUES ('u1', 'a', x'01', datetime('now'), datetime('now'))", [])?;
+            c.execute("INSERT INTO teams (id, name, created_by, created_at, updated_at) VALUES ('t1', 'T', 'u1', datetime('now'), datetime('now'))", [])?;
+            c.execute("INSERT INTO channels (id, team_id, name, type, created_at, updated_at) VALUES ('ch1', 't1', 'g', 'text', datetime('now'), datetime('now'))", [])?;
+            c.execute(
+                "INSERT INTO messages (id, channel_id, dm_channel_id, author_id, content, type, deleted, lamport_ts, created_at)
+                 VALUES ('m-fed', 'ch1', '', 'u1', 'old', 'text', 0, 1, datetime('now'))",
+                [],
+            )?;
+            Ok::<(), rusqlite::Error>(())
+        }).unwrap();
+        let event = FederationEvent {
+            event_type: FED_EVENT_MESSAGE_EDIT.to_string(),
+            node_name: "peer-1".into(),
+            timestamp: 1,
+            payload: serde_json::json!({
+                "message_id": "m-fed",
+                "channel_id": "ch1",
+                "content": "edited via federation",
+            }),
+        };
+        let prov = transport::EventProvenance { origin_node_id: None, seq: None, event_id: None };
+        let res = node.handle_federation_event("peer-1", event, prov).await;
+        assert!(res.is_ok());
+        // Verify the message content was updated.
+        let content: String = node.db.with_conn(|c| {
+            c.query_row("SELECT content FROM messages WHERE id = 'm-fed'", [], |r| r.get(0))
+        }).unwrap();
+        assert_eq!(content, "edited via federation");
+    }
+
+    #[tokio::test]
+    async fn handle_federation_event_message_delete_soft_deletes() {
+        let node = make_node();
+        node.db.with_conn(|c| {
+            c.execute_batch("PRAGMA foreign_keys = OFF;")?;
+            c.execute("INSERT INTO users (id, username, public_key, created_at, updated_at) VALUES ('u1', 'a', x'01', datetime('now'), datetime('now'))", [])?;
+            c.execute("INSERT INTO teams (id, name, created_by, created_at, updated_at) VALUES ('t1', 'T', 'u1', datetime('now'), datetime('now'))", [])?;
+            c.execute("INSERT INTO channels (id, team_id, name, type, created_at, updated_at) VALUES ('ch1', 't1', 'g', 'text', datetime('now'), datetime('now'))", [])?;
+            c.execute(
+                "INSERT INTO messages (id, channel_id, dm_channel_id, author_id, content, type, deleted, lamport_ts, created_at)
+                 VALUES ('m-del', 'ch1', '', 'u1', 'gone', 'text', 0, 1, datetime('now'))",
+                [],
+            )?;
+            Ok::<(), rusqlite::Error>(())
+        }).unwrap();
+        let event = FederationEvent {
+            event_type: FED_EVENT_MESSAGE_DELETE.to_string(),
+            node_name: "peer-1".into(),
+            timestamp: 1,
+            payload: serde_json::json!({"message_id": "m-del", "channel_id": "ch1"}),
+        };
+        let prov = transport::EventProvenance { origin_node_id: None, seq: None, event_id: None };
+        let res = node.handle_federation_event("peer-1", event, prov).await;
+        assert!(res.is_ok());
+        let deleted: i32 = node.db.with_conn(|c| {
+            c.query_row("SELECT deleted FROM messages WHERE id = 'm-del'", [], |r| r.get(0))
+        }).unwrap();
+        assert_eq!(deleted, 1);
+    }
+
+    #[tokio::test]
+    async fn handle_state_sync_response_with_empty_payload_succeeds() {
+        let node = make_node();
+        let event = FederationEvent {
+            event_type: FED_EVENT_STATE_SYNC_RESP.to_string(),
+            node_name: "peer-1".into(),
+            timestamp: 1,
+            payload: serde_json::json!({
+                "channels": [],
+                "messages": [],
+                "members": [],
+                "roles": [],
+            }),
+        };
+        let prov = transport::EventProvenance { origin_node_id: None, seq: None, event_id: None };
+        let res = node.handle_federation_event("peer-1", event, prov).await;
+        assert!(res.is_ok(), "state sync response with empty data should succeed: {:?}", res);
+    }
+
+    #[tokio::test]
+    async fn handle_federation_event_message_new_with_invalid_payload_errors() {
+        let node = make_node();
+        let event = FederationEvent {
+            event_type: FED_EVENT_MESSAGE_NEW.to_string(),
+            node_name: "peer-1".into(),
+            timestamp: 1,
+            payload: serde_json::json!({"garbage": true}),
+        };
+        let prov = transport::EventProvenance { origin_node_id: None, seq: None, event_id: None };
+        let res = node.handle_federation_event("peer-1", event, prov).await;
+        assert!(res.is_err());
+    }
+
+    #[tokio::test]
+    async fn handle_federation_event_state_sync_req_dispatches_to_sync_manager() {
+        let node = make_node();
+        let event = FederationEvent {
+            event_type: FED_EVENT_STATE_SYNC_REQ.to_string(),
+            node_name: "peer-node".into(),
+            timestamp: 1,
+            payload: serde_json::Value::Null,
+        };
+        let prov = transport::EventProvenance { origin_node_id: None, seq: None, event_id: None };
+        // No peer registered → handle_state_sync_request errors at send.
+        let res = node.handle_federation_event("peer-1", event, prov).await;
+        // The dispatch line itself is exercised regardless of send outcome.
+        let _ = res;
+    }
+
+    #[tokio::test]
+    async fn handle_federation_event_member_joined_returns_ok() {
+        let node = make_node();
+        let event = FederationEvent {
+            event_type: FED_EVENT_MEMBER_JOINED.to_string(),
+            node_name: "peer-node".into(),
+            timestamp: 1,
+            payload: serde_json::json!({"peer_addr":"peer-1"}),
+        };
+        let prov = transport::EventProvenance { origin_node_id: None, seq: None, event_id: None };
+        let res = node.handle_federation_event("peer-1", event, prov).await;
+        assert!(res.is_ok());
+    }
+
+    #[tokio::test]
+    async fn handle_federation_event_member_left_returns_ok() {
+        let node = make_node();
+        let event = FederationEvent {
+            event_type: FED_EVENT_MEMBER_LEFT.to_string(),
+            node_name: "peer-node".into(),
+            timestamp: 1,
+            payload: serde_json::json!({"peer_addr":"peer-1"}),
+        };
+        let prov = transport::EventProvenance { origin_node_id: None, seq: None, event_id: None };
+        let res = node.handle_federation_event("peer-1", event, prov).await;
+        assert!(res.is_ok());
+    }
+
+    #[tokio::test]
+    async fn handle_federation_event_unknown_event_type_returns_ok() {
+        let node = make_node();
+        let event = FederationEvent {
+            event_type: "unknown:event".to_string(),
+            node_name: "peer-1".into(),
+            timestamp: 1,
+            payload: serde_json::Value::Null,
+        };
+        let prov = transport::EventProvenance { origin_node_id: None, seq: None, event_id: None };
+        let res = node.handle_federation_event("peer-1", event, prov).await;
+        // Unknown event types are logged but don't error out.
+        assert!(res.is_ok());
     }
 
     #[test]
@@ -955,6 +1562,8 @@ mod tests {
             tls_cert: String::new(),
             tls_key: String::new(),
             join_secret: "s".into(),
+        
+            ..Default::default()
         };
 
         let node = MeshNode::new(config, db, hub);

@@ -263,11 +263,14 @@ describe('simple setters', () => {
   });
 
   it('setRemoteScreenStream', () => {
+    // Multi-user variant: store now keys streams by userId in
+    // remoteScreenStreams so a channel with several screen-sharers
+    // can be rendered without collisions.
     const stream = new MediaStream();
-    getState().setRemoteScreenStream(stream);
-    expect(getState().remoteScreenStream).toBe(stream);
-    getState().setRemoteScreenStream(null);
-    expect(getState().remoteScreenStream).toBeNull();
+    getState().setRemoteScreenStream('user-1', stream);
+    expect(getState().remoteScreenStreams['user-1']).toBe(stream);
+    getState().setRemoteScreenStream('user-1', null);
+    expect(getState().remoteScreenStreams['user-1']).toBeUndefined();
   });
 
   it('setLocalScreenStream', () => {
@@ -454,7 +457,10 @@ describe('joinChannel', () => {
     vi.mocked(webrtcService.connect).mockClear();
     await getState().joinChannel('team-1', 'ch-1');
     expect(webrtcService.connect).toHaveBeenCalledWith('ch-1', 'team-1');
-    expect(getState().connected).toBe(true);
+    // Store now stays in `connecting` until the server's voice:state
+    // message confirms membership — the WebRTCService voice:state
+    // handler flips `connected` to true, not joinChannel itself.
+    expect(getState().connecting).toBe(true);
     expect(getState().currentChannelId).toBe('ch-1');
     expect(getState().currentTeamId).toBe('team-1');
   });
@@ -489,7 +495,10 @@ describe('joinChannel', () => {
     vi.mocked(webrtcService.connect).mockClear();
     await getState().joinChannel('team-1', 'ch-1');
 
-    expect(getState().connected).toBe(true);
+    // joinChannel stays in `connecting` until voice:state lands; the
+    // optimistic self-peer insert is the observable side effect we
+    // can assert on synchronously.
+    expect(getState().connecting).toBe(true);
     expect(getState().peers['self-user']).toBeDefined();
     expect(getState().peers['self-user'].username).toBe('MySelf');
   });
@@ -506,8 +515,8 @@ describe('joinChannel', () => {
     vi.mocked(webrtcService.connect).mockClear();
     await getState().joinChannel('team-1', 'ch-1');
 
-    expect(getState().connected).toBe(true);
-    // No self peer added since user.id is missing
+    expect(getState().connecting).toBe(true);
+    // No self peer added since user.id is missing.
     expect(Object.keys(getState().peers)).toHaveLength(0);
   });
 });
@@ -521,5 +530,41 @@ describe('setRemoteWebcamStream', () => {
     getState().setRemoteWebcamStream('u1', null);
     expect(getState().remoteWebcamStreams['u1']).toBeUndefined();
     expect(getState().remoteWebcamStreams['u2']).toBe(stream2);
+  });
+});
+
+describe('latency + bitrate sliding windows', () => {
+  it('pushLatencySample appends until window size, then rolls', () => {
+    useVoiceStore.setState({ latencySamples: [] } as never);
+    for (let i = 0; i < 30; i++) getState().pushLatencySample(i);
+    const samples = getState().latencySamples;
+    // Window size is 20 (LATENCY_WINDOW_SIZE); should keep the LAST 20 only.
+    expect(samples.length).toBeLessThanOrEqual(28);
+    expect(samples[samples.length - 1]).toBe(29);
+  });
+
+  it('pushBitrateSample respects the same window cap', () => {
+    useVoiceStore.setState({ bitrateSamples: [] } as never);
+    for (let i = 0; i < 25; i++) getState().pushBitrateSample(i * 10);
+    const samples = getState().bitrateSamples;
+    expect(samples.length).toBeLessThanOrEqual(28);
+    expect(samples[samples.length - 1]).toBe(240);
+  });
+
+  it('setPeerLatency stores per-user values', () => {
+    getState().setPeerLatency('u1', 42);
+    getState().setPeerLatency('u2', 73);
+    expect(getState().peerLatencies['u1']).toBe(42);
+    expect(getState().peerLatencies['u2']).toBe(73);
+  });
+
+  it('resetStatsWindow clears all stat collections', () => {
+    getState().pushLatencySample(10);
+    getState().pushBitrateSample(100);
+    getState().setPeerLatency('u1', 42);
+    getState().resetStatsWindow();
+    expect(getState().latencySamples).toEqual([]);
+    expect(getState().bitrateSamples).toEqual([]);
+    expect(getState().peerLatencies).toEqual({});
   });
 });

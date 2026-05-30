@@ -692,9 +692,18 @@ describe('CryptoManager', () => {
     expect(sn).toMatch(/^\d{60}$/);
   });
 
-  it('decryptDM throws without session', async () => {
+  it('decryptDM throws without session and without X3DH bootstrap header', async () => {
     const mgr = await createManager();
-    await expect(mgr.decryptDM('unknown', 'data')).rejects.toThrow('No session for peer unknown');
+    // Well-formed message envelope but no X3DH bootstrap — the
+    // responder path can't kick in, so the decrypt should fail.
+    const msg = {
+      header: { dh_public_key: [], previous_chain_length: 0, message_number: 0 },
+      ciphertext: [],
+    };
+    const b64 = btoa(JSON.stringify(msg));
+    await expect(mgr.decryptDM('unknown', b64)).rejects.toThrow(
+      'No session for peer unknown',
+    );
   });
 
   it('toJSON includes pairwiseSessions when sessions exist', async () => {
@@ -878,9 +887,16 @@ describe('CryptoManager DM full roundtrip', () => {
     expect(ct.length).toBeGreaterThan(0);
   });
 
-  it('throws on decryptDM without session', async () => {
+  it('throws on decryptDM without session and without X3DH bootstrap header', async () => {
     const mgr = await createManager();
-    await expect(mgr.decryptDM('unknown-peer', 'some-data')).rejects.toThrow('No session for peer unknown-peer');
+    const msg = {
+      header: { dh_public_key: [], previous_chain_length: 0, message_number: 0 },
+      ciphertext: [],
+    };
+    const b64 = btoa(JSON.stringify(msg));
+    await expect(mgr.decryptDM('unknown-peer', b64)).rejects.toThrow(
+      'No session for peer unknown-peer',
+    );
   });
 
   it('getOrCreateGroupSession creates new session and reuses it', async () => {

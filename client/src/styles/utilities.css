@@ -74,8 +74,8 @@
 }
 
 .clickable:focus-visible {
-  outline: 2px solid var(--brand-500);
-  outline-offset: -2px;
+  outline: 0.125rem solid var(--brand-500);
+  outline-offset: -0.125rem;
 }
 
 .clickable-danger:hover {
@@ -93,12 +93,89 @@
 
 .visually-hidden {
   position: absolute;
-  width: 1px;
-  height: 1px;
+  width: 0.0625rem;
+  height: 0.0625rem;
   padding: 0;
-  margin: -1px;
+  margin: -0.0625rem;
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* ====================================================================
+   Mesh design — relocated from mesh-overrides.css. Generic modal +
+   button utility classes used across pages. Single source of truth;
+   theming via tokens.
+   ==================================================================== */
+
+/* Generic modals */
+
+.modal-overlay,
+.dialog-overlay {
+  background: rgba(7, 8, 9, 0.7);
+  backdrop-filter: none;
+}
+
+.modal,
+.dialog,
+.new-dm-modal,
+.create-channel-modal,
+.shortcuts-modal {
+  background: var(--surface);
+  border: 0.0625rem solid var(--accent);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-2);
+}
+
+.modal-title,
+.dialog-title {
+  font-family: var(--font-display);
+  font-weight: var(--fw-display, 700);
+  color: var(--fg);
+}
+
+/* Generic buttons */
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: 0.0625rem solid var(--accent);
+  border-radius: var(--r-md);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.btn-primary:hover {
+  background: var(--accent-2);
+  border-color: var(--accent-2);
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--fg);
+  border: 0.0625rem solid var(--hairline);
+  border-radius: var(--r-md);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.btn-secondary:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btn-danger {
+  background: transparent;
+  color: var(--danger);
+  border: 0.0625rem solid var(--danger);
+  border-radius: var(--r-md);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }

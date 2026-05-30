@@ -1,0 +1,104 @@
+# Dilla — production systemd unit.
+#
+# Install:
+#   1. Create a dedicated unprivileged user:
+#        sudo useradd --system --no-create-home --shell /usr/sbin/nologin dilla
+#   2. Drop the dilla-server binary at /usr/local/bin/dilla-server.
+#   3. Stage configuration:
+#        sudo install -d -o dilla -g dilla -m 0750 /var/lib/dilla /etc/dilla
+#        sudo install -m 0640 -o root -g dilla dilla.env /etc/dilla/dilla.env
+#        sudo install -m 0640 -o root -g dilla db-passphrase /etc/dilla/db-passphrase
+#   4. Copy this file to /etc/systemd/system/dilla-server.service.
+#   5. sudo systemctl daemon-reload && sudo systemctl enable --now dilla-server
+#
+# Per-directive rationale: see HARDENING.md in this directory.
+# Tested-with: systemd 254 (Debian 12 backports), kernel 6.1+.
+
+[Unit]
+Description=Dilla — federated, end-to-end encrypted chat server
+Documentation=https://github.com/dilla-chat/dilla
+After=network-online.target
+Wants=network-online.target
+# If you run a local reverse proxy on the same box:
+# After=caddy.service
+
+[Service]
+Type=simple
+User=dilla
+Group=dilla
+ExecStart=/usr/local/bin/dilla-server
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+
+# --- Configuration -----------------------------------------------------------
+EnvironmentFile=/etc/dilla/dilla.env
+# systemd LoadCredential framework: the passphrase file is bind-mounted into
+# /run/credentials/<unit>/db-passphrase, owned by the unit user, mode 0400.
+# Superior to env vars because it cannot be read via /proc/<pid>/environ or
+# leak through `journalctl --output=verbose`.
+LoadCredential=db-passphrase:/etc/dilla/db-passphrase
+Environment=DILLA_DB_PASSPHRASE_FILE=%d/db-passphrase
+
+# --- Filesystem isolation ----------------------------------------------------
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+ReadWritePaths=/var/lib/dilla
+
+# --- Capability + privilege controls -----------------------------------------
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictNamespaces=true
+PrivateUsers=true
+
+# --- Network controls --------------------------------------------------------
+# AF_INET + AF_INET6 for the HTTP+WS listeners and outbound (Giphy, TURN,
+# federation peers). AF_UNIX is kept in case future versions ship a control
+# socket. AF_NETLINK is explicitly OFF — we don't need to enumerate routes.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+# Allow loopback (reverse proxy talks to us via 127.0.0.1), private nets (for
+# WireGuard federation mesh), and any (egress to Cloudflare TURN + Giphy). If
+# you don't use Giphy + don't federate, tighten this to localhost only.
+IPAddressAllow=localhost 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
+IPAddressAllow=any
+
+# --- syscall filter ----------------------------------------------------------
+# @system-service is the standard server allow-list. EPERM (rather than
+# SIGSYS-kill) makes the audit logs noisier but the process more resilient
+# during clippy lint runs that exercise unusual syscalls.
+SystemCallFilter=@system-service
+SystemCallFilter=~@debug @mount @reboot @swap @raw-io @cpu-emulation @obsolete
+SystemCallErrorNumber=EPERM
+SystemCallArchitectures=native
+
+# --- Resource limits ---------------------------------------------------------
+LimitNOFILE=65536
+LimitNPROC=4096
+TasksMax=4096
+# Memory cap (raise for high-traffic boxes). Soft swap-out under pressure.
+MemoryMax=2G
+MemoryHigh=1500M
+
+# --- Logging -----------------------------------------------------------------
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dilla-server
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,3397 @@
+/* Stylesheet for the Dilla refinement prototype. Theme tokens are CSS vars
+   set via inline style on the .chat root. Style branches are gated on
+   [data-style="pulse" | "aurora" | "slate" | "mesh"]. */
+
+.chat * { box-sizing: border-box; }
+.chat {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: 60px var(--sidebar-w, 240px) 1fr var(--members-w, 232px);
+  grid-template-rows: 1fr;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-weight: var(--fw-body);
+  font-size: 13.5px;
+  line-height: var(--line-h, 1.5);
+  overflow: hidden;
+  isolation: isolate;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Resize handles — sit on top of the column gutters. 6px hit area, 1px line. */
+.resize-handle {
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 6px;
+  z-index: 5;
+  cursor: col-resize;
+  background: transparent;
+  transition: background .12s;
+}
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  left: 50%; top: 0; bottom: 0;
+  width: 1px;
+  background: transparent;
+  transform: translateX(-0.5px);
+  transition: background .12s, width .12s;
+}
+.resize-handle:hover::after,
+.resize-handle:active::after {
+  background: var(--accent);
+  width: 2px;
+}
+.resize-sidebar { left: calc(60px + var(--sidebar-w, 240px) - 3px); }
+.resize-members { right: calc(var(--members-w, 232px) - 3px); }
+.chat[data-narrow="1"] { grid-template-columns: 56px var(--sidebar-w, 220px) 1fr; }
+
+/* scrollbars */
+.chat ::-webkit-scrollbar { width: 8px; height: 8px; }
+.chat ::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 999px; }
+.chat ::-webkit-scrollbar-track { background: transparent; }
+
+/* ───── Server rail ───── */
+.rail {
+  background: var(--bg);
+  border-right: 1px solid var(--hairline);
+  padding: 14px 0;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  overflow-y: auto;
+}
+.rail-item {
+  position: relative;
+  width: 40px; height: 40px;
+  border-radius: var(--avatar-shape);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--fg);
+  background: var(--surface-2);
+  cursor: pointer;
+  transition: border-radius .18s, transform .12s, box-shadow .12s;
+}
+.rail-item:hover { transform: translateY(-1px); }
+.rail-item.dragging { opacity: 0.4; }
+.rail-item.drop-target { box-shadow: 0 0 0 2px var(--accent), 0 6px 14px var(--accent-soft); }
+.rail-item.active {
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: var(--shadow-1);
+}
+.rail-item.active::before {
+  content: '';
+  position: absolute; left: -10px; top: 50%; transform: translateY(-50%);
+  width: 3px; height: 22px;
+  background: var(--accent);
+  border-radius: 2px;
+}
+.rail-add {
+  width: 40px; height: 40px;
+  border-radius: var(--avatar-shape);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px dashed color-mix(in oklab, var(--accent) 50%, transparent);
+  cursor: pointer;
+  margin-top: auto;
+}
+.rail-dot {
+  position: absolute;
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  right: -2px; top: -2px;
+  background: var(--mention);
+  border: 2px solid var(--bg);
+}
+
+/* ───── Channel sidebar ───── */
+.side {
+  background: var(--bg-2);
+  border-right: 1px solid var(--hairline);
+  display: flex; flex-direction: column;
+  min-width: 0;
+}
+.side-head {
+  padding: 14px 14px 8px;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px solid var(--hairline);
+}
+.team-name {
+  font-family: var(--font-display);
+  font-weight: var(--fw-display);
+  font-size: 16px;
+  letter-spacing: var(--display-tracking);
+  color: var(--fg);
+  display: flex; align-items: center; gap: 6px;
+  min-width: 0;
+}
+.team-node {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-3);
+  margin-top: 2px;
+  letter-spacing: 0.02em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.icon-btn {
+  width: 26px; height: 26px;
+  padding: 0;
+  border-radius: var(--r-sm);
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--fg-2);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.icon-btn:hover { background: var(--surface-hi); color: var(--fg); }
+.icon-btn.off { color: var(--fg-3); position: relative; }
+.icon-btn.off::after {
+  content: '';
+  position: absolute;
+  left: 4px; right: 4px; top: 50%;
+  height: 1.5px;
+  background: var(--fg-3);
+  transform: rotate(-25deg);
+}
+.icon-btn.off:hover { color: var(--accent); }
+.icon-btn.off:hover::after { background: var(--accent); }
+
+/* Tabs (Kanals / PMs) */
+.tabs {
+  padding: 10px 12px 4px;
+  display: flex; gap: 4px;
+}
+.tab {
+  flex: 1;
+  display: flex; align-items: center; justify-content: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg-2);
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 500;
+  font-size: 12.5px;
+  transition: background .12s, color .12s;
+}
+.tab:hover { color: var(--fg); background: var(--surface-hi); }
+.tab.active { color: var(--fg); background: var(--surface); box-shadow: var(--shadow-1); }
+
+/* Side list */
+/* Bottom padding used to be 80px to clear an absolutely-positioned
+   voice dock / user panel — both are now normal-flow flex siblings
+   inside .side, so the scroll area doesn't need to leave them room. */
+.side-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 8px 8px;
+  min-height: 0;
+  /* Channel / DM / voice-participant rows are click targets, not
+     content — selecting their labels with the cursor never helps the
+     user and just produces visual noise on drag-scroll. */
+  user-select: none;
+  -webkit-user-select: none;
+}
+.cat {
+  margin-top: 14px;
+  padding: 6px 8px 4px;
+  display: flex; align-items: center; justify-content: space-between;
+  color: var(--fg-3);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+.cat-actions { display: flex; gap: 2px; opacity: 0; transition: opacity .12s; }
+.cat:hover .cat-actions { opacity: 1; }
+.cat-row { gap: 4px; }
+button.cat-collapsible {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  padding: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+.cat-collapsible { cursor: pointer; user-select: none; gap: 4px; }
+.cat-collapsible:hover { color: var(--fg-2); }
+.cat-collapsible > span:nth-of-type(2) { flex: 1; }
+.cat-chev {
+  display: inline-block;
+  font-size: 0.625rem;
+  line-height: 1;
+  transition: transform 0.12s ease;
+  color: var(--fg-3);
+  width: 0.625rem;
+  text-align: center;
+}
+
+.channel-row {
+  display: flex; align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--r-sm);
+  color: var(--fg-2);
+  cursor: pointer;
+  position: relative;
+  font-size: 13.5px;
+  transition: background .1s, color .1s;
+  min-height: 30px;
+}
+.channel-row:hover { background: var(--surface-hi); color: var(--fg); }
+.channel-row .ch-glyph { color: var(--fg-3); flex: 0 0 auto; }
+.channel-row .ch-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.channel-row.unread { color: var(--fg); font-weight: 500; }
+.channel-row.unread .ch-glyph { color: var(--fg-2); }
+.channel-row.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 500;
+}
+.chat[data-style="slate"] .channel-row.active { color: var(--fg); background: var(--surface-hi); }
+.channel-row.active .ch-glyph { color: var(--accent); }
+.channel-row.active::before {
+  content: '';
+  position: absolute; left: -8px; top: 6px; bottom: 6px; width: 3px;
+  background: var(--accent);
+  border-radius: 0 2px 2px 0;
+}
+.chat[data-style="slate"] .channel-row.active::before { background: var(--accent); }
+.unread-pill {
+  margin-left: auto;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  animation: dilla-unread-in 0.2s ease-out both;
+  border-radius: 999px;
+  min-width: 18px;
+  text-align: center;
+  line-height: 1.4;
+}
+.unread-pill.mention { background: var(--mention); color: var(--accent-ink); }
+
+/* Voice members inside the channel list */
+.voice-participants {
+  display: flex; flex-direction: column;
+  margin: 4px 0 2px 26px;
+  gap: 1px;
+  padding-left: 8px;
+  border-left: 1px solid var(--hairline);
+}
+.voice-participant {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 6px 4px 8px;
+  margin-left: -4px;
+  border-left: 2px solid transparent;
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  font-size: 12px;
+  color: var(--fg-2);
+  cursor: pointer;
+  position: relative;
+  transition: background .1s, border-color .1s, color .1s;
+}
+.voice-participant:hover { background: var(--surface-hi); color: var(--fg); }
+.voice-participant.speaking {
+  color: var(--fg);
+  border-left-color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 6%, transparent);
+}
+.voice-participant.muted .vp-name { color: var(--fg-3); }
+.vp-avatar {
+  width: 18px; height: 18px;
+  border-radius: var(--avatar-shape);
+  font-size: 9px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: #111;
+  flex: 0 0 auto;
+}
+.vp-name {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.vp-state {
+  display: flex; align-items: center; gap: 6px;
+  flex: 0 0 auto;
+  color: var(--fg-3);
+}
+.vp-icon { display: inline-flex; align-items: center; }
+.vp-icon.mute { color: var(--danger); }
+.vp-icon.screen { color: var(--fg-2); }
+
+/* Mini audio meter (sidebar speaking indicator) */
+.mini-meter {
+  display: inline-flex; align-items: flex-end;
+  gap: 1.5px;
+  height: 10px;
+}
+.mini-meter .mm-bar {
+  display: inline-block;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+  transition: height 0.1s linear;
+}
+
+/* Voice connected dock */
+.voice-dock {
+  margin: 8px;
+  padding: 10px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+  display: flex; flex-direction: column; gap: 8px;
+  transition: gap 220ms ease;
+}
+/* No stats row visible? drop the column gap so the controls row
+   sits flush against the top of the dock. Animates in lockstep
+   with .voice-dock-stats max-height transition. */
+.voice-dock:has(.voice-dock-stats.is-hidden) {
+  gap: 0;
+}
+.voice-dock-top { display: flex; align-items: center; gap: 10px; }
+.voice-dock-status {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--accent);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-weight: 600;
+  display: flex; align-items: center; gap: 6px;
+}
+.voice-dock-status::before {
+  content: '';
+  width: 6px; height: 6px;
+  background: var(--accent);
+  border-radius: 50%;
+  box-shadow: 0 0 0 0 var(--accent);
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--accent) 60%, transparent); }
+  50%      { box-shadow: 0 0 0 6px transparent; }
+}
+.voice-dock-name { font-size: 12px; color: var(--fg-2); margin-left: auto; }
+.voice-dock-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+  /* Animate join/leave: when .is-hidden, collapse to zero height +
+     fade out. Slightly faster fade than collapse so the row is gone
+     visually before the layout has finished shifting up. */
+  overflow: hidden;
+  max-height: 4rem;
+  opacity: 1;
+  transition: max-height 220ms ease, opacity 160ms ease, margin 220ms ease;
+}
+.voice-dock-stats.is-hidden {
+  max-height: 0;
+  opacity: 0;
+  margin: 0;
+  pointer-events: none;
+}
+.vd-spark {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.vd-k {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+  font-weight: 600;
+}
+.vd-u {
+  margin-left: 0.125rem;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  color: var(--fg-3);
+  font-weight: 500;
+  text-transform: lowercase;
+  letter-spacing: 0.04em;
+}
+.vd-spark-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.375rem;
+}
+.vd-spark-cur {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.8125rem;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  transition: color 120ms ease;
+}
+/* Colour the current number to match the tone of the latest sample
+   (same palette as the sparkline bars) so the readout is good /
+   problem / bad at a glance. */
+.vd-spark-cur.vd-spark-ok   { color: var(--accent); }
+.vd-spark-cur.vd-spark-warn { color: var(--warn, #d4a017); }
+.vd-spark-cur.vd-spark-bad  { color: var(--danger); }
+.vd-spark-cur.vd-spark-idle { color: var(--fg-3); }
+.vd-spark-graph {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.25rem;
+  height: 1.5rem;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+.vd-spark-bar {
+  flex: 0 0 auto;          /* width set inline to match SPARK_BAR_PX */
+  min-height: 0.125rem;
+  border-radius: 0.0625rem;
+  background: var(--surface-2);
+  transition: height 0.4s ease-out, background-color 0.4s ease-out;
+}
+.vd-spark-bar.vd-spark-ok   { background: var(--accent); }
+.vd-spark-bar.vd-spark-warn { background: var(--warn, #d4a017); }
+.vd-spark-bar.vd-spark-bad  { background: var(--danger); }
+.vd-spark-bar.vd-spark-idle { background: var(--surface-2); }
+@media (prefers-reduced-motion: reduce) {
+  .vd-spark-bar { transition: none; }
+}
+.voice-dock-controls {
+  display: flex; gap: 4px;
+  transition: padding-top 220ms ease, border-color 220ms ease;
+}
+/* Only draw the separator when the stats row is sitting above us
+   AND not in its collapsed (.is-hidden) state — outside a voice
+   channel there's nothing to separate from. The transition animates
+   the row collapse, but the border would otherwise flash off
+   instantly; transition it in lockstep with the row fade. */
+.voice-dock-stats:not(.is-hidden) + .voice-dock-controls {
+  padding-top: 8px;
+  border-top: 1px solid var(--hairline);
+}
+.vctrl {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  --vctrl-bg: var(--surface-2);
+  color: var(--fg-2);
+  border: none;
+  cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.vctrl:hover { background: var(--surface-hi); color: var(--fg); --vctrl-bg: var(--surface-hi); }
+.vctrl.danger { color: var(--danger); }
+.vctrl.danger:hover { background: color-mix(in oklab, var(--danger) 18%, var(--surface-2)); }
+.vctrl.active {
+  color: var(--danger);
+  background: color-mix(in oklab, var(--danger) 14%, var(--surface-2));
+  --vctrl-bg: color-mix(in oklab, var(--danger) 14%, var(--surface-2));
+}
+.vctrl.on {
+  color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 14%, var(--surface-2));
+  --vctrl-bg: color-mix(in oklab, var(--accent) 14%, var(--surface-2));
+}
+/* While a stream is on, hover signals the destructive "stop" action.
+   Affects cam and screen-share equally (both use .vctrl.on). */
+.vctrl.on:hover {
+  color: var(--danger);
+  background: color-mix(in oklab, var(--danger) 18%, var(--surface-2));
+  --vctrl-bg: color-mix(in oklab, var(--danger) 18%, var(--surface-2));
+}
+/* Join variant: lit when a voice channel is selected, dimmed
+   otherwise so the user knows they need to click a channel first. */
+.vctrl.join {
+  color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 14%, var(--surface-2));
+  --vctrl-bg: color-mix(in oklab, var(--accent) 14%, var(--surface-2));
+}
+.vctrl.join:hover {
+  background: color-mix(in oklab, var(--accent) 24%, var(--surface-2));
+  --vctrl-bg: color-mix(in oklab, var(--accent) 24%, var(--surface-2));
+}
+.vctrl.is-disabled {
+  color: var(--fg-3);
+  background: var(--surface-2);
+  --vctrl-bg: var(--surface-2);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.vctrl.is-disabled:hover {
+  background: var(--surface-2);
+  --vctrl-bg: var(--surface-2);
+  color: var(--fg-3);
+}
+
+/* User panel (bottom-left) */
+.user-panel {
+  display: flex; align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--hairline);
+  background: var(--bg);
+}
+.avatar {
+  width: var(--avatar-sz, 32px); height: var(--avatar-sz, 32px);
+  border-radius: var(--avatar-shape);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 12px;
+  color: #1a1a1a;
+  flex: 0 0 auto;
+  position: relative;
+}
+/* When member.avatarUrl is set the component drops the initials and lets
+   the inline backgroundImage fill the tile. cover + center keeps the
+   composition regardless of source aspect ratio. Applied to every avatar
+   variant so the user's profile picture reads the same everywhere. */
+.avatar.has-image,
+.ndm-av.has-image,
+.vp-avatar.has-image,
+.mention-av.has-image,
+.pp-avatar.has-image,
+.sc-side-avatar.has-image,
+.ring-avatar.has-image {
+  background-size: cover;
+  background-position: center;
+  color: transparent;
+}
+.user-panel .avatar { width: 32px; height: 32px; }
+.avatar .presence {
+  position: absolute; right: -2px; bottom: -2px;
+  width: 11px; height: 11px;
+  border-radius: 50%;
+  border: 2px solid var(--bg-2);
+}
+.presence.online { background: var(--ok); }
+.presence.idle { background: var(--warn); }
+.presence.dnd { background: var(--danger); }
+.presence.offline { background: var(--fg-3); }
+.user-panel .meta { flex: 1; min-width: 0; }
+.user-panel .name { font-weight: 600; font-size: 13px; color: var(--fg); }
+.user-panel .sub { font-family: var(--font-mono); font-size: 10.5px; color: var(--fg-3); }
+.user-panel .actions { display: flex; gap: 2px; margin-left: auto; }
+.user-panel .actions .icon-btn { color: var(--fg); opacity: 0.7; }
+.user-panel .actions .icon-btn:hover { opacity: 1; color: var(--accent); background: var(--surface-hi); }
+
+/* Status picker */
+.status-pop {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 12px;
+  width: 260px;
+  background: var(--surface);
+  border: 1px solid var(--hairline-2);
+  border-radius: var(--r-md);
+  box-shadow: 0 12px 30px rgba(0,0,0,0.5);
+  z-index: 40;
+  padding: 6px 0;
+  animation: dilla-pop-in 0.14s ease-out both;
+}
+.sp-head {
+  padding: 6px 14px 8px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--fg-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.sp-row {
+  display: grid;
+  grid-template-columns: 12px auto 1fr;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 14px;
+  background: transparent;
+  border: 0;
+  color: var(--fg);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  text-align: left;
+}
+.sp-row:hover { background: var(--surface-hi); color: var(--accent); }
+.sp-row.on { background: var(--accent-soft); color: var(--accent); }
+.sp-row .presence {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.sp-hint { font-family: var(--font-mono); font-size: 10px; color: var(--fg-3); text-align: right; }
+.sp-divider { height: 1px; background: var(--hairline); margin: 4px 0; }
+.sp-custom { padding: 8px 14px; }
+.sp-custom-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--fg-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 6px;
+}
+.sp-custom-row { display: flex; gap: 6px; }
+.sp-custom-row input {
+  flex: 1;
+  padding: 6px 8px;
+  background: var(--bg);
+  border: 1px solid var(--hairline-2);
+  border-radius: var(--r-sm);
+  color: var(--fg);
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+}
+.sp-custom-row input:focus { border-color: var(--accent); }
+.sp-btn {
+  padding: 6px 10px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: 0;
+  border-radius: var(--r-sm);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sp-clear {
+  margin-top: 6px;
+  background: transparent;
+  border: 0;
+  color: var(--fg-3);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  padding: 0;
+}
+.sp-clear:hover { color: var(--accent); }
+
+/* Generic modal (new channel / new server) */
+/* ────────────────────────────────────────────────────────────────────────
+ * Modal overlay — the canonical scrim used by every modal in the shell.
+ * Inner dialogs add their own size/border/animation via classes like
+ * .modal-card, .sc-dialog, .apw, .settings-card. Modifiers below tweak
+ * the scrim itself for specific contexts (top-aligned palettes,
+ * stronger blur on incoming-call ring, softer dim on confirmations).
+ * ──────────────────────────────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: color-mix(in oklab, var(--bg) 65%, transparent);
+  -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+  z-index: 420;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+  animation: dilla-feed-in 0.15s ease-out both;
+}
+/* Invisible click-to-dismiss button covering the scrim. The button
+ * sits behind the modal card (lower z-index in the same overlay) so
+ * clicks outside the card dismiss while clicks inside don't. */
+.modal-overlay-dismiss {
+  position: absolute; inset: 0;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: default;
+  z-index: 0;
+}
+/* Top-aligned variant for the command + search palettes — content sits
+   80px from the top instead of vertically centered. */
+.modal-overlay--top {
+  align-items: flex-start;
+  padding-top: 80px;
+}
+/* Incoming voice call wants a stronger backdrop blur + sits above
+   regular modals so e.g. an open settings pane doesn't compete with it. */
+.modal-overlay--strong-blur {
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  z-index: 460;
+}
+/* Confirmation dialogs (delete message etc.) use a lighter scrim so the
+   chat behind them stays readable. */
+.modal-overlay--soft {
+  background: color-mix(in oklab, var(--bg) 60%, transparent);
+  -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+}
+.modal-card {
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 24px 60px rgba(0,0,0,0.55);
+  border-radius: var(--r-md);
+  width: min(520px, 100%);
+  max-height: 85vh;
+  overflow-y: auto;
+  animation: dilla-settings-in 0.18s ease-out both;
+  color: var(--fg);
+  padding: 0;
+  margin: 0;
+}
+/* Confirm dialog — narrower than the default modal-card so the prompt
+   doesn't read as a full settings panel. */
+.modal-card.confirm-card { width: min(420px, 100%); }
+.modal-card.giphy-picker { width: min(640px, 100%); }
+.giphy-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+.giphy-tile {
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  padding: 0;
+  cursor: pointer;
+  overflow: hidden;
+  aspect-ratio: 1 / 1;
+  transition: border-color 0.12s, transform 0.12s;
+}
+.giphy-tile:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+.giphy-tile img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--hairline);
+}
+.modal-head h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: var(--fw-display);
+  letter-spacing: var(--display-tracking);
+}
+.chat[data-style="mesh"] .modal-head h2 { text-transform: uppercase; letter-spacing: 0.04em; }
+.modal-x {
+  width: 28px; height: 28px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--fg-3);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: var(--r-sm);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.modal-x:hover { background: var(--surface-hi); color: var(--fg); }
+.modal-body { padding: 18px 22px; display: flex; flex-direction: column; gap: 16px; }
+.modal-row { display: flex; flex-direction: column; gap: 6px; }
+.modal-row.modal-row-h {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.modal-row label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+.modal-opt {
+  margin-left: 6px;
+  color: var(--fg-3);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.modal-hint { font-size: 11px; color: var(--fg-3); line-height: 1.5; }
+
+/* GroupCombobox — chip-input that lists existing channel categories as
+   pills and lets the user create a new one inline. */
+.grp-combo {
+  position: relative;
+  display: flex; align-items: center; gap: 0.375rem;
+  min-height: 2.125rem;
+  padding: 0.25rem 0.5rem;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+}
+.grp-combo input {
+  flex: 1 1 auto;
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.8125rem;
+  padding: 0.125rem 0;
+  min-width: 4rem;
+}
+.grp-combo input::placeholder { color: var(--fg-3); }
+.grp-pill {
+  display: inline-flex; align-items: center; gap: 0.25rem;
+  padding: 0.125rem 0.5rem;
+  background: var(--accent-soft);
+  color: var(--fg);
+  border: 1px solid color-mix(in oklab, var(--accent) 40%, transparent);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+.grp-pill-static { cursor: pointer; }
+.grp-pill-x {
+  background: transparent;
+  border: 0;
+  color: var(--fg-2);
+  cursor: pointer;
+  font-size: 0.875rem;
+  line-height: 1;
+  padding: 0 0.125rem;
+}
+.grp-pill-x:hover { color: var(--fg); }
+.grp-pop {
+  position: absolute;
+  left: 0; right: 0;
+  top: calc(100% + 0.25rem);
+  z-index: 60;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-2);
+  max-height: 12rem;
+  overflow-y: auto;
+  padding: 0.25rem;
+}
+.grp-opt {
+  padding: 0.25rem 0.375rem;
+  cursor: pointer;
+  border-radius: var(--r-sm);
+  display: flex; align-items: center;
+}
+.grp-opt:hover { background: var(--surface-hi); }
+.grp-opt-new { gap: 0.375rem; }
+.grp-opt-new-label {
+  color: var(--fg-2);
+  font-size: 0.8125rem;
+}
+
+.modal-hint code {
+  font-family: var(--font-mono);
+  background: var(--surface-2);
+  padding: 1px 6px;
+  border-radius: 2px;
+  font-size: 11px;
+}
+.modal-row input, .modal-row textarea {
+  padding: 9px 11px;
+  background: var(--bg);
+  border: 1px solid var(--hairline-2);
+  border-radius: var(--r-sm);
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+  font-family: var(--font-mono);
+}
+.modal-row input:focus, .modal-row textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.modal-input-pre {
+  display: flex; align-items: center;
+  background: var(--bg);
+  border: 1px solid var(--hairline-2);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+.modal-input-pre:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.modal-input-pre input {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none !important;
+  flex: 1;
+}
+.pre-glyph {
+  padding: 0 12px;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  border-right: 1px solid var(--hairline-2);
+}
+.modal-foot {
+  display: flex; justify-content: flex-end; gap: 8px;
+  padding: 12px 22px 18px;
+  border-top: 1px solid var(--hairline);
+}
+.onb-seg {
+  display: inline-flex;
+  border: 1px solid var(--hairline-2);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  font-family: var(--font-mono);
+}
+.onb-seg button {
+  padding: 7px 14px;
+  background: transparent;
+  border: 0;
+  border-right: 1px solid var(--hairline-2);
+  color: var(--fg-2);
+  font: inherit;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.onb-seg button:last-child { border-right: 0; }
+.onb-seg button:hover { background: var(--surface-hi); color: var(--fg); }
+.onb-seg button.on { background: var(--accent-soft); color: var(--accent); }
+
+.modal-body .onb-seg {
+  display: flex;
+  width: 100%;
+}
+.ndm-list {
+  max-height: 360px;
+  overflow-y: auto;
+  display: flex; flex-direction: column;
+  gap: 2px;
+}
+.ndm-row {
+  display: grid; grid-template-columns: 36px 1fr;
+  gap: 12px; align-items: center;
+  padding: 8px 10px;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-sm);
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.ndm-row:hover { background: var(--surface-hi); }
+.ndm-av {
+  width: 36px; height: 36px;
+  border-radius: var(--avatar-shape);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 13px;
+  color: #111;
+  position: relative;
+}
+.ndm-av .presence {
+  position: absolute; right: -2px; bottom: -2px;
+  width: 11px; height: 11px;
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+}
+.ndm-name { font-size: 13px; font-weight: 600; color: var(--fg); }
+.ndm-sub  { font-size: 11px; color: var(--fg-3); font-family: var(--font-mono); }
+
+.fwd-preview {
+  padding: 10px 12px;
+  background: var(--bg-2);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--r-sm);
+  margin-bottom: 14px;
+}
+.fwd-author { font-size: 11px; color: var(--accent); font-weight: 600; margin-bottom: 4px; }
+.fwd-text { font-size: 12.5px; color: var(--fg); line-height: 1.45; }
+
+/* Channel mute indicator */
+.ch-muted {
+  margin-left: auto;
+  color: var(--fg-3);
+  display: inline-flex;
+}
+.channel-row.muted { color: var(--fg-3); }
+.channel-row.muted.unread { font-weight: 400; }
+.channel-row.muted .ch-glyph { opacity: 0.6; }
+.channel-row.dragging { opacity: 0.4; }
+.channel-row.drop-target {
+  border-top: 2px solid var(--accent);
+  background: var(--accent-soft);
+}
+
+/* Broadcast mention (@everyone, @here) */
+.ic-mention-broad {
+  font-weight: 700;
+  outline: 1px solid color-mix(in oklab, var(--mention) 50%, transparent);
+}
+
+/* ───── Main pane ───── */
+.main {
+  display: flex; flex-direction: column;
+  background: var(--bg);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+.main-head {
+  display: flex; align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  height: 48px;
+  border-bottom: 1px solid var(--hairline);
+  flex: 0 0 48px;
+  background: var(--bg);
+}
+.main-head .ch-title {
+  display: flex; align-items: center;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-weight: var(--fw-display);
+  font-size: 15px;
+  letter-spacing: var(--display-tracking);
+  color: var(--fg);
+}
+.main-head .dm-avatar {
+  width: 26px; height: 26px;
+  border-radius: var(--avatar-shape);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 10px;
+  color: #111;
+  position: relative;
+}
+.main-head .dm-avatar .presence {
+  position: absolute;
+  right: -2px; bottom: -2px;
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  border: 2px solid var(--bg);
+}
+.main-head .ch-topic {
+  padding-left: 12px;
+  margin-left: 4px;
+  border-left: 1px solid var(--hairline);
+  color: var(--fg-2);
+  font-size: 12.5px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  min-width: 0; flex: 1;
+}
+.main-head .head-actions {
+  margin-left: auto;
+  display: flex; align-items: center; gap: 6px;
+}
+.search-box {
+  display: flex; align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--fg-3);
+  width: 180px;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.search-box:hover { background: var(--surface-hi); color: var(--fg-2); }
+.chat[data-style="mesh"] .search-box { border: 1px solid var(--hairline); background: transparent; }
+
+/* Encryption badge */
+.enc-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 3px 7px;
+  border-radius: var(--r-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.chat[data-style="slate"] .enc-badge { background: var(--accent-soft); color: var(--accent); }
+
+/* Messages — natural top-to-bottom flow. Sticky-bottom is handled
+ * in JS (see useStickyBottom in ChatApp.tsx) using a ResizeObserver
+ * on the content so late-loading media doesn't strand the viewport. */
+.feed {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  animation: dilla-feed-in 0.18s ease-out both;
+  /* Extra bottom padding lets the newest message scroll up *past*
+     the composer overlay so it's never trapped beneath. The 3.5rem
+     matches the negative margin-top on .composer-wrap. */
+  padding: 1rem 0 4rem;
+  scroll-behavior: smooth;
+}
+.day-divider {
+  display: flex; align-items: center;
+  margin: 12px 16px 4px;
+  color: var(--fg-3);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  gap: 10px;
+}
+.day-divider::before, .day-divider::after {
+  content: ''; flex: 1; height: 1px; background: var(--hairline);
+}
+
+.unread-divider {
+  display: flex; align-items: center;
+  margin: 14px 16px 4px;
+  color: var(--danger);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  gap: 10px;
+}
+.unread-divider::before { content: ''; flex: 1; height: 1px; background: var(--danger); }
+.unread-divider::after  { content: ''; height: 1px; background: var(--danger); flex: 0 0 12px; }
+.unread-divider span {
+  background: var(--danger);
+  color: white;
+  padding: 1px 6px;
+  border-radius: 2px;
+  font-weight: 700;
+}
+
+/* Reply chip above the composer */
+.reply-chip {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px;
+  margin-bottom: 6px;
+  background: var(--surface);
+  border: 1px solid var(--hairline-2);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  color: var(--fg-2);
+}
+.reply-chip svg { color: var(--accent); flex: 0 0 auto; }
+.rc-label { font-family: var(--font-mono); font-size: 10.5px; color: var(--fg-3); text-transform: uppercase; letter-spacing: 0.06em; }
+.rc-av {
+  width: 18px; height: 18px;
+  border-radius: var(--avatar-shape);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 9px;
+  color: #111;
+}
+.rc-author { font-weight: 600; color: var(--fg); }
+.rc-text { color: var(--fg-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.rc-x {
+  width: 22px; height: 22px;
+  background: transparent;
+  border: 0;
+  color: var(--fg-3);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  border-radius: var(--r-sm);
+  flex: 0 0 auto;
+}
+.rc-x:hover { background: var(--surface-hi); color: var(--fg); }
+
+/* Staged attachment chips re-use .reply-chip; only the thumbnail
+   needs its own sizing/cropping so an image preview slots in next
+   to the icon. */
+.attach-chip .ac-thumb {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 0.1875rem;
+  object-fit: cover;
+  flex: 0 0 auto;
+}
+
+/* Reply reference banner inside a message */
+.msg.has-reply { padding-top: 2px; }
+
+/* Pinned-message indicator. Subtle left-edge accent on the message
+   row + a tiny chip in the header (or a glyph-only chip for compact
+   messages in a stack). Hover deepens the accent so the user knows
+   it's clickable. */
+.msg.is-pinned {
+  position: relative;
+  background: color-mix(in oklab, var(--accent) 4%, transparent);
+  border-radius: var(--r-sm);
+}
+.msg.is-pinned::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 0.125rem;
+  background: color-mix(in oklab, var(--accent) 55%, transparent);
+  border-radius: var(--r-sm) 0 0 var(--r-sm);
+}
+.msg-pin-chip {
+  display: inline-flex; align-items: center;
+  margin-left: 0.375rem;
+  color: color-mix(in oklab, var(--accent) 75%, var(--fg-3));
+  cursor: pointer;
+}
+.msg-pin-chip:hover { color: var(--accent); }
+.msg-pin-chip svg { color: inherit; }
+.msg-pin-chip-compact {
+  grid-column: 2;
+  width: max-content;
+  margin-top: 0.125rem;
+  margin-left: 0;
+}
+.reply-ref {
+  grid-column: 2;
+  display: flex; align-items: center; gap: 6px;
+  margin-bottom: 4px;
+  padding: 3px 8px;
+  border-left: 2px solid var(--hairline-2);
+  background: transparent;
+  color: var(--fg-3);
+  font-size: 11.5px;
+  cursor: pointer;
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  transition: background .12s, border-color .12s, color .12s;
+}
+.reply-ref:hover { background: var(--surface-hi); border-left-color: var(--accent); color: var(--fg-2); }
+.reply-ref.reply-ref-missing { cursor: default; opacity: 0.7; }
+.reply-ref.reply-ref-missing:hover { background: transparent; border-left-color: var(--hairline-2); }
+.rr-text-missing { font-style: italic; }
+.reply-ref svg { color: var(--fg-3); flex: 0 0 auto; }
+.rr-av {
+  width: 14px; height: 14px;
+  border-radius: var(--avatar-shape);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 7.5px;
+  color: #111;
+}
+.rr-author { font-weight: 600; color: var(--fg-2); }
+.reply-ref:hover .rr-author { color: var(--fg); }
+.rr-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+
+/* Flash highlight when scrolling to a reply target */
+.msg-flash { animation: msg-flash 1.4s ease-out; }
+@keyframes msg-flash {
+  0%   { background: color-mix(in oklab, var(--accent) 20%, transparent); }
+  100% { background: transparent; }
+}
+
+/* Inline message edit */
+.msg-edit textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 40px;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-sm);
+  color: var(--fg);
+  font: inherit;
+  padding: 8px 10px;
+  outline: none;
+  font-family: var(--font-body);
+  font-size: 13.5px;
+}
+.msg-edit-actions {
+  display: flex; gap: 6px; justify-content: flex-end;
+  margin-top: 6px;
+  font-size: 11px;
+}
+.msg-edit-actions button {
+  padding: 4px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline-2);
+  border-radius: var(--r-sm);
+  color: var(--fg-2);
+  font: inherit;
+  cursor: pointer;
+}
+.msg-edit-actions button:hover { color: var(--fg); border-color: var(--accent); }
+.msg-edit-actions button.primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+.msg-edit-actions button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.msg-edited {
+  margin-left: 4px;
+  font-size: 10.5px;
+  color: var(--fg-3);
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+}
+
+/* Confirm dialog (delete) — scrim is .modal-overlay.modal-overlay--soft;
+   this rule only sizes the inner dialog. */
+.confirm-dialog {
+  background: var(--surface);
+  border: 1px solid var(--danger);
+  box-shadow: 0 0 0 1px var(--danger), 0 24px 60px rgba(0,0,0,0.55);
+  border-radius: var(--r-md);
+  width: min(420px, 100%);
+  padding: 20px 22px;
+  animation: dilla-settings-in 0.18s ease-out both;
+}
+.cd-head {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+.cd-icon {
+  width: 36px; height: 36px;
+  border-radius: var(--r-sm);
+  background: color-mix(in oklab, var(--danger) 16%, transparent);
+  color: var(--danger);
+  display: flex; align-items: center; justify-content: center;
+}
+.cd-head h3 {
+  margin: 0 0 4px;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: var(--fw-display);
+  color: var(--fg);
+  letter-spacing: var(--display-tracking);
+}
+.chat[data-style="mesh"] .cd-head h3 { text-transform: uppercase; letter-spacing: 0.04em; }
+.cd-head p {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--fg-2);
+  line-height: 1.55;
+}
+.cd-preview {
+  margin: 14px 0 16px;
+  padding: 8px 12px;
+  border-left: 2px solid var(--hairline-2);
+  font-size: 12.5px;
+  color: var(--fg-2);
+  line-height: 1.5;
+  max-height: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cd-actions {
+  display: flex; gap: 8px; justify-content: flex-end;
+}
+.cd-btn {
+  padding: 8px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline-2);
+  border-radius: var(--r-sm);
+  color: var(--fg);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background .12s, border-color .12s, color .12s;
+}
+.cd-btn:hover { border-color: var(--accent); color: var(--accent); }
+.cd-btn.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: white;
+  font-weight: 600;
+}
+.cd-btn.danger:hover { background: color-mix(in oklab, var(--danger) 80%, black); border-color: var(--danger); color: white; }
+
+/* ───── File upload UX ───── */
+.drop-overlay {
+  position: absolute; inset: 0;
+  z-index: 50;
+  background: color-mix(in oklab, var(--accent) 6%, color-mix(in oklab, var(--bg) 80%, transparent));
+  backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
+  display: flex; align-items: center; justify-content: center;
+  border: 2px dashed var(--accent);
+  border-radius: var(--r-md);
+  pointer-events: none;
+  animation: dilla-feed-in 0.12s ease-out both;
+}
+.drop-card {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 30px 40px;
+  color: var(--accent);
+  text-align: center;
+}
+.drop-glyph { color: var(--accent); }
+.drop-title {
+  font-family: var(--font-display);
+  font-weight: var(--fw-display);
+  font-size: 18px;
+  letter-spacing: var(--display-tracking);
+  color: var(--fg);
+}
+.chat[data-style="mesh"] .drop-title { text-transform: uppercase; letter-spacing: 0.04em; }
+.drop-sub {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-2);
+  max-width: 40ch;
+  line-height: 1.55;
+}
+
+.upload-tray {
+  padding: 8px 0;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.upload-row {
+  display: grid;
+  grid-template-columns: 26px 1fr;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--hairline-2);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--r-sm);
+  animation: dilla-msg-in 0.18s ease-out both;
+}
+.up-icon {
+  width: 26px; height: 26px;
+  border-radius: var(--r-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+}
+.up-name {
+  font-size: 12.5px;
+  color: var(--fg);
+  font-weight: 500;
+  margin-bottom: 4px;
+  font-family: var(--font-mono);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.up-bar {
+  height: 3px;
+  background: var(--hairline-2);
+  border-radius: 0;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+.up-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.25s ease-out;
+}
+.up-meta {
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-3);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.up-phase { color: var(--accent); font-weight: 600; }
+
+/* ───── Empty state ───── */
+.empty-feed {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 60px 20px 40px;
+  text-align: center;
+  gap: 12px;
+}
+.empty-feed .ef-glyph {
+  width: 64px; height: 64px;
+  border-radius: var(--avatar-shape);
+  background: var(--surface-2);
+  color: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--hairline);
+}
+.empty-feed .ef-avatar {
+  width: 72px; height: 72px;
+  border-radius: var(--avatar-shape);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 24px;
+  color: #111;
+  position: relative;
+}
+.empty-feed .ef-avatar .presence {
+  position: absolute; right: -2px; bottom: -2px;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  border: 3px solid var(--bg);
+}
+.empty-feed .ef-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: var(--fw-display);
+  font-size: 22px;
+  letter-spacing: var(--display-tracking);
+  color: var(--fg);
+}
+.chat[data-style="mesh"] .empty-feed .ef-title { text-transform: uppercase; letter-spacing: 0.04em; }
+.empty-feed .ef-sub {
+  color: var(--fg-2);
+  font-size: 13px;
+  max-width: 44ch;
+  line-height: 1.55;
+}
+.empty-feed .ef-sub em { font-style: normal; color: var(--fg-3); }
+.empty-feed .ef-sub strong { color: var(--fg); }
+.empty-feed .ef-pills {
+  display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;
+  margin-top: 6px;
+}
+.empty-feed .ef-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 9px;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--fg-2);
+  letter-spacing: 0.02em;
+}
+
+.msg {
+  display: grid;
+  grid-template-columns: var(--avatar-sz, 32px) 1fr;
+  gap: 12px;
+  padding: var(--row-pad, 6px 18px);
+  position: relative;
+  transition: background .08s;
+  animation: dilla-msg-in 0.22s ease-out both;
+}
+.msg:hover { background: color-mix(in oklab, var(--fg) 3%, transparent); }
+.msg.has-mention { background: color-mix(in oklab, var(--mention) 8%, transparent); border-left: 2px solid var(--mention); padding-left: 16px; }
+.msg.compact { grid-template-columns: var(--avatar-sz, 32px) 1fr; }
+.msg.compact .avatar { visibility: hidden; height: 0; }
+.msg .head {
+  display: flex; align-items: baseline; gap: 8px;
+  margin-bottom: 2px;
+}
+.msg .author {
+  font-weight: 600;
+  color: var(--fg);
+  font-size: 13.5px;
+  cursor: pointer;
+  transition: color .12s;
+}
+.msg .author:hover { color: var(--accent); }
+.msg .at {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--fg-3);
+  letter-spacing: 0.02em;
+}
+.msg-seen {
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  cursor: help;
+  opacity: 0.7;
+}
+.msg-seen:hover { opacity: 1; }
+.msg .body { color: var(--fg); font-size: 13.5px; line-height: var(--line-h, 1.5); word-wrap: break-word; }
+.msg .body code, .msg .body .ic {
+  font-family: var(--font-mono);
+  background: var(--surface-2);
+  padding: 1px 5px;
+  border-radius: var(--r-sm);
+  font-size: 12px;
+}
+
+/* Code block (triple-backtick fenced) */
+.code-block {
+  display: block;
+  margin: 6px 0;
+  padding: 10px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--hairline);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--fg);
+  line-height: 1.55;
+  overflow-x: auto;
+  position: relative;
+  white-space: pre-wrap;
+}
+.code-block code {
+  background: transparent !important;
+  padding: 0 !important;
+  font: inherit !important;
+}
+.cb-lang {
+  position: absolute;
+  top: 4px; right: 8px;
+  font-size: 9.5px;
+  color: var(--fg-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-family: var(--font-mono);
+}
+
+/* Inline link */
+.ic-link {
+  color: var(--fg-link);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, var(--fg-link) 40%, transparent);
+  text-underline-offset: 2px;
+  word-break: break-all;
+}
+.ic-link:hover { text-decoration-color: var(--fg-link); }
+
+/* Unfurl card */
+.unfurl {
+  display: grid;
+  grid-template-columns: 4px 1fr;
+  margin-top: 6px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  max-width: 420px;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color .12s;
+}
+.unfurl:hover { border-color: var(--accent); }
+.unfurl .uf-side { background: var(--accent); }
+.unfurl.unfurl-figma .uf-side { background: #f24e1e; }
+.unfurl.unfurl-web .uf-side   { background: var(--fg-3); }
+.uf-body { padding: 8px 12px; }
+.uf-host {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+.uf-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-link);
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+.uf-desc {
+  font-size: 12px;
+  color: var(--fg-2);
+  line-height: 1.45;
+}
+
+/* ───── Slash-command outputs ───── */
+.msg-action em {
+  color: var(--fg);
+  font-style: italic;
+  opacity: 0.85;
+}
+.msg-poll {
+  margin-top: 4px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  max-width: 360px;
+}
+.poll-q {
+  font-weight: 600;
+  color: var(--fg);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+.poll-opt {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  margin: 4px 0;
+  background: var(--bg-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  font-size: 12.5px;
+  color: var(--fg);
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color .12s;
+}
+.poll-opt:hover { border-color: var(--accent); }
+.poll-bar {
+  position: absolute; left: 0; top: 0; bottom: 0;
+  background: var(--accent-soft);
+  transition: width .25s;
+}
+.poll-label { position: relative; flex: 1; }
+.poll-count {
+  position: relative;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-3);
+}
+.poll-foot {
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--fg-3);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+/* Multi-attachment wrapper inside a message bubble. Each attachment
+ * (image tile or file card) is an inline-block; the flex container
+ * lets them flow side-by-side and wrap to the next line on overflow
+ * so a 4-file message doesn't take 4 vertical rows. */
+.msg-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+  align-items: flex-start;
+}
+
+/* Attachment placeholder */
+.attach {
+  width: 20rem;
+  max-width: 100%;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+  border: 1px solid var(--hairline);
+  flex: 0 0 auto;
+}
+
+/* When multiple attachments share a bubble, compact the image tiles
+ * so half a dozen photos sit two-or-three per row instead of stacking
+ * into a tall column. Single-attachment messages keep the bigger
+ * preview. */
+.msg-attachments:not(.is-single) .attach {
+  width: 11.25rem;
+}
+.msg-attachments:not(.is-single) .attach .attach-img {
+  height: 7.5rem;
+}
+
+.attach-img {
+  height: 12.5rem;
+  background-image:
+    repeating-linear-gradient(45deg, rgba(255,255,255,.06) 0 8px, transparent 8px 16px),
+    radial-gradient(ellipse at center, var(--accent) 0%, var(--surface) 70%);
+  display: flex; align-items: flex-end;
+}
+/* The <img> inside .attach fills its tile so multi-image rows look
+ * uniform; object-fit:cover crops gracefully when aspect ratios
+ * differ. height is inherited from .attach-img (and overridden by
+ * the multi-attachment selector above when the bubble has >1 file). */
+img.attach-img {
+  width: 100%;
+  background: none;
+  object-fit: cover;
+}
+.attach-name {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  padding: 0.375rem 0.625rem;
+  background: var(--surface-2);
+  color: var(--fg-2);
+  width: 100%;
+  /* Clamp to a single line so tiles end at the same total height
+     regardless of filename length. Long names overflow with an
+     ellipsis; the full label is still on the <img> alt attribute. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Compact non-image attachment row. Replaces the giant .attach-img
+   block for files like zip / pdf / etc — a 10 KB zip shouldn't look
+   like a 4K photo. */
+.attach-file {
+  display: inline-flex; align-items: center; gap: 0.625rem;
+  margin-top: 0.375rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  color: var(--fg);
+  text-decoration: none;
+  max-width: 22rem;
+  transition: border-color 0.12s, color 0.12s;
+}
+.attach-file:hover { border-color: var(--accent); }
+.attach-file:hover .attach-file-action { color: var(--accent); }
+.attach-file-icon {
+  display: inline-flex; align-items: center;
+  color: var(--fg-3);
+}
+.attach-file-meta {
+  display: inline-flex; flex-direction: column; min-width: 0; flex: 1;
+}
+.attach-file-name {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.attach-file-size {
+  font-size: 0.6875rem;
+  font-family: var(--font-mono);
+  color: var(--fg-3);
+}
+.attach-file-action {
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--fg-2);
+}
+
+/* Reactions */
+.rxns { display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap; }
+.rxn {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 7px;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  animation: dilla-rxn-pop 0.22s ease-out both;
+  font-size: 11.5px;
+  color: var(--fg-2);
+  cursor: pointer;
+  border: 1px solid transparent;
+  font-family: var(--font-mono);
+  letter-spacing: 0;
+  line-height: 1.5;
+  transition: background .12s, border-color .12s;
+}
+.rxn:hover { background: var(--surface-hi); border-color: var(--hairline-2); }
+.rxn.mine {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: color-mix(in oklab, var(--accent) 40%, transparent);
+}
+.rxn.mine:hover { background: color-mix(in oklab, var(--accent) 20%, transparent); }
+.rxn-add { padding: 2px 6px; color: var(--fg-3); }
+.rxn-add:hover { color: var(--accent); }
+
+/* ───── Thread panel ───── */
+.thread-panel {
+  background: var(--bg-2);
+  border-left: 1px solid var(--hairline-2);
+  display: flex; flex-direction: column;
+  animation: dilla-thread-in 0.22s cubic-bezier(.3,.7,.4,1) both;
+  min-width: 0;
+  min-height: 0;
+}
+.tp-head {
+  flex: 0 0 48px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--hairline);
+}
+.tp-title {
+  font-family: var(--font-display);
+  font-weight: var(--fw-display);
+  font-size: 14px;
+  letter-spacing: var(--display-tracking);
+}
+.chat[data-style="mesh"] .tp-title { text-transform: uppercase; letter-spacing: 0.04em; }
+.tp-channel { color: var(--fg-3); font-size: 12px; margin-left: 6px; }
+.tp-head .icon-btn { font-size: 16px; line-height: 1; }
+.tp-feed {
+  flex: 1; min-height: 0;
+  overflow-y: auto;
+  padding: 14px 12px 8px;
+}
+.tp-original {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--hairline);
+  margin-bottom: 8px;
+}
+.tp-msg {
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  gap: 10px;
+  animation: dilla-msg-in 0.18s ease-out both;
+  padding: 8px 4px;
+  border-radius: var(--r-sm);
+  transition: background .08s;
+}
+.tp-msg:hover { background: color-mix(in oklab, var(--fg) 3%, transparent); }
+.tp-msg .avatar { width: 32px; height: 32px; font-size: 12px; }
+.tp-msg .head {
+  display: flex; align-items: baseline; gap: 8px;
+  margin-bottom: 2px;
+}
+.tp-msg .author { font-weight: 600; color: var(--fg); font-size: 13px; }
+.tp-msg .at { font-family: var(--font-mono); font-size: 10px; color: var(--fg-3); }
+.tp-msg .body { color: var(--fg); font-size: 13px; line-height: 1.5; }
+.tp-meta {
+  font-size: 11px;
+  color: var(--fg-3);
+  padding: 4px 8px 0;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.tp-composer {
+  padding: 8px 12px 12px;
+  border-top: 1px solid var(--hairline);
+}
+.tp-empty { padding: 24px; text-align: center; color: var(--fg-3); font-size: 12px; }
+
+/* Thread preview */
+.thread-preview {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 6px;
+  padding: 4px 10px 4px 8px;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--fg-link);
+  font-size: 12px;
+  cursor: pointer;
+  border-left: 2px solid var(--hairline-2);
+  width: fit-content;
+  transition: background .12s, border-color .12s;
+}
+.thread-preview:hover { background: var(--surface-hi); border-left-color: var(--accent); }
+.thread-stack { display: flex; align-items: center; }
+.thread-stack .avatar { width: 16px; height: 16px; font-size: 8px; margin-right: -4px; border: 2px solid var(--bg); }
+
+/* System message */
+.msg.system .body { color: var(--fg-2); font-size: 12.5px; font-style: italic; }
+.chat[data-style="mesh"] .msg.system .body { font-style: normal; font-family: var(--font-mono); }
+.msg.system .meta { color: var(--fg-3); font-family: var(--font-mono); font-size: 11px; margin-top: 2px; }
+
+/* Hover toolbar */
+.msg-tools {
+  position: absolute;
+  top: -10px; right: 20px;
+  display: flex; gap: 0;
+  background: var(--surface);
+  box-shadow: var(--shadow-2);
+  border-radius: var(--r-md);
+  padding: 2px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .1s;
+  border: 1px solid var(--hairline-2);
+}
+.msg:hover .msg-tools { opacity: 1; pointer-events: auto; }
+.msg-tools button {
+  width: 26px; height: 26px;
+  padding: 0;
+  border-radius: var(--r-sm);
+  border: none;
+  background: transparent;
+  color: var(--fg-2);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.msg-tools button:hover { background: var(--surface-hi); color: var(--fg); }
+
+/* Composer.
+ *
+ * Overlays the feed at the bottom of .main so scrolling messages
+ * slip BEHIND the composer rather than hitting a hard divider.
+ * .feed (sibling above) carries a bottom padding equal to this
+ * area's height so the newest message is still reachable; the
+ * gradient mask along the top of .composer-wrap fades the feed
+ * cleanly into the composer's surface.
+ */
+.composer-wrap {
+  padding: 0 1rem 1rem;
+  flex: 0 0 auto;
+  position: relative;
+  margin-top: -3.5rem;
+  pointer-events: none; /* children re-enable; lets feed scroll behind */
+  background: linear-gradient(
+    to bottom,
+    transparent 0,
+    var(--bg) 2.5rem,
+    var(--bg) 100%
+  );
+}
+.composer-wrap > * {
+  pointer-events: auto;
+}
+.composer {
+  border: 1px solid var(--hairline-2);
+  background: var(--surface);
+  border-radius: var(--r-lg);
+  display: flex; flex-direction: column;
+  transition: border-color .14s, box-shadow .14s;
+}
+.composer:focus-within {
+  border-color: color-mix(in oklab, var(--accent) 60%, var(--hairline-2));
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.composer-typing {
+  padding: 0.25rem 1rem 0.25rem;
+  font-size: 0.6875rem;
+  color: var(--fg-3);
+  font-family: var(--font-mono);
+  min-height: 1.125rem;
+}
+/* Small gap between the word "typing" and the animated ellipsis
+   so the dots read as a separate beat. Only the first dot gets a
+   margin so the trio stays tightly grouped. */
+.composer-typing .dot:first-of-type {
+  margin-inline-start: 0.25rem;
+}
+.composer-input {
+  display: flex; align-items: center; gap: 4px;
+  padding: 8px 8px 8px 10px;
+}
+.composer-input textarea {
+  flex: 1;
+  resize: none;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 0.84375rem;
+  line-height: 1.5;
+  /* JS in TextChannel auto-grows height to scrollHeight on each
+     keystroke; max-height caps the growth and overflows the rest
+     into an internal scroll so the composer doesn't eat the feed. */
+  max-height: 8.75rem;
+  min-height: 1.5rem;
+  padding: 0.25rem;
+  align-self: stretch;
+}
+.composer-input textarea::placeholder { color: var(--fg-3); }
+/* Global index.css paints a 3px brand-500 glow on every focused textarea.
+   Composer has no border of its own, so that glow leaks out around the
+   whole composer block. Reset it here — focus is conveyed by the caret. */
+.composer-input textarea:focus { box-shadow: none; border-color: transparent; }
+.composer-textwrap { flex: 1; position: relative; }
+.composer-textwrap textarea { width: 100%; }
+.composer-tools { display: flex; gap: 2px; }
+
+/* @-mention autocomplete */
+.mention-pop {
+  position: absolute;
+  left: 0; right: 0;
+  bottom: calc(100% + 6px);
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+  border-radius: var(--r-md);
+  padding: 4px 0;
+  z-index: 10;
+  overflow: hidden;
+  animation: dilla-pop-in 0.12s ease-out both;
+}
+.mention-head {
+  padding: 6px 12px 8px;
+  border-bottom: 1px solid var(--hairline);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--fg-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.mention-row {
+  display: grid;
+  grid-template-columns: 24px 1fr auto 12px;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+}
+.mention-row.selected {
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+}
+.mention-av {
+  width: 24px; height: 24px;
+  border-radius: var(--avatar-shape);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 10px;
+  color: #111;
+}
+.mention-name { color: var(--fg); font-weight: 500; }
+.mention-status { color: var(--fg-3); font-size: 11px; font-family: var(--font-mono); }
+.mention-presence .presence {
+  display: inline-block;
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+}
+
+/* Slash command pop */
+.slash-pop .slash-row {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 10px;
+  padding: 6px 12px;
+  align-items: center;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  font-size: 12.5px;
+}
+.slash-pop .slash-row.selected {
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+}
+.slash-cmd {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--accent);
+  font-size: 12.5px;
+}
+.slash-args {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--fg-3);
+}
+.slash-desc { color: var(--fg-2); font-size: 11.5px; }
+
+/* ───── Pinned messages popover ───── */
+.pin-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 360px;
+  max-height: 420px;
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 18px 40px rgba(0,0,0,0.5);
+  border-radius: var(--r-md);
+  z-index: 30;
+  overflow: hidden;
+  display: flex; flex-direction: column;
+  animation: dilla-pop-in 0.14s ease-out both;
+}
+.pin-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--hairline);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-2);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+.pin-x {
+  width: 22px; height: 22px;
+  padding: 0;
+  border: 0; background: transparent; color: var(--fg-3);
+  font-size: 14px; cursor: pointer; border-radius: var(--r-sm);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.pin-x:hover { background: var(--surface-hi); color: var(--fg); }
+.pin-list { overflow-y: auto; padding: 6px 0; }
+.pin-row {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 10px;
+  padding: 8px 14px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+}
+.pin-row:hover { background: var(--surface-hi); border-left-color: var(--accent); }
+.pin-av {
+  width: 28px; height: 28px;
+  border-radius: var(--avatar-shape);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 11px;
+  color: #111;
+}
+.pin-meta { font-size: 11.5px; color: var(--fg-2); margin-bottom: 2px; }
+.pin-author { font-weight: 600; color: var(--fg); }
+.pin-time { color: var(--fg-3); font-family: var(--font-mono); font-size: 10.5px; }
+.pin-text {
+  font-size: 12.5px; color: var(--fg);
+  line-height: 1.45;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+.pin-empty {
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--fg-3);
+  font-size: 12px;
+  font-style: italic;
+}
+
+.th-foot {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--fg-3);
+  letter-spacing: 0.02em;
+}
+.th-count { color: var(--accent); font-weight: 600; }
+.th-avs { margin-left: auto; display: inline-flex; }
+
+/* The scroll-to-latest button is .btn.btn--primary.btn--pill.btn--mono
+   with call-site inline positioning; the composer-wrap is the
+   relatively-positioned anchor for it. */
+/* Context menu */
+.ctx-overlay {
+  position: fixed; inset: 0;
+  z-index: 320;
+}
+.ctx-overlay-dismiss {
+  position: absolute; inset: 0;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: default;
+  z-index: 0;
+}
+.ctx-menu {
+  position: fixed;
+  min-width: 220px;
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 18px 40px rgba(0,0,0,0.55);
+  border-radius: var(--r-md);
+  padding: 4px 0;
+  animation: dilla-pop-in 0.12s ease-out both;
+}
+.ctx-menu button {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%;
+  padding: 7px 14px;
+  background: transparent;
+  border: 0;
+  color: var(--fg);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  text-align: left;
+}
+.ctx-menu button:hover:not(:disabled) { background: var(--surface-hi); color: var(--accent); }
+.ctx-menu button.danger { color: var(--danger); }
+.ctx-menu button.danger:hover { background: color-mix(in oklab, var(--danger) 14%, transparent); color: var(--danger); }
+.ctx-menu button:disabled {
+  color: var(--fg-3);
+  cursor: default;
+  font-style: italic;
+}
+.ctx-menu button svg { color: inherit; opacity: 0.8; flex-shrink: 0; }
+.ctx-sep {
+  height: 1px;
+  background: var(--hairline);
+  margin: 4px 0;
+}
+.composer-input .comp-btn {
+  width: 32px; height: 32px;
+  padding: 0;
+  border-radius: var(--r-sm);
+  color: var(--fg-2);
+  flex: 0 0 auto;
+  background: transparent;
+  border: none;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.composer-input .comp-btn:hover { color: var(--accent); background: var(--surface-hi); }
+/* The composer's send button is now a plain `.btn .btn--primary
+   .btn--icon` (see styles/button.css). */
+
+/* ───── Member sidebar ───── */
+.members {
+  background: var(--bg-2);
+  border-left: 1px solid var(--hairline);
+  overflow-y: auto;
+  padding: 16px 12px 24px;
+  min-width: 0;
+  /* Same reasoning as .side-scroll — member rows are click targets,
+     not selectable content. */
+  user-select: none;
+  -webkit-user-select: none;
+}
+.members-section {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-3);
+  padding: 14px 6px 6px;
+}
+.members-section:first-child { padding-top: 0; }
+.member {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background .1s;
+}
+.member:hover { background: var(--surface-hi); }
+.member .avatar { width: 28px; height: 28px; font-size: 11px; }
+.member-name {
+  font-size: 13px;
+  color: var(--fg);
+  font-weight: 500;
+  line-height: 1.2;
+}
+.member-status {
+  font-size: 11px;
+  color: var(--fg-3);
+  font-family: var(--font-mono);
+}
+.member.offline { opacity: 0.5; }
+.member.offline .presence { background: var(--fg-3); }
+
+/* ───── Voice channel view ───── */
+.voice-view {
+  flex: 1;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  background:
+    radial-gradient(circle at 30% 20%, color-mix(in oklab, var(--accent) 7%, transparent), transparent 50%),
+    radial-gradient(circle at 80% 80%, color-mix(in oklab, var(--accent) 4%, transparent), transparent 50%),
+    var(--bg);
+  padding: 24px;
+  min-height: 0;
+  overflow-y: auto;
+}
+/* Wrapper around the (optional) .voice-focus + .voice-stage grid.
+   When focus is active the focus takes the main stage area at top
+   and the cards sit visible below; when no one is sharing the stage
+   fills the wrapper. */
+.voice-stage-wrap {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.voice-stage-wrap.has-focus > .voice-stage {
+  flex: none;
+  height: auto;
+  place-content: start center;
+}
+.voice-stage-wrap:not(.has-focus) > .voice-stage { flex: 1; }
+.chat[data-style="mesh"] .voice-view { background: var(--bg); }
+.voice-stage {
+  display: grid;
+  /* Fixed-width tracks (not 1fr) so cards never stretch wider than
+     their natural 13.75rem — every card looks identical regardless of
+     how many participants are in the channel. */
+  grid-template-columns: repeat(auto-fit, 13.75rem);
+  place-content: center;
+  gap: 14px;
+  height: 100%;
+  min-height: 0;
+}
+.voice-stage .voice-card {
+  width: 13.75rem;
+  /* Lock width AND height. Using aspect-ratio alone let the card
+     grow vertically once has-cam was applied because the cam-tile is
+     `aspect-ratio:1` and claimed the full card-width as height,
+     pushing v-name + badges past the 13.75rem square footprint.
+     Scope-narrow: only apply inside .voice-stage so the focused
+     stage's .voice-card (which lives in .voice-focus) keeps its
+     free-flowing dimensions. */
+  height: 13.75rem;
+  aspect-ratio: 1;
+  overflow: hidden;
+  justify-content: stretch;
+}
+.voice-stage .voice-card .voice-media {
+  flex: 1;
+  min-height: 0;
+}
+.voice-card {
+  background: var(--surface);
+  border-radius: var(--r-lg);
+  padding: 18px 16px 14px;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  position: relative;
+  border: 1px solid var(--hairline);
+  transition: transform .15s, border-color .15s;
+  animation: dilla-voice-in 0.28s cubic-bezier(.3,.7,.4,1) both;
+}
+.voice-card-hit {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  border: none;
+  border-radius: inherit;
+  cursor: pointer;
+  z-index: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+}
+.voice-card-wrap > *:not(.voice-card-hit) {
+  position: relative;
+  z-index: 1;
+}
+.voice-card.speaking {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 8px 24px var(--accent-soft);
+  animation: dilla-voice-in 0.28s cubic-bezier(.3,.7,.4,1) both,
+             dilla-speaking-pulse 2.4s ease-in-out 0.3s infinite;
+}
+.voice-card .voice-media {
+  position: relative;        /* offsetParent for nested FloatingPip */
+  width: 100%;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 4px;
+}
+/* In the GRID only: cam/avatar tile stays square, bounded by the
+   available height (the space left after v-name + badges). Without
+   this, cam-tile's `width:100% aspect-ratio:1` claims card-width as
+   height and forces the card past its 13.75rem footprint. Scoped to
+   .voice-stage so the focused stage stays free-flowing. */
+.voice-stage .voice-card .voice-media .cam-tile,
+.voice-stage .voice-card .voice-media .avatar-tile {
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+  aspect-ratio: 1;
+}
+.voice-card.has-screen { grid-column: span 2; padding: 10px; }
+.voice-card.has-cam .voice-media,
+.voice-card.has-screen .voice-media { margin-bottom: 6px; }
+.voice-card .avatar { width: 64px; height: 64px; font-size: 22px; }
+.voice-card .v-name { font-weight: 600; color: var(--fg); font-size: 14px; }
+.voice-card .v-state {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-3);
+  display: flex; align-items: center; gap: 5px;
+}
+.voice-card .v-mic-off { color: var(--danger); }
+.voice-card .v-badges {
+  position: absolute;
+  top: 12px; right: 12px;
+  display: flex; gap: 4px;
+  z-index: 2;
+}
+/* Inline variant lives in document flow, sitting under .v-name where
+   the old .v-state text was. Used in the normal (non-mini) voice card
+   to give the icons more breathing room than the cramped overlay. */
+.voice-card .v-badges-inline {
+  position: static;
+  margin-top: 2px;
+  z-index: auto;
+}
+.v-badge {
+  width: 22px; height: 22px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--r-sm);
+  background: rgba(0,0,0,0.55);
+  --vctrl-bg: rgba(20,20,20,0.9);
+  color: rgba(255,255,255,0.7);
+  backdrop-filter: blur(2px);
+}
+.v-badge.danger {
+  color: #ff8a8a;
+  background: rgba(80,20,30,0.7);
+  --vctrl-bg: rgba(80,20,30,0.85);
+}
+.v-badge.ok {
+  color: var(--accent);
+  background: rgba(20,40,30,0.7);
+  --vctrl-bg: rgba(20,40,30,0.85);
+}
+/* Per-participant volume slider */
+.v-volume {
+  position: absolute;
+  bottom: 8px; left: 12px;
+  right: 12px;
+  display: flex; align-items: center; gap: 6px;
+  background: rgba(0,0,0,0.55);
+  border-radius: var(--r-sm);
+  padding: 4px 8px;
+  color: var(--fg-2);
+  opacity: 0;
+  transition: opacity .15s;
+  z-index: 4;
+}
+.voice-card:hover .v-volume { opacity: 1; }
+.v-volume input[type="range"] {
+  flex: 1;
+  appearance: none; -webkit-appearance: none;
+  height: 3px;
+  background: rgba(255,255,255,0.18);
+  border-radius: 2px;
+  margin: 0;
+}
+.v-volume input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 10px; height: 10px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+}
+.v-volume-val {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--accent);
+  min-width: 22px;
+  text-align: right;
+}
+
+/* ───── Mock webcam ───── */
+/* Presence dot rendered on top of the cam / screen tile when those
+   replace the avatar. Matches `.avatar .presence` exactly (same
+   right/bottom offsets, same size, same border) so it lands in the
+   identical pixel position the avatar's own dot would. */
+.voice-media-presence {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid var(--bg-2);
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* Same outer dimensions as .cam-tile so the avatar fills the same
+   square area the cam would. NO overflow:hidden — the Avatar's
+   presence dot sits past the avatar's edge and gets clipped
+   otherwise. */
+.avatar-tile {
+  width: 100%;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+/* Inside .avatar-tile, the avatar fills the tile (matching the cam
+   frame in neighbouring cards) but keeps its round shape and its
+   presence dot visible. */
+.avatar-tile > .avatar {
+  width: 100% !important;
+  height: 100% !important;
+  font-size: clamp(28px, 36%, 72px);
+}
+.cam-tile {
+  width: 100%;
+  aspect-ratio: 1;
+  position: relative;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 60% 50% at 50% 38%, var(--cam-skin, #c89770) 0%, transparent 70%),
+    linear-gradient(180deg, #2b2620 0%, #161210 100%);
+  --vctrl-bg: rgba(20,20,20,0.9);
+}
+.cam-tile::before {
+  /* warm spotlight */
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse 80% 60% at 50% 30%, rgba(255,220,160,0.18), transparent 70%);
+  pointer-events: none;
+}
+.cam-tile::after {
+  /* faint scanlines for video grain */
+  content: '';
+  position: absolute; inset: 0;
+  background: repeating-linear-gradient(0deg, transparent 0 2px, rgba(0,0,0,0.06) 2px 3px);
+  pointer-events: none;
+}
+.cam-tile-head {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  width: 100%; height: 100%;
+  filter: blur(0.4px);
+  opacity: 0.5;
+}
+.cam-tile-label {
+  position: absolute;
+  bottom: 7px; left: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: white;
+  background: rgba(0,0,0,0.55);
+  padding: 2px 6px;
+  border-radius: 2px;
+  letter-spacing: 0.04em;
+  z-index: 1;
+}
+.cam-tile-rec {
+  position: absolute;
+  top: 7px; left: 8px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: white;
+  background: rgba(220,30,30,0.78);
+  padding: 1px 6px;
+  border-radius: 2px;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+  z-index: 1;
+}
+.cam-tile.mini { aspect-ratio: 1; border-radius: var(--r-sm); }
+/* When a real video stream is rendering inside the tile, suppress the
+   spotlight/scanline overlays — those decorations are for the silhouette
+   placeholder, not real footage. `:has()` lets us flip the styling
+   purely from the presence of a <video> child. */
+.cam-tile:has(video) {
+  background: #000;
+}
+.cam-tile:has(video)::before,
+.cam-tile:has(video)::after {
+  display: none;
+}
+
+/* ───── Mock screen-share ───── */
+.screen-tile {
+  width: 100%;
+  aspect-ratio: 16/9;
+  background: #0c0d0e;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  display: flex; flex-direction: column;
+  position: relative;
+  border: 1px solid rgba(255,255,255,0.04);
+  --vctrl-bg: rgba(12,13,14,1);
+}
+.screen-titlebar {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 10px;
+  background: linear-gradient(180deg, #22252a, #1a1c20);
+  border-bottom: 1px solid rgba(0,0,0,0.4);
+  flex: 0 0 auto;
+}
+.screen-dot { width: 8px; height: 8px; border-radius: 50%; }
+.screen-dot.r { background: #ff5f57; }
+.screen-dot.y { background: #febc2e; }
+.screen-dot.g { background: #28c840; }
+.screen-title {
+  color: rgba(255,255,255,0.35);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+.screen-body {
+  display: flex; flex: 1; min-height: 0;
+  padding: 8px;
+  gap: 6px;
+}
+.screen-sidebar {
+  width: 22%; max-width: 70px;
+  display: flex; flex-direction: column;
+  gap: 4px;
+  padding-top: 4px;
+}
+.screen-side-line {
+  height: 5px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 2px;
+}
+.screen-editor {
+  flex: 1;
+  display: flex; flex-direction: column;
+  gap: 3px;
+  padding-top: 2px;
+  min-width: 0;
+}
+.screen-row { display: flex; align-items: center; gap: 6px; }
+.screen-num {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: rgba(255,255,255,0.15);
+  min-width: 14px;
+  text-align: right;
+}
+.screen-line {
+  flex: 0 0 auto;
+  height: 5px;
+  background: linear-gradient(90deg, rgba(124,255,142,0.32) 0%, rgba(180,200,255,0.18) 50%, rgba(255,180,100,0.18) 100%);
+  border-radius: 1px;
+}
+.screen-pip {
+  position: absolute;
+  bottom: 30px; right: 10px;
+  /* 16:9 — webcam stream is 1280x720 native, anything else letterboxes */
+  width: 96px; height: 54px;
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  border: 1.5px solid var(--accent);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+  cursor: move;
+}
+
+/* Clickable PIP shown in focus mode — appears over the focused stream
+   and shows a thumbnail of the OTHER stream. Click to swap focus. */
+.voice-pip-swap {
+  position: absolute;
+  bottom: 16px; right: 16px;
+  /* 16:9 — webcam is 1280x720 native, anything else letterboxes */
+  width: 240px; height: 135px;
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  border: 2px solid var(--accent);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.5);
+  background: rgba(0,0,0,0.6);
+  cursor: move;
+  padding: 0;
+  transition: border-color 120ms ease;
+}
+.voice-pip-swap:hover {
+  border-color: color-mix(in oklab, var(--accent) 130%, white);
+}
+.voice-pip-swap > :not(.pip-edge) {
+  width: 100%; height: 100%;
+}
+.screen-pip > :not(.pip-edge) {
+  width: 100%; height: 100%;
+}
+/* Hide the screen-share chrome (titlebar) inside the swap PIP — the
+   small thumbnail should be just the video frame. */
+.voice-pip-swap .screen-titlebar {
+  display: none;
+}
+
+/* Eight resize handles around a draggable PIP. Edges are thin (4px)
+   tracks pinned to each side; corners are 10px squares pinned to
+   each corner. They sit ABOVE the video via z-index so mousedown
+   lands on the handle, not the video below. */
+.pip-edge {
+  position: absolute;
+  z-index: 2;
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+.pip-wrap > *:not(.pip-move-handle):not(.pip-edge) {
+  position: relative;
+  z-index: 1;
+}
+.pip-move-handle {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: move;
+  border-radius: inherit;
+}
+.pip-edge.pip-n  { top: -2px;    left: 6px;   right: 6px;  height: 5px;  cursor: ns-resize; }
+.pip-edge.pip-s  { bottom: -2px; left: 6px;   right: 6px;  height: 5px;  cursor: ns-resize; }
+.pip-edge.pip-e  { top: 6px;     bottom: 6px; right: -2px; width: 5px;   cursor: ew-resize; }
+.pip-edge.pip-w  { top: 6px;     bottom: 6px; left: -2px;  width: 5px;   cursor: ew-resize; }
+.pip-edge.pip-nw { top: -3px;    left: -3px;  width: 10px; height: 10px; cursor: nwse-resize; }
+.pip-edge.pip-ne { top: -3px;    right: -3px; width: 10px; height: 10px; cursor: nesw-resize; }
+.pip-edge.pip-sw { bottom: -3px; left: -3px;  width: 10px; height: 10px; cursor: nesw-resize; }
+.pip-edge.pip-se { bottom: -3px; right: -3px; width: 10px; height: 10px; cursor: nwse-resize; }
+
+/* Voice focus mode — sits above the .voice-stage grid in normal flow
+   so the cards stay visible BELOW it. Takes whatever vertical space
+   it needs; .voice-stage shrinks to fit the remainder. */
+.voice-focus {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  min-height: 0;
+  margin-bottom: 12px;
+}
+/* Tab fullscreen: cover the whole client viewport (everything inside
+   the browser tab — sidebar, top bar, member list all overlaid). Use
+   fixed positioning so it doesn't get scoped by an ancestor's
+   overflow / transform. The contents shrink the card chrome to zero
+   so the screen share itself fills the viewport, not a centered tile
+   with padding around it. */
+.voice-focus.is-tab-fs,
+.voice-focus:fullscreen {
+  position: fixed;
+  inset: 0;
+  /* Beat anything else stacking on the page (settings modal sits at
+     9999; we want to be just under that so global UI like dialogs
+     still wins over the fullscreen). */
+  z-index: 9000;
+  background: #000;
+  padding: 0;
+  margin: 0;
+}
+.voice-focus.is-tab-fs .voice-card,
+.voice-focus:fullscreen .voice-card {
+  background: transparent;
+  border: none;
+  padding: 0;
+  gap: 0;
+  max-width: none;
+  border-radius: 0;
+}
+.voice-focus.is-tab-fs .voice-card::before,
+.voice-focus.is-tab-fs .voice-card::after,
+.voice-focus:fullscreen .voice-card::before,
+.voice-focus:fullscreen .voice-card::after { display: none; }
+.voice-focus.is-tab-fs .voice-card > .v-name,
+.voice-focus.is-tab-fs .voice-card > .v-badges,
+.voice-focus.is-tab-fs .voice-card > .v-volume,
+.voice-focus.is-tab-fs .voice-card > .voice-expand,
+.voice-focus:fullscreen .voice-card > .v-name,
+.voice-focus:fullscreen .voice-card > .v-badges,
+.voice-focus:fullscreen .voice-card > .v-volume,
+.voice-focus:fullscreen .voice-card > .voice-expand { display: none; }
+.voice-focus.is-tab-fs .voice-card .voice-media,
+.voice-focus:fullscreen .voice-card .voice-media {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+.voice-focus.is-tab-fs .screen-tile,
+.voice-focus.is-tab-fs .cam-tile,
+.voice-focus:fullscreen .screen-tile,
+.voice-focus:fullscreen .cam-tile {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+  border-radius: 0;
+}
+.voice-focus .voice-card {
+  flex: 1;
+  max-width: 100%;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+}
+.voice-focus .voice-card.has-screen {
+  grid-column: auto;
+}
+.voice-focus .voice-card .voice-media {
+  flex: 1;
+  min-height: 0;
+}
+.voice-focus .screen-tile,
+.voice-focus .cam-tile {
+  aspect-ratio: auto;
+  width: 100%;
+  height: 100%;
+  min-height: 360px;
+}
+/* Reset the min-height inside the swap PIP — without this, the .voice-focus
+   descendant rule above forces the PIP's screen-tile/cam-tile to 360px
+   tall inside a 100px-tall PIP container, pushing the rendered video
+   out of the visible area (looked like a black thumbnail). */
+.voice-pip-swap .screen-tile,
+.voice-pip-swap .cam-tile {
+  aspect-ratio: auto;
+  min-height: 0;
+  height: 100%;
+  width: 100%;
+}
+.voice-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  justify-content: center;
+}
+.voice-card.mini {
+  width: 140px;
+  padding: 8px;
+  cursor: pointer;
+  flex: 0 0 auto;
+  position: relative;
+}
+.voice-card.mini.is-focused {
+  outline: 2px solid var(--mention);
+  outline-offset: -1px;
+  background: color-mix(in oklab, var(--mention) 6%, var(--surface));
+}
+.voice-card.mini.is-focused::before {
+  content: '● VIEWING';
+  position: absolute;
+  top: -8px; left: 6px;
+  background: var(--mention);
+  color: #1a1308;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 1px 6px;
+  border-radius: 2px;
+  display: block !important;
+  z-index: 2;
+}
+.voice-card.mini .voice-media { margin-bottom: 4px; }
+.voice-card.mini .cam-tile,
+.voice-card.mini .screen-tile { min-height: 0; }
+.voice-card.mini .v-name { font-size: 12px; }
+.voice-card.mini::before,
+.voice-card.mini::after { display: none !important; }
+.voice-card.mini .v-badges { top: 6px; right: 6px; }
+.voice-card.mini .v-badge {
+  width: 16px; height: 16px;
+}
+.voice-card.mini:hover { border-color: var(--accent); }
+.voice-card.focusable { cursor: pointer; }
+.voice-card.focusable:hover { border-color: var(--accent); }
+
+.voice-expand {
+  position: absolute;
+  bottom: 10px; right: 10px;
+  width: 28px; height: 28px;
+  border-radius: var(--r-sm);
+  background: rgba(0,0,0,0.55);
+  border: 0;
+  color: var(--accent);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0;
+  transition: opacity .15s;
+  z-index: 5;
+}
+.voice-card.focusable:hover .voice-expand { opacity: 1; }
+.voice-expand:hover { background: var(--accent); color: var(--accent-ink); }
+
+/* Action bar sits above the focused tile and holds the swap /
+   fullscreen / exit-focus buttons in a single row. Was on each
+   individual .voice-unfocus before, which made every button stack
+   at the same coordinate. */
+.voice-focus-actions {
+  position: absolute;
+  top: 10px; left: 10px;
+  z-index: 10;
+  display: flex;
+  gap: 6px;
+}
+.voice-unfocus {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px;
+  background: var(--surface);
+  border: 1px solid var(--hairline-2);
+  border-radius: var(--r-sm);
+  color: var(--fg-2);
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+.voice-unfocus:hover { color: var(--accent); border-color: var(--accent); }
+
+/* Segmented control for fullscreen mode selection. Three mutually
+   exclusive modes (normal / tab / screen) share one bordered pill
+   with internal dividers — visual grouping for what's conceptually
+   a radio choice rather than two independent toggles. */
+.voice-fs-group {
+  display: inline-flex;
+  background: var(--surface);
+  border: 1px solid var(--hairline-2);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+.voice-fs-opt {
+  appearance: none;
+  background: transparent;
+  border: none;
+  padding: 6px 10px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--fg-2);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+.voice-fs-opt + .voice-fs-opt { border-left: 1px solid var(--hairline-2); }
+.voice-fs-opt:hover { color: var(--accent); }
+.voice-fs-opt.is-active {
+  background: color-mix(in oklab, var(--accent) 18%, var(--surface));
+  color: var(--accent);
+}
+.voice-controls-bar {
+  display: flex; justify-content: center; gap: 6px;
+  padding: 16px 0 0;
+}
+.voice-controls-bar .ctrl {
+  width: 44px; height: 44px;
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  --vctrl-bg: var(--surface);
+  color: var(--fg-2);
+  border: 1px solid var(--hairline);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: background .12s, color .12s, transform .1s;
+}
+.voice-controls-bar .ctrl:hover { background: var(--surface-hi); color: var(--fg); transform: translateY(-1px); --vctrl-bg: var(--surface-hi); }
+.voice-controls-bar .ctrl.active {
+  background: color-mix(in oklab, var(--danger) 14%, var(--surface));
+  color: var(--danger);
+  border-color: color-mix(in oklab, var(--danger) 40%, transparent);
+  --vctrl-bg: color-mix(in oklab, var(--danger) 14%, var(--surface));
+}
+.voice-controls-bar .ctrl.on {
+  background: color-mix(in oklab, var(--accent) 14%, var(--surface));
+  color: var(--accent);
+  border-color: color-mix(in oklab, var(--accent) 40%, transparent);
+  --vctrl-bg: color-mix(in oklab, var(--accent) 14%, var(--surface));
+}
+.voice-controls-bar .ctrl.danger { background: var(--danger); color: white; border-color: var(--danger); }
+.voice-controls-bar .ctrl.danger:hover { background: color-mix(in oklab, var(--danger) 80%, black); }
+
+/* ───── Profile popover ───── */
+.pop-profile {
+  position: fixed;
+  background: var(--surface);
+  border: 1px solid var(--hairline-2);
+  border-radius: var(--r-md);
+  box-shadow: 0 18px 50px rgba(0,0,0,0.5), 0 0 0 1px var(--hairline);
+  z-index: 200;
+  overflow: hidden;
+  font-family: var(--font-body);
+}
+.pp-banner { height: 40px; opacity: 0.45; }
+.pp-body {
+  padding: 0 14px 14px;
+  margin-top: -18px;
+}
+.pp-avatar {
+  width: 56px; height: 56px;
+  border-radius: var(--avatar-shape);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 18px;
+  color: #111;
+  border: 3px solid var(--surface);
+  position: relative;
+  margin-bottom: 8px;
+}
+.pp-avatar .presence {
+  position: absolute; right: -2px; bottom: 0;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  border: 3px solid var(--surface);
+}
+.pp-name {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: var(--fw-display);
+  color: var(--fg);
+}
+.chat[data-style="mesh"] .pp-name { text-transform: uppercase; letter-spacing: 0.04em; }
+.pp-sub {
+  font-size: 11.5px;
+  color: var(--fg-2);
+  margin-top: 2px;
+  display: flex; gap: 6px; align-items: center;
+}
+.pp-role {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: var(--r-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.pp-status { color: var(--fg-3); }
+.pp-meta {
+  margin-top: 10px;
+  padding: 7px 9px;
+  background: var(--bg);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-2);
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  word-break: break-all;
+}
+.pp-k {
+  color: var(--fg-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 9.5px;
+}
+.pp-fed {
+  margin-left: auto;
+  color: var(--accent);
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.pp-actions {
+  display: flex; gap: 6px;
+  margin-top: 12px;
+}
+/* Buttons in this file use the canonical .btn (styles/button.css). */
+
+/* ───── Emoji picker ───── */
+.emoji-pick {
+  position: fixed;
+  background: var(--surface);
+  border: 1px solid var(--hairline-2);
+  border-radius: var(--r-md);
+  box-shadow: 0 12px 36px rgba(0,0,0,0.45);
+  z-index: 200;
+  overflow: hidden;
+  font-family: var(--font-body);
+}
+.ep-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 10.5px;
+  color: var(--fg-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+.ep-x {
+  width: 20px; height: 20px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--fg-3);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: var(--r-sm);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.ep-x:hover { background: var(--surface-hi); color: var(--fg); }
+.ep-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  padding: 6px;
+  gap: 2px;
+}
+.ep-btn {
+  height: 30px;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  padding: 0;
+  transition: background .1s;
+}
+.ep-btn:hover { background: var(--surface-hi); }
+
+/* ───── Style variants ───── */
+/* AURORA — editorial serif headers */
+.chat[data-style="aurora"] .team-name { font-style: italic; letter-spacing: -0.01em; }
+.chat[data-style="aurora"] .main-head .ch-title { font-style: italic; font-size: 17px; }
+.chat[data-style="aurora"] .day-divider { font-family: var(--font-display); font-style: italic; text-transform: none; letter-spacing: 0; font-size: 13px; }
+.chat[data-style="aurora"] .cat { color: var(--fg-2); font-family: var(--font-display); font-style: italic; text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 500; }
+
+/* MESH — all caps mono */
+.chat[data-style="mesh"] .team-name,
+.chat[data-style="mesh"] .main-head .ch-title { text-transform: uppercase; letter-spacing: 0.04em; }
+.chat[data-style="mesh"] .tab { text-transform: uppercase; letter-spacing: 0.04em; }
+.chat[data-style="mesh"] .icon-btn:hover { background: var(--accent-soft); color: var(--accent); }
+.chat[data-style="mesh"] .btn--primary.btn--icon { box-shadow: 0 0 0 1px var(--accent); }
+.chat[data-style="mesh"] .rail-item { border-radius: 2px; }
+.chat[data-style="mesh"] .channel-row { font-family: var(--font-mono); }
+.chat[data-style="mesh"] .composer-typing,
+.chat[data-style="mesh"] .composer-input textarea { font-family: var(--font-mono); }
+
+/* ───── Animations / micro-interactions ─────
+   All driven by once-on-mount CSS keyframes (re-fires when the React key
+   changes, e.g. switching channels). Respects prefers-reduced-motion. */
+@keyframes dilla-msg-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes dilla-feed-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes dilla-voice-in {
+  from { opacity: 0; transform: scale(0.94) translateY(6px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes dilla-pop-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes dilla-rxn-pop {
+  0%   { transform: scale(0.4); opacity: 0; }
+  60%  { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes dilla-thread-in {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes dilla-settings-in {
+  from { opacity: 0; transform: scale(0.97); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes dilla-speaking-pulse {
+  0%, 100% { box-shadow: 0 0 0 1px var(--accent), 0 8px 24px var(--accent-soft); }
+  50%      { box-shadow: 0 0 0 2px var(--accent),
+                         0 12px 28px color-mix(in oklab, var(--accent) 30%, transparent); }
+}
+@keyframes dilla-presence-pop {
+  0%   { transform: scale(0); }
+  70%  { transform: scale(1.3); }
+  100% { transform: scale(1); }
+}
+@keyframes dilla-unread-in {
+  from { opacity: 0; transform: scale(0.5); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.settings       { animation: dilla-settings-in 0.18s ease-out both; }
+.pop-profile,
+.emoji-pick,
+.cmdk           { animation: dilla-pop-in     0.15s ease-out both; }
+/* The dilla-presence-pop entrance animation was firing whenever a member
+   row remounted (role regroup, presence flip), which read as a "vibrate"
+   on the dot — especially during voice activity that updates surrounding
+   state. The dot doesn't need an entrance animation. */
+
+/* Subtle hover lift on channel rows + members for tactile feel */
+.channel-row, .member, .voice-participant, .rxn, .vctrl, .icon-btn,
+.btn, .ep-btn, .ms-cta, .v-badge {
+  transition: background .12s, color .12s, border-color .12s, transform .12s;
+}
+
+/* Typing dots — tighter, accent-tinted */
+.composer-typing .dot {
+  display: inline-block;
+  width: 3px; height: 3px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin: 0 1px;
+  animation: dilla-typing-dot 1.2s ease-in-out infinite;
+  vertical-align: middle;
+}
+.composer-typing .dot:nth-child(2) { animation-delay: 0.15s; }
+.composer-typing .dot:nth-child(3) { animation-delay: 0.3s; }
+@keyframes dilla-typing-dot {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40%           { transform: scale(1.1); opacity: 1; }
+}
+
+/* Reduce motion */
+@media (prefers-reduced-motion: reduce) {
+  .msg, .tp-msg, .feed, .voice-card, .voice-card.speaking, .rxn,
+  .thread-panel, .settings, .pop-profile, .emoji-pick, .cmdk,
+  .presence, .unread-pill, .composer-typing .dot { animation: none !important; }
+}
+.chat[data-style="slate"] .rail { background: var(--bg-2); }
+.chat[data-style="slate"] .side { background: var(--surface-2); }
+.chat[data-style="slate"] .main { background: var(--surface); }
+.chat[data-style="slate"] .main-head { background: var(--surface); }
+.chat[data-style="slate"] .members { background: var(--surface-2); }
+.chat[data-style="slate"] .user-panel { background: var(--surface-2); }
+
+/* ───── Mobile / responsive ─────
+   At narrow widths the rail + sidebar slide into a drawer that toggles
+   via a button in the channel header. Member panel + thread hide. */
+.chat-menu-btn {
+  display: none;
+  width: 32px; height: 32px;
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  color: var(--fg-2);
+  align-items: center; justify-content: center;
+  cursor: pointer;
+  margin-right: 6px;
+  flex: 0 0 auto;
+}
+.chat-menu-btn:hover { color: var(--accent); border-color: var(--accent); }
+.chat-backdrop { display: none; }
+
+@media (max-width: 1080px) {
+  .chat .members { display: none; }
+  .chat { grid-template-columns: 60px var(--sidebar-w, 240px) 1fr 0; }
+}
+@media (max-width: 820px) {
+  .chat {
+    grid-template-columns: 1fr !important;
+    position: relative;
+  }
+  .chat .rail,
+  .chat .side {
+    position: absolute;
+    top: 0; bottom: 0;
+    z-index: 30;
+    transform: translateX(-100%);
+    transition: transform 0.22s cubic-bezier(.3,.7,.4,1);
+  }
+  .chat .rail { left: 0; width: 56px; }
+  .chat .side { left: 56px; width: 240px; box-shadow: 12px 0 30px rgba(0,0,0,0.45); }
+  .chat[data-drawer="1"] .rail,
+  .chat[data-drawer="1"] .side { transform: translateX(0); }
+  .chat .members { display: none !important; }
+  .chat[data-drawer="1"] .chat-backdrop {
+    display: block;
+    position: absolute;
+    inset: 0 0 0 296px;
+    background: rgba(0,0,0,0.5);
+    z-index: 25;
+  }
+  .chat-menu-btn { display: inline-flex; }
+  .main-head .ch-topic { display: none; }
+  .main-head .head-actions .search-box { display: none; }
+  .mesh-bottom .mb-chunk:nth-child(n+4) { display: none; }
+}
+@media (max-width: 520px) {
+  .mesh-top { padding: 0 10px; gap: 8px; font-size: 10px; }
+  .mesh-top .mt-dim,
+  .mesh-top .mt-sep,
+  .mesh-top .mt-center { display: none; }
+  .mesh-top .mt-key:not(:first-of-type) { display: none; }
+  .main-head { padding: 0 10px; gap: 6px; }
+  .msg { grid-template-columns: 28px 1fr; gap: 8px; padding: 6px 12px; }
+  .msg .avatar { width: 28px; height: 28px; }
+  .composer-wrap { padding: 0 10px 10px; }
+}
+
+/* MESH — explicit column dividers so the 4-column layout reads cleanly
+   against the near-black bg (the default --hairline is too subtle there). */
+.chat[data-style="mesh"] .rail { border-right-color: var(--hairline-2); }
+.chat[data-style="mesh"] .side { border-right-color: var(--hairline-2); }
+.chat[data-style="mesh"] .members { border-left-color: var(--hairline-2); }
+.chat[data-style="mesh"] .main-head { border-bottom-color: var(--hairline-2); }
+.chat[data-style="mesh"] .user-panel { border-top-color: var(--hairline-2); }
+
+.channel-row.locked .ch-name,
+.channel-row.locked .ch-glyph {
+  opacity: 0.55;
+}
+.channel-row.locked {
+  cursor: not-allowed;
+}

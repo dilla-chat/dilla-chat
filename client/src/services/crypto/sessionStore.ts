@@ -4,9 +4,37 @@
  * Stores serialized GroupSession objects encrypted with AES-GCM using a key
  * derived from the user's derivedKey (HKDF). Sessions survive page reloads
  * so messages can be decrypted without re-establishing the session.
+ *
+ * H-12: when CRYPTO_BACKEND='worker' (default), every call below
+ * forwards to the Web Worker via `workerClient` so the AES-GCM KEK +
+ * IndexedDB handle live in worker scope. The main-thread path is
+ * preserved for tests (backend='main') and for environments without
+ * a `Worker` global (SSR, hostile iframes).
  */
 
 import { useAuthStore } from '../../stores/authStore';
+import {
+  getCryptoBackend,
+  isSessionInitInWorker,
+  sessionInitInWorker,
+  sessionSaveInWorker,
+  sessionLoadInWorker,
+  sessionLoadAllInWorker,
+  sessionDeleteInWorker,
+} from './workerClient';
+
+/** Lazy: ensure the worker has the KEK before the first IDB op. The
+ *  derivedKey lives in the auth store; we only push it to the worker
+ *  once. Subsequent ops short-circuit on `isSessionInitInWorker`. */
+async function ensureWorkerInit(): Promise<boolean> {
+  if (getCryptoBackend() !== 'worker') return false;
+  if (typeof Worker === 'undefined') return false;
+  if (isSessionInitInWorker()) return true;
+  const derivedKey = useAuthStore.getState().derivedKey;
+  if (!derivedKey) return false;
+  await sessionInitInWorker(derivedKey);
+  return true;
+}
 
 const DB_NAME = 'dilla-sessions';
 const DB_VERSION = 1;
@@ -96,6 +124,10 @@ function openDB(): Promise<IDBDatabase> {
 
 /** Save a group session (encrypted) to IndexedDB. */
 export async function saveGroupSession(channelId: string, sessionJson: object): Promise<void> {
+  if (await ensureWorkerInit()) {
+    await sessionSaveInWorker(channelId, sessionJson);
+    return;
+  }
   const key = await getSessionKey();
   if (!key) return;
 
@@ -113,6 +145,9 @@ export async function saveGroupSession(channelId: string, sessionJson: object): 
 
 /** Load a group session from IndexedDB and decrypt it. Returns null if not found or decryption fails. */
 export async function loadGroupSession(channelId: string): Promise<Record<string, unknown> | null> {
+  if (await ensureWorkerInit()) {
+    return sessionLoadInWorker(channelId);
+  }
   const key = await getSessionKey();
   if (!key) return null;
 
@@ -138,6 +173,9 @@ export async function loadGroupSession(channelId: string): Promise<Record<string
 
 /** Load all stored group sessions. */
 export async function loadAllGroupSessions(): Promise<Map<string, Record<string, unknown>>> {
+  if (await ensureWorkerInit()) {
+    return sessionLoadAllInWorker();
+  }
   const key = await getSessionKey();
   if (!key) return new Map();
 
@@ -165,6 +203,10 @@ export async function loadAllGroupSessions(): Promise<Map<string, Record<string,
 
 /** Delete a stored group session. */
 export async function deleteGroupSession(channelId: string): Promise<void> {
+  if (await ensureWorkerInit()) {
+    await sessionDeleteInWorker(channelId);
+    return;
+  }
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');

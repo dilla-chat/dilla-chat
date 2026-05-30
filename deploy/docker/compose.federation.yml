@@ -1,0 +1,39 @@
+# Dilla — Federation overlay. Layer ONTO compose.yml:
+#
+#   docker compose -f compose.yml -f compose.federation.yml up -d
+#
+# This overlay turns on federation:
+#   - DILLA_PEERS  — comma-separated list of peer wss:// URLs.
+#   - DILLA_FED_BIND_ADDR — the interface federation listens on (loopback by
+#     default; set to the WireGuard mesh address so only mesh peers can dial).
+#   - DILLA_FEDERATION_PORT — federation listener port (separate from API).
+#
+# Pre-req: WireGuard is up on the host (see deploy/federation/wireguard.example.conf)
+# and the host's wg0 interface has IP 10.42.0.X. Docker exposes the federation
+# port ONLY on that interface — never on 0.0.0.0.
+
+services:
+  dilla-server:
+    environment:
+      # Federation peers — replace with real wss:// URLs.
+      DILLA_PEERS: "wss://peer-a.example.internal:9443,wss://peer-b.example.internal:9443"
+      DILLA_NODE_NAME: "node-${HOSTNAME}"
+      # Bind the federation listener to the WireGuard interface address only.
+      # The reverse proxy is NOT in the federation path — peers dial directly.
+      DILLA_FED_BIND_ADDR: "10.42.0.1"
+      DILLA_FEDERATION_PORT: "9443"
+      DILLA_FED_ADVERTISE_ADDR: "10.42.0.1"
+      DILLA_FED_ADVERTISE_PORT: "9443"
+      # Pre-shared join secret (mint via `dilla-server federation token mint`
+      # on the bootstrap node, distribute out-of-band).
+      DILLA_JOIN_SECRET_FILE: /run/secrets/dilla-join-secret
+    secrets:
+      - dilla-join-secret
+    # Bind the federation port to the host WG interface address only.
+    # Replace 10.42.0.1 with this host's WG IP at deploy time.
+    ports:
+      - "10.42.0.1:9443:9443"
+
+secrets:
+  dilla-join-secret:
+    file: ./secrets/join-secret

@@ -33,7 +33,7 @@ function ImagePreview({ attachment }: Readonly<{ attachment: Attachment }>) {
   return (
     <>
       <div className="file-preview-image-container">
-        <button className="file-preview-image-btn" onClick={() => setExpanded(true)} type="button" title={t('upload.preview', 'Preview')}>
+        <button className="btn btn--ghost btn--icon" onClick={() => setExpanded(true)} type="button" title={t('upload.preview', 'Preview')}>
           <img
             src={attachment.url}
             alt={attachment.filename}
@@ -42,13 +42,18 @@ function ImagePreview({ attachment }: Readonly<{ attachment: Attachment }>) {
         </button>
       </div>
       {expanded && (
-        <div className="file-preview-lightbox" aria-hidden="true" onClick={() => setExpanded(false)}>
+        <button
+          type="button"
+          className="file-preview-lightbox"
+          aria-label="Close preview"
+          onClick={() => setExpanded(false)}
+        >
           <img
             src={attachment.url}
             alt=""
             className="file-preview-lightbox-image"
           />
-        </div>
+        </button>
       )}
     </>
   );

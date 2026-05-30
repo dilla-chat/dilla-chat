@@ -16,6 +16,13 @@ pub enum HubEvent {
     MessageDeleted { message_id: String, channel_id: String },
     VoiceJoined { channel_id: String, user_id: String, team_id: String },
     VoiceLeft { channel_id: String, user_id: String },
+    /// Emitted when a WS connection that held a voice membership
+    /// closes WITHOUT sending voice:leave (tab reload, crash). The
+    /// handler should clean up RoomManager + SFU + broadcast
+    /// voice:user-left. Bound to a specific client_id rather than
+    /// user_id so multi-tab users don't lose voice when their other
+    /// tab closes.
+    VoiceClientGone { client_id: String, user_id: String, channel_id: String },
 }
 
 pub type ClientSender = mpsc::UnboundedSender<Vec<u8>>;
@@ -70,6 +77,13 @@ pub struct Hub {
     channels: Arc<RwLock<HashMap<String, HashSet<String>>>>,
     user_index: Arc<RwLock<HashMap<String, Vec<String>>>>,
     typing_throttle: Arc<RwLock<HashMap<String, i64>>>,
+    /// client_id → channel_id of the voice room this specific WS
+    /// connection joined. Lets us evict voice membership when the
+    /// individual WS closes, even when the user still has other
+    /// (non-voice) tabs open — fixes the tab-reload race where
+    /// `ClientDisconnected` doesn't fire because the new WS opens
+    /// before the old one's close is processed.
+    voice_clients: Arc<RwLock<HashMap<String, String>>>,
 
     register_tx: mpsc::Sender<ClientHandle>,
     register_rx: tokio::sync::Mutex<mpsc::Receiver<ClientHandle>>,
@@ -109,6 +123,7 @@ impl Hub {
             channels: Arc::new(RwLock::new(HashMap::new())),
             user_index: Arc::new(RwLock::new(HashMap::new())),
             typing_throttle: Arc::new(RwLock::new(HashMap::new())),
+            voice_clients: Arc::new(RwLock::new(HashMap::new())),
             register_tx,
             register_rx: tokio::sync::Mutex::new(register_rx),
             unregister_tx,
@@ -157,6 +172,23 @@ impl Hub {
                     let mut clients = self.clients.write().await;
                     if let Some(client) = clients.remove(&client_id) {
                         let user_id = client.user_id.clone();
+
+                        // If this WS held a voice membership, emit
+                        // VoiceClientGone BEFORE the ClientDisconnected
+                        // path so cleanup happens even when the user
+                        // has another tab still open (the tab-reload
+                        // race where ClientDisconnected wouldn't fire).
+                        let voice_channel = {
+                            let mut vc = self.voice_clients.write().await;
+                            vc.remove(&client_id)
+                        };
+                        if let Some(channel_id) = voice_channel {
+                            self.emit_event(HubEvent::VoiceClientGone {
+                                client_id: client_id.clone(),
+                                user_id: user_id.clone(),
+                                channel_id,
+                            });
+                        }
 
                         // Remove from user index.
                         let mut idx = self.user_index.write().await;
@@ -243,6 +275,28 @@ impl Hub {
         let _ = self.unregister_tx.send(client_id.to_string()).await;
     }
 
+    /// Mark a WS connection as the active voice session holder for a
+    /// channel. Called from handle_voice_join; if the WS later
+    /// disconnects without an explicit voice:leave, the run loop
+    /// emits VoiceClientGone so the voice room can be cleaned up.
+    pub async fn set_voice_client(&self, client_id: &str, channel_id: &str) {
+        tracing::info!(
+            "voice: set_voice_client client={} channel={}",
+            client_id,
+            channel_id
+        );
+        self.voice_clients
+            .write()
+            .await
+            .insert(client_id.to_string(), channel_id.to_string());
+    }
+
+    /// Drop the voice-membership tag for a WS connection. Called on
+    /// explicit voice:leave so we don't double-fire VoiceClientGone.
+    pub async fn clear_voice_client(&self, client_id: &str) {
+        self.voice_clients.write().await.remove(client_id);
+    }
+
     pub async fn subscribe(&self, client_id: &str, channel_id: &str) {
         let _ = self
             .subscribe_tx
@@ -251,6 +305,17 @@ impl Hub {
                 channel_id: channel_id.to_string(),
             })
             .await;
+    }
+
+    /// Count how many channels a given client currently subscribes to.
+    /// VULN-023 / WS-AMP-1 / H4: enforces the per-client subscription
+    /// cap. O(n_channels) but n_channels per-team is bounded.
+    pub async fn client_subscription_count(&self, client_id: &str) -> usize {
+        let channels = self.channels.read().await;
+        channels
+            .values()
+            .filter(|subs| subs.contains(client_id))
+            .count()
     }
 
     pub async fn unsubscribe(&self, client_id: &str, channel_id: &str) {

@@ -3,6 +3,28 @@ import { renderHook } from '@testing-library/react';
 import { useKeyboardShortcuts } from './useKeyboardShortcuts';
 import { useVoiceStore } from '../stores/voiceStore';
 
+// voiceStore.toggleMute/toggleDeafen dispatch through webrtcService via
+// a lazy import. The mock here lets the store update synchronously
+// (within a microtask) instead of trying to drive the real PC.
+vi.mock('../services/webrtc', () => ({
+  webrtcService: {
+    toggleMute: vi.fn(async () => {
+      const s = useVoiceStore.getState();
+      return !s.muted;
+    }),
+    toggleDeafen: vi.fn(async () => {
+      const s = useVoiceStore.getState();
+      return !s.deafened;
+    }),
+  },
+}));
+
+async function flushAsync() {
+  // Drain the lazy dynamic-import macrotask + the toggle promise chain.
+  await new Promise((r) => setTimeout(r, 0));
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+}
+
 beforeEach(() => {
   useVoiceStore.setState({ connected: false, muted: false, deafened: false });
 });
@@ -47,10 +69,11 @@ describe('useKeyboardShortcuts', () => {
     expect(onNavigateChannel).toHaveBeenCalledWith('down');
   });
 
-  it('Ctrl+Shift+M toggles mute when voice connected', () => {
+  it('Ctrl+Shift+M toggles mute when voice connected', async () => {
     useVoiceStore.setState({ connected: true, muted: false });
     renderHook(() => useKeyboardShortcuts({}));
     fireKeyDown({ key: 'M', ctrlKey: true, shiftKey: true });
+    await flushAsync();
     expect(useVoiceStore.getState().muted).toBe(true);
   });
 
@@ -61,10 +84,11 @@ describe('useKeyboardShortcuts', () => {
     expect(useVoiceStore.getState().muted).toBe(false);
   });
 
-  it('Ctrl+Shift+D toggles deafen when voice connected', () => {
+  it('Ctrl+Shift+D toggles deafen when voice connected', async () => {
     useVoiceStore.setState({ connected: true, deafened: false });
     renderHook(() => useKeyboardShortcuts({}));
     fireKeyDown({ key: 'D', ctrlKey: true, shiftKey: true });
+    await flushAsync();
     expect(useVoiceStore.getState().deafened).toBe(true);
   });
 

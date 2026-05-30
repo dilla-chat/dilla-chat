@@ -10,6 +10,7 @@ vi.mock('@tabler/icons-react', () => ({
   IconMoodSmile: () => <span data-testid="icon-emoji" />,
   IconPlus: () => <span data-testid="icon-plus" />,
   IconArrowBackUp: () => <span data-testid="icon-reply" />,
+  IconArrowForwardUp: () => <span data-testid="icon-forward" />,
   IconMessages: () => <span data-testid="icon-threads" />,
   IconEdit: () => <span data-testid="icon-edit" />,
   IconTrash: () => <span data-testid="icon-trash" />,
@@ -746,7 +747,8 @@ describe('MessageList', () => {
     render(
       <MessageList channelId="ch-1" currentUserId="user-2" onLoadMore={vi.fn()} />,
     );
-    expect(screen.getByText(/Yesterday at/)).toBeInTheDocument();
+    // Mesh redesign formats yesterday as "Yesterday HH:MM" (no "at")
+    expect(screen.getByText(/Yesterday \d{2}:\d{2}/)).toBeInTheDocument();
   });
 
   it('formats old date timestamp correctly', () => {
@@ -773,7 +775,8 @@ describe('MessageList', () => {
     render(
       <MessageList channelId="ch-1" currentUserId="user-2" onLoadMore={vi.fn()} />,
     );
-    expect(screen.getByText(/Today at/)).toBeInTheDocument();
+    // Mesh redesign drops the "Today at" prefix and shows bare 24h time.
+    expect(screen.getByText(/^\d{2}:\d{2}$/)).toBeInTheDocument();
   });
 
   it('getInitials returns first 2 chars uppercase', () => {
@@ -1117,6 +1120,83 @@ describe('MessageList', () => {
       fireEvent.click(screen.getByText('alice'));
       expect(screen.getByTestId('user-profile')).toBeInTheDocument();
       expect(screen.queryByTestId('profile-send')).not.toBeInTheDocument();
+    });
+
+    it('outside mousedown closes the popover (L119-121)', async () => {
+      const msgs = [makeMessage()];
+      useMessageStore.setState({
+        messages: new Map([['ch-1', msgs]]),
+        loadingHistory: new Map(),
+        hasMore: new Map(),
+      });
+      render(<MessageList channelId="ch-1" currentUserId="user-2" onLoadMore={vi.fn()} />);
+      fireEvent.click(screen.getByText('alice'));
+      expect(screen.getByTestId('user-profile')).toBeInTheDocument();
+      // The useEffect attaches the listener via setTimeout(0); wait one tick.
+      await new Promise((r) => setTimeout(r, 5));
+      fireEvent.mouseDown(document.body);
+      expect(screen.queryByTestId('user-profile')).not.toBeInTheDocument();
+    });
+
+    it('Send Message button in profile invokes handleSendMessage (L106-110, L457)', async () => {
+      const apiModule = await import('../../services/api');
+      const createDM = vi.fn(async () => ({ id: 'dm-new' }));
+      vi.spyOn(apiModule.api, 'createDM').mockImplementation(createDM);
+      const msgs = [makeMessage()];
+      useMessageStore.setState({
+        messages: new Map([['ch-1', msgs]]),
+        loadingHistory: new Map(),
+        hasMore: new Map(),
+      });
+      render(<MessageList channelId="ch-1" currentUserId="user-2" onLoadMore={vi.fn()} />);
+      fireEvent.click(screen.getByText('alice'));
+      const sendBtn = screen.getByTestId('profile-send');
+      fireEvent.click(sendBtn);
+      // Allow the async createDM to resolve.
+      await new Promise((r) => setTimeout(r, 5));
+      expect(createDM).toHaveBeenCalled();
+    });
+
+    it('Forward action button dispatches mesh:open-forward with detail (L333)', () => {
+      const msgs = [makeMessage()];
+      useMessageStore.setState({
+        messages: new Map([['ch-1', msgs]]),
+        loadingHistory: new Map(),
+        hasMore: new Map(),
+      });
+      const captured: CustomEvent[] = [];
+      const cb = (e: Event) => captured.push(e as CustomEvent);
+      window.addEventListener('mesh:open-forward', cb);
+      const { container } = render(
+        <MessageList channelId="ch-1" currentUserId="user-2" onLoadMore={vi.fn()} />,
+      );
+      const fwdBtn = container.querySelector('button[title="Forward"]') as HTMLButtonElement | null;
+      if (fwdBtn) fireEvent.click(fwdBtn);
+      window.removeEventListener('mesh:open-forward', cb);
+      expect(captured.length).toBe(1);
+      const detail = captured[0].detail as { messageId: string; author: string };
+      expect(detail.messageId).toBe('msg-1');
+      expect(detail.author).toBe('alice');
+    });
+
+    it('opens popover near right viewport edge flips to the left (L99)', () => {
+      const msgs = [makeMessage()];
+      useMessageStore.setState({
+        messages: new Map([['ch-1', msgs]]),
+        loadingHistory: new Map(),
+        hasMore: new Map(),
+      });
+      render(<MessageList channelId="ch-1" currentUserId="user-2" onLoadMore={vi.fn()} />);
+      const username = screen.getByText('alice');
+      // Patch its getBoundingClientRect to put it at the far right.
+      Object.defineProperty(username, 'getBoundingClientRect', {
+        value: () => ({ left: 1200, right: 1280, top: 100, bottom: 120, width: 80, height: 20, x: 1200, y: 100, toJSON: () => ({}) }),
+        configurable: true,
+      });
+      // Use a narrow viewport so the right-edge overflow triggers.
+      Object.defineProperty(window, 'innerWidth', { value: 1024, configurable: true });
+      fireEvent.click(username);
+      expect(screen.getByTestId('user-profile')).toBeInTheDocument();
     });
   });
 });

@@ -8,8 +8,11 @@ import OverviewTab from './OverviewTab';
 import RolesTab from './RolesTab';
 import MembersTab from './MembersTab';
 import InvitesTab from './InvitesTab';
+import IntegrationsTab from './IntegrationsTab';
 import ModerationTab from './ModerationTab';
+import AuditLogTab from './AuditLogTab';
 import BansTab from './BansTab';
+import ConfirmDialog from '../../components/ConfirmDialog/ConfirmDialog';
 import type { Tab } from './types';
 import '../TeamSettings.css';
 
@@ -30,6 +33,7 @@ export default function TeamSettings() {
           { id: 'roles', label: t('settings.roles') },
           { id: 'members', label: t('settings.members') },
           { id: 'invites', label: t('settings.invites') },
+          { id: 'integrations', label: t('settings.integrations', 'Integrations') },
         ],
       },
       {
@@ -65,16 +69,10 @@ export default function TeamSettings() {
       {tab === 'roles' && activeTeamId && <RolesTab teamId={activeTeamId} />}
       {tab === 'members' && activeTeamId && <MembersTab teamId={activeTeamId} />}
       {tab === 'invites' && activeTeamId && <InvitesTab teamId={activeTeamId} />}
+      {tab === 'integrations' && activeTeamId && <IntegrationsTab teamId={activeTeamId} />}
       {tab === 'federation' && activeTeamId && <FederationStatus teamId={activeTeamId} />}
       {tab === 'moderation' && activeTeamId && <ModerationTab teamId={activeTeamId} />}
-      {tab === 'audit-log' && (
-        <div className="settings-section">
-          <h2 className="heading-3">{t('settings.auditLog', 'Audit Log')}</h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>
-            {t('moderation.noActions', 'No recent actions')}
-          </p>
-        </div>
-      )}
+      {tab === 'audit-log' && activeTeamId && <AuditLogTab teamId={activeTeamId} />}
       {tab === 'bans' && activeTeamId && <BansTab teamId={activeTeamId} />}
       {tab === 'delete-server' && (
         <div className="settings-section">
@@ -87,6 +85,7 @@ export default function TeamSettings() {
           </button>
         </div>
       )}
+      <ConfirmDialog />
     </SettingsLayout>
   );
 }

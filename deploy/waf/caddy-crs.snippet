@@ -1,0 +1,82 @@
+# Dilla — OWASP CRS for Caddy (via Coraza).
+#
+# Bolt the OWASP Core Rule Set onto a Caddy install using the coraza-caddy
+# module (Coraza is the Go reimplementation of ModSecurity — same rule
+# syntax). Coraza-caddy + CRS gives you the L7 attack surface coverage of
+# enterprise WAFs without licensing a black-box appliance.
+#
+# Tested-with: coraza-caddy v0.1.4, OWASP CRS v4.3.0, Caddy v2.7.6.
+#
+# ----------------------------------------------------------------------------
+# 1. Build Caddy with coraza-caddy (xcaddy).
+#
+#   xcaddy build \
+#     --with github.com/corazawaf/coraza-caddy/v2 \
+#     --output ./caddy
+#
+# 2. Drop CRS into /etc/caddy/coraza/coraza-crs/ (clone the OWASP CRS repo
+#    there or use the system package on Debian: `apt install modsecurity-crs`
+#    then symlink).
+#
+# 3. Reference the snippet below from your main Caddyfile (the I1 reference
+#    Caddyfile lives in deploy/reverse-proxy/Caddyfile).
+
+(dilla_waf) {
+    coraza_waf {
+        load_owasp_crs
+        directives `
+            Include @coraza.conf-recommended
+            Include @crs-setup.conf.example
+            Include @owasp_crs/*.conf
+
+            # ---- Dilla-specific exclusions -----------------------------
+            # 1. Large file uploads at /api/v1/teams/*/upload (we cap at 50 MiB
+            #    in the proxy; CRS rule 920420 fires above 128 KiB by default).
+            SecRule REQUEST_URI "@beginsWith /api/v1/teams/" \
+                "id:1000,phase:1,pass,nolog,\
+                 ctl:ruleRemoveById=920420,\
+                 ctl:ruleRemoveById=200002,\
+                 ctl:ruleRemoveById=200003"
+
+            # 2. WebSocket upgrade at /ws — CRS sees "Connection: Upgrade" and
+            #    triggers some bizarre rules. Disable PL2+ rules on /ws.
+            SecRule REQUEST_URI "@beginsWith /ws" \
+                "id:1001,phase:1,pass,nolog,\
+                 ctl:ruleRemoveByTag=paranoia-level/2,\
+                 ctl:ruleRemoveByTag=paranoia-level/3,\
+                 ctl:ruleRemoveById=920230"
+
+            # 3. /api/v1/auth/challenge — long-poll-ish JSON; the Ed25519
+            #    public-key field looks like high-entropy garbage and trips
+            #    PL3 anomaly scoring. Keep PL1 rules, disable PL2+.
+            SecRule REQUEST_URI "@beginsWith /api/v1/auth/challenge" \
+                "id:1002,phase:1,pass,nolog,\
+                 ctl:ruleRemoveByTag=paranoia-level/2,\
+                 ctl:ruleRemoveByTag=paranoia-level/3"
+
+            # 4. Attachment downloads — CRS rule 932200 (PHP injection) false-
+            #    positives on filenames containing common payload tokens.
+            SecRule REQUEST_URI "@beginsWith /api/v1/attachments/" \
+                "id:1003,phase:1,pass,nolog,\
+                 ctl:ruleRemoveById=932200"
+
+            # ---- Anomaly threshold tuning ------------------------------
+            # Default PL1 thresholds are 5/4/3/2 — kept as-is. CRS in
+            # "Detection-Only" mode is dangerous; we run in blocking mode.
+            SecRuleEngine On
+            SecResponseBodyAccess Off
+        `
+    }
+}
+
+# --- Plug into the main Caddyfile -------------------------------------------
+# Edit deploy/reverse-proxy/Caddyfile and import the snippet inside the
+# main site block:
+#
+#   ${DILLA_DOMAIN} {
+#       import dilla_waf
+#       # ... rest of the config ...
+#   }
+#
+# The snippet runs before reverse_proxy, so blocked requests never reach
+# dilla-server.

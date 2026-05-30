@@ -1,16 +1,16 @@
 .user-popover {
   position: fixed;
-  width: 220px;
+  width: 13.75rem;
   background: var(--bg-floating);
-  border: 1px solid var(--border-color);
+  border: 0.0625rem solid var(--border-color);
   border-radius: var(--radius-xl);
   overflow: hidden;
-  box-shadow: 0 var(--spacing-md) 40px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 var(--spacing-md) 2.5rem rgba(0, 0, 0, 0.5);
   z-index: var(--z-tooltip);
 }
 
 .user-popover-banner {
-  height: 50px;
+  height: 3.125rem;
 }
 
 .user-popover-body {
@@ -19,8 +19,8 @@
 }
 
 .user-popover-avatar {
-  width: 44px;
-  height: 44px;
+  width: 2.75rem;
+  height: 2.75rem;
   border-radius: var(--radius-lg);
   display: flex;
   align-items: center;
@@ -28,7 +28,7 @@
   color: white;
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-semibold);
-  box-shadow: 0 0 0 3px var(--bg-floating);
+  box-shadow: 0 0 0 0.1875rem var(--bg-floating);
 }
 
 .user-popover-name {
@@ -42,7 +42,7 @@
   font-size: var(--font-size-micro);
   color: var(--text-muted);
   font-family: var(--font-mono);
-  margin-top: 2px;
+  margin-top: 0.125rem;
 }
 
 .user-popover-roles {
@@ -54,11 +54,11 @@
 
 .user-popover-role {
   font-size: var(--font-size-micro);
-  padding: 2px var(--spacing-sm);
+  padding: 0.125rem var(--spacing-sm);
   border-radius: var(--radius-full);
   background: var(--brand-alpha-10);
   color: var(--brand-500);
-  border: 1px solid var(--brand-alpha-15);
+  border: 0.0625rem solid var(--brand-alpha-15);
 }
 
 .user-popover-actions {
@@ -76,7 +76,7 @@
   color: var(--text-secondary);
   font-size: var(--font-size-xs);
   font-family: inherit;
-  border: 1px solid var(--divider);
+  border: 0.0625rem solid var(--divider);
   cursor: pointer;
   transition: background-color var(--duration-fast) var(--ease-out);
 }

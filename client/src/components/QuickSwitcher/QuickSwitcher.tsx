@@ -72,7 +72,7 @@ export default function QuickSwitcher({ open, onClose, onSelect }: Readonly<Prop
     if (open) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: reset query/selection when modal opens
       setQuery('');
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: reset query/selection when modal opens
+       
       setSelectedIndex(0);
       setTimeout(() => inputRef.current?.focus(), 50);
     }

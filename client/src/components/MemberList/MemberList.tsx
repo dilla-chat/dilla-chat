@@ -6,6 +6,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { useDMStore } from '../../stores/dmStore';
 import { api } from '../../services/api';
 import UserProfile from '../UserProfile/UserProfile';
+import { usernameColor } from '../../utils/colors';
 import './MemberList.css';
 
 interface ProfilePopup {
@@ -126,7 +127,11 @@ export default function MemberList() {
         onClick={(e) => handleMemberClick(e, member)}
         type="button"
       >
-        <div className="member-avatar" data-status={status}>
+        <div
+          className="member-avatar"
+          data-status={status}
+          style={{ backgroundColor: usernameColor(member.username) }}
+        >
           {getInitials(member)}
         </div>
         <div className="member-info">

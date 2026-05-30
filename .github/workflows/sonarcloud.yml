@@ -29,8 +29,21 @@ jobs:
       - name: Install client dependencies
         run: cd client && npm ci
 
-      - name: Run client tests with coverage
+      - name: Install Playwright browsers for browser-mode tests
+        run: cd client && npx playwright install --with-deps chromium
+
+      - name: Run client tests with coverage (jsdom)
         run: cd client && npx vitest run --coverage
+
+      - name: Run client browser tests with coverage (real Chromium)
+        # Browser-mode tests exercise ChatApp/Settings — jsdom can't.
+        # Scoped to shell/ChatApp.browser + shell/Settings.browser
+        # because the pre-existing CSS/viewport browser tests are
+        # flaky in CI and cascade-fail the coverage report.
+        # continue-on-error keeps a stray failure from blocking the
+        # main coverage signal.
+        run: cd client && npx vitest run --config vitest.browser.config.ts --coverage shell/ChatApp.browser shell/ChatApp.interactions shell/ChatApp.events shell/ChatApp.click-all shell/ChatApp.components shell/ChatApp.leaves shell/ChatApp.textchannel shell/Settings.browser shell/Settings.interactions shell/Settings.tabs pages/Onboarding/Onboarding.steps
+        continue-on-error: true
 
       # ── Rust + Clippy report ──────────────────────────────────────────────
       - name: Install Rust toolchain

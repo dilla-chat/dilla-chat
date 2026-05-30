@@ -22,6 +22,20 @@ hmac = "0.12"
 sha1 = "0.10"
 sha2 = "0.10"
 hkdf = "0.12"
+# Constant-time byte comparison for security-sensitive equality checks
+# (federation join_secret, future per-peer tokens). subtle is already
+# transitively present via ed25519-dalek; we promote it to a direct
+# dep so the call site doesn't break the day that transitive goes away.
+subtle = "2"
+# Wrap the SQLCipher passphrase so it doesn't leak via Debug / accidental
+# logging; zeroize on drop covers the dropped-buffer-in-RAM case.
+# DB-MEM-1.
+secrecy = "0.10"
+# Optional, opt-in MaxMind GeoLite2 country lookup for the auth-risk
+# signals. The DB file path is operator-provided via
+# DILLA_GEOIP_DB_PATH; absent → derive_country_from_ip falls back to
+# the legacy "unknown" placeholder. H-8b.
+maxminddb = "0.26"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -50,6 +64,11 @@ tower_governor = "0.6"
 tokio-rustls = "0.26"
 rustls = "0.23"
 rustls-pemfile = "2"
+# Serves axum::Router over a rustls TLS listener. VULN-001: the
+# previous start_server bound a plain TcpListener even when TLS_CERT
+# / TLS_KEY were set; axum-server gives us the bind_rustls path so
+# operators who configure TLS actually get TLS.
+axum-server = { version = "0.7", features = ["tls-rustls"] }
 
 # Embed
 rust-embed = "8"
@@ -82,6 +101,7 @@ http = "1"
 
 [dev-dependencies]
 tempfile = "3"
+wiremock = "0.6"
 
 [build-dependencies]
 sha2 = "0.10"

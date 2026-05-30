@@ -120,8 +120,11 @@ fn seed_team_channel(db: &Database, team_id: &str, user_id: &str, channel_id: &s
                 created_by: user_id.to_string(),
                 max_file_size: 10_000_000,
                 allow_member_invites: true,
+                federated: false,
                 created_at: db::now_str(),
                 updated_at: db::now_str(),
+            
+                ..Default::default()
             },
         )?;
         db::create_channel(
@@ -137,6 +140,8 @@ fn seed_team_channel(db: &Database, team_id: &str, user_id: &str, channel_id: &s
                 created_by: user_id.to_string(),
                 created_at: db::now_str(),
                 updated_at: db::now_str(),
+            
+                ..Default::default()
             },
         )?;
         db::create_member(
@@ -210,6 +215,8 @@ fn make_test_user(id: &str, username: &str, display_name: &str, public_key: &[u8
         is_admin: false,
         created_at: db::now_str(),
         updated_at: db::now_str(),
+    
+        ..Default::default()
     }
 }
 
@@ -227,6 +234,8 @@ fn make_test_msg(id: &str, channel_id: &str, dm_channel_id: &str, author_id: &st
         deleted: false,
         lamport_ts: 0,
         created_at: db::now_str(),
+    
+        ..Default::default()
     }
 }
 
@@ -664,6 +673,8 @@ async fn message_delete_soft_deletes_and_broadcasts() {
 #[tokio::test]
 async fn typing_broadcasts_to_channel_excluding_sender() {
     let hub = test_hub();
+    // VULN-016: typing handler now requires channel access — seed team+chan.
+    seed_open_channel(&hub, "t1", "ch1", "u1").await;
     let _h = spawn_hub(&hub);
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
@@ -673,7 +684,7 @@ async fn typing_broadcasts_to_channel_excluding_sender() {
     subscribe(&hub, "c1", "ch1").await;
     subscribe(&hub, "c2", "ch1").await;
 
-    super::handlers::handle_typing(&hub, "c1", "u1", "alice", serde_json::json!({"channel_id": "ch1"})).await;
+    super::handlers::handle_typing(&hub, "c1", "u1", "alice", "t1", serde_json::json!({"channel_id": "ch1"})).await;
     settle().await;
 
     let evt = recv_event(&mut rx2).await;
@@ -686,6 +697,7 @@ async fn typing_broadcasts_to_channel_excluding_sender() {
 #[tokio::test]
 async fn typing_is_throttled() {
     let hub = test_hub();
+    seed_open_channel(&hub, "t1", "ch1", "u1").await;
     let _h = spawn_hub(&hub);
 
     let (c1, _rx1) = make_client("c1", "u1", "alice", "t1");
@@ -696,14 +708,14 @@ async fn typing_is_throttled() {
     subscribe(&hub, "c2", "ch1").await;
 
     // First typing event should go through
-    super::handlers::handle_typing(&hub, "c1", "u1", "alice", serde_json::json!({"channel_id": "ch1"})).await;
+    super::handlers::handle_typing(&hub, "c1", "u1", "alice", "t1", serde_json::json!({"channel_id": "ch1"})).await;
     settle().await;
 
     let msg = timeout(Duration::from_millis(200), rx2.recv()).await;
     assert!(msg.is_ok(), "first typing event should be received");
 
     // Second typing event within throttle period should be dropped
-    super::handlers::handle_typing(&hub, "c1", "u1", "alice", serde_json::json!({"channel_id": "ch1"})).await;
+    super::handlers::handle_typing(&hub, "c1", "u1", "alice", "t1", serde_json::json!({"channel_id": "ch1"})).await;
     settle().await;
 
     assert_no_recv(&mut rx2, "throttled typing event should not be received").await;
@@ -1764,6 +1776,11 @@ async fn dispatch_handle_event_message_delete() {
 async fn dispatch_handle_event_channel_join() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
+    // channel:join now runs through user_can_subscribe_to_channel,
+    // which requires the channel + team to exist in the DB and the
+    // user to be a member. Seed them so the gate lets the request
+    // through.
+    seed_team_channel(&hub.db, "t1", "u1", "dispatched-chan");
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
     register(&hub, c1).await;
@@ -1802,6 +1819,9 @@ async fn dispatch_handle_event_channel_leave() {
 async fn dispatch_handle_event_typing_start() {
     let hub = test_hub();
     let _h = spawn_hub(&hub);
+    // typing:start runs through user_can_subscribe_to_channel so the
+    // user must be a team member of a channel that actually exists.
+    seed_team_channel(&hub.db, "t1", "u1", "ch1");
 
     let (c1, _rx1) = make_client("c1", "u1", "alice", "t1");
     let (c2, mut rx2) = make_client("c2", "u2", "bob", "t1");
@@ -1891,15 +1911,89 @@ async fn dispatch_handle_event_request_with_invalid_payload_does_not_panic() {
 
 // ── handle_channel_event direct tests ────────────────────────────────────
 
+/// Seed a team + channel so the channel-access gate added in
+/// VULN-004/-024/-016 lets the test subscriber through. Returns
+/// (team_id, channel_id, user_id).
+async fn seed_open_channel(hub: &Arc<Hub>, team_id: &str, channel_id: &str, user_id: &str) {
+    let db = hub.db.clone();
+    let tid = team_id.to_string();
+    let cid = channel_id.to_string();
+    let uid = user_id.to_string();
+    tokio::task::spawn_blocking(move || {
+        db.with_conn(|conn| {
+            let now = crate::db::now_str();
+            crate::db::create_user(conn, &crate::db::User {
+                id: uid.clone(),
+                username: uid.clone(),
+                display_name: uid.clone(),
+                public_key: vec![1u8; 32],
+                avatar_url: String::new(),
+                status_text: String::new(),
+                status_type: "online".into(),
+                is_admin: false,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+                quiet_hours_enabled: false,
+                quiet_hours_from: String::new(),
+                quiet_hours_to: String::new(),
+            })?;
+            crate::db::create_team(conn, &crate::db::Team {
+                id: tid.clone(),
+                name: tid.clone(),
+                description: String::new(),
+                icon_url: String::new(),
+                created_by: uid.clone(),
+                max_file_size: 25 * 1024 * 1024,
+                allow_member_invites: true,
+                federated: false,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+            
+                ..Default::default()
+            })?;
+            crate::db::create_member(conn, &crate::db::Member {
+                id: crate::db::new_id(),
+                team_id: tid.clone(),
+                user_id: uid.clone(),
+                nickname: String::new(),
+                joined_at: now.clone(),
+                invited_by: String::new(),
+                updated_at: String::new(),
+            })?;
+            crate::db::create_channel(conn, &crate::db::Channel {
+                id: cid.clone(),
+                team_id: tid.clone(),
+                name: "general".into(),
+                topic: String::new(),
+                channel_type: "text".into(),
+                position: 0,
+                category: String::new(),
+                created_by: uid.clone(),
+                created_at: now.clone(),
+                updated_at: now,
+                locked: false,
+                hidden_if_restricted: false,
+                slow_mode_seconds: 0,
+                group_id: None,
+            })?;
+            Ok::<(), rusqlite::Error>(())
+        })
+    })
+    .await
+    .unwrap()
+    .unwrap();
+}
+
 #[tokio::test]
 async fn handle_channel_event_join_directly() {
     let hub = test_hub();
+    seed_open_channel(&hub, "t1", "direct-chan", "u1").await;
     let _h = spawn_hub(&hub);
 
     let (c1, mut rx1) = make_client("c1", "u1", "alice", "t1");
     register(&hub, c1).await;
 
-    super::client::handle_channel_event(&hub, "c1", EVENT_CHANNEL_JOIN, serde_json::json!({"channel_id": "direct-chan"})).await;
+    super::client::handle_channel_event(&hub, "c1", "u1", "t1", EVENT_CHANNEL_JOIN, serde_json::json!({"channel_id": "direct-chan"})).await;
     settle().await;
 
     hub.broadcast_to_channel("direct-chan", b"hello".to_vec(), None).await;
@@ -1918,7 +2012,8 @@ async fn handle_channel_event_leave_directly() {
     register(&hub, c1).await;
     subscribe(&hub, "c1", "direct-chan").await;
 
-    super::client::handle_channel_event(&hub, "c1", EVENT_CHANNEL_LEAVE, serde_json::json!({"channel_id": "direct-chan"})).await;
+    // Leave path skips the access check entirely (only join is gated).
+    super::client::handle_channel_event(&hub, "c1", "u1", "t1", EVENT_CHANNEL_LEAVE, serde_json::json!({"channel_id": "direct-chan"})).await;
     settle().await;
 
     hub.broadcast_to_channel("direct-chan", b"should-not-recv".to_vec(), None).await;
@@ -1930,7 +2025,51 @@ async fn handle_channel_event_leave_directly() {
 #[tokio::test]
 async fn handle_channel_event_invalid_payload_does_not_panic() {
     let hub = test_hub();
-    super::client::handle_channel_event(&hub, "c1", EVENT_CHANNEL_JOIN, serde_json::json!("not an object")).await;
+    super::client::handle_channel_event(&hub, "c1", "u1", "t1", EVENT_CHANNEL_JOIN, serde_json::json!("not an object")).await;
+}
+
+#[tokio::test]
+async fn handle_channel_event_denies_subscribe_for_unauthorized_user() {
+    // Regression test for DILLA-VULN-004: an authenticated WS client
+    // who calls channel:join for a channel they don't have access to
+    // must NOT begin receiving broadcasts for that channel.
+    let hub = test_hub();
+    seed_open_channel(&hub, "t1", "private-chan", "owner").await;
+
+    // Make the channel role-restricted to a non-default role and put
+    // a non-member subscriber on the wire.
+    let db = hub.db.clone();
+    tokio::task::spawn_blocking(move || {
+        db.with_conn(|conn| {
+            let role_id = crate::db::new_id();
+            conn.execute(
+                "INSERT INTO roles (id, team_id, name, color, position, permissions, is_default, created_at, updated_at) VALUES (?1, 't1', 'mods', '#f00', 1, 0, 0, ?2, ?2)",
+                rusqlite::params![role_id, crate::db::now_str()],
+            )?;
+            conn.execute(
+                "INSERT INTO channel_role_access (channel_id, role_id) VALUES ('private-chan', ?1)",
+                rusqlite::params![role_id],
+            )?;
+            Ok::<(), rusqlite::Error>(())
+        })
+    })
+    .await
+    .unwrap()
+    .unwrap();
+
+    let _h = spawn_hub(&hub);
+
+    let (c1, mut rx1) = make_client("c1", "outsider", "eve", "t1");
+    register(&hub, c1).await;
+
+    // outsider has no team membership AT ALL — must be rejected.
+    super::client::handle_channel_event(&hub, "c1", "outsider", "t1", EVENT_CHANNEL_JOIN, serde_json::json!({"channel_id": "private-chan"})).await;
+    settle().await;
+
+    hub.broadcast_to_channel("private-chan", b"members only".to_vec(), None).await;
+    settle().await;
+
+    assert_no_recv(&mut rx1, "denied subscriber must NOT receive channel broadcasts").await;
 }
 
 // ── handle_presence_update direct test ───────────────────────────────────

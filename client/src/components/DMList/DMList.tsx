@@ -89,7 +89,7 @@ export default function DMList({ currentUserId, onNewDM }: Readonly<Props>) {
   return (
     <div className="dm-list">
       <div className="dm-list-actions">
-        <button className="dm-new-btn" onClick={onNewDM} title={t('dm.newDM', 'New Message')}>
+        <button className="btn" onClick={onNewDM} title={t('dm.newDM', 'New Message')}>
           <IconPlus size={16} stroke={1.75} />
         </button>
       </div>

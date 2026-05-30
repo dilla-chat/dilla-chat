@@ -327,3 +327,156 @@ export const minimalTheme: ThemeColors = {
   '--yellow-300': '#c8a050',
   '--red-400': '#d96b6b',
 };
+
+export const meshTheme: ThemeColors = {
+  /* Mesh-native palette (see design_handoff_dilla_mesh/README.md §Design Tokens) */
+  '--bg': '#070809',
+  '--bg-2': '#0C0D0F',
+  '--bg-3': '#101214',
+  '--surface': '#0C0D0F',
+  '--surface-2': '#14171A',
+  '--surface-hi': '#1A1E22',
+  '--hairline': '#1F2226',
+  '--hairline-2': '#363B41',
+  '--fg': '#E8ECE8',
+  '--fg-2': '#A0A6A0',
+  '--fg-3': '#5E635E',
+  '--fg-link': '#7CFF8E',
+  '--accent': '#7CFF8E',
+  '--accent-2': '#A8FFB6',
+  '--accent-ink': '#06150A',
+  '--accent-soft': 'rgba(124,255,142,0.14)',
+  '--danger': '#FF6E6E',
+  '--warn': '#FFD16A',
+  '--ok': '#7CFF8E',
+  '--mention': '#FFD16A',
+
+  /* Typography — mono everywhere */
+  '--font-display':
+    "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
+  '--font-body':
+    "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
+  '--font-ui':
+    "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
+  '--font-mono':
+    "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
+  '--fw-display': '700',
+  '--fw-body': '420',
+  '--display-tracking': '0.01em',
+
+  /* Brutalist radii — --radius-full preserved for reactions/status pills */
+  '--r-sm': '0px',
+  '--r-md': '2px',
+  '--r-lg': '3px',
+  '--r-pill': '0px',
+  '--avatar-shape': '2px',
+  '--radius-sm': '0px',
+  '--radius-md': '2px',
+  '--radius-lg': '3px',
+  '--radius-xl': '3px',
+
+  /* Shadows */
+  '--shadow-1': '0 0 0 1px rgba(124,255,142,0.08)',
+  '--shadow-2':
+    '0 0 0 1px rgba(124,255,142,0.18), 0 12px 30px rgba(0,0,0,0.6)',
+
+  /* Legacy-token remap — existing components keep working when Mesh is on */
+  '--bg-primary': '#070809',
+  '--bg-secondary': '#0C0D0F',
+  '--bg-tertiary': '#101214',
+  '--bg-floating': '#0C0D0F',
+  '--bg-modifier-hover': 'rgba(232, 236, 232, 0.04)',
+  '--bg-modifier-active': 'rgba(232, 236, 232, 0.08)',
+  '--bg-modifier-selected': 'rgba(232, 236, 232, 0.12)',
+  '--bg-accent': '#7CFF8E',
+  '--bg-accent-hover': '#A8FFB6',
+  '--text-primary': '#E8ECE8',
+  '--text-normal': '#A0A6A0',
+  '--text-secondary': '#A0A6A0',
+  '--text-muted': '#5E635E',
+  '--text-link': '#7CFF8E',
+  '--text-positive': '#7CFF8E',
+  '--text-danger': '#FF6E6E',
+  '--text-warning': '#FFD16A',
+  '--header-primary': '#E8ECE8',
+  '--header-secondary': '#A0A6A0',
+  '--border-color': '#1F2226',
+  '--border-subtle': '#1F2226',
+  '--divider': '#1F2226',
+  '--accent-hover': '#A8FFB6',
+  '--brand-500': '#7CFF8E',
+  '--brand-560': '#A8FFB6',
+  '--success': '#7CFF8E',
+  '--warning': '#FFD16A',
+  '--hover': 'rgba(232, 236, 232, 0.04)',
+  '--active': 'rgba(232, 236, 232, 0.08)',
+  '--interactive-normal': '#A0A6A0',
+  '--interactive-hover': '#E8ECE8',
+  '--interactive-active': '#E8ECE8',
+  '--interactive-muted': '#5E635E',
+  '--channel-icon': '#5E635E',
+  '--status-online': '#7CFF8E',
+  '--status-idle': '#FFD16A',
+  '--status-dnd': '#FF6E6E',
+  '--status-offline': '#5E635E',
+  '--scrollbar-thin-thumb': 'rgba(232, 236, 232, 0.08)',
+  '--scrollbar-thin-track': 'transparent',
+  '--modal-bg': '#0C0D0F',
+  '--input-bg': '#14171A',
+  '--color-encrypted': '#7CFF8E',
+  '--shadow-glow-brand': '0 0 20px rgba(124, 255, 142, 0.25)',
+  '--shadow-glow-accent': '0 0 20px rgba(124, 255, 142, 0.25)',
+
+  /* Glass — Mesh is matte; collapse blur to 0 so backdrops look flat */
+  '--glass-blur': '0px',
+  '--glass-blur-heavy': '0px',
+  '--glass-blur-light': '0px',
+  '--glass-bg-primary': '#070809',
+  '--glass-bg-secondary': '#0C0D0F',
+  '--glass-bg-tertiary': '#101214',
+  '--glass-bg-floating': '#0C0D0F',
+  '--glass-bg-modal': '#0C0D0F',
+  '--glass-border': '#1F2226',
+  '--glass-border-light': '#1F2226',
+  '--glass-highlight': 'rgba(232, 236, 232, 0.04)',
+  '--glass-shadow': '0 0 0 1px rgba(124,255,142,0.08)',
+  '--glass-shadow-elevated':
+    '0 0 0 1px rgba(124,255,142,0.18), 0 12px 30px rgba(0,0,0,0.6)',
+
+  /* Gradients — Mesh prefers flat fills; keep tokens defined but neutral */
+  '--gradient-brand': 'linear-gradient(135deg, #7CFF8E 0%, #5BD66E 100%)',
+  '--gradient-accent': 'linear-gradient(135deg, #7CFF8E 0%, #5BD66E 100%)',
+  '--gradient-surface':
+    'linear-gradient(180deg, rgba(232, 236, 232, 0.02) 0%, transparent 100%)',
+
+  /* Overlays */
+  '--overlay-dark': 'rgba(0, 0, 0, 0.6)',
+  '--overlay-light': 'rgba(0, 0, 0, 0.2)',
+  '--overlay-heavy': 'rgba(0, 0, 0, 0.85)',
+  '--white-overlay-subtle': 'rgba(232, 236, 232, 0.04)',
+  '--white-overlay-light': 'rgba(232, 236, 232, 0.08)',
+  '--white-overlay-medium': 'rgba(232, 236, 232, 0.7)',
+
+  /* Accent alpha variants (Mesh accent is green) */
+  '--brand-alpha-10': 'rgba(124, 255, 142, 0.10)',
+  '--brand-alpha-12': 'rgba(124, 255, 142, 0.12)',
+  '--brand-alpha-15': 'rgba(124, 255, 142, 0.15)',
+  '--brand-alpha-20': 'rgba(124, 255, 142, 0.20)',
+  '--brand-alpha-25': 'rgba(124, 255, 142, 0.25)',
+  '--accent-alpha-08': 'rgba(124, 255, 142, 0.08)',
+  '--accent-alpha-10': 'rgba(124, 255, 142, 0.10)',
+  '--accent-alpha-15': 'rgba(124, 255, 142, 0.15)',
+  '--accent-alpha-20': 'rgba(124, 255, 142, 0.20)',
+  '--accent-alpha-25': 'rgba(124, 255, 142, 0.25)',
+  '--accent-alpha-30': 'rgba(124, 255, 142, 0.30)',
+  '--danger-alpha-15': 'rgba(255, 110, 110, 0.15)',
+  '--danger-alpha-25': 'rgba(255, 110, 110, 0.25)',
+  '--success-alpha-15': 'rgba(124, 255, 142, 0.15)',
+  '--success-alpha-35': 'rgba(124, 255, 142, 0.35)',
+  '--success-alpha-40': 'rgba(124, 255, 142, 0.40)',
+
+  /* Status extras */
+  '--green-360': '#7CFF8E',
+  '--yellow-300': '#FFD16A',
+  '--red-400': '#FF6E6E',
+};

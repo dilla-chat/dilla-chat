@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { IconHash, IconMessage, IconUsers, IconVolume, IconLock, IconSettings } from '@tabler/icons-react';
+import { IconHash, IconMessage, IconUsers, IconVolume, IconSettings, IconShield, IconSearch, IconMessageCircle, IconBookmark, IconPin } from '@tabler/icons-react';
 import TeamSidebar from '../components/TeamSidebar/TeamSidebar';
 import ChannelList from '../components/ChannelList/ChannelList';
 import DMList from '../components/DMList/DMList';
@@ -31,16 +31,74 @@ import { useCryptoRestore } from '../hooks/useCryptoRestore';
 import { useIdentityBackup } from '../hooks/useIdentityBackup';
 import { usePresenceEvents } from '../hooks/usePresenceEvents';
 import { useCustomTheme } from '../hooks/useCustomTheme';
+import { useShellSync } from '../hooks/useShellSync';
 import { telemetryClient } from '../services/telemetryClient';
+import { ws } from '../services/websocket';
 import ContentErrorBoundary from '../components/ErrorBoundary/ContentErrorBoundary';
+import { useLayoutStore } from '../stores/layoutStore';
+import MeshTopBar from '../components/MeshChrome/MeshTopBar';
+import MeshBottomBar from '../components/MeshChrome/MeshBottomBar';
+import CommandPalette, { type PaletteCommand } from '../components/CommandPalette/CommandPalette';
+import SearchPalette, { type SearchHit } from '../components/SearchPalette/SearchPalette';
+import ConnectionBanner from '../components/ConnectionBanner/ConnectionBanner';
+import AddPeerWizard from '../components/AddPeerWizard/AddPeerWizard';
+import SafetyCompare from '../components/SafetyCompare/SafetyCompare';
+import ForwardModal, { type ForwardTarget, type ForwardSource } from '../components/ForwardModal/ForwardModal';
+import IncomingCall from '../components/IncomingCall/IncomingCall';
+import { useMeshStore } from '../stores/meshStore';
+import { useUserSettingsStore } from '../stores/userSettingsStore';
+import { useMessageStore } from '../stores/messageStore';
 import './AppLayout.css';
+
+function matchMessagesInChannel(
+  q: string,
+  chId: string,
+  channelName: string,
+  msgs: Array<{ id: string; content: string; username: string; createdAt: string | number; deleted?: boolean }>,
+  hits: SearchHit[],
+  cap: number,
+): boolean {
+  for (const m of msgs) {
+    if (m.deleted) continue;
+    if (!m.content.toLowerCase().includes(q)) continue;
+    hits.push({
+      id: m.id,
+      channelId: chId,
+      channelName,
+      author: m.username,
+      timestamp: new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
+      body: m.content,
+    });
+    if (hits.length >= cap) return true;
+  }
+  return false;
+}
+
+function searchMessages(
+  query: string,
+  scope: string,
+  teamChannels: Array<{ id: string; name: string }>,
+  activeChannel: { id: string } | null,
+): SearchHit[] {
+  const q = query.toLowerCase();
+  const messages = useMessageStore.getState().messages;
+  const hits: SearchHit[] = [];
+  const filterChannelId = scope === 'channel' ? (activeChannel?.id ?? null) : null;
+  for (const [chId, msgs] of messages) {
+    if (filterChannelId && chId !== filterChannelId) continue;
+    const channel = teamChannels.find((c) => c.id === chId);
+    if (!channel) continue;
+    if (matchMessagesInChannel(q, chId, channel.name, msgs, hits, 60)) break;
+  }
+  return hits;
+}
 
 export default function AppLayout() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const { activeTeamId, activeChannelId, channels, setActiveChannel, teams: teamMap } = useTeamStore();
-  const { teams, derivedKey } = useAuthStore();
+  const { teams: authTeams, derivedKey } = useAuthStore();
   const { activeDMId, setActiveDM, dmChannels } = useDMStore();
   const { activeThreadId, threadPanelOpen, threads, setActiveThread, setThreadPanelOpen } = useThreadStore();
   const isMobile = useIsMobile();
@@ -49,6 +107,16 @@ export default function AppLayout() {
   const [showDMMembers, setShowDMMembers] = useState(false);
 
   useCustomTheme();
+  useShellSync();
+
+  const {
+    sidebarWidth,
+    membersWidth,
+    topBarEnabled,
+    bottomBarEnabled,
+    nudgeSidebarWidth,
+    nudgeMembersWidth,
+  } = useLayoutStore();
 
   // --- Extracted hooks ---
   const { cryptoReady } = useCryptoRestore();
@@ -57,10 +125,10 @@ export default function AppLayout() {
   // Redirect to join/setup if no teams — wait until auth is validated so we
   // don't redirect during the brief window before persisted state is confirmed.
   useEffect(() => {
-    if (authChecked && teams.size === 0) {
+    if (authChecked && authTeams.size === 0) {
       navigate('/join');
     }
-  }, [teams, navigate, authChecked]);
+  }, [authTeams, navigate, authChecked]);
   useIdentityBackup(activeTeamId, dataLoaded);
   usePresenceEvents(activeTeamId);
 
@@ -106,14 +174,49 @@ export default function AppLayout() {
   const [showNewDM, setShowNewDM] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
-  const [channelWidth, setChannelWidth] = useState(240);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [searchPaletteOpen, setSearchPaletteOpen] = useState(false);
+  const [addPeerOpen, setAddPeerOpen] = useState(false);
+  const [safetyCompareOpen, setSafetyCompareOpen] = useState(false);
+  const [forwardSource, setForwardSource] = useState<ForwardSource | null>(null);
+  const [incomingCall, setIncomingCall] = useState<{
+    callerName: string;
+    channelName?: string;
+    channelId?: string;
+  } | null>(null);
 
-  const handleChannelResize = useCallback((delta: number) => {
-    setChannelWidth(prev => Math.min(Math.max(prev + delta, 240), 400));
+  // Listen for mesh:* events from the top bar, bottom bar, and other components
+  useEffect(() => {
+    const openCmd = () => setCommandPaletteOpen(true);
+    const openSearch = () => setSearchPaletteOpen(true);
+    const openAddPeer = () => setAddPeerOpen(true);
+    const openSafety = () => setSafetyCompareOpen(true);
+    const openForward = (e: Event) => {
+      const detail = (e as CustomEvent<ForwardSource>).detail;
+      if (detail) setForwardSource(detail);
+    };
+    const openIncoming = (e: Event) => {
+      const detail = (e as CustomEvent<{ callerName: string; channelName?: string; channelId?: string }>).detail;
+      if (detail) setIncomingCall(detail);
+    };
+    globalThis.addEventListener('mesh:open-command-palette', openCmd);
+    globalThis.addEventListener('mesh:open-search', openSearch);
+    globalThis.addEventListener('mesh:open-add-peer', openAddPeer);
+    globalThis.addEventListener('mesh:open-safety-compare', openSafety);
+    globalThis.addEventListener('mesh:open-forward', openForward);
+    globalThis.addEventListener('mesh:incoming-call', openIncoming);
+    return () => {
+      globalThis.removeEventListener('mesh:open-command-palette', openCmd);
+      globalThis.removeEventListener('mesh:open-search', openSearch);
+      globalThis.removeEventListener('mesh:open-add-peer', openAddPeer);
+      globalThis.removeEventListener('mesh:open-safety-compare', openSafety);
+      globalThis.removeEventListener('mesh:open-forward', openForward);
+      globalThis.removeEventListener('mesh:incoming-call', openIncoming);
+    };
   }, []);
 
   // Get current user info from auth store
-  const currentTeamEntry = activeTeamId ? teams.get(activeTeamId) : null;
+  const currentTeamEntry = activeTeamId ? authTeams.get(activeTeamId) : null;
   const currentUser = currentTeamEntry?.user ?? null;
   const currentUserId = currentUser?.id ?? '';
   const username = currentUser?.username ?? 'User';
@@ -168,6 +271,112 @@ export default function AppLayout() {
 
   const isDMMode = viewMode === 'dms';
 
+  // Build CommandPalette commands from current state
+  const paletteCommands = useMemo<PaletteCommand[]>(() => {
+    const cmds: PaletteCommand[] = [];
+
+    // NAVIGATE — current team's channels
+    for (const ch of teamChannels.filter((c) => c.type === 'text').slice(0, 8)) {
+      cmds.push({
+        id: `nav.channel.${ch.id}`,
+        label: `Open #${ch.name}`,
+        hint: ch.topic || undefined,
+        section: 'NAVIGATE',
+        run: () => setActiveChannel(ch.id),
+      });
+    }
+
+    // VOICE — voice channels
+    for (const ch of teamChannels.filter((c) => c.type === 'voice').slice(0, 4)) {
+      cmds.push({
+        id: `voice.${ch.id}`,
+        label: `Join ${ch.name}`,
+        section: 'VOICE',
+        run: () => setActiveChannel(ch.id),
+      });
+    }
+    cmds.push(
+      {
+        id: 'voice.simulate-incoming',
+        label: 'Simulate: incoming call',
+        hint: 'dev',
+        section: 'VOICE',
+        run: () =>
+          globalThis.dispatchEvent(
+            new CustomEvent('mesh:incoming-call', {
+              detail: { callerName: 'Ada Lovelace', channelName: 'voice-lounge' },
+            }),
+          ),
+      },
+      // FEDERATION
+      {
+        id: 'fed.add-peer',
+        label: 'Add a federation peer',
+        hint: 'opens 4-step wizard',
+        section: 'FEDERATION',
+        run: () =>
+          globalThis.dispatchEvent(new CustomEvent('mesh:open-add-peer')),
+      },
+      {
+        id: 'fed.peers',
+        label: 'Show peer status',
+        hint: 'opens federation settings',
+        section: 'FEDERATION',
+        run: () => navigate('/app/settings'),
+      },
+      {
+        id: 'fed.simulate-degraded',
+        label: 'Simulate: peer drop',
+        hint: 'dev',
+        section: 'FEDERATION',
+        run: () => useMeshStore.getState().setStatus('degraded'),
+      },
+      {
+        id: 'fed.simulate-ok',
+        label: 'Simulate: peers OK',
+        hint: 'dev',
+        section: 'FEDERATION',
+        run: () => useMeshStore.getState().setStatus('ok'),
+      },
+      // ENCRYPTION
+      {
+        id: 'enc.verify',
+        label: 'Verify safety number',
+        hint: 'side-by-side fingerprint compare',
+        section: 'ENCRYPTION',
+        run: () =>
+          globalThis.dispatchEvent(new CustomEvent('mesh:open-safety-compare')),
+      },
+      {
+        id: 'enc.settings',
+        label: 'Open privacy & encryption settings',
+        section: 'ENCRYPTION',
+        run: () => navigate('/app/user-settings'),
+      },
+      // ACCOUNT
+      {
+        id: 'acct.settings',
+        label: 'Open user settings',
+        section: 'ACCOUNT',
+        run: () => navigate('/app/user-settings'),
+      },
+      {
+        id: 'acct.theme.mesh',
+        label: 'Switch to mesh theme',
+        section: 'ACCOUNT',
+        run: () => useUserSettingsStore.getState().setTheme('mesh'),
+      },
+      {
+        id: 'acct.theme.dark',
+        label: 'Switch to dark theme',
+        section: 'ACCOUNT',
+        run: () => useUserSettingsStore.getState().setTheme('dark'),
+      },
+    );
+
+    return cmds;
+  }, [teamChannels, setActiveChannel, navigate]);
+
   // Pre-compute content header for S3358 (no nested ternaries in JSX)
   const renderContentHeader = () => {
     if (isDMMode && activeDM) {
@@ -186,7 +395,7 @@ export default function AppLayout() {
           </span>
           {derivedKey && (
             <span className="content-header-encrypted" title="End-to-end encrypted">
-              <IconLock size={14} stroke={1.75} />
+              <IconShield size={11} stroke={1.75} /> E2E
             </span>
           )}
           {activeDM.is_group && (
@@ -198,6 +407,14 @@ export default function AppLayout() {
             </>
           )}
           <div className="content-header-actions">
+            <button
+              type="button"
+              className="btn btn--ghost btn--icon btn--sm"
+              onClick={() => globalThis.dispatchEvent(new CustomEvent('mesh:open-saved'))}
+              title={t('header.saved', 'Saved messages')}
+            >
+              <IconBookmark size={18} stroke={1.75} />
+            </button>
             {activeDM.is_group && (
               <button
                 className={`header-action-btn ${showDMMembers ? 'active' : ''}`}
@@ -207,7 +424,16 @@ export default function AppLayout() {
                 <IconUsers size={20} stroke={1.75} />
               </button>
             )}
-            <SearchBar onJumpToMessage={handleJumpToMessage} />
+            <button
+              type="button"
+              className="btn btn--ghost btn--icon btn--sm"
+              onClick={() =>
+                globalThis.dispatchEvent(new CustomEvent('mesh:open-search'))
+              }
+              title={t('search.placeholder', 'Search')}
+            >
+              <IconSearch size={18} stroke={1.75} />
+            </button>
           </div>
         </>
       );
@@ -216,12 +442,12 @@ export default function AppLayout() {
       return (
         <>
           <span className="content-header-icon">
-            {activeChannel.type === 'voice' ? <IconVolume size={20} stroke={1.75} /> : <span className="channel-tilde">~</span>}
+            {activeChannel.type === 'voice' ? <IconVolume size={18} stroke={1.75} /> : <span className="channel-tilde">#</span>}
           </span>
           <span className="content-header-name title">{activeChannel.name}</span>
           {derivedKey && (
             <span className="content-header-encrypted" title="End-to-end encrypted">
-              <IconLock size={14} stroke={1.75} />
+              <IconShield size={11} stroke={1.75} /> E2E
             </span>
           )}
           {activeChannel.topic && (
@@ -232,13 +458,46 @@ export default function AppLayout() {
           )}
           <div className="content-header-actions">
             <button
+              type="button"
+              className="btn btn--ghost btn--icon btn--sm"
+              onClick={() => globalThis.dispatchEvent(new CustomEvent('mesh:open-threads'))}
+              title={t('header.threads', 'Threads')}
+            >
+              <IconMessageCircle size={18} stroke={1.75} />
+            </button>
+            <button
+              type="button"
+              className="btn btn--ghost btn--icon btn--sm"
+              onClick={() => globalThis.dispatchEvent(new CustomEvent('mesh:open-saved'))}
+              title={t('header.saved', 'Saved messages')}
+            >
+              <IconBookmark size={18} stroke={1.75} />
+            </button>
+            <button
+              type="button"
+              className="btn btn--ghost btn--icon btn--sm"
+              onClick={() => globalThis.dispatchEvent(new CustomEvent('mesh:open-pinned'))}
+              title={t('header.pinned', 'Pinned messages')}
+            >
+              <IconPin size={18} stroke={1.75} />
+            </button>
+            <button
               className={`header-action-btn ${showMembers ? 'active' : ''}`}
               onClick={() => setShowMembers(v => !v)}
               title={t('members.toggle', 'Toggle Member List')}
             >
               <IconUsers size={20} stroke={1.75} />
             </button>
-            <SearchBar onJumpToMessage={handleJumpToMessage} />
+            <button
+              type="button"
+              className="btn btn--ghost btn--icon btn--sm"
+              onClick={() =>
+                globalThis.dispatchEvent(new CustomEvent('mesh:open-search'))
+              }
+              title={t('search.placeholder', 'Search')}
+            >
+              <IconSearch size={18} stroke={1.75} />
+            </button>
           </div>
         </>
       );
@@ -381,7 +640,7 @@ export default function AppLayout() {
   if (!authChecked) return null;
 
   // Show onboarding when no teams are joined
-  if (teams.size === 0) {
+  if (authTeams.size === 0) {
     return (
       <>
         <TitleBar />
@@ -405,14 +664,14 @@ export default function AppLayout() {
   }
 
   const channelSidebarContent = (
-    <div className={`channel-sidebar ${isMobile ? 'mobile-fullwidth' : ''}`} style={isMobile ? undefined : { width: channelWidth }}>
+    <div className={`channel-sidebar ${isMobile ? 'mobile-fullwidth' : ''}`}>
       <div className="channel-sidebar-header">
         <div className="channel-sidebar-header-top">
           <span className="channel-sidebar-header-name title truncate">
             {isDMMode ? t('dm.title', 'Direct Messages') : (activeTeamId && teamMap.get(activeTeamId)?.name) || t('app.name')}
           </span>
           <button
-            className="sidebar-settings-btn"
+            className="btn btn--ghost btn--icon btn--sm"
             onClick={() => navigate('/app/settings')}
             title={t('teams.settings', 'Team Settings')}
             style={isDMMode ? { visibility: 'hidden' } : undefined}
@@ -420,6 +679,15 @@ export default function AppLayout() {
             <IconSettings size={18} stroke={1.75} />
           </button>
         </div>
+        {!isDMMode && activeTeamId && (
+          <div className="channel-sidebar-node" title="Federation status">
+            {(authTeams.get(activeTeamId)?.baseUrl ?? '')
+              .replace(/^https?:\/\//, '')
+              .replace(/\/$/, '')}
+            {' · '}
+            <span className="channel-sidebar-node-status">MESH OK</span>
+          </div>
+        )}
         <div className="channel-sidebar-tabs">
           <button
             className={`sidebar-tab ${isDMMode ? '' : 'active'}`}
@@ -452,106 +720,246 @@ export default function AppLayout() {
         {t('a11y.skipToContent', 'Skip to content')}
       </a>
       <TitleBar />
-      <div className={`app-layout-main ${isMobile ? 'mobile' : ''}`}>
-      {!isMobile && (
-        <>
-          <div className="left-panels" style={{ width: 72 + channelWidth }}>
-            <div className="left-panels-top">
+
+      <div
+        className={`app-layout-main ${isMobile ? 'mobile' : ''}`}
+        data-topbar={topBarEnabled || undefined}
+        data-bottombar={bottomBarEnabled || undefined}
+      >
+        {!isMobile && topBarEnabled && <MeshTopBar />}
+
+        <ConnectionBanner />
+
+        {!isMobile && (
+          <div
+            className="app-grid-shell"
+            style={{
+              // 6 tracks: rail | sidebar | handle | main | handle | members
+              // The handle tracks are 4px (visible drag area); when the
+              // members panel is hidden, both the handle and members
+              // tracks collapse to 0px.
+              gridTemplateColumns: `var(--rail-w) ${sidebarWidth}px 4px 1fr ${
+                !isDMMode && showMembers ? `4px ${membersWidth}px` : '0px 0px'
+              }`,
+            }}
+          >
+            <div className="app-grid-rail">
               <TeamSidebar />
-              {channelSidebarContent}
             </div>
 
-            <div className="left-panels-bottom">
-              <VoiceControls />
-              <UserPanel
-                username={username}
-                displayName={displayName}
-                onSettingsClick={() => navigate('/app/user-settings')}
-              />
+            <div className="app-grid-sidebar">
+              <div className="app-grid-sidebar-top">{channelSidebarContent}</div>
+              <div className="app-grid-sidebar-bottom">
+                <VoiceControls />
+                <UserPanel
+                  username={username}
+                  displayName={displayName}
+                  onSettingsClick={() => navigate('/app/user-settings')}
+                />
+              </div>
+            </div>
+
+            <ResizeHandle onResize={nudgeSidebarWidth} />
+
+            <div id="main-content" className="content-wrapper">
+              <div className="content-header">{renderContentHeader()}</div>
+              <div className="content-body">
+                <div className="content-area">{renderContentArea()}</div>
+                {threadPanelOpen && activeThread && (
+                  <ContentErrorBoundary fallbackLabel="Thread panel failed to load.">
+                    <ThreadPanel thread={activeThread} onClose={handleCloseThread} />
+                  </ContentErrorBoundary>
+                )}
+              </div>
+            </div>
+
+            {!isDMMode && showMembers && (
+              <>
+                <ResizeHandle onResize={nudgeMembersWidth} side="right" />
+                <div className="app-grid-members">
+                  <MemberList />
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {isMobile && mobileTab === 'teams' && (
+          <div className="mobile-tab-content">
+            <TeamSidebar />
+          </div>
+        )}
+
+        {isMobile && mobileTab === 'channels' && (
+          <div className="mobile-tab-content">{channelSidebarContent}</div>
+        )}
+
+        {isMobile && mobileTab === 'members' && (
+          <div className="mobile-tab-content">
+            <MemberList />
+          </div>
+        )}
+
+        {isMobile && mobileTab === 'chat' && (
+          <div id="main-content" className="content-wrapper">
+            <div className="content-header">{renderContentHeader()}</div>
+            <div className="content-body">
+              <div className="content-area">{renderContentArea()}</div>
+              {threadPanelOpen && activeThread && (
+                <ContentErrorBoundary fallbackLabel="Thread panel failed to load.">
+                  <ThreadPanel thread={activeThread} onClose={handleCloseThread} />
+                </ContentErrorBoundary>
+              )}
             </div>
           </div>
+        )}
 
-          <ResizeHandle onResize={handleChannelResize} />
-        </>
-      )}
-
-      {isMobile && mobileTab === 'teams' && (
-        <div className="mobile-tab-content">
-          <TeamSidebar />
-        </div>
-      )}
-
-      {isMobile && mobileTab === 'channels' && (
-        <div className="mobile-tab-content">
-          {channelSidebarContent}
-        </div>
-      )}
-
-      {isMobile && mobileTab === 'members' && (
-        <div className="mobile-tab-content">
-          <MemberList />
-        </div>
-      )}
-
-      {(!isMobile || mobileTab === 'chat') && (
-      <div id="main-content" className="content-wrapper">
-        <div className="content-header">
-          {renderContentHeader()}
-        </div>
-
-        <div className="content-body">
-          <div className="content-area">
-            {renderContentArea()}
+        {isMobile && (
+          <div className="mobile-bottom-controls">
+            <VoiceControls />
+            <UserPanel
+              username={username}
+              displayName={displayName}
+              onSettingsClick={() => navigate('/app/user-settings')}
+            />
+            <MobileTabBar activeTab={mobileTab} onTabChange={setMobileTab} />
           </div>
+        )}
 
-          {threadPanelOpen && activeThread && (
-            <ContentErrorBoundary fallbackLabel="Thread panel failed to load.">
-              <ThreadPanel thread={activeThread} onClose={handleCloseThread} />
-            </ContentErrorBoundary>
-          )}
+        {!isMobile && bottomBarEnabled && <MeshBottomBar />}
 
-          {!isMobile && !isDMMode && showMembers && <MemberList />}
-        </div>
-      </div>
-      )}
-
-      {isMobile && (
-        <div className="mobile-bottom-controls">
-          <VoiceControls />
-          <UserPanel
-            username={username}
-            displayName={displayName}
-            onSettingsClick={() => navigate('/app/user-settings')}
+        {showCreateChannel && (
+          <CreateChannel
+            defaultCategory={createChannelCategory}
+            onClose={() => setShowCreateChannel(false)}
           />
-          <MobileTabBar activeTab={mobileTab} onTabChange={setMobileTab} />
-        </div>
-      )}
+        )}
 
-      {showCreateChannel && (
-        <CreateChannel
-          defaultCategory={createChannelCategory}
-          onClose={() => setShowCreateChannel(false)}
-        />
-      )}
+        {showNewDM && (
+          <NewDMModal
+            currentUserId={currentUserId}
+            onClose={() => setShowNewDM(false)}
+            onDMCreated={handleDMCreated}
+          />
+        )}
 
-      {showNewDM && (
-        <NewDMModal
-          currentUserId={currentUserId}
-          onClose={() => setShowNewDM(false)}
-          onDMCreated={handleDMCreated}
-        />
-      )}
+        {shortcutsOpen && (
+          <ShortcutsModal onClose={() => setShortcutsOpen(false)} />
+        )}
+      </div>
 
-      {shortcutsOpen && (
-        <ShortcutsModal onClose={() => setShortcutsOpen(false)} />
-      )}
-    </div>
+      <QuickSwitcher
+        open={quickSwitcherOpen}
+        onClose={() => setQuickSwitcherOpen(false)}
+        onSelect={handleQuickSwitch}
+      />
 
-    <QuickSwitcher
-      open={quickSwitcherOpen}
-      onClose={() => setQuickSwitcherOpen(false)}
-      onSelect={handleQuickSwitch}
-    />
+      <CommandPalette
+        open={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        commands={paletteCommands}
+      />
+
+      <IncomingCall
+        open={incomingCall !== null}
+        callerName={incomingCall?.callerName ?? ''}
+        channelName={incomingCall?.channelName}
+        onAccept={() => {
+          // H-16: voice signaling now carries channel_id through the
+          // voice:incoming-call event. Switching to the channel via the
+          // existing dilla:pickchannel pathway pulls the user into the
+          // ChatApp where the voice-dock join button is reachable.
+          // (Auto-joining the SFU here would skip the dock's mic/cam
+          // pre-flight — best left to the user.)
+          const cid = incomingCall?.channelId;
+          if (cid) {
+            globalThis.dispatchEvent(new CustomEvent('dilla:pickchannel', { detail: cid }));
+          }
+          setIncomingCall(null);
+        }}
+        onDecline={() => setIncomingCall(null)}
+      />
+
+      <AddPeerWizard
+        open={addPeerOpen}
+        onClose={() => setAddPeerOpen(false)}
+        onComplete={(peer) => {
+          useMeshStore.getState().setPeers(
+            useMeshStore.getState().peersConnected + 1,
+            useMeshStore.getState().peersTotal + 1,
+          );
+          useMeshStore.getState().setStatus('ok');
+          useMeshStore.getState().showConnectionBanner({
+            kind: 'restored',
+            message: `Peer ${peer.label} added`,
+          });
+          setTimeout(() => useMeshStore.getState().hideConnectionBanner(), 4000);
+        }}
+      />
+
+      <SafetyCompare
+        open={safetyCompareOpen}
+        yours="57842 19034 88291 60017 33920 11458 90442 17763"
+        theirs="57842 19034 88291 60017 33920 11458 90442 17763"
+        yourName={`@${username}`}
+        theirName="@peer"
+        onClose={() => setSafetyCompareOpen(false)}
+        onMarkVerified={() => {
+          setSafetyCompareOpen(false);
+          useMeshStore.getState().showConnectionBanner({
+            kind: 'restored',
+            message: 'Safety number verified',
+          });
+          setTimeout(() => useMeshStore.getState().hideConnectionBanner(), 3000);
+        }}
+        onMarkMismatch={() => {
+          setSafetyCompareOpen(false);
+          useMeshStore.getState().showConnectionBanner({
+            kind: 'error',
+            message: 'Safety number mismatch — stop messaging this contact',
+          });
+        }}
+      />
+
+      <ForwardModal
+        open={forwardSource !== null}
+        source={forwardSource}
+        targets={(() => {
+          const tgts: ForwardTarget[] = [];
+          for (const ch of teamChannels) {
+            if (ch.type === 'text') {
+              tgts.push({ id: ch.id, label: ch.name, kind: 'channel' });
+            }
+          }
+          for (const dm of teamDMs) {
+            const otherName = dm.is_group
+              ? dm.members.map((m) => m.display_name || m.username).join(', ')
+              : dm.members.find((m) => m.user_id !== currentUserId)?.username ?? dm.id;
+            tgts.push({ id: dm.id, label: otherName, kind: 'dm' });
+          }
+          return tgts;
+        })()}
+        onClose={() => setForwardSource(null)}
+        onForward={(target) => {
+          if (!activeTeamId || !forwardSource) return;
+          // Compose a forwarded message body: keep the source body, prepend an attribution.
+          const body = `> from ${forwardSource.author} (${forwardSource.timestamp})\n${forwardSource.body}`;
+          if (target.kind === 'channel') {
+            ws.sendMessage(activeTeamId, target.id, body);
+          } else {
+            ws.sendDMMessage(activeTeamId, target.id, body);
+          }
+          setForwardSource(null);
+        }}
+      />
+
+      <SearchPalette
+        open={searchPaletteOpen}
+        onClose={() => setSearchPaletteOpen(false)}
+        scopedChannelName={activeChannel?.name ?? null}
+        search={(query, scope) => searchMessages(query, scope, teamChannels, activeChannel ?? null)}
+        onSelectHit={(hit) => handleJumpToMessage(hit.channelId, hit.id)}
+      />
     </>
   );
 }

@@ -1,60 +1,12 @@
-dialog.status-picker {
-  position: absolute;
-  bottom: 60px;
-  left: 8px;
-  background: var(--glass-bg-floating);
-  -webkit-backdrop-filter: blur(var(--glass-blur-heavy));
-  backdrop-filter: blur(var(--glass-blur-heavy));
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--glass-shadow-elevated);
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-sm);
-  z-index: 1000;
-  min-width: 220px;
-  max-width: none;
-  max-height: none;
-  color: inherit;
-}
 
-.status-picker-header {
-  padding: 8px 10px 4px;
-  color: var(--text-secondary);
-}
 
-.status-picker-options {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
 
-.status-picker-option {
-  border: none;
-  width: 100%;
-  text-align: left;
-  font-family: inherit;
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-sm) var(--spacing-md);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  font-size: var(--font-size-base);
-  color: var(--text-primary);
-  background: transparent;
-  transition: background-color var(--duration-fast) var(--ease-out);
-}
 
-.status-picker-option:hover {
-  background: var(--bg-modifier-hover);
-}
 
-.status-picker-option.active {
-  background: var(--brand-alpha-15);
-}
 
 .status-picker-dot {
-  width: 10px;
-  height: 10px;
+  width: 0.625rem;
+  height: 0.625rem;
   border-radius: var(--radius-full);
   flex-shrink: 0;
 }
@@ -63,37 +15,9 @@ dialog.status-picker {
   flex: 1;
 }
 
-.status-picker-divider {
-  height: 1px;
-  background: var(--divider);
-  margin: 6px 0;
-}
 
-.status-picker-custom {
-  padding: 4px 10px 8px;
-}
 
-.status-picker-custom-label {
-  display: block;
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  color: var(--text-secondary);
-  margin-bottom: 6px;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-}
 
-.status-picker-custom-input {
-  width: 100%;
-  padding: 8px 10px;
-  background: var(--bg-primary);
-  border: none;
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
-  font-size: var(--font-size-base);
-  outline: none;
-  box-sizing: border-box;
-}
 
 .status-picker-custom-input::placeholder {
   color: var(--text-muted);
@@ -101,38 +25,127 @@ dialog.status-picker {
 
 .status-picker-custom-actions {
   display: flex;
-  gap: 6px;
+  gap: 0.375rem;
   margin-top: var(--spacing-sm);
   justify-content: flex-end;
 }
 
+
+
+
+
+
+/* ====================================================================
+   Mesh design — relocated from mesh-overrides.css. Single source of
+   truth; theming via tokens.
+   ==================================================================== */
+
+dialog.status-picker {
+  width: 16.25rem;
+  min-width: 16.25rem;
+  background: var(--surface);
+  border: 0.0625rem solid var(--hairline-2, var(--hairline));
+  border-radius: var(--r-md);
+  box-shadow: 0 0.75rem 1.875rem rgba(0, 0, 0, 0.5);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  padding: 0.375rem 0;
+}
+
+.status-picker-header {
+  font-family: var(--font-mono);
+  font-size: 0.59375rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+  padding: 0.375rem 0.875rem 0.5rem;
+}
+
+.status-picker-options {
+  gap: 0;
+}
+
+.status-picker-option {
+  padding: 0.375rem 0.875rem;
+  border-radius: 0;
+  font-family: var(--font-ui);
+  font-size: 0.78125rem;
+  color: var(--fg);
+  gap: 0.5rem;
+}
+
+.status-picker-option:hover {
+  background: var(--surface-hi);
+  color: var(--accent);
+}
+
+.status-picker-option.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.status-picker-divider {
+  background: var(--hairline);
+  margin: 0.25rem 0;
+}
+
+.status-picker-custom {
+  padding: 0.5rem 0.875rem;
+}
+
+.status-picker-custom-label {
+  font-family: var(--font-mono);
+  font-size: 0.59375rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+  margin-bottom: 0.375rem;
+}
+
+.status-picker-custom-input {
+  background: var(--bg);
+  border: 0.0625rem solid var(--hairline-2, var(--hairline));
+  border-radius: var(--r-sm);
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  padding: 0.375rem 0.5rem;
+}
+
+.status-picker-custom-input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
 .status-picker-btn {
-  padding: 6px 14px;
-  border: none;
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-sm);
-  cursor: pointer;
-  font-weight: var(--font-weight-medium);
+  border-radius: var(--r-sm);
+  font-family: var(--font-ui);
 }
 
 .status-picker-btn.save {
-  background: var(--gradient-brand);
-  color: white;
-  border: 1px solid var(--brand-alpha-20);
-  box-shadow: 0 2px var(--spacing-sm) var(--brand-alpha-20);
-  transition: filter var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
+  background: var(--accent);
+  color: var(--accent-ink, #111);
+  border: 0.0625rem solid var(--accent);
+  box-shadow: none;
+  filter: none;
+  font-weight: 600;
+  font-size: 0.6875rem;
+  padding: 0.375rem 0.625rem;
 }
 
 .status-picker-btn.save:hover {
-  filter: brightness(1.1);
-  box-shadow: 0 var(--spacing-xs) var(--spacing-lg) var(--brand-alpha-25);
+  background: var(--accent-2, var(--accent));
+  filter: none;
+  box-shadow: none;
 }
 
 .status-picker-btn.clear {
-  background: transparent;
-  color: var(--text-secondary);
+  font-size: 0.6875rem;
+  color: var(--fg-3);
+  text-decoration: underline dotted;
+  padding: 0;
 }
 
 .status-picker-btn.clear:hover {
-  color: var(--text-primary);
+  color: var(--accent);
+  background: transparent;
 }

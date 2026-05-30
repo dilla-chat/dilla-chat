@@ -95,3 +95,54 @@ describe('addChannel / removeChannel / updateChannel', () => {
     expect(getState().channels.get('t1')![0].name).toBe('renamed');
   });
 });
+
+describe('addMember / setGroups / upsertGroup / removeGroup', () => {
+  const mockMember: Member = {
+    id: 'm1', userId: 'u1', username: 'alice', displayName: 'Alice', nickname: '',
+    roleIds: [], roles: [], statusType: 'online', isAdmin: false, publicKeyHex: '', avatarUrl: '',
+  };
+  const mockGroup = {
+    id: 'g1', teamId: 't1', name: 'general', position: 0, accessRoleIds: [], hiddenIfRestricted: false,
+  };
+
+  it('addMember appends a new member', () => {
+    getState().addMember('t1', mockMember);
+    expect(getState().members.get('t1')).toHaveLength(1);
+  });
+
+  it('addMember is idempotent on duplicate userId', () => {
+    getState().addMember('t1', mockMember);
+    getState().addMember('t1', { ...mockMember, id: 'm1-dup' });
+    expect(getState().members.get('t1')).toHaveLength(1);
+  });
+
+  it('setGroups replaces the groups list', () => {
+    getState().setGroups('t1', [mockGroup]);
+    expect(getState().groups.get('t1')).toHaveLength(1);
+  });
+
+  it('upsertGroup adds a new group', () => {
+    getState().upsertGroup('t1', mockGroup);
+    expect(getState().groups.get('t1')).toHaveLength(1);
+  });
+
+  it('upsertGroup updates an existing group in place', () => {
+    getState().upsertGroup('t1', mockGroup);
+    getState().upsertGroup('t1', { ...mockGroup, name: 'renamed' });
+    const g = getState().groups.get('t1')?.[0];
+    expect(g?.name).toBe('renamed');
+    expect(getState().groups.get('t1')).toHaveLength(1);
+  });
+
+  it('removeGroup filters by id', () => {
+    getState().upsertGroup('t1', mockGroup);
+    getState().removeGroup('t1', 'g1');
+    expect(getState().groups.get('t1')).toHaveLength(0);
+  });
+
+  it('removeGroup is a no-op for non-existent id', () => {
+    getState().upsertGroup('t1', mockGroup);
+    getState().removeGroup('t1', 'g-no-such');
+    expect(getState().groups.get('t1')).toHaveLength(1);
+  });
+});
