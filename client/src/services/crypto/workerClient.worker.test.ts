@@ -7,9 +7,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 // Stub Worker BEFORE importing the module so getWorker() picks it up.
 class FakeWorker {
   static instances: FakeWorker[] = [];
-  listeners: Map<string, ((ev: unknown) => void)[]> = new Map();
+  listeners: Map<string, ((_ev: unknown) => void)[]> = new Map();
   lastMessage: unknown = null;
-  responseFor: (msg: { id: number; op: string; payload: unknown }) => unknown = (msg) => {
+  responseFor: (_msg: { id: number; op: string; payload: unknown }) => unknown = (msg) => {
     // Match return shape per op so callers that wrap into Map work
     if (msg.op.endsWith('.loadAll')) {
       return { id: msg.id, ok: true, result: [] };
@@ -20,7 +20,7 @@ class FakeWorker {
 
   constructor() { FakeWorker.instances.push(this); }
 
-  addEventListener(name: string, fn: (ev: unknown) => void) {
+  addEventListener(name: string, fn: (_ev: unknown) => void) {
     const arr = this.listeners.get(name) ?? [];
     arr.push(fn);
     this.listeners.set(name, arr);
