@@ -586,6 +586,22 @@ msg_info "Creating LXC ${CTID} (${CT_HOSTNAME})"
 
 db_passphrase=$(head -c 32 /dev/urandom | base64 | tr -d '+/=' | head -c 32)
 
+# CORS allow-list derived from DILLA_DOMAIN. The dilla-server defaults
+# to permissive CORS and emits a SECURITY warning at startup until this
+# is set — we lock it down to the single browser origin the user will
+# actually hit:
+#   - domain mode  → https://<domain>            (terminated by the reverse proxy)
+#   - testing mode → http://localhost:<port>     (matches the SSH tunnel hint
+#                                                 printed at end-of-install)
+#   - noninteractive with no domain set → leave empty (the heredoc skips it)
+if [[ "$DILLA_DOMAIN" == "localhost" ]]; then
+  allowed_origins="http://localhost:${DILLA_PORT}"
+elif [[ -n "$DILLA_DOMAIN" ]]; then
+  allowed_origins="https://${DILLA_DOMAIN}"
+else
+  allowed_origins=""
+fi
+
 # Compose net0 with optional VLAN tag + IPv6 spec.
 net0="name=eth0,bridge=${BRIDGE},ip=${IPV4}"
 [[ -n "$VLAN" ]]                        && net0+=",tag=${VLAN}"
@@ -687,7 +703,13 @@ pct exec "$CTID" -- bash -c "
 DILLA_PORT=${DILLA_PORT}
 DILLA_DATA_DIR=/var/lib/dilla
 DILLA_DB_PASSPHRASE=${db_passphrase}
+# This LXC install runs plaintext HTTP behind an external reverse proxy
+# (see header comment + post-install hint below). DILLA_INSECURE=true
+# is what the dilla-server requires to allow that — without it the
+# service refuses to start.
+DILLA_INSECURE=true
 ${DILLA_DOMAIN:+DILLA_DOMAIN=${DILLA_DOMAIN}}
+${allowed_origins:+DILLA_ALLOWED_ORIGINS=${allowed_origins}}
 EOF
   chown root:dilla /etc/dilla/dilla.env
   chmod 0640 /etc/dilla/dilla.env
@@ -765,6 +787,8 @@ if [[ "$DILLA_DOMAIN" == "localhost" ]]; then
 elif [[ -n "$DILLA_DOMAIN" ]]; then
   echo -e " ${DGN}Next:${CL} point your reverse proxy at ${BL}${container_ip:-<ct-ip>}:${DILLA_PORT}${CL}"
   echo -e "       and serve it as ${BL}https://${DILLA_DOMAIN}${CL}."
+  echo -e "       ${YW}CORS${CL} is pinned to ${BL}${allowed_origins}${CL} — update"
+  echo -e "       ${BL}DILLA_ALLOWED_ORIGINS${CL} in ${BL}/etc/dilla/dilla.env${CL} if you move the proxy hostname."
 else
   echo -e " ${YW}No DILLA_DOMAIN set${CL} — passkey registration will fail until you"
   echo -e "       front the LXC with a reverse proxy on a domain and append"
