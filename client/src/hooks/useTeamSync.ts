@@ -252,8 +252,14 @@ function restoreApiConnections(teams: Map<string, { baseUrl: string; token: stri
 /**
  * Handles API connection restoration, auth-error redirects, WS setup,
  * sync:init on connect, and REST-fallback data loading.
+ *
+ * `cryptoReady` gates the API-restore effect — the encrypted teams blob
+ * lives in sessionStorage and is hydrated asynchronously by
+ * `useCryptoRestore`. Firing restoreApiConnections before that pumps
+ * through means we'd restore with an empty teams Map on every reload
+ * and bounce the user to /onboarding.
  */
-export function useTeamSync(activeTeamId: string | null): { authChecked: boolean; dataLoaded: RefObject<Set<string>> } {
+export function useTeamSync(activeTeamId: string | null, cryptoReady = true): { authChecked: boolean; dataLoaded: RefObject<Set<string>> } {
   const navigate = useNavigate();
   const { teams } = useAuthStore();
   const { setTeam, setChannels, setMembers, setRoles } = useTeamStore();
@@ -289,9 +295,15 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
     });
   }, [navigate]);
 
-  // Restore API connections from persisted teams on mount
+  // Restore API connections from persisted teams on mount.
+  // Wait for cryptoReady so the encrypted teams blob (sessionStorage,
+  // hydrated by useCryptoRestore) has actually been decrypted into the
+  // store before we read .size. Without this gate, the first effect
+  // run on reload sees an empty teams Map and `authChecked` flips true
+  // → AppLayout redirects to /onboarding even though the user is
+  // perfectly authenticated. See `restoreEncryptedAuthDataIntoStore`.
   useEffect(() => {
-    if (apiRestored.current) return;
+    if (apiRestored.current || !cryptoReady) return;
     apiRestored.current = true;
     console.log(`[AppLayout] Restoring API connections for ${teams.size} teams`);
     restoreApiConnections(teams);
@@ -305,7 +317,7 @@ export function useTeamSync(activeTeamId: string | null): { authChecked: boolean
     } else {
       setAuthChecked(true);
     }
-  }, [teams]);
+  }, [teams, cryptoReady]);
 
   // Auto-select first team if none active
   const { setActiveTeam } = useTeamStore();
