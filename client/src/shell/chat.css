@@ -22,15 +22,61 @@
   text-rendering: optimizeLegibility;
 }
 
-/* Resize handles — sit on top of the column gutters. 6px hit area, 1px line. */
+/* S6848 a11y refactor turned several interactive <div>s into <button>s.
+   Buttons inherit chrome (border, padding, font-size, background, focus
+   outline, default font, …) from the browser; the original CSS for these
+   classes assumed a <div>. Reset the UA chrome so each class keeps its
+   own design without leaking button defaults. Add classes here as more
+   elements get converted. */
+.rail-item,
+.rail-add,
+.channel-row,
+.dm-row,
+.cat-collapsible,
+.pip-edge,
+.pip-move,
+.resize-handle {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  outline: 0;
+  box-shadow: none;
+}
+/* Row-like elements that used to be block-level <div>s. <button> defaults
+   to inline-block + content width; restore the full-width fill so the
+   row spans the sidebar instead of shrink-wrapping to its label. */
+.channel-row,
+.dm-row,
+.cat-collapsible {
+  width: 100%;
+}
+.rail-item:focus-visible,
+.channel-row:focus-visible,
+.dm-row:focus-visible,
+.cat-collapsible:focus-visible {
+  /* Keep an a11y-visible focus ring without bleeding it into the resting
+     state. Buttons get an :focus styling from the UA otherwise. */
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+/* .rail-add keeps its own dashed border that .rail-add { … } sets below. */
+
+/* Resize handles — sit on top of the column gutters. 6px hit area, 1px line.
+   UA button reset comes from the top-of-file rule (S6848). */
 .resize-handle {
   position: absolute;
   top: 0; bottom: 0;
   width: 6px;
   z-index: 5;
   cursor: col-resize;
-  background: transparent;
   transition: background .12s;
+  outline: none;
 }
 .resize-handle::after {
   content: '';
