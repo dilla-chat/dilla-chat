@@ -616,10 +616,11 @@ mod tests {
         assert_eq!(resp.status(), 400);
     }
 
-    /// SECREVIEW-VULN-1 helper: client-side mirror of
-    /// `auth::enrollment_signing_digest`. Compute the SHA-256 digest
-    /// the trusted device must sign during /devices/enroll-complete.
-    #[cfg(test)]
+    // ── SECREVIEW-VULN-1: helpers + tests for bound enrollment ─────
+
+    /// Client-side mirror of `auth::enrollment_signing_digest`: the
+    /// SHA-256 digest the trusted device must sign during
+    /// /devices/enroll-complete.
     fn enrollment_digest(user_id: &str, new_pk: &[u8; 32], nonce: &[u8; 32]) -> [u8; 32] {
         use sha2::{Digest, Sha256};
         let mut h = Sha256::new();
@@ -633,36 +634,45 @@ mod tests {
         h.finalize().into()
     }
 
-    #[tokio::test]
-    async fn enroll_complete_idempotent_returns_existing_device_for_duplicate_pubkey() {
-        use base64::Engine as _;
-        use ed25519_dalek::{Signer, SigningKey};
-        let (state, _tmp) = make_state();
-        seed_user(&state.db, "alice");
-        let authorizer_sk = SigningKey::from_bytes(&[33u8; 32]);
-        let authorizer_pk = authorizer_sk.verifying_key().to_bytes();
-        let new_pk_bytes = [44u8; 32];
-        state.db.with_conn(|conn| {
-            db::create_device(conn, "alice", &authorizer_pk, "primary").map(|_| ())?;
-            // Pre-create the "new" device row so enroll_complete hits the
-            // L171 `return Ok(existing.id)` branch instead of creating again.
-            db::create_device(conn, "alice", &new_pk_bytes, "duplicate").map(|_| ())
-        }).unwrap();
-        let (nonce, challenge_id) = state
-            .auth
-            .generate_challenge_with_binding("alice", &new_pk_bytes)
+    /// Seed an active authorizer device for `user_id` and return the
+    /// signing key + raw public key bytes.
+    fn seed_authorizer(
+        state: &AppState,
+        user_id: &str,
+        seed: u8,
+    ) -> (ed25519_dalek::SigningKey, [u8; 32]) {
+        let sk = ed25519_dalek::SigningKey::from_bytes(&[seed; 32]);
+        let pk = sk.verifying_key().to_bytes();
+        state
+            .db
+            .with_conn(|conn| db::create_device(conn, user_id, &pk, "primary").map(|_| ()))
             .unwrap();
-        let nonce_arr: [u8; 32] = nonce.as_slice().try_into().unwrap();
-        let digest = enrollment_digest("alice", &new_pk_bytes, &nonce_arr);
-        let signature = authorizer_sk.sign(&digest);
-        let body = format!(
-            r#"{{"challenge_id":"{}","new_device_public_key":"{}","authorizer_public_key":"{}","signature":"{}","device_label":"dup"}}"#,
+        (sk, pk)
+    }
+
+    /// Build the JSON body for a /devices/enroll-complete request.
+    fn enroll_body(
+        challenge_id: &str,
+        new_pk: &[u8; 32],
+        auth_pk: &[u8; 32],
+        sig: &[u8; 64],
+        label: &str,
+    ) -> String {
+        let b64 = base64::engine::general_purpose::STANDARD;
+        format!(
+            r#"{{"challenge_id":"{}","new_device_public_key":"{}","authorizer_public_key":"{}","signature":"{}","device_label":"{}"}}"#,
             challenge_id,
-            base64::engine::general_purpose::STANDARD.encode(new_pk_bytes),
-            base64::engine::general_purpose::STANDARD.encode(authorizer_pk),
-            base64::engine::general_purpose::STANDARD.encode(signature.to_bytes()),
-        );
-        let app = router(state, "alice");
+            b64.encode(new_pk),
+            b64.encode(auth_pk),
+            b64.encode(sig),
+            label,
+        )
+    }
+
+    /// POST `body` to /devices/enroll-complete as `user_id` and return
+    /// the HTTP status code.
+    async fn post_enroll(state: AppState, user_id: &'static str, body: String) -> u16 {
+        let app = router(state, user_id);
         let resp = app
             .oneshot(
                 Request::post("/devices/enroll-complete")
@@ -672,141 +682,79 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(resp.status(), 200);
+        resp.status().as_u16()
+    }
+
+    #[tokio::test]
+    async fn enroll_complete_idempotent_returns_existing_device_for_duplicate_pubkey() {
+        use ed25519_dalek::Signer;
+        let (state, _tmp) = make_state();
+        seed_user(&state.db, "alice");
+        let (sk, pk) = seed_authorizer(&state, "alice", 33);
+        let new_pk = [44u8; 32];
+        // Pre-create the "new" device row so enroll_complete hits the
+        // `return Ok(existing.id)` branch instead of creating again.
+        state
+            .db
+            .with_conn(|conn| db::create_device(conn, "alice", &new_pk, "duplicate").map(|_| ()))
+            .unwrap();
+        let (nonce, cid) = state.auth.generate_challenge_with_binding("alice", &new_pk).unwrap();
+        let nonce_arr: [u8; 32] = nonce.as_slice().try_into().unwrap();
+        let sig = sk.sign(&enrollment_digest("alice", &new_pk, &nonce_arr)).to_bytes();
+        let body = enroll_body(&cid, &new_pk, &pk, &sig, "dup");
+        assert_eq!(post_enroll(state, "alice", body).await, 200);
     }
 
     #[tokio::test]
     async fn enroll_complete_happy_path_creates_new_device() {
-        use base64::Engine as _;
-        use ed25519_dalek::{Signer, SigningKey};
+        use ed25519_dalek::Signer;
         let (state, _tmp) = make_state();
         seed_user(&state.db, "alice");
-        // Authorizer = an existing trusted Ed25519 key for alice.
-        let authorizer_sk = SigningKey::from_bytes(&[11u8; 32]);
-        let authorizer_pk = authorizer_sk.verifying_key().to_bytes();
-        state.db.with_conn(|conn| {
-            db::create_device(conn, "alice", &authorizer_pk, "primary").map(|_| ())
-        }).unwrap();
-        // SECREVIEW-VULN-1: bound challenge + sign the (user_id, new_pk, nonce) digest.
-        let new_pk_bytes = [42u8; 32];
-        let (nonce, challenge_id) = state
-            .auth
-            .generate_challenge_with_binding("alice", &new_pk_bytes)
-            .unwrap();
+        let (sk, pk) = seed_authorizer(&state, "alice", 11);
+        let new_pk = [42u8; 32];
+        let (nonce, cid) = state.auth.generate_challenge_with_binding("alice", &new_pk).unwrap();
         let nonce_arr: [u8; 32] = nonce.as_slice().try_into().unwrap();
-        let digest = enrollment_digest("alice", &new_pk_bytes, &nonce_arr);
-        let signature = authorizer_sk.sign(&digest);
-        let new_pk_b64 = base64::engine::general_purpose::STANDARD.encode(new_pk_bytes);
-        let auth_pk_b64 = base64::engine::general_purpose::STANDARD.encode(authorizer_pk);
-        let sig_b64 = base64::engine::general_purpose::STANDARD.encode(signature.to_bytes());
-        let body = format!(
-            r#"{{"challenge_id":"{}","new_device_public_key":"{}","authorizer_public_key":"{}","signature":"{}","device_label":"iPhone"}}"#,
-            challenge_id, new_pk_b64, auth_pk_b64, sig_b64
-        );
-        let app = router(state, "alice");
-        let resp = app
-            .oneshot(
-                Request::post("/devices/enroll-complete")
-                    .header("content-type", "application/json")
-                    .body(Body::from(body))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), 200);
+        let sig = sk.sign(&enrollment_digest("alice", &new_pk, &nonce_arr)).to_bytes();
+        let body = enroll_body(&cid, &new_pk, &pk, &sig, "iPhone");
+        assert_eq!(post_enroll(state, "alice", body).await, 200);
     }
 
-    /// SECREVIEW-VULN-1 regression: legitimate trusted-device signature
-    /// is valid for `new_pk_A`, but the request body presents `new_pk_B`.
-    /// The server must reject the swap.
+    /// SECREVIEW-VULN-1 regression: trusted-device signature is valid
+    /// for `new_pk_A`, but the request body presents `new_pk_B`. The
+    /// server must reject the swap (this was the actual vulnerability).
     #[tokio::test]
     async fn enroll_complete_rejects_swapped_new_pk_with_signature_for_different_pk() {
-        use base64::Engine as _;
-        use ed25519_dalek::{Signer, SigningKey};
+        use ed25519_dalek::Signer;
         let (state, _tmp) = make_state();
         seed_user(&state.db, "alice");
-        let authorizer_sk = SigningKey::from_bytes(&[77u8; 32]);
-        let authorizer_pk = authorizer_sk.verifying_key().to_bytes();
-        state.db.with_conn(|conn| {
-            db::create_device(conn, "alice", &authorizer_pk, "primary").map(|_| ())
-        }).unwrap();
-
-        // The legitimate intent: enroll new_pk_A.
-        let new_pk_a = [0xAAu8; 32];
-        // The attacker's substitution: new_pk_B in the request body.
-        let new_pk_b = [0xBBu8; 32];
-
-        let (nonce, challenge_id) = state
+        let (sk, pk) = seed_authorizer(&state, "alice", 77);
+        let new_pk_a = [0xAAu8; 32]; // bound + signed
+        let new_pk_b = [0xBBu8; 32]; // attacker's substitution
+        let (nonce, cid) = state
             .auth
             .generate_challenge_with_binding("alice", &new_pk_a)
             .unwrap();
         let nonce_arr: [u8; 32] = nonce.as_slice().try_into().unwrap();
-        // Authorizer's signature was produced over the digest for new_pk_A.
-        let digest_a = enrollment_digest("alice", &new_pk_a, &nonce_arr);
-        let signature = authorizer_sk.sign(&digest_a);
-
-        let body = format!(
-            r#"{{"challenge_id":"{}","new_device_public_key":"{}","authorizer_public_key":"{}","signature":"{}","device_label":"swap"}}"#,
-            challenge_id,
-            base64::engine::general_purpose::STANDARD.encode(new_pk_b),
-            base64::engine::general_purpose::STANDARD.encode(authorizer_pk),
-            base64::engine::general_purpose::STANDARD.encode(signature.to_bytes()),
-        );
-        let app = router(state, "alice");
-        let resp = app
-            .oneshot(
-                Request::post("/devices/enroll-complete")
-                    .header("content-type", "application/json")
-                    .body(Body::from(body))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        // The bound check rejects the request because new_pk_B != bound target_pk_A.
-        assert_eq!(resp.status(), 401);
+        // Signature is over the digest for new_pk_A but the body sends new_pk_B.
+        let sig = sk.sign(&enrollment_digest("alice", &new_pk_a, &nonce_arr)).to_bytes();
+        let body = enroll_body(&cid, &new_pk_b, &pk, &sig, "swap");
+        assert_eq!(post_enroll(state, "alice", body).await, 401);
     }
 
     /// SECREVIEW-VULN-1 regression: legacy bare-nonce signature must be
     /// rejected — the new flow requires the (user_id, new_pk, nonce) digest.
     #[tokio::test]
     async fn enroll_complete_rejects_legacy_bare_nonce_signature() {
-        use base64::Engine as _;
-        use ed25519_dalek::{Signer, SigningKey};
+        use ed25519_dalek::Signer;
         let (state, _tmp) = make_state();
         seed_user(&state.db, "alice");
-        let authorizer_sk = SigningKey::from_bytes(&[88u8; 32]);
-        let authorizer_pk = authorizer_sk.verifying_key().to_bytes();
-        state.db.with_conn(|conn| {
-            db::create_device(conn, "alice", &authorizer_pk, "primary").map(|_| ())
-        }).unwrap();
-
-        let new_pk_bytes = [0xCCu8; 32];
-        let (nonce, challenge_id) = state
-            .auth
-            .generate_challenge_with_binding("alice", &new_pk_bytes)
-            .unwrap();
-        // Legacy path: sign the bare nonce. New verifier expects the
-        // bound digest, so this signature does NOT verify.
-        let signature = authorizer_sk.sign(&nonce);
-
-        let body = format!(
-            r#"{{"challenge_id":"{}","new_device_public_key":"{}","authorizer_public_key":"{}","signature":"{}","device_label":"legacy"}}"#,
-            challenge_id,
-            base64::engine::general_purpose::STANDARD.encode(new_pk_bytes),
-            base64::engine::general_purpose::STANDARD.encode(authorizer_pk),
-            base64::engine::general_purpose::STANDARD.encode(signature.to_bytes()),
-        );
-        let app = router(state, "alice");
-        let resp = app
-            .oneshot(
-                Request::post("/devices/enroll-complete")
-                    .header("content-type", "application/json")
-                    .body(Body::from(body))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), 401);
+        let (sk, pk) = seed_authorizer(&state, "alice", 88);
+        let new_pk = [0xCCu8; 32];
+        let (nonce, cid) = state.auth.generate_challenge_with_binding("alice", &new_pk).unwrap();
+        // Legacy path: sign the bare nonce instead of the bound digest.
+        let sig = sk.sign(&nonce).to_bytes();
+        let body = enroll_body(&cid, &new_pk, &pk, &sig, "legacy");
+        assert_eq!(post_enroll(state, "alice", body).await, 401);
     }
 
     #[tokio::test]
