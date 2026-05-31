@@ -71,6 +71,20 @@ const webauthnMock = vi.hoisted(() => ({
   authenticatePasskey: vi.fn(async () => ({ prfOutput: new ArrayBuffer(32) })),
   prfOutputToBase64: vi.fn(() => 'prf-b64'),
   decodeRecoveryKey: vi.fn(() => new Uint8Array(32)),
+  arrayBufferToBase64Url: vi.fn((buf: ArrayBuffer) => {
+    const bytes = new Uint8Array(buf);
+    let bin = '';
+    for (const b of bytes) bin += String.fromCodePoint(b);
+    return btoa(bin).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
+  }),
+  base64UrlToArrayBuffer: vi.fn((s: string) => {
+    const b64 = s.replaceAll('-', '+').replaceAll('_', '/');
+    const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+    const bin = atob(padded);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out.buffer;
+  }),
 }));
 vi.mock('../../services/webauthn', () => webauthnMock);
 
@@ -220,9 +234,18 @@ describe('Onboarding doConnect — passkey recovery sub-flow (design doc 15)', (
   // shape closely enough that runPasskeyRecoveryFlow's PRF extraction
   // path runs through to the api.fetchRecoveryBlob call.
   beforeEach(() => {
+    // assertion.rawId is decoded back to base64url by the flow to look
+    // up the matching descriptor, so it must round-trip to the same
+    // credential_id the mocked lookupRecoveryDescriptors returns. The
+    // bytes here decode to the same value as base64url-decoding
+    // 'cred-r1' would (atob('cred+r1=')).
+    const rawIdBytes = new Uint8Array(
+      atob('cred+r1=').split('').map((c) => c.charCodeAt(0)),
+    );
     (navigator as unknown as { credentials: unknown }).credentials = {
       get: vi.fn(async () => ({
         id: 'cred-r1',
+        rawId: rawIdBytes.buffer,
         getClientExtensionResults: () => ({
           prf: { results: { first: new Uint8Array(32).buffer } },
         }),

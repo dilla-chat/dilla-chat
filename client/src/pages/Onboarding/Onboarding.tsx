@@ -39,6 +39,8 @@ import {
   authenticatePasskey,
   prfOutputToBase64,
   decodeRecoveryKey,
+  arrayBufferToBase64Url,
+  base64UrlToArrayBuffer,
 } from '../../services/webauthn';
 import { refreshServerTokens, tryReconnectToCurrentServer } from '../../services/authReconnect';
 import { initCrypto, getIdentityKeys } from '../../services/crypto';
@@ -169,48 +171,46 @@ async function runPasskeyRecoveryFlow(args: {
     throw new Error('No passkey recovery slots found for this username.');
   }
 
-  let prfOutput: Uint8Array | null = null;
-  let credentialIdUsed = '';
+  // One get() with all candidate credentials + per-credential PRF salts.
+  // The authenticator silently filters to the credential it actually
+  // holds — so the user sees a single passkey prompt, ProtonPass /
+  // platform picker matches against the real credential ID in
+  // allowCredentials, and synthetic anti-enumeration descriptors are
+  // ignored without leaking which one is real.
+  setConnectLog((p) => [...p, { line: `  prompting for passkey · ${credentials.length} candidate(s)` }]);
+  const challenge = new Uint8Array(32);
+  crypto.getRandomValues(challenge);
+  const allowCredentials = credentials.map((desc) => ({
+    id: base64UrlToArrayBuffer(desc.credential_id) as unknown as BufferSource,
+    type: 'public-key' as const,
+  }));
+  const evalByCredential: Record<string, { first: Uint8Array }> = {};
   for (const desc of credentials) {
-    setConnectLog((p) => [...p, { line: `  trying passkey · ${desc.credential_id.slice(0, 12)}…` }]);
-    try {
-      const challenge = new Uint8Array(32);
-      crypto.getRandomValues(challenge);
-      const prfSaltBytes = fromBase64(desc.prf_salt);
-      const credentialIdBytes = fromBase64(desc.credential_id);
-      const assertion = await navigator.credentials.get({
-        publicKey: {
-          challenge: challenge as unknown as BufferSource,
-          rpId: rp_id,
-          allowCredentials: [{
-            id: credentialIdBytes as unknown as BufferSource,
-            type: 'public-key',
-          }],
-          userVerification: 'preferred',
-          extensions: { prf: { eval: { first: prfSaltBytes } } },
-        },
-      }) as PublicKeyCredential | null;
-      if (!assertion) continue;
-      const ext = (assertion.getClientExtensionResults() as { prf?: { results?: { first?: ArrayBuffer } } }).prf;
-      if (!ext?.results?.first) {
-        setConnectLog((p) => [...p, { line: '  passkey did not return PRF output · trying next', err: true }]);
-        continue;
-      }
-      prfOutput = new Uint8Array(ext.results.first);
-      credentialIdUsed = desc.credential_id;
-      break;
-    } catch (e) {
-      // NotAllowedError / InvalidStateError etc. — try the next
-      // descriptor. Real authenticators error out fast on
-      // credentials they don't hold.
-      setConnectLog((p) => [...p, { line: `  passkey rejected: ${(e as Error).message} · trying next` }]);
-      continue;
-    }
+    // evalByCredential keys MUST be base64url-encoded credential IDs
+    // per the WebAuthn PRF spec. Server descriptors are already in
+    // that form, but normalise through the decode/encode round-trip
+    // to strip padding and convert any STANDARD encodings.
+    const key = arrayBufferToBase64Url(base64UrlToArrayBuffer(desc.credential_id));
+    evalByCredential[key] = { first: fromBase64(desc.prf_salt) };
   }
-
-  if (!prfOutput) {
+  const assertion = (await navigator.credentials.get({
+    publicKey: {
+      challenge: challenge as unknown as BufferSource,
+      rpId: rp_id,
+      allowCredentials,
+      userVerification: 'preferred',
+      extensions: { prf: { evalByCredential } },
+    },
+  })) as PublicKeyCredential | null;
+  if (!assertion) {
     throw new Error('No matching passkey found in your authenticator. Recovery failed.');
   }
+  const ext = (assertion.getClientExtensionResults() as { prf?: { results?: { first?: ArrayBuffer } } }).prf;
+  if (!ext?.results?.first) {
+    throw new Error("Authenticator didn't return a PRF output. Recovery requires a PRF-capable passkey.");
+  }
+  const prfOutput = new Uint8Array(ext.results.first);
+  const credentialIdUsed = arrayBufferToBase64Url(assertion.rawId);
 
   setConnectLog((p) => [...p, { line: '  ✓ passkey accepted · fetching encrypted blob' }]);
   const blobResp = await api.fetchRecoveryBlob(recoveryUrl, recoveryUsername, credentialIdUsed);
