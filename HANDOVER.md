@@ -106,20 +106,41 @@ WebRTC: ICE failed, add a TURN server and see about:webrtc
 [Voice/diag] connectionState → failed
 ```
 
-…and the call silently never connects. The UI shows the user as
-"in voice" with the controls active, but no media flows. Two
-problems:
+Server-side, confirmed via journalctl:
 
-1. **Server config**: the deployment doesn't have a TURN server
-   set (`CF_TURN_KEY_ID` / `CF_TURN_API_TOKEN` empty). For peers
-   behind symmetric NATs this means ICE will never succeed.
-   Install script should at least warn and the post-install hint
-   should mention the Cloudflare TURN env vars more loudly.
+```
+GET /api/v1/voice/credentials → 404
+webrtc_ice: could not get server reflexive address udp6 stun:stun.l.google.com:19302: Network is unreachable
+webrtc_ice: pingAllCandidates called with no candidate pairs. Connection is not possible yet.
+```
+
+Root cause: in the reverse-proxied deployment topology
+(Caddy / Cloudflare Tunnel terminates HTTPS → upstream Dilla
+server on plain HTTP), WebRTC media UDP never traverses the
+proxy. The SFU itself needs either a publicly reachable UDP
+port or a TURN relay. Neither is configured by default, so the
+SFU advertises only loopback / private candidates that no client
+can reach, and the `/api/v1/voice/credentials` endpoint returns
+404 because `CF_TURN_KEY_ID` / `CF_TURN_API_TOKEN` are unset.
+
+Three fixes, in priority order:
+
+1. **Install script should make TURN config mandatory or
+   explicit-opt-out for the reverse-proxy install path**. Right
+   now `scripts/install-proxmox-lxc.sh` doesn't even mention
+   `CF_TURN_KEY_ID`. The post-install hint should walk the user
+   through the Cloudflare Calls TURN setup (free up to ~1 TB/mo)
+   and write the env vars into `/etc/dilla/dilla.env`.
 2. **UX**: when `iceConnectionState` or `connectionState` reaches
    `failed`, the user should get a clear "call failed to connect
-   — your network requires a TURN relay" toast and the voice
-   panel should drop them out of the channel automatically
-   instead of staying stuck in a half-joined state.
+   — your server doesn't have a TURN relay configured" toast and
+   the voice panel should drop them out of the channel
+   automatically instead of staying stuck in a half-joined state.
+3. **Server**: `/api/v1/voice/credentials` returning 404 when
+   TURN isn't configured is misleading — should return 200 with
+   an empty `iceServers: []` and a `reason: "turn_not_configured"`
+   field so the client can show the right error instead of
+   silently falling back to STUN-only.
 
 Related: `startScreenShare: pre-bind never landed — screen will
 not flow` appears in the same session — clicking screen-share
