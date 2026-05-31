@@ -86,7 +86,8 @@ breakdown` lines are POSTed to `/api/v1/debug/browser-log` on
 every stats tick — multiple per second. The endpoint is intended
 for opportunistic error capture, not a firehose, and the payloads
 ship every outbound-rtp stat sample over the wire (and into the
-server log).
+server log). Server is rate-limiting them (`HTTP/3 429` confirmed
+in browser network panel), so the data is being dropped anyway.
 
 Fix: either drop the diag tick from the upload pipeline entirely
 (keep it in the local console only), throttle to once per N
@@ -94,6 +95,51 @@ seconds, or gate behind a "verbose telemetry" user setting.
 
 Repro: join any voice channel, watch Network → XHR or
 `journalctl -u dilla.service -f`.
+
+### H-24 — Voice ICE failure has no user-facing feedback
+
+On `dilla.thim.dev` joining a voice channel produces:
+
+```
+WebRTC: ICE failed, add a TURN server and see about:webrtc
+[Voice/diag] iceConnectionState → failed
+[Voice/diag] connectionState → failed
+```
+
+…and the call silently never connects. The UI shows the user as
+"in voice" with the controls active, but no media flows. Two
+problems:
+
+1. **Server config**: the deployment doesn't have a TURN server
+   set (`CF_TURN_KEY_ID` / `CF_TURN_API_TOKEN` empty). For peers
+   behind symmetric NATs this means ICE will never succeed.
+   Install script should at least warn and the post-install hint
+   should mention the Cloudflare TURN env vars more loudly.
+2. **UX**: when `iceConnectionState` or `connectionState` reaches
+   `failed`, the user should get a clear "call failed to connect
+   — your network requires a TURN relay" toast and the voice
+   panel should drop them out of the channel automatically
+   instead of staying stuck in a half-joined state.
+
+Related: `startScreenShare: pre-bind never landed — screen will
+not flow` appears in the same session — clicking screen-share
+on a failed peer connection should be blocked (or at least show
+an error), not silently fire a no-op.
+
+### H-25 — CSP blocks an inline script on first load
+
+```
+Content-Security-Policy: blocked an inline script (script-src-elem)
+"script-src 'self'"
+Consider using a hash ('sha256-ieoeWczDHkReVBsRBqaal5AFMlBtNjMzgwKvLqi/tSU=')
+sandbox eval code:17:34
+```
+
+Comes from `sandbox eval code` so possibly a browser-extension or
+worker context rather than our bundle, but worth a one-pass audit:
+grep the built assets for the offending sha256 to confirm it's not
+something Vite is emitting inline (would block in stricter CSP
+deployments).
 
 ---
 
