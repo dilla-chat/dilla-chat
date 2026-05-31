@@ -128,10 +128,24 @@ export default function AppLayout() {
 
   // Redirect to join/setup if no teams — wait until auth is validated so we
   // don't redirect during the brief window before persisted state is confirmed.
+  // If a local identity already exists, send the user to the sign-in mode
+  // so a reload with stale session state lands on the unlock form, not on
+  // the invite form (which would otherwise prompt the user to "join a new
+  // team" as if they were never enrolled).
   useEffect(() => {
-    if (authChecked && authTeams.size === 0) {
-      navigate('/join');
-    }
+    if (!authChecked || authTeams.size > 0) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { hasIdentity } = await import('../services/keyStore');
+        const exists = await hasIdentity();
+        if (cancelled) return;
+        navigate(exists ? '/onboarding?mode=existing' : '/join');
+      } catch {
+        if (!cancelled) navigate('/join');
+      }
+    })();
+    return () => { cancelled = true; };
   }, [authTeams, navigate, authChecked]);
   useIdentityBackup(activeTeamId, dataLoaded);
   usePresenceEvents(activeTeamId);
