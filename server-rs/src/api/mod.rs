@@ -26,6 +26,7 @@ pub mod integrations;
 pub mod pins;
 pub mod blocks;
 pub mod devices;
+pub mod identity_recovery;
 
 use crate::auth::{self, AuthService};
 use crate::config::Config;
@@ -203,6 +204,24 @@ pub fn create_router(state: AppState) -> Router {
         .route(
             "/api/v1/debug/browser-log",
             post(debug::ingest)
+                .route_layer(GovernorLayer { config: auth_rate_config.clone() }),
+        )
+        // Passkey-recoverable identity escrow (design:
+        // .security-hardening/15-passkey-recoverable-identity-escrow.md).
+        // Lookup + fetch are public — the cryptographic gating is in
+        // the PRF-encrypted blob (server cannot decrypt). Both are
+        // rate-limited via the existing auth-rate limiter to slow down
+        // username enumeration. Synthetic-descriptor fallback in
+        // identity_recovery::lookup keeps responses indistinguishable
+        // between known and unknown usernames.
+        .route(
+            "/api/v1/identity/recovery/lookup",
+            post(identity_recovery::lookup)
+                .route_layer(GovernorLayer { config: auth_rate_config.clone() }),
+        )
+        .route(
+            "/api/v1/identity/recovery/fetch",
+            post(identity_recovery::fetch)
                 .route_layer(GovernorLayer { config: auth_rate_config.clone() }),
         );
 
@@ -503,6 +522,15 @@ pub fn create_router(state: AppState) -> Router {
         .route(
             "/api/v1/devices/{device_id}/revoke",
             post(devices::revoke_device),
+        )
+        // Passkey-recoverable identity escrow (authenticated half).
+        .route(
+            "/api/v1/identity/recovery/passkey",
+            axum::routing::put(identity_recovery::upsert_slot),
+        )
+        .route(
+            "/api/v1/identity/recovery/passkey/{credential_id}",
+            axum::routing::delete(identity_recovery::revoke_slot),
         )
         // WebSocket
         .layer(middleware::from_fn(auth::auth_middleware))
