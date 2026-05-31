@@ -60,6 +60,41 @@ The device list + revoke UI shipped in Settings → Devices. The
 Real product UX work; should be planned alongside the
 account-recovery story.
 
+### H-22 — Stacked-modal z-index / focus trap blocks editing
+
+In Settings → Roles & permissions → click `Edit` on a role: the
+Edit Role sub-modal opens visually on top of the Team Settings
+modal, but interaction is blocked — the underlying modal's
+backdrop / focus trap appears to swallow events, so checkboxes
+and inputs in the inner modal can't be clicked or typed into.
+
+Need to either (a) hoist the sub-modal into its own portal at a
+higher z-index with its own focus trap, or (b) push the
+underlying Team Settings modal into a "behind" state (no focus
+trap, inert) while the sub-modal is open. Probably impacts every
+nested-modal flow (role editor, channel-settings sub-dialogs,
+etc.) so fix is shared.
+
+Repro: open Team Settings → Roles & permissions → Edit on any
+role → try to toggle any permission checkbox or change the role
+name.
+
+### H-23 — Voice diagnostic log spam to /debug/browser-log
+
+While in a voice channel, `[Voice/diag] outbound-rtp stream
+breakdown` lines are POSTed to `/api/v1/debug/browser-log` on
+every stats tick — multiple per second. The endpoint is intended
+for opportunistic error capture, not a firehose, and the payloads
+ship every outbound-rtp stat sample over the wire (and into the
+server log).
+
+Fix: either drop the diag tick from the upload pipeline entirely
+(keep it in the local console only), throttle to once per N
+seconds, or gate behind a "verbose telemetry" user setting.
+
+Repro: join any voice channel, watch Network → XHR or
+`journalctl -u dilla.service -f`.
+
 ---
 
 ## Architectural deferrals (documented; not for in-session work)
