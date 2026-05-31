@@ -231,7 +231,7 @@ export { decodeRecoveryKey } from './keyStore';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function arrayBufferToBase64Url(buffer: ArrayBuffer): string {
+export function arrayBufferToBase64Url(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   let binary = '';
   for (const byte of bytes) {
@@ -243,7 +243,7 @@ function arrayBufferToBase64Url(buffer: ArrayBuffer): string {
   return b64.slice(0, end).replaceAll('+', '-').replaceAll('/', '_');
 }
 
-function base64UrlToArrayBuffer(base64url: string): ArrayBuffer {
+export function base64UrlToArrayBuffer(base64url: string): ArrayBuffer {
   const base64 = base64url.replaceAll('-', '+').replaceAll('_', '/');
   const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
   const binary = atob(padded);
