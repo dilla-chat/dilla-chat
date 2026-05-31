@@ -477,7 +477,16 @@ export default function Onboarding() {
   // via the recovery key.
   const [useRecovery, setUseRecovery] = useState(searchParams.get('recover') === '1');
   const [usePasskeyRecovery, setUsePasskeyRecovery] = useState(searchParams.get('recover') === 'passkey');
-  const [recoveryServer, setRecoveryServer] = useState('');
+  // Recovery sub-flows reach the same server the page is loaded from
+  // by default — the passkey's rpId is bound to that origin anyway,
+  // so any other value would just fail later. Mirrors the same init
+  // as `server` above. Tauri users (origin = tauri://localhost) can
+  // still edit the field to point at a real remote.
+  const [recoveryServer, setRecoveryServer] = useState(
+    typeof globalThis !== 'undefined' && globalThis.location
+      ? globalThis.location.origin
+      : '',
+  );
   const [recoveryUsername, setRecoveryUsername] = useState('');
   const [recoveryKeyInput, setRecoveryKeyInput] = useState('');
 
