@@ -1008,7 +1008,7 @@ export function ConnectStep({
         </div>
       )}
 
-      {mode === 'existing' && !useRecovery && (
+      {mode === 'existing' && !useRecovery && !usePasskeyRecovery && (
         <>
           <div className="onb-field">
             <label>
