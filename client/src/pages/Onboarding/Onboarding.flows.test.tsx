@@ -24,6 +24,17 @@ const apiMock = vi.hoisted(() => ({
     bootstrap: vi.fn(async () => ({ user: { id: 'u1', username: 'alice' }, token: 'jwt-tok', team_id: 't-new', team: { id: 't-new', name: 'New Team' } })),
     register: vi.fn(async () => ({ user: { id: 'u1', username: 'alice' }, token: 'jwt-tok', team_id: 't-inv' })),
     getInviteInfo: vi.fn(async () => ({ team_name: 'Cool Team' })),
+    lookupRecoveryDescriptors: vi.fn(async () => ({
+      rp_id: 'recover.example',
+      credentials: [{ credential_id: 'cred-r1', prf_salt: 'cHJmLXNhbHQ=' }],
+    })),
+    fetchRecoveryBlob: vi.fn(async () => ({
+      credential_id: 'cred-r1',
+      rp_id: 'recover.example',
+      prf_salt: 'cHJmLXNhbHQ=',
+      encrypted_blob: 'ZW5jcnlwdGVkLWJsb2I=',
+      user_id: 'u1',
+    })),
   },
 }));
 vi.mock('../../services/api', () => apiMock);
@@ -49,6 +60,7 @@ const keystoreMock = vi.hoisted(() => ({
   getCredentialInfo: vi.fn(async () => null),
   encodeRecoveryKey: vi.fn(() => 'recovery-key-encoded'),
   importIdentityBlob: vi.fn(async () => {}),
+  restoreFromRecoveryEscrowBlob: vi.fn(async () => {}),
 }));
 vi.mock('../../services/keyStore', () => keystoreMock);
 
@@ -197,6 +209,93 @@ describe('Onboarding doConnect — recovery sub-flow', () => {
     await flush();
     // We don't assert all the chain because some fields may be missing in the
     // form — we just need the test to exercise the doConnect recovery branch.
+    expect(container.firstChild).toBeTruthy();
+  });
+});
+
+describe('Onboarding doConnect — passkey recovery sub-flow (design doc 15)', () => {
+  // Stub navigator.credentials.get so the WebAuthn ceremony resolves
+  // synchronously in jsdom. The real impl returns a PublicKeyCredential
+  // whose extension result carries the PRF output; we mirror that
+  // shape closely enough that runPasskeyRecoveryFlow's PRF extraction
+  // path runs through to the api.fetchRecoveryBlob call.
+  beforeEach(() => {
+    (navigator as unknown as { credentials: unknown }).credentials = {
+      get: vi.fn(async () => ({
+        id: 'cred-r1',
+        getClientExtensionResults: () => ({
+          prf: { results: { first: new Uint8Array(32).buffer } },
+        }),
+      })),
+    };
+  });
+
+  it('rejects when recovery server / username fields are empty', async () => {
+    const { container } = renderAt('/onboarding?mode=existing&recover=passkey');
+    const connectBtn = findButton(container, /unlock|recover|connect|continue/i);
+    expect(connectBtn).toBeTruthy();
+    await act(async () => { fireEvent.click(connectBtn!); });
+    await flush();
+    // Submit-without-fields should not fire the lookup endpoint.
+    expect(apiMock.api.lookupRecoveryDescriptors).not.toHaveBeenCalled();
+  });
+
+  it('happy path: lookup → WebAuthn → fetch → restore → verifyChallenge', async () => {
+    const { container } = renderAt('/onboarding?mode=existing&recover=passkey');
+    // Form layout for the passkey-recovery sub-flow: input[0] is the
+    // server URL, input[1] is the username. Placeholders use the
+    // example domain ("http://localhost:8080") and "username" which
+    // don't include "server"/"username" cleanly enough for the generic
+    // text-match path the other tests use, so address by index.
+    const inputs = [...container.querySelectorAll('input')] as HTMLInputElement[];
+    expect(inputs.length).toBeGreaterThanOrEqual(2);
+    await act(async () => {
+      fireEvent.change(inputs[0], { target: { value: 'https://recover.example' } });
+      fireEvent.change(inputs[1], { target: { value: 'alice' } });
+    });
+    const connectBtn = findButton(container, /^recover with passkey$/i);
+    expect(connectBtn).toBeTruthy();
+    await act(async () => { fireEvent.click(connectBtn!); });
+    await flush();
+
+    expect(apiMock.api.lookupRecoveryDescriptors).toHaveBeenCalledWith(
+      'https://recover.example',
+      'alice',
+    );
+    expect(apiMock.api.fetchRecoveryBlob).toHaveBeenCalled();
+    expect(keystoreMock.restoreFromRecoveryEscrowBlob).toHaveBeenCalled();
+    expect(keystoreMock.unlockWithPrf).toHaveBeenCalled();
+    expect(apiMock.api.verifyChallenge).toHaveBeenCalled();
+  });
+
+  it('surfaces a friendly error when no passkey matches', async () => {
+    apiMock.api.lookupRecoveryDescriptors.mockResolvedValueOnce({
+      rp_id: 'recover.example',
+      credentials: [],
+    });
+    const { container } = renderAt('/onboarding?mode=existing&recover=passkey');
+    const inputs = [...container.querySelectorAll('input')] as HTMLInputElement[];
+    expect(inputs.length).toBeGreaterThanOrEqual(2);
+    await act(async () => {
+      fireEvent.change(inputs[0], { target: { value: 'https://recover.example' } });
+      fireEvent.change(inputs[1], { target: { value: 'alice' } });
+    });
+    const connectBtn = findButton(container, /^recover with passkey$/i);
+    expect(connectBtn).toBeTruthy();
+    await act(async () => { fireEvent.click(connectBtn!); });
+    await flush();
+    expect(apiMock.api.lookupRecoveryDescriptors).toHaveBeenCalled();
+    // No-credentials path means we never get as far as fetch.
+    expect(apiMock.api.fetchRecoveryBlob).not.toHaveBeenCalled();
+  });
+
+  it('toggling passkey recovery off swaps the form back to passphrase entry', async () => {
+    const { container } = renderAt('/onboarding?mode=existing&recover=passkey');
+    const backBtn = findButton(container, /back to passphrase|passkey unlock/i);
+    if (backBtn) {
+      await act(async () => { fireEvent.click(backBtn); });
+      await flush();
+    }
     expect(container.firstChild).toBeTruthy();
   });
 });

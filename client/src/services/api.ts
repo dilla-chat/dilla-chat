@@ -1285,6 +1285,88 @@ class ApiService {
       conn.token,
     );
   }
+
+  // ─── Passkey-recoverable identity escrow ──────────────────────────
+  // Design: .security-hardening/15-passkey-recoverable-identity-escrow.md
+  //
+  // The blob is encrypted client-side with the WebAuthn-PRF-derived
+  // wrap key. Server never decrypts. PRF salt is opaque to the server
+  // but mandatory for the client to re-derive the wrap key during
+  // recovery.
+
+  /** Upsert an escrowed recovery slot. Requires an authenticated
+   *  connection (the same JWT used for any other PUT/POST). */
+  async uploadRecoverySlot(
+    teamId: string,
+    slot: {
+      credential_id: string;
+      /** base64-encoded 32 bytes */
+      prf_salt: string;
+      /** base64-encoded AES-GCM ciphertext */
+      encrypted_blob: string;
+    },
+  ): Promise<void> {
+    const conn = this.getConnection(teamId);
+    await this.request(
+      conn.baseUrl,
+      '/api/v1/identity/recovery/passkey',
+      { method: 'PUT', body: JSON.stringify(slot) },
+      conn.token,
+    );
+  }
+
+  /** Delete an escrowed recovery slot — call when the user revokes the
+   *  corresponding passkey. */
+  async deleteRecoverySlot(teamId: string, credentialId: string): Promise<void> {
+    const conn = this.getConnection(teamId);
+    await this.request(
+      conn.baseUrl,
+      `/api/v1/identity/recovery/passkey/${encodeURIComponent(credentialId)}`,
+      { method: 'DELETE' },
+      conn.token,
+    );
+  }
+
+  /** Look up credential descriptors for a username. Unauthenticated.
+   *  Returns synthetic descriptors for unknown usernames so the caller
+   *  cannot distinguish known from unknown. */
+  async lookupRecoveryDescriptors(
+    baseUrl: string,
+    username: string,
+  ): Promise<{
+    rp_id: string;
+    credentials: { credential_id: string; prf_salt: string }[];
+  }> {
+    return this.request(
+      baseUrl,
+      '/api/v1/identity/recovery/lookup',
+      { method: 'POST', body: JSON.stringify({ username }) },
+    );
+  }
+
+  /** Fetch the encrypted blob for a `(username, credential_id)` pair.
+   *  Unauthenticated by design — the blob is cryptographically gated
+   *  (PRF-encrypted), so server-side auth would only add complexity
+   *  without changing the security boundary. Returns 404 for unknown
+   *  pairs (identical for unknown-user and unknown-credential — no
+   *  enumeration). */
+  async fetchRecoveryBlob(
+    baseUrl: string,
+    username: string,
+    credentialId: string,
+  ): Promise<{
+    credential_id: string;
+    rp_id: string;
+    prf_salt: string;
+    encrypted_blob: string;
+    user_id: string;
+  }> {
+    return this.request(
+      baseUrl,
+      '/api/v1/identity/recovery/fetch',
+      { method: 'POST', body: JSON.stringify({ username, credential_id: credentialId }) },
+    );
+  }
 }
 
 export const api = new ApiService();

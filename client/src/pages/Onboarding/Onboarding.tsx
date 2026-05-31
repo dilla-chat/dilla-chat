@@ -32,6 +32,7 @@ import {
   getCredentialInfo,
   encodeRecoveryKey,
   importIdentityBlob,
+  restoreFromRecoveryEscrowBlob,
 } from '../../services/keyStore';
 import {
   registerPasskey,
@@ -130,6 +131,117 @@ async function runRecoveryFlow(args: {
   api.setToken(teamId, verified.token);
   addTeam(teamId, verified.token, verified.user, null, recoveryUrl);
   setConnectLog((p) => [...p, { line: '  ✓ identity recovered · opening Dilla' }]);
+  await activateTeamAndNavigate(teamId, navigate);
+}
+
+/** Passkey-recoverable identity restore (design doc 15).
+ *
+ *  Flow:
+ *  1. Look up credential descriptors for the username at the server.
+ *  2. Try each descriptor in turn — for each, run a WebAuthn
+ *     assertion with PRF eval for that descriptor's salt.
+ *  3. If the assertion succeeds AND the PRF output decrypts the
+ *     server-fetched encrypted blob, write the recovered key file to
+ *     IndexedDB and proceed with a normal /auth/verify login.
+ *  4. If all descriptors fail, surface a friendly "no matching
+ *     passkey found" error.
+ *
+ *  Synthetic descriptors returned by the server for unknown usernames
+ *  are indistinguishable from real ones at the API layer, but they
+ *  WILL fail the WebAuthn ceremony (no matching credential in the
+ *  authenticator) — so the user sees the same error as a real "wrong
+ *  username" outcome, no enumeration leak. */
+async function runPasskeyRecoveryFlow(args: {
+  recoveryServer: string;
+  recoveryUsername: string;
+  setConnectLog: (updater: (p: ConnectLogEntry[]) => ConnectLogEntry[]) => void;
+  setPublicKey: (v: string) => void;
+  setDerivedKey: (v: string) => void;
+  addTeam: (teamId: string, token: string, user: User | null, info: Record<string, unknown> | null, baseUrl?: string) => void;
+  navigate: (path: string) => void;
+}): Promise<void> {
+  const { recoveryServer, recoveryUsername, setConnectLog, setPublicKey, setDerivedKey, addTeam, navigate } = args;
+  const recoveryUrl = normalizeServerUrl(recoveryServer);
+
+  setConnectLog((p) => [...p, { line: 'looking up passkey descriptors' }]);
+  const { rp_id, credentials } = await api.lookupRecoveryDescriptors(recoveryUrl, recoveryUsername);
+  if (credentials.length === 0) {
+    throw new Error('No passkey recovery slots found for this username.');
+  }
+
+  let prfOutput: Uint8Array | null = null;
+  let credentialIdUsed = '';
+  for (const desc of credentials) {
+    setConnectLog((p) => [...p, { line: `  trying passkey · ${desc.credential_id.slice(0, 12)}…` }]);
+    try {
+      const challenge = new Uint8Array(32);
+      crypto.getRandomValues(challenge);
+      const prfSaltBytes = fromBase64(desc.prf_salt);
+      const credentialIdBytes = fromBase64(desc.credential_id);
+      const assertion = await navigator.credentials.get({
+        publicKey: {
+          challenge: challenge as unknown as BufferSource,
+          rpId: rp_id,
+          allowCredentials: [{
+            id: credentialIdBytes as unknown as BufferSource,
+            type: 'public-key',
+          }],
+          userVerification: 'preferred',
+          extensions: { prf: { eval: { first: prfSaltBytes } } },
+        },
+      }) as PublicKeyCredential | null;
+      if (!assertion) continue;
+      const ext = (assertion.getClientExtensionResults() as { prf?: { results?: { first?: ArrayBuffer } } }).prf;
+      if (!ext?.results?.first) {
+        setConnectLog((p) => [...p, { line: '  passkey did not return PRF output · trying next', err: true }]);
+        continue;
+      }
+      prfOutput = new Uint8Array(ext.results.first);
+      credentialIdUsed = desc.credential_id;
+      break;
+    } catch (e) {
+      // NotAllowedError / InvalidStateError etc. — try the next
+      // descriptor. Real authenticators error out fast on
+      // credentials they don't hold.
+      setConnectLog((p) => [...p, { line: `  passkey rejected: ${(e as Error).message} · trying next` }]);
+      continue;
+    }
+  }
+
+  if (!prfOutput) {
+    throw new Error('No matching passkey found in your authenticator. Recovery failed.');
+  }
+
+  setConnectLog((p) => [...p, { line: '  ✓ passkey accepted · fetching encrypted blob' }]);
+  const blobResp = await api.fetchRecoveryBlob(recoveryUrl, recoveryUsername, credentialIdUsed);
+  const encryptedBlob = fromBase64(blobResp.encrypted_blob);
+  await restoreFromRecoveryEscrowBlob(prfOutput, encryptedBlob);
+  setConnectLog((p) => [...p, { line: '  ✓ identity restored to this device' }]);
+
+  // From here the flow mirrors the normal passkey-unlock path: load
+  // the freshly-restored identity, init crypto, request a verify
+  // challenge, sign it, add team.
+  const identity = await unlockWithPrf(prfOutput);
+  const derivedKeyB64 = toBase64(prfOutput);
+  await initCrypto(identity, derivedKeyB64);
+  const pubKeyB64 = btoa(String.fromCodePoint(...identity.publicKeyBytes));
+  setPublicKey(pubKeyB64);
+  setDerivedKey(derivedKeyB64);
+  localStorage.setItem('dilla_username', recoveryUsername);
+
+  const tempId = 'passkey-recovery-temp';
+  api.addTeam(tempId, recoveryUrl);
+  const verifyChallenge = await api.requestChallenge(tempId, pubKeyB64);
+  const sigBytes = await signChallenge(identity.signingKey, fromBase64(verifyChallenge.nonce));
+  const verified = (await api.verifyChallenge(
+    tempId, verifyChallenge.challenge_id, pubKeyB64, toBase64(sigBytes),
+  )) as { user: User; token: string; team_id?: string };
+  api.removeTeam(tempId);
+  const teamId = verified.team_id || tempId;
+  api.addTeam(teamId, recoveryUrl);
+  api.setToken(teamId, verified.token);
+  addTeam(teamId, verified.token, verified.user, null, recoveryUrl);
+  setConnectLog((p) => [...p, { line: '  ✓ signed in · opening Dilla' }]);
   await activateTeamAndNavigate(teamId, navigate);
 }
 
@@ -282,6 +394,7 @@ function onbLogPrefix(l: { line: string; err?: boolean }): string {
 function connectBtnDisabled(args: {
   mode: string;
   useRecovery: boolean;
+  usePasskeyRecovery: boolean;
   recoveryServer: string;
   recoveryUsername: string;
   recoveryKeyInput: string;
@@ -289,17 +402,24 @@ function connectBtnDisabled(args: {
   token: string;
 }): boolean {
   if (args.mode === 'existing') {
-    if (!args.useRecovery) return false;
-    return !args.recoveryServer || !args.recoveryUsername || !args.recoveryKeyInput.trim();
+    if (args.useRecovery) {
+      return !args.recoveryServer || !args.recoveryUsername || !args.recoveryKeyInput.trim();
+    }
+    if (args.usePasskeyRecovery) {
+      return !args.recoveryServer || !args.recoveryUsername;
+    }
+    return false;
   }
   if (!args.server) return true;
   return (args.mode === 'bootstrap' || args.mode === 'invite') && !args.token;
 }
 
-function connectBtnLabel(connecting: boolean, mode: string, useRecovery: boolean): string {
+function connectBtnLabel(connecting: boolean, mode: string, useRecovery: boolean, usePasskeyRecovery: boolean): string {
   if (connecting) return 'Connecting…';
   if (mode !== 'existing') return 'Connect';
-  return useRecovery ? 'Recover identity' : 'Unlock';
+  if (useRecovery) return 'Recover identity';
+  if (usePasskeyRecovery) return 'Recover with passkey';
+  return 'Unlock';
 }
 
 function CornerMarker({ x, y }: Readonly<{ x: number; y: number }>) {
@@ -356,6 +476,7 @@ export default function Onboarding() {
   // identity blob from the server, imports it into IndexedDB, then unlocks
   // via the recovery key.
   const [useRecovery, setUseRecovery] = useState(searchParams.get('recover') === '1');
+  const [usePasskeyRecovery, setUsePasskeyRecovery] = useState(searchParams.get('recover') === 'passkey');
   const [recoveryServer, setRecoveryServer] = useState('');
   const [recoveryUsername, setRecoveryUsername] = useState('');
   const [recoveryKeyInput, setRecoveryKeyInput] = useState('');
@@ -416,6 +537,18 @@ export default function Onboarding() {
         }
         await runRecoveryFlow({
           recoveryServer, recoveryUsername, recoveryKeyInput,
+          setConnectLog, setPublicKey, setDerivedKey, addTeam, navigate,
+        });
+        return;
+      }
+      if (mode === 'existing' && usePasskeyRecovery) {
+        if (!recoveryServer || !recoveryUsername) {
+          setConnectError('Enter server and username.');
+          setConnecting(false);
+          return;
+        }
+        await runPasskeyRecoveryFlow({
+          recoveryServer, recoveryUsername,
           setConnectLog, setPublicKey, setDerivedKey, addTeam, navigate,
         });
         return;
@@ -703,6 +836,8 @@ export default function Onboarding() {
               onConnect={doConnect}
               useRecovery={useRecovery}
               setUseRecovery={setUseRecovery}
+              usePasskeyRecovery={usePasskeyRecovery}
+              setUsePasskeyRecovery={setUsePasskeyRecovery}
               recoveryServer={recoveryServer}
               setRecoveryServer={setRecoveryServer}
               recoveryUsername={recoveryUsername}
@@ -791,6 +926,8 @@ export function ConnectStep({
   onConnect,
   useRecovery,
   setUseRecovery,
+  usePasskeyRecovery,
+  setUsePasskeyRecovery,
   recoveryServer,
   setRecoveryServer,
   recoveryUsername,
@@ -871,7 +1008,7 @@ export function ConnectStep({
         </div>
       )}
 
-      {mode === 'existing' && !useRecovery && (
+      {mode === 'existing' && !useRecovery && !usePasskeyRecovery && (
         <>
           <div className="onb-field">
             <label>
@@ -890,9 +1027,53 @@ export function ConnectStep({
               passphrase-only).
             </div>
           </div>
-          <div style={{ marginTop: -8, marginBottom: 12 }}>
+          <div style={{ marginTop: -8, marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
             <button className="onb-link" type="button" onClick={() => setUseRecovery(true)}>
               lost passphrase? recover with key
+            </button>
+            <button className="onb-link" type="button" onClick={() => setUsePasskeyRecovery(true)}>
+              new device or cleared site data? recover with passkey
+            </button>
+          </div>
+        </>
+      )}
+
+      {mode === 'existing' && usePasskeyRecovery && (
+        <>
+          <div className="onb-field">
+            <label>
+              <span>Server URL</span>
+              <input
+                type="text"
+                value={recoveryServer}
+                onChange={(e) => setRecoveryServer(e.target.value)}
+                placeholder="http://localhost:8080"
+                autoFocus
+              />
+            </label>
+            <div className="onb-hint">
+              The server that holds the passkey-escrowed copy of your identity.
+            </div>
+          </div>
+          <div className="onb-field">
+            <label>
+              <span>Username</span>
+              <input
+                type="text"
+                value={recoveryUsername}
+                onChange={(e) => setRecoveryUsername(e.target.value)}
+                placeholder="username"
+              />
+            </label>
+            <div className="onb-hint">
+              Your authenticator will be prompted to sign a challenge with the
+              passkey for this username. The PRF output unwraps the encrypted
+              identity blob the server holds for you — no recovery key required.
+            </div>
+          </div>
+          <div style={{ marginTop: -8, marginBottom: 12 }}>
+            <button className="onb-link" type="button" onClick={() => setUsePasskeyRecovery(false)}>
+              ← back to passphrase / passkey unlock
             </button>
           </div>
         </>
@@ -994,11 +1175,11 @@ export function ConnectStep({
         <button
           className="btn btn--primary"
           disabled={
-            connecting || connectBtnDisabled({ mode, useRecovery, recoveryServer, recoveryUsername, recoveryKeyInput, server, token })
+            connecting || connectBtnDisabled({ mode, useRecovery, usePasskeyRecovery, recoveryServer, recoveryUsername, recoveryKeyInput, server, token })
           }
           onClick={onConnect}
         >
-          {connectBtnLabel(connecting, mode, useRecovery)}
+          {connectBtnLabel(connecting, mode, useRecovery, usePasskeyRecovery)}
         </button>
       </div>
     </>

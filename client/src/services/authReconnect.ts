@@ -1,7 +1,13 @@
 import { api, isSameOriginAsApi } from './api';
 import { useAuthStore, type TeamEntry } from '../stores/authStore';
 import { getIdentityKeys } from './crypto';
-import { exportIdentityBlob, signChallenge } from './keyStore';
+import {
+  exportIdentityBlob,
+  signChallenge,
+  hasPasskeyKeySlot,
+  listEscrowableCredentialDescriptors,
+  buildRecoveryEscrowBlob,
+} from './keyStore';
 import { fromBase64, toBase64 } from './cryptoCore';
 
 async function reAuthenticateOneTeam(
@@ -91,7 +97,60 @@ export async function refreshServerTokens(
     }
   }
 
+  // Passkey-recoverable identity escrow (design doc 15). Only relevant
+  // for passkey users — passphrase users keep using the recovery-key
+  // path above. Best-effort, failures are silent so a server that
+  // hasn't shipped the migration yet doesn't break login.
+  await uploadPasskeyRecoverySlots().catch((err) => {
+    console.debug('[authReconnect] passkey recovery escrow skipped:', err);
+  });
+
   return successCount;
+}
+
+/** Opportunistically escrow the passkey-recoverable copy of
+ *  identity.key on every connected server. Idempotent on
+ *  (user_id, credential_id) — the server upsert refreshes the blob
+ *  when the contents change.
+ *
+ *  Skips silently when:
+ *  - no passkey slot exists (passphrase-only user → recovery-key path
+ *    is their only option)
+ *  - the in-memory derivedKey isn't available (lock screen / fresh
+ *    reload before crypto reinit completes)
+ *  - the server returns a 4xx/5xx (older nightly without the recovery
+ *    endpoint yet, or rate-limited) */
+async function uploadPasskeyRecoverySlots(): Promise<void> {
+  if (!(await hasPasskeyKeySlot())) return;
+  const derivedKeyB64 = useAuthStore.getState().derivedKey;
+  if (!derivedKeyB64) return;
+  const prfOutput = fromBase64(derivedKeyB64);
+  const descriptors = await listEscrowableCredentialDescriptors();
+  if (descriptors.length === 0) return;
+  // The whole blob is the same regardless of credential — the server
+  // stores one copy per credential because each has its own PRF salt
+  // and re-derives a (potentially) different wrap key.
+  const encryptedBlob = await buildRecoveryEscrowBlob(prfOutput);
+  const encryptedBlobB64 = toBase64(encryptedBlob);
+  for (const [teamId] of useAuthStore.getState().teams) {
+    const entry = useAuthStore.getState().teams.get(teamId);
+    if (!entry?.token) continue;
+    for (const desc of descriptors) {
+      try {
+        await api.uploadRecoverySlot(teamId, {
+          credential_id: desc.credentialId,
+          prf_salt: toBase64(desc.prfSalt),
+          encrypted_blob: encryptedBlobB64,
+        });
+      } catch (err) {
+        // Best-effort — log at debug so this doesn't spam regular use.
+        console.debug(
+          `[authReconnect] recovery escrow upload failed for team ${teamId} credential ${desc.credentialId}:`,
+          err,
+        );
+      }
+    }
+  }
 }
 
 /**

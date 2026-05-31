@@ -710,3 +710,71 @@ export async function signEnrollmentChallenge(
   const digestBuf = await crypto.subtle.digest('SHA-256', buf);
   return ed25519Sign(signingKey, new Uint8Array(digestBuf));
 }
+
+// ─── Passkey-recoverable identity escrow ──────────────────────────────
+// Design: .security-hardening/15-passkey-recoverable-identity-escrow.md
+//
+// The on-device `identity.key` blob (EncryptedKeyFileV3) gets re-
+// encrypted with an HKDF-distinct wrap key derived from the same
+// WebAuthn PRF output that protects the on-device MEK. The escrow
+// wrap key uses a different HKDF info string from `deriveAesFromPrf`
+// so leaking one wouldn't compromise the other.
+
+/** Derive an HKDF-distinct AES key for the SERVER-SIDE escrow blob.
+ *  Different `info` from `deriveAesFromPrf` so the on-device MEK wrap
+ *  key and the server-side escrow wrap key remain cryptographically
+ *  unrelated even though they're derived from the same PRF output. */
+async function deriveAesFromPrfForEscrow(prfOutput: Uint8Array): Promise<Uint8Array> {
+  return hkdfDerive(
+    prfOutput,
+    encoder.encode('DillaRecoveryEscrow'),
+    32,
+    encoder.encode('dilla-prf-escrow-v1'),
+  );
+}
+
+/** Encrypt the current `identity.key` for server-side escrow with the
+ *  PRF-derived wrap key. Returns the AES-GCM ciphertext bytes
+ *  (nonce-prefixed) ready to be base64'd and PUT'd to the server.
+ *  Throws if no identity exists. */
+export async function buildRecoveryEscrowBlob(prfOutput: Uint8Array): Promise<Uint8Array> {
+  const keyFile = await idbGet<EncryptedKeyFileV3>('identity.key');
+  if (!keyFile) throw new Error('No identity to escrow');
+  const aesKey = await deriveAesFromPrfForEscrow(prfOutput);
+  const plaintext = encoder.encode(JSON.stringify(keyFile));
+  return aesGcmEncrypt(aesKey, plaintext);
+}
+
+/** Decrypt a server-fetched escrow blob with the PRF output derived
+ *  from the recovery passkey ceremony, write the result to IDB, and
+ *  return the now-restored identity. */
+export async function restoreFromRecoveryEscrowBlob(
+  prfOutput: Uint8Array,
+  encryptedBlob: Uint8Array,
+): Promise<void> {
+  const aesKey = await deriveAesFromPrfForEscrow(prfOutput);
+  const plaintext = await aesGcmDecrypt(aesKey, encryptedBlob);
+  const json = new TextDecoder().decode(plaintext);
+  const keyFile = JSON.parse(json) as EncryptedKeyFileV3;
+  if (keyFile.version !== 3) {
+    throw new Error(`Unsupported recovered key-file version: ${keyFile.version}`);
+  }
+  await idbPut('identity.key', keyFile);
+}
+
+/** Number of escrow credentials present in the current identity.key.
+ *  Used by the Onboarding "recover via passkey" UI to short-circuit
+ *  when there's nothing to escrow yet. */
+export async function listEscrowableCredentialDescriptors(): Promise<
+  { credentialId: string; prfSalt: Uint8Array }[]
+> {
+  const keyFile = await idbGet<EncryptedKeyFileV3>('identity.key');
+  if (!keyFile) return [];
+  const out: { credentialId: string; prfSalt: Uint8Array }[] = [];
+  for (const slot of keyFile.key_slots) {
+    for (const cred of slot.credentials) {
+      out.push({ credentialId: cred.id, prfSalt: new Uint8Array(slot.prf_salt) });
+    }
+  }
+  return out;
+}

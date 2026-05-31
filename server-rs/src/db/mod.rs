@@ -27,6 +27,7 @@ mod pin_queries;
 mod block_queries;
 mod jwt_revocation_queries;
 mod device_queries;
+mod identity_recovery_queries;
 
 use rusqlite::Connection;
 use secrecy::{ExposeSecret, SecretString};
@@ -61,6 +62,7 @@ pub use pin_queries::*;
 pub use block_queries::*;
 pub use jwt_revocation_queries::*;
 pub use device_queries::*;
+pub use identity_recovery_queries::*;
 
 const MIGRATIONS: &[(&str, &str)] = &[
     ("001_initial.sql", include_str!("../../migrations/001_initial.sql")),
@@ -95,6 +97,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
     ("030_federation_identity.sql", include_str!("../../migrations/030_federation_identity.sql")),
     ("031_team_turn_relay.sql", include_str!("../../migrations/031_team_turn_relay.sql")),
     ("032_attachments_uploader_id.sql", include_str!("../../migrations/032_attachments_uploader_id.sql")),
+    ("033_identity_recovery_slots.sql", include_str!("../../migrations/033_identity_recovery_slots.sql")),
 ];
 
 /// Default number of read connections in the pool.

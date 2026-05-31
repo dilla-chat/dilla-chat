@@ -450,6 +450,88 @@ describe('signEnrollmentChallenge', () => {
   });
 });
 
+// ─── Passkey-recoverable identity escrow (design doc 15) ────────────────────
+
+describe('buildRecoveryEscrowBlob + restoreFromRecoveryEscrowBlob', () => {
+  it('round-trips identity.key through PRF-derived AES-GCM', async () => {
+    const prfKey = randomBytes(32);
+    const prfSalt = randomBytes(32);
+    await createIdentity('https://example.com', prfKey, prfSalt, makeCredential());
+
+    const {
+      buildRecoveryEscrowBlob,
+      restoreFromRecoveryEscrowBlob,
+      deleteIdentity,
+      hasIdentity,
+      getPublicKey,
+    } = await import('./keyStore');
+
+    const beforePub = await getPublicKey();
+    expect(beforePub).not.toBeNull();
+
+    const escrow = await buildRecoveryEscrowBlob(prfKey);
+    expect(escrow.length).toBeGreaterThan(12 + 16); // nonce + GCM tag floor
+
+    // Wipe the local identity and rehydrate from the escrow blob.
+    await deleteIdentity();
+    expect(await hasIdentity()).toBe(false);
+    await restoreFromRecoveryEscrowBlob(prfKey, escrow);
+    expect(await hasIdentity()).toBe(true);
+    const afterPub = await getPublicKey();
+    expect(Array.from(afterPub!)).toEqual(Array.from(beforePub!));
+  });
+
+  it('rejects decryption with a different PRF output', async () => {
+    const prfKey = randomBytes(32);
+    const prfSalt = randomBytes(32);
+    await createIdentity('https://example.com', prfKey, prfSalt, makeCredential());
+
+    const {
+      buildRecoveryEscrowBlob,
+      restoreFromRecoveryEscrowBlob,
+      deleteIdentity,
+    } = await import('./keyStore');
+
+    const escrow = await buildRecoveryEscrowBlob(prfKey);
+    await deleteIdentity();
+    const wrongKey = randomBytes(32);
+    await expect(
+      restoreFromRecoveryEscrowBlob(wrongKey, escrow),
+    ).rejects.toThrow();
+  });
+
+  it('throws when no identity exists', async () => {
+    const { buildRecoveryEscrowBlob, deleteIdentity } = await import('./keyStore');
+    await deleteIdentity();
+    await expect(buildRecoveryEscrowBlob(randomBytes(32))).rejects.toThrow(/No identity to escrow/);
+  });
+});
+
+describe('listEscrowableCredentialDescriptors', () => {
+  it('returns one descriptor per (slot, credential) pair', async () => {
+    const prfKey = randomBytes(32);
+    const prfSalt = randomBytes(32);
+    await createIdentity('https://example.com', prfKey, prfSalt, [
+      { id: 'cred-1', name: 'Yubikey', created_at: new Date().toISOString() },
+      { id: 'cred-2', name: 'Backup', created_at: new Date().toISOString() },
+    ]);
+    const { listEscrowableCredentialDescriptors } = await import('./keyStore');
+    const descs = await listEscrowableCredentialDescriptors();
+    expect(descs.length).toBe(2);
+    expect(descs.map(d => d.credentialId).sort()).toEqual(['cred-1', 'cred-2']);
+    // All share the same slot's prf_salt — single key_slot per createIdentity.
+    expect(Array.from(descs[0].prfSalt)).toEqual(Array.from(prfSalt));
+    expect(Array.from(descs[1].prfSalt)).toEqual(Array.from(prfSalt));
+  });
+
+  it('returns empty array when no identity exists', async () => {
+    const { listEscrowableCredentialDescriptors, deleteIdentity } = await import('./keyStore');
+    await deleteIdentity();
+    const descs = await listEscrowableCredentialDescriptors();
+    expect(descs).toEqual([]);
+  });
+});
+
 // ─── Tampered key file rejection ─────────────────────────────────────────────
 
 describe('corrupt key file handling', () => {

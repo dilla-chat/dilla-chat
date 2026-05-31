@@ -9,6 +9,7 @@ vi.mock('./api', () => ({
     requestChallenge: vi.fn().mockResolvedValue({ challenge_id: 'ch-1', nonce: 'AAAA' }),
     verifyChallenge: vi.fn().mockResolvedValue({ token: 'jwt-new', user: { id: 'u1' } }),
     listTeams: vi.fn().mockResolvedValue([{ id: 'team-discovered', name: 'Found' }]),
+    uploadRecoverySlot: vi.fn().mockResolvedValue(undefined),
   },
   // H-13d: cross-origin in this test (page is on jsdom http://localhost,
   // baseUrl is https://server.com), so the bearer header is still
@@ -23,6 +24,9 @@ vi.mock('./crypto', () => ({
 vi.mock('./keyStore', () => ({
   exportIdentityBlob: vi.fn().mockResolvedValue(null),
   signChallenge: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
+  hasPasskeyKeySlot: vi.fn().mockResolvedValue(false),
+  listEscrowableCredentialDescriptors: vi.fn().mockResolvedValue([]),
+  buildRecoveryEscrowBlob: vi.fn().mockResolvedValue(new Uint8Array([9, 9, 9])),
 }));
 
 vi.mock('./cryptoCore', () => ({
@@ -251,5 +255,88 @@ describe('refreshServerTokens after auth error cleared teams', () => {
     expect(count).toBe(0);
     expect(api.removeTeam).toHaveBeenCalledWith('t-stale');
     expect(useAuthStore.getState().teams.has('t-stale')).toBe(false);
+  });
+
+  // ─── Passkey-recoverable identity escrow (design doc 15) ───────────────
+
+  describe('uploadPasskeyRecoverySlots (via refreshServerTokens)', () => {
+    it('skips upload for passphrase-only users', async () => {
+      const { refreshServerTokens } = await import('./authReconnect');
+      const { api } = await import('./api');
+      const { hasPasskeyKeySlot } = await import('./keyStore');
+      vi.mocked(hasPasskeyKeySlot).mockResolvedValueOnce(false);
+      useAuthStore.setState({
+        teams: new Map([['t1', { token: 'jwt', user: {}, teamInfo: {}, baseUrl: 'https://server.com' }]]),
+        derivedKey: 'cHJmLW91dHB1dA==',
+      });
+      const teams = new Map([
+        ['t1', { token: 'jwt', user: {}, teamInfo: {}, baseUrl: 'https://server.com' }],
+      ]);
+      await refreshServerTokens(teams, 'pubkey');
+      expect(api.uploadRecoverySlot).not.toHaveBeenCalled();
+    });
+
+    it('skips upload when no derivedKey is available (lock screen)', async () => {
+      const { refreshServerTokens } = await import('./authReconnect');
+      const { api } = await import('./api');
+      const { hasPasskeyKeySlot } = await import('./keyStore');
+      vi.mocked(hasPasskeyKeySlot).mockResolvedValueOnce(true);
+      useAuthStore.setState({
+        teams: new Map([['t1', { token: 'jwt', user: {}, teamInfo: {}, baseUrl: 'https://server.com' }]]),
+        derivedKey: '', // empty → skip
+      });
+      const teams = new Map([
+        ['t1', { token: 'jwt', user: {}, teamInfo: {}, baseUrl: 'https://server.com' }],
+      ]);
+      await refreshServerTokens(teams, 'pubkey');
+      expect(api.uploadRecoverySlot).not.toHaveBeenCalled();
+    });
+
+    it('uploads one slot per (team, credential) when descriptors exist', async () => {
+      const { refreshServerTokens } = await import('./authReconnect');
+      const { api } = await import('./api');
+      const { hasPasskeyKeySlot, listEscrowableCredentialDescriptors } = await import('./keyStore');
+      vi.mocked(hasPasskeyKeySlot).mockResolvedValueOnce(true);
+      vi.mocked(listEscrowableCredentialDescriptors).mockResolvedValueOnce([
+        { credentialId: 'cred-a', prfSalt: new Uint8Array([1, 2, 3]) },
+        { credentialId: 'cred-b', prfSalt: new Uint8Array([4, 5, 6]) },
+      ]);
+      useAuthStore.setState({
+        teams: new Map([
+          ['t1', { token: 'jwt-1', user: {}, teamInfo: {}, baseUrl: 'https://server.com' }],
+        ]),
+        derivedKey: 'cHJm',
+      });
+      const teams = new Map([
+        ['t1', { token: 'jwt-1', user: {}, teamInfo: {}, baseUrl: 'https://server.com' }],
+      ]);
+      await refreshServerTokens(teams, 'pubkey');
+      // 2 credentials × 1 team
+      expect(api.uploadRecoverySlot).toHaveBeenCalledTimes(2);
+      const credIds = vi.mocked(api.uploadRecoverySlot).mock.calls.map(c => (c[1] as { credential_id: string }).credential_id);
+      expect(credIds.sort()).toEqual(['cred-a', 'cred-b']);
+    });
+
+    it('swallows per-credential upload errors so login still succeeds', async () => {
+      const { refreshServerTokens } = await import('./authReconnect');
+      const { api } = await import('./api');
+      const { hasPasskeyKeySlot, listEscrowableCredentialDescriptors } = await import('./keyStore');
+      vi.mocked(hasPasskeyKeySlot).mockResolvedValueOnce(true);
+      vi.mocked(listEscrowableCredentialDescriptors).mockResolvedValueOnce([
+        { credentialId: 'cred-bad', prfSalt: new Uint8Array([1]) },
+      ]);
+      vi.mocked(api.uploadRecoverySlot).mockRejectedValueOnce(new Error('500 from old server'));
+      useAuthStore.setState({
+        teams: new Map([
+          ['t1', { token: 'jwt-1', user: {}, teamInfo: {}, baseUrl: 'https://server.com' }],
+        ]),
+        derivedKey: 'cHJm',
+      });
+      const teams = new Map([
+        ['t1', { token: 'jwt-1', user: {}, teamInfo: {}, baseUrl: 'https://server.com' }],
+      ]);
+      // Should not throw — best-effort upload swallows failures.
+      await expect(refreshServerTokens(teams, 'pubkey')).resolves.not.toThrow();
+    });
   });
 });

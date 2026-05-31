@@ -190,6 +190,15 @@ impl AuthService {
         self.insert_challenge(None)
     }
 
+    /// Read-only access to the derived JWT secret. Used by other server
+    /// subsystems that need a per-install secret for HMAC seeds (e.g.
+    /// the identity-recovery synthetic-descriptor generator). NOT for
+    /// direct token signing — that's what `generate_jwt_for_device`
+    /// is for.
+    pub fn jwt_secret_bytes(&self) -> &[u8] {
+        &self.jwt_secret
+    }
+
     /// SECREVIEW-VULN-1: issue a single-use challenge bound to a
     /// specific `(user_id, target_pk)`. Must be paired with
     /// `verify_challenge_bound` — the bare-nonce `verify_challenge`

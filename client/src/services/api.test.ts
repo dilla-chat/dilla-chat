@@ -1253,6 +1253,71 @@ describe('ApiService', () => {
     });
   });
 
+  // ── Passkey-recoverable identity escrow (design doc 15) ───────────────
+
+  describe('identity-recovery endpoints', () => {
+    it('uploadRecoverySlot PUTs to /identity/recovery/passkey with the slot body', async () => {
+      api.addTeam('t-up', 'https://up.io');
+      api.setToken('t-up', 'tok-abc');
+      globalThis.fetch = mockFetchResponse({ credential_id: 'c-1', ok: true });
+      await api.uploadRecoverySlot('t-up', {
+        credential_id: 'c-1',
+        prf_salt: 'cHJmLXNhbHQtYjY0',
+        encrypted_blob: 'YmxvYi1iNjQ=',
+      });
+      const { url, init } = lastFetchCall();
+      expect(url).toBe('https://up.io/api/v1/identity/recovery/passkey');
+      expect(init.method).toBe('PUT');
+      const body = JSON.parse(init.body as string);
+      expect(body.credential_id).toBe('c-1');
+      expect(body.prf_salt).toBe('cHJmLXNhbHQtYjY0');
+      expect(body.encrypted_blob).toBe('YmxvYi1iNjQ=');
+    });
+
+    it('deleteRecoverySlot DELETEs /identity/recovery/passkey/{credentialId}', async () => {
+      api.addTeam('t-del', 'https://del.io');
+      api.setToken('t-del', 'tok-xyz');
+      globalThis.fetch = mockFetchResponse({ ok: true });
+      // credential_id with chars that require URL-encoding to ensure
+      // the path encodes correctly.
+      await api.deleteRecoverySlot('t-del', 'cred/with+slash');
+      const { url, init } = lastFetchCall();
+      expect(url).toBe('https://del.io/api/v1/identity/recovery/passkey/cred%2Fwith%2Bslash');
+      expect(init.method).toBe('DELETE');
+    });
+
+    it('lookupRecoveryDescriptors POSTs username and returns rp_id + descriptors', async () => {
+      globalThis.fetch = mockFetchResponse({
+        rp_id: 'example.test',
+        credentials: [{ credential_id: 'c-1', prf_salt: 'cw==' }],
+      });
+      const res = await api.lookupRecoveryDescriptors('https://srv.io', 'alice');
+      const { url, init } = lastFetchCall();
+      expect(url).toBe('https://srv.io/api/v1/identity/recovery/lookup');
+      expect(init.method).toBe('POST');
+      expect(JSON.parse(init.body as string)).toEqual({ username: 'alice' });
+      expect(res.rp_id).toBe('example.test');
+      expect(res.credentials[0].credential_id).toBe('c-1');
+    });
+
+    it('fetchRecoveryBlob POSTs (username, credential_id) and returns the blob envelope', async () => {
+      globalThis.fetch = mockFetchResponse({
+        credential_id: 'c-1',
+        rp_id: 'example.test',
+        prf_salt: 'cw==',
+        encrypted_blob: 'YmxvYg==',
+        user_id: 'u-1',
+      });
+      const res = await api.fetchRecoveryBlob('https://srv.io', 'alice', 'c-1');
+      const { url, init } = lastFetchCall();
+      expect(url).toBe('https://srv.io/api/v1/identity/recovery/fetch');
+      expect(init.method).toBe('POST');
+      expect(JSON.parse(init.body as string)).toEqual({ username: 'alice', credential_id: 'c-1' });
+      expect(res.encrypted_blob).toBe('YmxvYg==');
+      expect(res.user_id).toBe('u-1');
+    });
+  });
+
   // ── enableMockApi ───────────────────────────────────────────────────────
 
   describe('enableMockApi', () => {
