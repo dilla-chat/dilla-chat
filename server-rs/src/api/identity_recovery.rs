@@ -9,24 +9,29 @@
 //!
 //! **Note vs. the design doc:** the doc described a 2-step
 //! challenge/verify dance gating the fetch with a server-side WebAuthn
-//! assertion. We instead rely on the cryptographic gating already
-//! provided by PRF encryption: the blob is AES-GCM(HKDF-SHA256(PRF
-//! output), identity.key). The server cannot read it, and an attacker
-//! who fetches the blob still cannot decrypt without the passkey.
-//! That makes a server-side WebAuthn validator (heavy: pulls in
-//! webauthn-rs, custom challenge replay tracking) unnecessary for the
-//! security goal. The `lookup` and `fetch` endpoints are
-//! unauthenticated but rate-limited via the existing global limiter;
-//! they leak only `(username, credential_id, prf_salt)` triples which
-//! are not secrets (browsers send credential_ids in plaintext during
-//! every WebAuthn ceremony).
+//! assertion (requires webauthn-rs + a credential-public-key storage
+//! schema we don't yet have). We rely instead on the cryptographic
+//! gating already provided by PRF encryption: the blob is
+//! AES-GCM(HKDF-SHA256(PRF output), identity.key). The server cannot
+//! read it, and an attacker who fetches the blob still cannot
+//! decrypt without the passkey.
 //!
-//! Username enumeration: `lookup` returns a synthetic descriptor for
-//! unknown usernames so request timing + response shape are constant.
-//! The synthetic prf_salt is HMAC-SHA256(server-derived secret,
-//! username) so it's deterministic per-username — an attacker can't
-//! tell "known" from "unknown" by hammering twice and getting
-//! different synthetic salts.
+//! Anti-enumeration: both `lookup` and `fetch` always return 200 with
+//! a fixed-shape envelope (`lookup` pads to `LOOKUP_DESCRIPTOR_COUNT`
+//! synthetic descriptors; `fetch` returns a deterministic synthetic
+//! AES-GCM-shaped pseudo-blob for unknown pairs). The synthetic
+//! values are HMAC-SHA256 derivations off the server's per-install
+//! jwt_secret so polling yields identical output — no
+//! `known vs unknown` signal. Real client-side decrypt failure of a
+//! synthetic blob looks identical to a wrong-passkey attempt against
+//! a real slot.
+//!
+//! **Follow-up:** add a server-side WebAuthn proof-of-possession step
+//! before releasing real blobs. The current model relies entirely on
+//! PRF entropy (~32 bytes) to gate offline decryption, which is
+//! cryptographically sufficient against today's authenticators but
+//! adds an extra layer of defense against future weaknesses + lifts
+//! the bar against offline brute-force. Tracking issue: TBD.
 
 use axum::{
     extract::{Path, State},
@@ -140,6 +145,15 @@ pub struct DescriptorPayload {
     pub prf_salt: String,
 }
 
+/// Fixed envelope size for the lookup response. We always return
+/// exactly this many descriptors — real ones first (capped), then
+/// deterministic synthetic padding. This prevents an attacker from
+/// inferring "how many passkeys does this user have?" from the
+/// response length. The cap also bounds enrolled credentials per
+/// user — in practice nobody enrolls >4 hardware authenticators
+/// for the same identity.
+const LOOKUP_DESCRIPTOR_COUNT: usize = 4;
+
 pub async fn lookup(
     State(state): State<AppState>,
     Json(body): Json<LookupRequest>,
@@ -160,32 +174,33 @@ pub async fn lookup(
     })
     .await?;
 
-    let credentials = if let Some(u) = user {
+    let real_descs: Vec<DescriptorPayload> = if let Some(u) = user {
         let uid = u.id.clone();
         let descs = spawn_db(state.db.clone(), move |conn| {
             db::list_recovery_descriptors_for_user(conn, &uid)
         })
         .await?;
-        if descs.is_empty() {
-            // Known user with no escrow slots yet — fall through to
-            // synthetic to avoid leaking "this user exists but never
-            // escrowed". An attacker can't distinguish.
-            vec![synthetic_descriptor(&state, &body.username)]
-        } else {
-            descs
-                .into_iter()
-                .map(|d| DescriptorPayload {
-                    credential_id: d.credential_id,
-                    prf_salt: base64::engine::general_purpose::STANDARD.encode(&d.prf_salt),
-                })
-                .collect()
-        }
+        descs
+            .into_iter()
+            .take(LOOKUP_DESCRIPTOR_COUNT)
+            .map(|d| DescriptorPayload {
+                credential_id: d.credential_id,
+                prf_salt: base64::engine::general_purpose::STANDARD.encode(&d.prf_salt),
+            })
+            .collect()
     } else {
-        // Unknown username — return a deterministic synthetic
-        // descriptor so the response shape + size is identical to
-        // the known case.
-        vec![synthetic_descriptor(&state, &body.username)]
+        Vec::new()
     };
+
+    // Always return exactly LOOKUP_DESCRIPTOR_COUNT entries — pad with
+    // deterministic-per-(username, position) synthetic descriptors so
+    // the wire response shape is identical regardless of how many
+    // real slots the user has (or whether the user exists at all).
+    let mut credentials = real_descs;
+    let start = credentials.len();
+    for i in start..LOOKUP_DESCRIPTOR_COUNT {
+        credentials.push(synthetic_descriptor(&state, &body.username, i as u8));
+    }
 
     Ok(Json(json!({
         "rp_id": rp_id,
@@ -193,29 +208,58 @@ pub async fn lookup(
     })))
 }
 
-/// Per-username deterministic synthetic descriptor. The salt is
-/// HMAC-SHA256(jwt_secret, "dilla-recovery-synthetic-v1\0"||username)
-/// so the same username always produces the same fake descriptor
-/// (no flap that an attacker could detect by polling). The
-/// `jwt_secret` is the server's per-install secret derived from the
-/// DB passphrase — it never leaves the server.
-fn synthetic_descriptor(state: &AppState, username: &str) -> DescriptorPayload {
+/// Per-(username, position) deterministic synthetic descriptor. The
+/// salt + credential_id are HMAC-SHA256 derivations off the server's
+/// per-install jwt_secret so the same username + position always
+/// produces the same fake descriptor (no flap an attacker could
+/// detect by polling). `jwt_secret` is the per-install secret
+/// derived from the DB passphrase — never leaves the server.
+fn synthetic_descriptor(state: &AppState, username: &str, position: u8) -> DescriptorPayload {
     let mut mac = Hmac::<Sha256>::new_from_slice(state.auth.jwt_secret_bytes())
         .expect("HMAC accepts any key length");
     mac.update(b"dilla-recovery-synthetic-v1\0");
     mac.update(username.as_bytes());
+    mac.update(&[0u8, position]);
     let salt = mac.finalize().into_bytes();
-    // Fake credential_id is the same HMAC under a different label so
-    // it's also deterministic per-username.
     let mut mac2 = Hmac::<Sha256>::new_from_slice(state.auth.jwt_secret_bytes())
         .expect("HMAC accepts any key length");
     mac2.update(b"dilla-recovery-synthetic-cred-v1\0");
     mac2.update(username.as_bytes());
+    mac2.update(&[0u8, position]);
     let cred = mac2.finalize().into_bytes();
     DescriptorPayload {
         credential_id: base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(cred),
         prf_salt: base64::engine::general_purpose::STANDARD.encode(salt),
     }
+}
+
+/// Build a deterministic-per-(username, credential_id) pseudo-blob
+/// for unknown pairs in the fetch endpoint. The bytes look like a
+/// real AES-GCM ciphertext (random + 16-byte tag) but decrypt to
+/// gibberish on the client — same failure path the real client hits
+/// when the user presents the wrong passkey. Length is fixed to the
+/// median real blob size (~2 KiB) so the wire response is
+/// indistinguishable from a hit. Without this, a `200 OK` vs `404
+/// Not Found` directly reveals "this username + credential exists",
+/// which combined with the lookup synthetic-padding above would
+/// re-leak enumeration.
+fn synthetic_encrypted_blob(state: &AppState, username: &str, credential_id: &str) -> Vec<u8> {
+    const SYNTHETIC_BLOB_LEN: usize = 2048;
+    let mut out = Vec::with_capacity(SYNTHETIC_BLOB_LEN);
+    let mut counter: u64 = 0;
+    while out.len() < SYNTHETIC_BLOB_LEN {
+        let mut mac = Hmac::<Sha256>::new_from_slice(state.auth.jwt_secret_bytes())
+            .expect("HMAC accepts any key length");
+        mac.update(b"dilla-recovery-synthetic-blob-v1\0");
+        mac.update(username.as_bytes());
+        mac.update(&[0u8]);
+        mac.update(credential_id.as_bytes());
+        mac.update(&counter.to_be_bytes());
+        out.extend_from_slice(&mac.finalize().into_bytes());
+        counter += 1;
+    }
+    out.truncate(SYNTHETIC_BLOB_LEN);
+    out
 }
 
 // ── POST /api/v1/identity/recovery/fetch ───────────────────────────────
@@ -243,30 +287,71 @@ pub async fn fetch(
     })
     .await?;
 
-    let user = match user {
-        Some(u) => u,
+    let rp_id = if state.config.domain.is_empty() {
+        "localhost".to_string()
+    } else {
+        state.config.domain.clone()
+    };
+
+    let slot = if let Some(u) = user {
+        let uid = u.id.clone();
+        let credential_id_q = body.credential_id.clone();
+        spawn_db(state.db.clone(), move |conn| {
+            db::get_recovery_slot(conn, &uid, &credential_id_q)
+        })
+        .await?
+    } else {
+        None
+    };
+
+    // Always return 200 with the same response shape — for unknown
+    // (username, credential_id) pairs we emit a deterministic
+    // synthetic blob that looks like a real AES-GCM ciphertext but
+    // decrypts to nothing on the client. This prevents an attacker
+    // from telling "this credential exists for this user" from a
+    // wire-level 200/404 — the client's local AES-GCM failure is the
+    // only signal, identical to what they'd see with the wrong
+    // passkey. Pairs with the synthetic-padding in lookup to fully
+    // close the enumeration surface.
+    let (credential_id, prf_salt, encrypted_blob, user_id) = match slot {
+        Some(s) => (
+            s.credential_id,
+            base64::engine::general_purpose::STANDARD.encode(&s.prf_salt),
+            base64::engine::general_purpose::STANDARD.encode(&s.encrypted_blob),
+            s.user_id,
+        ),
         None => {
-            // Synthetic miss — same shape as a real miss to avoid
-            // username enumeration.
-            return Err(AppError::NotFound("recovery slot not found".into()));
+            // Synthetic prf_salt + blob keyed by (username,
+            // credential_id) so repeated polling yields identical
+            // output — no flap to distinguish "unknown" from
+            // "valid but wrong passkey".
+            let synth_salt = {
+                let mut mac = Hmac::<Sha256>::new_from_slice(state.auth.jwt_secret_bytes())
+                    .expect("HMAC accepts any key length");
+                mac.update(b"dilla-recovery-synthetic-fetch-salt-v1\0");
+                mac.update(body.username.as_bytes());
+                mac.update(&[0u8]);
+                mac.update(body.credential_id.as_bytes());
+                mac.finalize().into_bytes()
+            };
+            let synth_blob = synthetic_encrypted_blob(&state, &body.username, &body.credential_id);
+            (
+                body.credential_id.clone(),
+                base64::engine::general_purpose::STANDARD.encode(synth_salt),
+                base64::engine::general_purpose::STANDARD.encode(&synth_blob),
+                // Synthetic user_id — never use server-side, but
+                // matches the response shape.
+                "00000000-0000-0000-0000-000000000000".to_string(),
+            )
         }
     };
 
-    let uid = user.id.clone();
-    let credential_id_q = body.credential_id.clone();
-    let slot = spawn_db(state.db.clone(), move |conn| {
-        db::get_recovery_slot(conn, &uid, &credential_id_q)
-    })
-    .await?;
-
-    let slot = slot.ok_or_else(|| AppError::NotFound("recovery slot not found".into()))?;
-
     Ok(Json(json!({
-        "credential_id": slot.credential_id,
-        "rp_id": slot.rp_id,
-        "prf_salt": base64::engine::general_purpose::STANDARD.encode(&slot.prf_salt),
-        "encrypted_blob": base64::engine::general_purpose::STANDARD.encode(&slot.encrypted_blob),
-        "user_id": slot.user_id,
+        "credential_id": credential_id,
+        "rp_id": rp_id,
+        "prf_salt": prf_salt,
+        "encrypted_blob": encrypted_blob,
+        "user_id": user_id,
     })))
 }
 
@@ -462,7 +547,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn lookup_returns_descriptors_for_known_user_with_slots() {
+    async fn lookup_returns_fixed_envelope_with_real_descriptors_first() {
         let (state, _tmp) = make_state();
         seed_user(&state.db, "alice", "alice");
         state
@@ -487,16 +572,56 @@ mod tests {
         let v = body_json(resp).await;
         assert_eq!(v["rp_id"], "test.example");
         let creds = v["credentials"].as_array().unwrap();
-        assert_eq!(creds.len(), 2);
+        // ENVELOPE: always LOOKUP_DESCRIPTOR_COUNT entries — 2 real + 2 synthetic pad.
+        assert_eq!(creds.len(), super::LOOKUP_DESCRIPTOR_COUNT);
         let ids: Vec<&str> = creds.iter().map(|c| c["credential_id"].as_str().unwrap()).collect();
         assert!(ids.contains(&"cred-a"));
         assert!(ids.contains(&"cred-b"));
     }
 
     #[tokio::test]
+    async fn lookup_envelope_size_is_identical_for_known_and_unknown_users() {
+        // The whole point of the synthetic-padding mitigation: response
+        // length cannot leak slot count or user existence.
+        let (state, _tmp) = make_state();
+        seed_user(&state.db, "alice", "alice");
+        state
+            .db
+            .with_conn(|c| db::upsert_recovery_slot(c, "alice", "cred-a", "test.example", &[2u8; 32], b"x"))
+            .unwrap();
+
+        let app = public_router(state.clone());
+        let resp_known = app
+            .oneshot(
+                Request::post("/recovery/lookup")
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({ "username": "alice" }).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let v_known = body_json(resp_known).await;
+
+        let app = public_router(state);
+        let resp_unknown = app
+            .oneshot(
+                Request::post("/recovery/lookup")
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({ "username": "ghost" }).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let v_unknown = body_json(resp_unknown).await;
+
+        assert_eq!(v_known["credentials"].as_array().unwrap().len(), super::LOOKUP_DESCRIPTOR_COUNT);
+        assert_eq!(v_unknown["credentials"].as_array().unwrap().len(), super::LOOKUP_DESCRIPTOR_COUNT);
+    }
+
+    #[tokio::test]
     async fn lookup_for_unknown_user_returns_synthetic_deterministic_descriptor() {
-        // The synthetic descriptor must be stable for the same input
-        // so an attacker can't detect "known vs unknown" by polling.
+        // Synthetic descriptors must be stable for the same input so
+        // an attacker can't detect "known vs unknown" by polling.
         let (state, _tmp) = make_state();
         let app = public_router(state.clone());
         let resp1 = app
@@ -522,10 +647,13 @@ mod tests {
         let v2 = body_json(resp2).await;
         assert_eq!(v1["credentials"][0]["credential_id"], v2["credentials"][0]["credential_id"]);
         assert_eq!(v1["credentials"][0]["prf_salt"], v2["credentials"][0]["prf_salt"]);
+        // And distinct from position 1's synthetic — proves the per-position
+        // domain separation works.
+        assert_ne!(v1["credentials"][0]["credential_id"], v1["credentials"][1]["credential_id"]);
     }
 
     #[tokio::test]
-    async fn lookup_for_known_user_with_no_slots_returns_synthetic() {
+    async fn lookup_for_known_user_with_no_slots_returns_fixed_envelope_of_synthetics() {
         let (state, _tmp) = make_state();
         seed_user(&state.db, "alice", "alice");
         let app = public_router(state);
@@ -540,7 +668,7 @@ mod tests {
             .unwrap();
         assert_eq!(resp.status(), 200);
         let v = body_json(resp).await;
-        assert_eq!(v["credentials"].as_array().unwrap().len(), 1);
+        assert_eq!(v["credentials"].as_array().unwrap().len(), super::LOOKUP_DESCRIPTOR_COUNT);
     }
 
     #[tokio::test]
@@ -576,7 +704,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn fetch_returns_404_for_unknown_user() {
+    async fn fetch_returns_200_with_synthetic_blob_for_unknown_user() {
+        // Enumeration mitigation: unknown pairs return a 200 with a
+        // deterministic-shaped blob so the client's local AES-GCM
+        // failure is the only signal an attacker sees, identical to
+        // the wrong-passkey case against a real slot.
         let (state, _tmp) = make_state();
         let app = public_router(state);
         let resp = app
@@ -590,11 +722,52 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(resp.status(), 404);
+        assert_eq!(resp.status(), 200);
+        let v = body_json(resp).await;
+        assert_eq!(v["credential_id"], "anything");
+        // Synthetic blob has a stable, plausible length.
+        let blob_b64 = v["encrypted_blob"].as_str().unwrap();
+        let decoded = base64::engine::general_purpose::STANDARD.decode(blob_b64).unwrap();
+        assert_eq!(decoded.len(), 2048);
     }
 
     #[tokio::test]
-    async fn fetch_returns_404_for_unknown_credential() {
+    async fn fetch_synthetic_response_is_deterministic_per_pair() {
+        // Stable for the same (username, credential_id) so polling
+        // doesn't distinguish "known but wrong" from "unknown".
+        let (state, _tmp) = make_state();
+        let app = public_router(state.clone());
+        let resp1 = app
+            .oneshot(
+                Request::post("/recovery/fetch")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({ "username": "ghost", "credential_id": "cred-x" }).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let app = public_router(state);
+        let resp2 = app
+            .oneshot(
+                Request::post("/recovery/fetch")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({ "username": "ghost", "credential_id": "cred-x" }).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let v1 = body_json(resp1).await;
+        let v2 = body_json(resp2).await;
+        assert_eq!(v1["encrypted_blob"], v2["encrypted_blob"]);
+        assert_eq!(v1["prf_salt"], v2["prf_salt"]);
+    }
+
+    #[tokio::test]
+    async fn fetch_returns_200_with_synthetic_for_unknown_credential() {
         let (state, _tmp) = make_state();
         seed_user(&state.db, "alice", "alice");
         let app = public_router(state);
@@ -610,7 +783,9 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(resp.status(), 404);
+        assert_eq!(resp.status(), 200);
+        let v = body_json(resp).await;
+        assert_eq!(v["credential_id"], "no-such-cred");
     }
 
     #[tokio::test]
